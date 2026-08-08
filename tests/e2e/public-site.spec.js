@@ -6,6 +6,8 @@ test("public walls, location filters, guides and short-link tools work", async (
   const assertNoErrors = monitorPageErrors(page);
   await page.goto("/");
 
+  await expect(page.locator(".left-side .side-title")).toContainText("Recent Jobs");
+  await expect(page.locator(".left-side .recent-menu-launch")).toHaveAttribute("href", "/digital-menu/");
   await page.locator(".catalogue-btn.jobs").click();
   await expect(page.getByRole("heading", { name: "Customer Requirements" })).toBeVisible();
   await page.locator("#categoryFilter").selectOption({ label: "Plumbing" });
