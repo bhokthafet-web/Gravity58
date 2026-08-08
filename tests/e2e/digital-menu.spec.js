@@ -39,6 +39,12 @@ test("restaurant owner login, menu CRUD, availability, orders, QR, reports and s
   const pendingCard = page.locator("#ordersGrid .order-card", { hasText: "Pending" }).first();
   await pendingCard.getByRole("button", { name: "Accept" }).click();
   await expect(page.locator("#ordersGrid")).toContainText("Accepted");
+  const acceptedCard = page.locator("#ordersGrid .order-card", { hasText: "Accepted" }).first();
+  await acceptedCard.getByRole("button", { name: "Done" }).click();
+  const readyCard = page.locator("#ordersGrid .order-card", { hasText: "Ready" }).first();
+  await readyCard.getByRole("button", { name: "Complete" }).click();
+  await expect(page.locator("#ordersGrid")).toContainText("Completed");
+  await expect(page.locator("#ordersGrid")).not.toContainText("Delivered");
 
   await page.locator('[data-view="qr"]').click();
   await expect(page.locator("#qrcode [data-testid='qr-rendered']")).toBeVisible();
