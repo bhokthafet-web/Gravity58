@@ -26,9 +26,34 @@ test("advertising user can register, book a timed placement and view the request
   await page.locator("#description").fill("Three-hour automated test campaign.");
   await page.locator("#submit").click();
   await expect(page.getByText("Request sent", { exact: false })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Current Advertisements" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Advertising History" })).toBeVisible();
+  await expect(page.getByText("Regression Offer")).toBeVisible();
   const bookings = await page.evaluate(() => window.__g58Mock.store.bookings);
   expect(bookings).toHaveLength(1);
   expect(bookings[0]).toMatchObject({ status: "Requested", hours: 3, restaurantKey: "Test Restaurant|Hyderabad", title: "Regression Offer" });
+  await assertNoErrors();
+});
+
+test("advertising dashboard separates live ads, expiry and history", async ({ page }) => {
+  const future = "2030-08-09T12:30:00.000Z";
+  await prepareMockApi(page, {
+    initialUser: { $id: "mock-user", email: "advertiser@example.com", name: "Sample Advertiser" },
+    seed: {
+      bookings: [
+        { id: "live-booking", customerId: "mock-user", restaurantKey: "Test Restaurant|Hyderabad", slotId: "right_rail", hours: 3, amount: 360, title: "Live Offer", status: "Live", expiresAt: future },
+        { id: "old-booking", customerId: "mock-user", restaurantKey: "Test Restaurant|Hyderabad", slotId: "preparing", hours: 1, amount: 80, title: "Previous Offer", status: "Expired", expiresAt: "2026-01-01T00:00:00.000Z" },
+      ],
+    },
+  });
+  const assertNoErrors = monitorPageErrors(page);
+  await page.goto("/advertise/");
+  await expect(page.getByRole("heading", { name: "Current Advertisements" })).toBeVisible();
+  const liveCard = page.locator(".booking-grid .card", { hasText: "Live Offer" });
+  await expect(liveCard).toBeVisible();
+  await expect(liveCard).toContainText("Expires:");
+  await expect(page.getByRole("heading", { name: "Advertising History" })).toBeVisible();
+  await expect(page.getByText("Previous Offer")).toBeVisible();
   await assertNoErrors();
 });
 

@@ -31,7 +31,7 @@
     return result;
   };
   const encodeData = (data) => Object.fromEntries(Object.entries(data).filter(([, value]) => value !== undefined));
-  function permissionSet(kind, userId) {
+  function permissionSet(kind, userId, includeAdminTeam = false) {
     if (!configured || !Appwrite.Permission || !Appwrite.Role) return undefined;
     const permissions = [];
     const readAny = ["advertisements", "slots", "posts"].includes(kind);
@@ -40,7 +40,7 @@
       const role = Appwrite.Role.user(userId);
       permissions.push(Appwrite.Permission.read(role), Appwrite.Permission.update(role), Appwrite.Permission.delete(role));
     }
-    if (config.adminTeamId && !String(config.adminTeamId).includes("YOUR_")) {
+    if (includeAdminTeam && config.adminTeamId && !String(config.adminTeamId).includes("YOUR_")) {
       const team = Appwrite.Role.team(config.adminTeamId);
       permissions.push(Appwrite.Permission.read(team), Appwrite.Permission.update(team), Appwrite.Permission.delete(team));
     }
@@ -91,7 +91,10 @@
       window.dispatchEvent(new CustomEvent("g58-ad-data-changed", { detail: { kind, row } }));
       return row;
     }
-    if (!permissions) permissions = permissionSet(kind, (await currentUser())?.$id);
+    if (!permissions) {
+      const current = await currentUser();
+      permissions = permissionSet(kind, current?.$id, current ? await isTeamAdmin() : false);
+    }
     const rowData = sharedTableId ? { kind, payload: JSON.stringify(encodeData(data)) } : encodeData(data);
     if (tables) return clean(await tables.createRow({ databaseId: config.databaseId, tableId: tableIdFor(kind), rowId: documentId || Appwrite.ID.unique(), data: rowData, permissions }));
     return clean(await databases.createDocument({ databaseId: config.databaseId, collectionId: tableIdFor(kind), documentId: documentId || Appwrite.ID.unique(), data: rowData, permissions }));

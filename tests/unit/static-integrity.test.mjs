@@ -87,3 +87,9 @@ test("GitHub Pages deployment and custom-domain files exist", () => {
   assert.match(readFileSync(join(root, "robots.txt"), "utf8"), /Sitemap:/i);
   assert.ok(existsSync(join(root, "sitemap.xml")));
 });
+
+test("normal advertiser records do not request administrator-team permissions", () => {
+  const source = readFileSync(join(root, "js/appwrite-ads.js"), "utf8");
+  assert.match(source, /function permissionSet\(kind, userId, includeAdminTeam = false\)/);
+  assert.match(source, /if \(includeAdminTeam && config\.adminTeamId/);
+});
