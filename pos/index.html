@@ -1,0 +1,1658 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#07111f" />
+  <title>Free POS UPI Billing Tool | GRAVITY58</title>
+  <meta name="description" content="Use the free GRAVITY58 POS tool to create UPI payment QR codes, calculate GST, print receipts, save recent bills and generate daily sales reports.">
+  <link rel="canonical" href="https://g58.in/pos/">
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+  <style>
+    :root{
+      --bg:#07111f;
+      --bg2:#0b1727;
+      --panel:#0f1c2d;
+      --panel2:#142338;
+      --line:rgba(255,255,255,.10);
+      --text:#ffffff;
+      --muted:#9eb0c7;
+      --orange:#f97316;
+      --orange2:#ff9a3d;
+      --success:#22c55e;
+      --danger:#ef4444;
+      --shadow:0 28px 90px rgba(0,0,0,.42);
+    }
+
+    *{box-sizing:border-box}
+    html,body{min-height:100%}
+
+    body{
+      margin:0;
+      font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+      color:var(--text);
+      background:
+        radial-gradient(circle at 8% 12%,rgba(249,115,22,.18),transparent 28%),
+        radial-gradient(circle at 92% 85%,rgba(59,130,246,.10),transparent 28%),
+        linear-gradient(145deg,var(--bg),var(--bg2));
+      padding:24px 16px 50px;
+    }
+
+    button,input{font:inherit}
+
+    .app{width:min(1120px,100%);margin:auto}
+
+    .topbar{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:18px;
+      margin-bottom:24px;
+    }
+
+    .brand{display:flex;align-items:center;gap:14px}
+
+    .logo{
+      width:58px;height:58px;border-radius:18px;
+      display:grid;place-items:center;font-size:27px;font-weight:900;color:#fff;
+      background:linear-gradient(145deg,#ff9a3d,#f97316 56%,#d85c08);
+      box-shadow:0 14px 36px rgba(249,115,22,.34),inset 0 1px 0 rgba(255,255,255,.35);
+    }
+
+    .brand-title{
+      margin:0;font-size:clamp(25px,5vw,40px);
+      letter-spacing:-.05em;line-height:1;
+    }
+
+    .brand-title span{color:var(--orange)}
+    .tagline{margin:7px 0 0;color:var(--muted);font-size:12px;letter-spacing:.18em;font-weight:800}
+    .site-pill{padding:10px 14px;border:1px solid rgba(249,115,22,.28);border-radius:999px;color:#ffd0ae;background:rgba(249,115,22,.08);font-size:12px;font-weight:800}
+
+    .screen{display:none}
+    .screen.active{display:block}
+    .hide{display:none!important}
+
+    .card{
+      border:1px solid var(--line);border-radius:28px;
+      background:linear-gradient(180deg,rgba(255,255,255,.055),rgba(255,255,255,.025));
+      box-shadow:var(--shadow);backdrop-filter:blur(20px);overflow:hidden;
+    }
+
+    .card-head{padding:24px 26px 18px;border-bottom:1px solid var(--line)}
+    .card-head h2{margin:0;font-size:22px}
+    .card-head p{margin:8px 0 0;color:var(--muted);font-size:13px;line-height:1.6}
+    .card-body{padding:24px 26px 28px}
+    .setup-card{width:min(700px,100%);margin:32px auto 0}
+
+    .field{margin-bottom:17px}
+    label{display:block;margin-bottom:8px;color:#dbe5f1;font-size:13px;font-weight:800}
+
+    input{
+      width:100%;min-height:50px;padding:0 15px;border:1px solid var(--line);
+      border-radius:15px;outline:none;color:var(--text);background:rgba(255,255,255,.045);transition:.2s ease;
+    }
+
+    input:focus{border-color:rgba(249,115,22,.75);box-shadow:0 0 0 4px rgba(249,115,22,.12)}
+    input::placeholder{color:#71849d}
+
+    .option-card{
+      display:flex;align-items:center;gap:12px;padding:15px;
+      border:1px solid var(--line);border-radius:15px;background:rgba(255,255,255,.035);
+      cursor:pointer;user-select:none;margin-top:12px;
+    }
+
+    .option-card input{width:20px;height:20px;min-height:0;accent-color:var(--orange)}
+    .option-card strong{display:block;font-size:14px}
+    .option-card small{display:block;color:var(--muted);margin-top:3px}
+
+    .conditional{
+      display:none;margin-top:14px;padding:15px;border:1px solid rgba(249,115,22,.18);
+      border-radius:16px;background:rgba(249,115,22,.045)
+    }
+
+    .conditional.show{display:block}
+
+    .two-col{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+
+    .error{display:none;color:#ff9c9c;font-size:12px;margin-top:7px}
+
+    .btn{
+      min-height:50px;border:0;border-radius:15px;padding:0 19px;
+      font-weight:900;cursor:pointer;transition:.2s ease;
+    }
+
+    .btn:hover{transform:translateY(-1px)}
+    .btn:active{transform:translateY(0)}
+    .btn-primary{width:100%;color:#101010;background:linear-gradient(135deg,var(--orange2),var(--orange));box-shadow:0 14px 34px rgba(249,115,22,.25)}
+    .btn-dark{color:#fff;background:#17263b;border:1px solid var(--line)}
+    .btn-outline{color:#ffd0ae;background:rgba(249,115,22,.08);border:1px solid rgba(249,115,22,.35)}
+    .btn-success{color:#06170d;background:linear-gradient(135deg,#4ade80,#22c55e)}
+    .btn-danger{color:#fff;background:rgba(239,68,68,.17);border:1px solid rgba(239,68,68,.3)}
+
+    .builder-layout{display:grid;grid-template-columns:1.15fr .85fr;gap:20px;align-items:start}
+    .summary-card{position:sticky;top:18px}
+    .quick-options{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:16px 26px;border-bottom:1px solid var(--line);background:rgba(249,115,22,.045)}
+    .quick-options>strong{margin-right:2px;font-size:12px;color:#ffd0ae;text-transform:uppercase;letter-spacing:.08em}
+    .quick-toggle{display:flex;align-items:center;gap:7px;margin:0;padding:8px 11px;border:1px solid var(--line);border-radius:11px;background:rgba(255,255,255,.04);cursor:pointer}
+    .quick-toggle input{width:17px;height:17px;min-height:0;padding:0;accent-color:var(--orange)}
+    .quick-toggle span{font-size:12px;font-weight:800;white-space:nowrap}
+    .quick-gst-rate{display:none;align-items:center;gap:6px;color:var(--muted);font-size:12px;font-weight:800}
+    .quick-gst-rate.show{display:flex}.quick-gst-rate input{width:72px;min-height:35px;padding:0 9px;border-radius:10px}
+
+    .payment-profile{
+      display:grid;grid-template-columns:1fr auto;gap:15px;margin-bottom:20px;padding:15px 17px;
+      border:1px solid rgba(249,115,22,.22);border-radius:17px;background:rgba(249,115,22,.07);
+    }
+
+    .payment-profile small{display:block;color:var(--muted);margin-bottom:4px}
+    .payment-profile strong{word-break:break-word;font-size:15px}
+    .profile-options{text-align:right;color:#ffd0ae;font-size:12px;font-weight:800;line-height:1.6}
+
+    .bill-meta{
+      display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:18px
+    }
+
+    .meta-box{
+      padding:12px;border:1px solid var(--line);border-radius:14px;background:rgba(255,255,255,.03)
+    }
+
+    .meta-box small{display:block;color:var(--muted);margin-bottom:4px}
+    .meta-box strong{font-size:13px;word-break:break-word}
+
+    .value-entry{display:grid;grid-template-columns:minmax(150px,1fr) 92px auto;gap:10px;margin-bottom:17px}
+    .value-entry.with-note{grid-template-columns:minmax(130px,.75fr) 92px minmax(180px,1.25fr) auto}
+    .quantity-input{text-align:center;font-weight:900}
+
+    .items{display:flex;flex-direction:column;gap:10px;max-height:380px;overflow:auto;padding-right:3px}
+    .empty{padding:22px;text-align:center;color:var(--muted);border:1px dashed var(--line);border-radius:17px;font-size:13px}
+
+    .item{
+      display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:12px;
+      padding:13px 14px;border:1px solid var(--line);border-radius:15px;background:rgba(255,255,255,.035);
+    }
+
+    .item-no{width:33px;height:33px;display:grid;place-items:center;border-radius:11px;color:#ffd7bd;background:rgba(249,115,22,.14);font-size:12px;font-weight:900}
+    .item-main{min-width:0}
+    .item-amount{font-size:16px;font-weight:900}
+    .item-note{margin-top:4px;color:var(--muted);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .item-calculation{margin-top:4px;color:#ffd0ae;font-size:11px;font-weight:800}
+    .remove{width:35px;height:35px;border:0;border-radius:11px;color:#ff9b9b;background:rgba(239,68,68,.11);cursor:pointer;font-size:18px}
+
+    .summary-box{border:1px solid var(--line);border-radius:20px;padding:19px;background:linear-gradient(145deg,rgba(249,115,22,.11),rgba(255,255,255,.025))}
+    .summary-row{display:flex;justify-content:space-between;gap:18px;padding:10px 0;color:var(--muted);border-bottom:1px dashed rgba(255,255,255,.08);font-size:14px}
+    .summary-row strong{color:#fff}
+    .summary-row.total-row{align-items:end;padding-top:18px;border-bottom:0}
+    .summary-row.total-row span{font-weight:800}
+    .grand-total{font-size:clamp(30px,5vw,44px);line-height:1;letter-spacing:-.05em;color:var(--orange2)!important}
+
+    .helper{margin:15px 0 0;color:#7f91a8;font-size:11px;line-height:1.6}
+
+
+    .daily-report{
+      margin-top:20px;
+    }
+
+    .report-stats{
+      display:grid;
+      grid-template-columns:repeat(4,1fr);
+      gap:12px;
+      margin-bottom:17px;
+    }
+
+    .report-stat{
+      padding:15px;
+      border:1px solid var(--line);
+      border-radius:16px;
+      background:linear-gradient(145deg,rgba(249,115,22,.09),rgba(255,255,255,.025));
+    }
+
+    .report-stat small{
+      display:block;
+      color:var(--muted);
+      margin-bottom:7px;
+      font-size:11px;
+    }
+
+    .report-stat strong{
+      display:block;
+      font-size:20px;
+      color:#fff;
+      word-break:break-word;
+    }
+
+    .report-controls{
+      display:grid;
+      grid-template-columns:minmax(180px,.8fr) repeat(3,auto);
+      gap:10px;
+      align-items:end;
+    }
+
+    .report-controls .field{margin:0}
+
+    .report-table-wrap{
+      margin-top:17px;
+      overflow:auto;
+      border:1px solid var(--line);
+      border-radius:16px;
+    }
+
+    .report-table{
+      width:100%;
+      border-collapse:collapse;
+      min-width:540px;
+      font-size:12px;
+    }
+
+    .report-table th,
+    .report-table td{
+      padding:11px 12px;
+      text-align:left;
+      border-bottom:1px solid rgba(255,255,255,.07);
+    }
+
+    .report-table th{
+      color:#ffd0ae;
+      background:rgba(249,115,22,.08);
+    }
+
+    .report-table td{color:#dce5f0}
+
+    .report-empty{
+      padding:20px;
+      text-align:center;
+      color:var(--muted);
+    }
+
+    .history{
+      margin-top:20px
+    }
+
+    .history-list{display:grid;gap:10px}
+    .history-item{
+      display:grid;grid-template-columns:1fr auto;gap:12px;align-items:center;
+      padding:13px 14px;border:1px solid var(--line);border-radius:15px;background:rgba(255,255,255,.03)
+    }
+    .history-item strong{display:block;font-size:13px}
+    .history-item small{display:block;color:var(--muted);margin-top:4px}
+    .history-actions{display:flex;gap:8px}
+    .mini-btn{min-height:36px;padding:0 12px;border-radius:10px;border:1px solid var(--line);background:#17263b;color:white;font-size:12px;font-weight:800;cursor:pointer}
+
+    .modal{
+      position:fixed;inset:0;z-index:1000;display:none;place-items:center;padding:18px;
+      background:rgba(2,7,15,.82);backdrop-filter:blur(14px);
+    }
+
+    .modal.show{display:grid}
+
+    .modal-card{
+      width:min(520px,100%);max-height:94vh;overflow:auto;border:1px solid rgba(249,115,22,.25);
+      border-radius:28px;background:linear-gradient(155deg,#0e1a2a,#111f33);
+      box-shadow:0 35px 110px rgba(0,0,0,.58);padding:24px;text-align:center;
+    }
+
+    .timer-ring{
+      width:82px;height:82px;margin:0 auto 13px;border-radius:50%;display:grid;place-items:center;
+      border:7px solid rgba(249,115,22,.18);box-shadow:inset 0 0 0 1px rgba(255,255,255,.05);
+      color:var(--orange2);font-size:19px;font-weight:900;
+    }
+
+    .modal-title{margin:0;font-size:22px}
+    .modal-sub{margin:7px 0 17px;color:var(--muted);font-size:13px;line-height:1.5}
+    .qr-amount{font-size:39px;font-weight:950;letter-spacing:-.05em;margin-bottom:4px}
+    .qr-payee{color:#c4d1e1;margin-bottom:17px;word-break:break-word;font-size:13px}
+
+    #qrcode,#historyQr{
+      width:max-content;margin:0 auto;padding:15px;border-radius:20px;background:#fff;
+      box-shadow:0 16px 50px rgba(0,0,0,.34)
+    }
+
+    #qrcode img,#qrcode canvas,#historyQr img,#historyQr canvas{display:block;max-width:100%;height:auto}
+
+    .expiry-message{
+      display:none;margin-top:18px;padding:16px;border-radius:16px;border:1px solid rgba(249,115,22,.22);
+      background:rgba(249,115,22,.07);color:#ffd1b0;font-size:13px;line-height:1.55;
+    }
+
+    .modal-actions,.expired-actions{
+      display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-top:18px
+    }
+
+    .expired-actions{display:none}
+    .expired-actions.show{display:grid}
+
+    .toast{
+      position:fixed;z-index:1200;left:50%;bottom:24px;transform:translate(-50%,20px);
+      padding:12px 18px;border-radius:12px;color:#07111f;background:#fff;
+      box-shadow:0 18px 45px rgba(0,0,0,.4);font-size:13px;font-weight:900;
+      opacity:0;pointer-events:none;transition:.25s;
+    }
+
+    .toast.show{opacity:1;transform:translate(-50%,0)}
+
+    #printReceipt{display:none}
+
+    /* Requested POS navigation */
+
+    .nav-actions{display:flex;align-items:center;gap:8px;padding:7px;border:1px solid rgba(255,255,255,.10);border-radius:21px;background:rgba(255,255,255,.035)}
+    .nav-icon-btn{position:relative;width:46px;height:46px;display:grid;place-items:center;border:1px solid rgba(255,255,255,.12);border-radius:14px;color:#fff;background:rgba(255,255,255,.045);text-decoration:none;cursor:pointer}
+    .nav-icon-btn.pos-nav-btn,.nav-icon-btn.primary{color:#111;background:linear-gradient(145deg,#ff9a3d,#f97316)}
+    .nav-symbol{font:900 18px/1 Inter,system-ui,sans-serif}
+    .nav-tooltip{position:absolute;left:50%;top:calc(100% + 7px);transform:translateX(-50%);min-width:max-content;padding:5px 8px;border-radius:8px;color:#fff;background:#0b1321;border:1px solid rgba(255,255,255,.10);font-size:9px;font-weight:800;opacity:0;pointer-events:none;transition:.18s;z-index:100}
+    .nav-icon-btn:hover .nav-tooltip{opacity:1}
+
+    @media(max-width:900px){
+      .builder-layout{grid-template-columns:1fr}
+      .summary-card{position:static}
+      .site-pill{display:none}
+    }
+
+    @media(max-width:620px){
+      body{padding:17px 11px 35px}
+      .card-head,.card-body{padding-left:17px;padding-right:17px}
+      .two-col,.bill-meta,.report-stats{grid-template-columns:1fr}
+      .report-controls{grid-template-columns:1fr}
+      .value-entry,.value-entry.with-note{grid-template-columns:1fr}
+      .modal-actions,.expired-actions{grid-template-columns:1fr}
+      .logo{width:52px;height:52px}
+      .tagline{letter-spacing:.1em}
+      .payment-profile{grid-template-columns:1fr}
+      .profile-options{text-align:left}
+    }
+
+    .pos-security-banner{width:min(1120px,100%);margin:0 auto 20px;padding:15px 17px;display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:14px;border:1px solid rgba(34,197,94,.27);border-radius:17px;background:linear-gradient(145deg,rgba(34,197,94,.09),rgba(255,255,255,.025))}
+    .pos-security-badge{width:42px;height:42px;border-radius:13px;display:grid;place-items:center;background:#22c55e;color:#06170d;font-weight:950;font-size:20px}
+    .pos-security-banner strong{display:block;font-size:14px;color:#d8ffe3}
+    .pos-security-banner p{margin:4px 0 0;color:var(--muted);font-size:11px;line-height:1.5}
+    .pos-how-button{min-height:40px;padding:0 14px;border:1px solid rgba(34,197,94,.34);border-radius:11px;background:rgba(34,197,94,.10);color:#caffda;font-weight:900;cursor:pointer}
+    .pos-guide-card{text-align:left;max-width:720px!important}
+    .pos-guide-shield{width:58px;height:58px;margin:0 auto 14px;border-radius:18px;display:grid;place-items:center;background:#22c55e;color:#06170d;font-size:28px;font-weight:950}
+    .pos-guide-card .modal-title,.pos-guide-card>.modal-sub{text-align:center}
+    .pos-guide-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:18px}
+    .pos-guide-grid article{display:grid;grid-template-columns:auto 1fr;gap:11px;padding:13px;border:1px solid var(--line);border-radius:14px;background:rgba(255,255,255,.03)}
+    .pos-guide-grid article>span{width:32px;height:32px;border-radius:10px;display:grid;place-items:center;color:#111;background:var(--orange);font-size:11px;font-weight:950}
+    .pos-guide-grid strong{display:block;font-size:13px;color:#fff}
+    .pos-guide-grid p{margin:4px 0 0;color:var(--muted);font-size:11px;line-height:1.5}
+    .pos-local-security{margin-top:13px;padding:14px;border:1px solid rgba(34,197,94,.28);border-radius:14px;background:rgba(34,197,94,.08)}
+    .pos-local-security strong{display:block;color:#caffda;font-size:13px}
+    .pos-local-security p{margin:5px 0 0;color:#aebccc;font-size:11px;line-height:1.55}
+    .pos-guide-check{display:flex;align-items:center;gap:9px;margin:14px 0;color:#cbd6e4;font-size:11px;cursor:pointer}
+    .pos-guide-check input{width:17px;height:17px;min-height:0;accent-color:var(--orange)}
+    @media(max-width:620px){.pos-security-banner{grid-template-columns:auto 1fr}.pos-how-button{grid-column:1/-1;width:100%}.pos-guide-grid{grid-template-columns:1fr}}
+
+    @media print{
+      @page{size:80mm auto;margin:4mm}
+      body *{visibility:hidden!important}
+      #printReceipt,#printReceipt *{visibility:visible!important}
+      #printReceipt{
+        display:block!important;position:absolute;left:0;top:0;width:72mm;
+        color:#000;background:#fff;font-family:monospace;font-size:11px;line-height:1.35
+      }
+      .receipt-center{text-align:center}
+      .receipt-title{font-size:18px;font-weight:900;margin:0}
+      .receipt-sub{font-size:10px;margin:2px 0}
+      .receipt-rule{border-top:1px dashed #000;margin:7px 0}
+      .receipt-row{display:flex;justify-content:space-between;gap:8px;margin:3px 0}
+      .receipt-items{margin:5px 0}
+      .receipt-item{margin:5px 0}
+      .receipt-note{font-size:10px;margin-top:1px}
+      .receipt-total{font-size:15px;font-weight:900}
+      .receipt-qr{display:flex;justify-content:center;margin:8px 0}
+      .receipt-qr img,.receipt-qr canvas{width:120px!important;height:120px!important}
+    }
+
+
+    /* Premium cloud, menu and dashboard extension */
+    .premium-shell{margin-bottom:20px;border:1px solid rgba(249,115,22,.24);border-radius:22px;background:linear-gradient(145deg,rgba(249,115,22,.08),rgba(255,255,255,.025));overflow:hidden}
+    .premium-bar{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:15px 18px;border-bottom:1px solid var(--line)}
+    .premium-title{display:flex;align-items:center;gap:10px}.premium-title strong{font-size:15px}.premium-title small{display:block;color:var(--muted);margin-top:3px}
+    .premium-badge{padding:7px 11px;border-radius:999px;font-size:11px;font-weight:900;background:rgba(255,255,255,.07);color:var(--muted);border:1px solid var(--line)}
+    .premium-badge.active{color:#baf7cf;background:rgba(34,197,94,.12);border-color:rgba(34,197,94,.3)}
+    .premium-tabs{display:flex;gap:8px;padding:12px 18px;overflow:auto}.premium-tab{border:1px solid var(--line);background:rgba(255,255,255,.035);color:#dce5f0;border-radius:12px;padding:9px 13px;font-weight:800;cursor:pointer;white-space:nowrap}.premium-tab.active{background:rgba(249,115,22,.16);color:#ffd0ae;border-color:rgba(249,115,22,.38)}
+    .premium-panel{display:none;padding:0 18px 18px}.premium-panel.active{display:block}.premium-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.premium-grid.three{grid-template-columns:repeat(3,minmax(0,1fr))}
+    .premium-box{padding:16px;border:1px solid var(--line);border-radius:16px;background:rgba(255,255,255,.03)}.premium-box h3{margin:0 0 8px;font-size:15px}.premium-box p{margin:0;color:var(--muted);font-size:12px;line-height:1.55}
+    select,textarea{width:100%;min-height:50px;padding:0 15px;border:1px solid var(--line);border-radius:15px;outline:none;color:var(--text);background:#101e30} textarea{padding:13px;min-height:90px;resize:vertical}
+    .menu-loader{display:grid;grid-template-columns:1fr 1.4fr .7fr auto;gap:10px;align-items:end}.menu-list{margin-top:14px;display:grid;gap:9px}.menu-row{display:grid;grid-template-columns:1fr auto auto;gap:10px;align-items:center;padding:11px 13px;border:1px solid var(--line);border-radius:13px;background:rgba(255,255,255,.03)}.menu-row small{display:block;color:var(--muted);margin-top:3px}
+    .insight-card{padding:15px;border:1px solid var(--line);border-radius:16px;background:rgba(255,255,255,.03)}.insight-card small{display:block;color:var(--muted);margin-bottom:7px}.insight-card strong{font-size:21px}.cloud-status{display:flex;gap:9px;align-items:center;color:var(--muted);font-size:12px;margin-top:10px}.status-dot{width:9px;height:9px;border-radius:50%;background:#64748b}.status-dot.ok{background:var(--success)}
+    .locked-note{padding:18px;text-align:center;border:1px dashed rgba(249,115,22,.3);border-radius:15px;color:var(--muted)}
+    @media(max-width:760px){.premium-grid,.premium-grid.three{grid-template-columns:1fr}.menu-loader{grid-template-columns:1fr}.premium-bar{align-items:flex-start;flex-direction:column}}
+
+  
+
+    /* G58 Premium upgrade entry */
+    .pos-banner-actions{margin-left:auto;display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+    .pos-premium-button{border:1px solid rgba(255,132,28,.65);background:linear-gradient(135deg,#ff9a3d,#ff6a00);color:#111;font-weight:900;border-radius:14px;padding:13px 20px;cursor:pointer;white-space:nowrap}
+    .premium-shell{display:none!important}
+    .upgrade-modal{position:fixed;inset:0;background:rgba(1,8,18,.84);backdrop-filter:blur(12px);display:none;align-items:center;justify-content:center;padding:22px;z-index:10000}
+    .upgrade-modal.open{display:flex}
+    .upgrade-dialog{width:min(1180px,100%);max-height:92vh;overflow:auto;background:linear-gradient(145deg,#111c2a,#09131f);border:1px solid rgba(255,132,28,.35);border-radius:26px;box-shadow:0 30px 100px rgba(0,0,0,.55);padding:26px}
+    .upgrade-head{display:flex;justify-content:space-between;gap:18px;align-items:flex-start;margin-bottom:20px}.upgrade-head h2{font-size:clamp(25px,4vw,38px);margin:0}.upgrade-head p{color:var(--muted);margin-top:8px}.modal-close{border:0;background:transparent;color:#fff;font-size:32px;cursor:pointer}
+    .plan-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}.plan-card{border:1px solid var(--line);border-radius:20px;padding:20px;background:rgba(255,255,255,.025);display:flex;flex-direction:column;min-height:390px}.plan-card.free{border-color:#19c96b;background:linear-gradient(160deg,rgba(25,201,107,.12),rgba(255,255,255,.02))}.plan-card.monthly{border-color:#ff8a1c}.plan-card.half{border-color:#a855f7}.plan-card.yearly{border-color:#3b82f6}.plan-label{font-weight:900;font-size:13px;letter-spacing:.08em}.plan-card.free .plan-label{color:#31e786}.plan-card.monthly .plan-label{color:#ff9a27}.plan-card.half .plan-label{color:#c47aff}.plan-card.yearly .plan-label{color:#5ca0ff}.plan-card h3{margin:16px 0 5px}.plan-price{font-size:34px;font-weight:950;margin:9px 0}.plan-term{color:var(--muted);font-size:14px}.plan-features{display:grid;gap:10px;margin:20px 0;flex:1}.plan-feature{display:flex;gap:9px;font-size:14px;color:#dce7f7}.plan-feature:before{content:'✓';font-weight:900;color:#36d47c}.plan-card.monthly .plan-feature:before{color:#ff961e}.plan-card.half .plan-feature:before{color:#bd6cff}.plan-card.yearly .plan-feature:before{color:#4f9dff}.plan-action{width:100%;border:0;border-radius:13px;padding:13px;font-weight:900;cursor:pointer;background:#17304b;color:#fff}.plan-card.monthly .plan-action{background:linear-gradient(135deg,#ffab32,#ff7900);color:#111}.plan-card.half .plan-action{background:linear-gradient(135deg,#9a55e5,#6f31bd)}.plan-card.yearly .plan-action{background:linear-gradient(135deg,#4387e8,#2364c6)}
+    .upgrade-footer{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:18px}.upgrade-footer button{padding:15px;border-radius:14px;font-weight:900;cursor:pointer}.already-premium{background:#1d3046;border:1px solid #40546d;color:#e8f1ff}.continue-free{background:rgba(25,201,107,.18);border:1px solid #20a95e;color:#63f2a4}
+    @media(max-width:900px){.plan-grid{grid-template-columns:1fr 1fr}.pos-banner-actions{width:100%;margin-left:0}.upgrade-footer{grid-template-columns:1fr}}
+    @media(max-width:560px){.topbar{align-items:stretch;flex-direction:column}.nav-actions{width:100%;justify-content:space-between}.nav-icon-btn{width:auto;flex:1}.plan-grid{grid-template-columns:1fr}.upgrade-dialog{padding:18px}.pos-security-banner{align-items:flex-start;grid-template-columns:auto minmax(0,1fr)}.pos-banner-actions{grid-column:1/-1;width:100%;display:grid;grid-template-columns:1fr 1fr}.pos-banner-actions button{width:100%}.pos-banner-actions .pos-how-button{grid-column:auto}.value-entry,.value-entry.with-note{grid-template-columns:minmax(0,1fr) 82px}.value-entry #itemNoteInput,.value-entry #addValueBtn{grid-column:1/-1}}
+
+</style>
+</head>
+
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand">
+        <div class="logo">G</div>
+        <div>
+          <h1 class="brand-title">GRAVITY<span>58</span></h1>
+          <p class="tagline">POST. BID. CONNECT.</p>
+        </div>
+      </div>
+      
+    <div class="nav-actions">
+      <a class="nav-icon-btn" href="/" aria-label="Home" title="Home">
+        <span class="nav-symbol">⌂</span><span class="nav-tooltip">Home</span>
+      </a>
+      <button class="nav-icon-btn" type="button" data-open-tab="jobs" aria-label="P Wall" title="P Wall">
+        <span class="nav-symbol">P</span><span class="nav-tooltip">P - Wall</span>
+      </button>
+      <button class="nav-icon-btn" type="button" data-open-tab="business" aria-label="B Wall" title="B Wall">
+        <span class="nav-symbol">C</span><span class="nav-tooltip">C - Wall</span>
+      </button>
+      <a class="nav-icon-btn pos-nav-btn" href="/pos/" aria-label="Secure Billing POS" title="Secure Billing">
+        <span class="nav-symbol">₹</span><span class="nav-tooltip">Secure Billing</span>
+      </a>
+    </div>
+
+    </header>
+
+    <section class="pos-security-banner">
+      <div class="pos-security-badge">✓</div>
+      <div>
+        <strong>Simple billing for Free and Premium users</strong>
+        <p>Bills stay in this browser. Premium adds a reusable menu, CSV import, optional inventory and business insights on this device.</p>
+      </div>
+      <div class="pos-banner-actions">
+        <button class="pos-how-button" id="openPosGuideBtn" type="button">How It Works</button>
+        <button class="pos-premium-button" id="openPremiumPlansBtn" type="button" onclick="document.getElementById('premiumPlansModal').classList.add('open');document.getElementById('premiumPlansModal').setAttribute('aria-hidden','false');document.body.style.overflow='hidden'">Go Premium</button>
+      </div>
+    </section>
+
+    <section class="screen active" id="setupScreen">
+      <div class="card setup-card">
+        <div class="card-head">
+          <h2>Set payment details</h2>
+          <p>Enter your UPI ID and choose the billing options required for this device.</p>
+        </div>
+
+        <div class="card-body">
+          <div class="field">
+            <label for="setupUpiId">UPI ID</label>
+            <input id="setupUpiId" type="text" autocomplete="off" placeholder="Example: businessname@paytm" />
+            <div class="error" id="setupUpiError">Enter a valid UPI ID.</div>
+          </div>
+
+          <label class="option-card">
+            <input id="gstEnabled" type="checkbox" />
+            <span>
+              <strong>Add GST</strong>
+              <small>Include GST in the final payable amount.</small>
+            </span>
+          </label>
+
+          <div class="conditional" id="gstField">
+            <label for="gstPercent">GST percentage</label>
+            <input id="gstPercent" type="number" min="0.01" max="100" step="0.01" inputmode="decimal" placeholder="Example: 18" />
+            <div class="error" id="gstError">Enter a valid GST percentage between 0.01 and 100.</div>
+          </div>
+
+          <label class="option-card">
+            <input id="notesEnabled" type="checkbox" />
+            <span>
+              <strong>Enable Item Notes</strong>
+              <small>Add a product or service note beside each entered value.</small>
+            </span>
+          </label>
+
+          <label class="option-card">
+            <input id="posEnabled" type="checkbox" />
+            <span>
+              <strong>Enable POS Mode</strong>
+              <small>Add brand details and print thermal-style receipts.</small>
+            </span>
+          </label>
+
+          <div class="conditional" id="posFields">
+            <div class="two-col">
+              <div class="field">
+                <label for="brandName">Brand Name</label>
+                <input id="brandName" type="text" maxlength="60" placeholder="Example: Arakodi Restaurant" />
+                <div class="error" id="brandError">Enter the brand name.</div>
+              </div>
+              <div class="field">
+                <label for="contactNumber">Contact Number</label>
+                <input id="contactNumber" type="tel" maxlength="15" inputmode="numeric" placeholder="Example: 9876543210" />
+                <div class="error" id="contactError">Enter a valid contact number.</div>
+              </div>
+            </div>
+
+            <div class="two-col">
+              <div class="field">
+                <label for="cashierName">Cashier Name (optional)</label>
+                <input id="cashierName" type="text" maxlength="40" placeholder="Example: Ravi" />
+              </div>
+              <div class="field">
+                <label for="customerName">Customer Name (optional)</label>
+                <input id="customerName" type="text" maxlength="40" placeholder="Example: Customer" />
+              </div>
+            </div>
+          </div>
+
+          <button class="btn btn-primary" id="continueBtn" style="margin-top:19px">Continue to Amount Builder</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="screen" id="builderScreen">
+      <div class="payment-profile">
+        <div>
+          <small>Payment receiving UPI ID</small>
+          <strong id="profileUpiId">—</strong>
+        </div>
+        <div class="profile-options" id="profileOptions"></div>
+      </div>
+
+      <div class="bill-meta">
+        <div class="meta-box">
+          <small>Bill Number</small>
+          <strong id="billNumber">—</strong>
+        </div>
+        <div class="meta-box">
+          <small>Date & Time</small>
+          <strong id="billDate">—</strong>
+        </div>
+        <div class="meta-box">
+          <small>Brand</small>
+          <strong id="billBrand">GRAVITY58</strong>
+        </div>
+      </div>
+
+
+
+      <section class="premium-shell" id="premiumShell" style="display:none" aria-live="polite"></section>
+
+      <div class="builder-layout">
+        <section class="card">
+          <div class="quick-options" aria-label="Quick POS options">
+            <strong>POS options</strong>
+            <label class="quick-toggle"><input id="quickGst" type="checkbox"><span>GST</span></label>
+            <span class="quick-gst-rate" id="quickGstRate"><input id="quickGstPercent" type="number" min="0.01" max="100" step="0.01" value="5" aria-label="GST percentage"><span>%</span></span>
+            <label class="quick-toggle"><input id="quickItemName" type="checkbox"><span>Item Name</span></label>
+            <label class="quick-toggle"><input id="quickPrint" type="checkbox"><span>POS Printing</span></label>
+          </div>
+      <div class="card-head">
+            <h2>Build payment amount</h2>
+            <p>Add a unit price and quantity. Each line total, GST and final payable amount update automatically.</p>
+          </div>
+
+          <div class="card-body">
+            <div class="field">
+              <label for="valueInput">Enter value</label>
+              <div class="value-entry" id="valueEntry">
+                <input id="valueInput" type="number" min="0.01" step="0.01" inputmode="decimal" placeholder="Unit price, e.g. 120" />
+                <input class="quantity-input" id="quantityInput" type="number" min="1" step="1" inputmode="numeric" value="1" aria-label="Item quantity" title="Quantity" />
+                <input id="itemNoteInput" type="text" maxlength="80" placeholder="Item note, e.g. Chicken 65" style="display:none" />
+                <button class="btn btn-outline" id="addValueBtn">+ Add Value</button>
+              </div>
+              <div class="error" id="valueError">Enter a valid amount greater than ₹0.</div>
+            </div>
+
+            <div class="items" id="itemsList">
+              <div class="empty" id="emptyState">No values added yet.</div>
+            </div>
+          </div>
+        </section>
+
+        <aside class="card summary-card">
+          <div class="card-head">
+            <h2>Payment summary</h2>
+            <p>The final QR amount includes GST when enabled.</p>
+          </div>
+
+          <div class="card-body">
+            <div class="summary-box">
+              <div class="summary-row">
+                <span>Subtotal</span>
+                <strong id="subtotalAmount">₹0.00</strong>
+              </div>
+              <div class="summary-row">
+                <span id="gstLabel">GST</span>
+                <strong id="gstAmount">₹0.00</strong>
+              </div>
+              <div class="summary-row total-row">
+                <span>Input amount</span>
+                <strong class="grand-total" id="grandTotal">₹0.00</strong>
+              </div>
+            </div>
+
+            <button class="btn btn-primary" id="generateBtn" style="margin-top:18px">Generate UPI QR Code</button>
+            <button class="btn btn-dark" id="editSettingsBtn" style="width:100%;margin-top:10px">Change UPI / Options</button>
+            <button class="btn btn-danger" id="clearBillBtn" style="width:100%;margin-top:10px">Clear Current Bill</button>
+
+            <p class="helper">
+              The QR stays visible for 120 seconds. Select Payment Received to save a sale, or Cancelled to store it separately.
+            </p>
+          </div>
+        </aside>
+      </div>
+
+
+      <section class="card daily-report">
+        <div class="card-head">
+          <h2>Daily Sales Report</h2>
+          <p>Select a date to view that day's billed amount, download or print a PDF, and share the report through WhatsApp.</p>
+        </div>
+
+        <div class="card-body">
+          <div class="report-controls">
+            <div class="field">
+              <label for="reportDate">Report Date</label>
+              <input id="reportDate" type="date" />
+            </div>
+            <button class="btn btn-outline" id="downloadReportBtn">Download PDF</button>
+            <button class="btn btn-dark" id="printReportBtn">Print Report</button>
+            <button class="btn btn-success" id="shareReportBtn">Share WhatsApp</button>
+          </div>
+
+          <div class="report-stats" style="margin-top:18px">
+            <div class="report-stat">
+              <small>Total Bills</small>
+              <strong id="reportBillCount">0</strong>
+            </div>
+            <div class="report-stat">
+              <small>Subtotal</small>
+              <strong id="reportSubtotal">₹0.00</strong>
+            </div>
+            <div class="report-stat">
+              <small>GST Collected</small>
+              <strong id="reportGst">₹0.00</strong>
+            </div>
+            <div class="report-stat">
+              <small>Total Sales</small>
+              <strong id="reportTotal">₹0.00</strong>
+            </div>
+          </div>
+
+          <div class="report-table-wrap">
+            <table class="report-table">
+              <thead>
+                <tr>
+                  <th>Bill Number</th>
+                  <th>Time</th>
+                  <th>Items</th>
+                  <th>GST</th>
+                  <th>Total</th>
+                </tr>
+              </thead>
+              <tbody id="reportTableBody">
+                <tr><td colspan="5" class="report-empty">No bills available for this date.</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <p class="helper">
+            WhatsApp file sharing uses your device's native share menu when supported. On unsupported browsers, the PDF is downloaded and WhatsApp opens with the report summary.
+          </p>
+        </div>
+      </section>
+
+      <section class="card history">
+        <div class="card-head">
+          <h2>Recent Bills</h2>
+          <p>The latest 100 generated bills are stored only in this browser.</p>
+        </div>
+        <div class="card-body">
+          <div class="history-list" id="historyList">
+            <div class="empty">No saved bills yet.</div>
+          </div>
+        </div>
+      </section>
+    </section>
+  </div>
+
+  <div class="modal" id="qrModal" role="dialog" aria-modal="true" aria-labelledby="qrModalTitle">
+    <div class="modal-card">
+      <div class="timer-ring" id="timerRing">120s</div>
+      <h2 class="modal-title" id="qrModalTitle">UPI Payment QR</h2>
+      <p class="modal-sub">Scan with PhonePe, Google Pay, Paytm, BHIM, or another UPI app.</p>
+
+      <div id="activeQrContent">
+        <div class="qr-amount" id="qrAmount">₹0.00</div>
+        <div class="qr-payee" id="qrPayee">Pay to —</div>
+        <div id="qrcode"></div>
+        <p class="helper" style="margin-top:15px">Verify the UPI ID and amount before paying.</p>
+      </div>
+
+      <div class="expiry-message" id="expiryMessage">
+        This QR display session ended after 120 seconds. Show the existing QR again or start a new bill.
+      </div>
+
+      <div class="modal-actions" id="activeActions">
+        <button class="btn btn-outline" id="copyLinkBtn">Copy UPI Link</button>
+        <button class="btn btn-success" id="printBtn" style="display:none">Print Receipt</button>
+        <button type="button" class="btn btn-success" id="paymentReceivedBtn">Payment Received</button>
+        <button type="button" class="btn btn-danger" id="paymentCancelledBtn">Cancelled</button>
+      </div>
+
+      <div class="expired-actions" id="expiredActions">
+        <button class="btn btn-primary" id="showExistingBtn">Show Existing QR</button>
+        <button type="button" class="btn btn-success" id="expiredReceivedBtn">Payment Received</button>
+        <button type="button" class="btn btn-danger" id="expiredCancelledBtn">Cancelled</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal" id="historyModal">
+    <div class="modal-card">
+      <h2 class="modal-title">Saved Bill</h2>
+      <p class="modal-sub" id="historyBillMeta"></p>
+      <div class="qr-amount" id="historyAmount">₹0.00</div>
+      <div id="historyQr"></div>
+      <div class="modal-actions">
+        <button class="btn btn-success" id="historyPrintBtn">Print Receipt</button>
+        <button class="btn btn-dark" id="historyCloseBtn">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal show" id="posGuideModal" role="dialog" aria-modal="true" aria-labelledby="posGuideTitle">
+    <div class="modal-card pos-guide-card">
+      <div class="pos-guide-shield">✓</div>
+      <h2 class="modal-title" id="posGuideTitle">Welcome to GRAVITY58 Free POS</h2>
+      <p class="modal-sub">A standalone UPI billing tool designed for fast, private business use.</p>
+
+      <div class="pos-guide-grid">
+        <article><span>01</span><div><strong>Set payment details</strong><p>Enter your UPI ID and optionally enable GST, item notes and receipt details.</p></div></article>
+        <article><span>02</span><div><strong>Build the bill</strong><p>Add one or more amounts. The subtotal, GST and payable total update automatically.</p></div></article>
+        <article><span>03</span><div><strong>Generate the UPI QR</strong><p>Show the QR to the customer and print a receipt when POS mode is enabled.</p></div></article>
+        <article><span>04</span><div><strong>Use local reports</strong><p>Recent bills and daily reports stay in this browser for printing and PDF download.</p></div></article>
+      </div>
+
+      <div class="pos-local-security">
+        <strong>100% local browser memory</strong>
+        <p>GRAVITY58 does not receive, transmit or store your UPI ID, bills, reports or customer information. Clearing this browser's website data will permanently remove the locally stored POS information.</p>
+      </div>
+
+      <label class="pos-guide-check">
+        <input id="dontShowPosGuide" type="checkbox">
+        <span>Do not show this explanation again on this browser</span>
+      </label>
+      <button class="btn btn-primary" id="startUsingPosBtn">Start Using Free POS</button>
+    </div>
+  </div>
+
+  <div id="printReceipt"></div>
+  <div class="toast" id="toast"></div>
+
+  <script>
+    (() => {
+      const values = [];
+      let currentBill = null;
+      let selectedHistoryBill = null;
+      let currentUpiLink = "";
+      let timerId = null;
+      let secondsRemaining = 120;
+
+      let settings = {
+        upiId:"",
+        gstEnabled:false,
+        gstPercent:0,
+        notesEnabled:false,
+        posEnabled:false,
+        brandName:"",
+        contactNumber:"",
+        cashierName:"",
+        customerName:""
+      };
+
+      const $ = id => document.getElementById(id);
+
+      function formatCurrency(amount){
+        return new Intl.NumberFormat("en-IN",{
+          style:"currency",currency:"INR",
+          minimumFractionDigits:2,maximumFractionDigits:2
+        }).format(amount);
+      }
+
+      function validUpiId(id){
+        return /^[a-zA-Z0-9._-]{2,256}@[a-zA-Z0-9.-]{2,64}$/.test(id);
+      }
+
+      function validPhone(number){
+        return /^[0-9+\-\s]{7,15}$/.test(number);
+      }
+
+      function getSubtotal(){
+        return values.reduce((sum,item)=>sum+item.amount,0);
+      }
+
+      function getGstAmount(){
+        return settings.gstEnabled ? getSubtotal()*settings.gstPercent/100 : 0;
+      }
+
+      function getGrandTotal(){
+        return getSubtotal()+getGstAmount();
+      }
+
+      function showToast(message){
+        $("toast").textContent=message;
+        $("toast").classList.add("show");
+        clearTimeout(showToast.timer);
+        showToast.timer=setTimeout(()=>$("toast").classList.remove("show"),2200);
+      }
+
+      function switchScreen(screen){
+        $("setupScreen").classList.remove("active");
+        $("builderScreen").classList.remove("active");
+        screen.classList.add("active");
+        window.scrollTo({top:0,behavior:"smooth"});
+      }
+
+      function nextBillNumber(){
+        const current=Number(localStorage.getItem("g58BillCounter")||0)+1;
+        localStorage.setItem("g58BillCounter",String(current));
+        return `G58-${String(current).padStart(6,"0")}`;
+      }
+
+      function newBillMeta(){
+        $("billNumber").textContent=nextBillNumber();
+        $("billDate").textContent=new Date().toLocaleString("en-IN");
+        $("billBrand").textContent=settings.posEnabled ? settings.brandName : "GRAVITY58";
+      }
+
+      function updateProfile(){
+        $("profileUpiId").textContent=settings.upiId;
+        const options=[];
+        options.push(settings.gstEnabled?`GST ${settings.gstPercent}%`:"No GST");
+        if(settings.notesEnabled) options.push("Item Notes");
+        if(settings.posEnabled) options.push("POS Mode");
+        $("profileOptions").innerHTML=options.join("<br>");
+      }
+
+      function syncQuickOptions(){
+        $("quickGst").checked=!!settings.gstEnabled;
+        $("quickGstPercent").value=settings.gstPercent||5;
+        $("quickGstRate").classList.toggle("show",!!settings.gstEnabled);
+        $("quickItemName").checked=!!settings.notesEnabled;
+        $("quickPrint").checked=!!settings.posEnabled;
+      }
+
+      function applyQuickOptions(){
+        const gstRate=Number.parseFloat($("quickGstPercent").value);
+        settings.gstEnabled=$("quickGst").checked;
+        settings.gstPercent=settings.gstEnabled&&Number.isFinite(gstRate)&&gstRate>0&&gstRate<=100?Number(gstRate.toFixed(2)):5;
+        settings.notesEnabled=$("quickItemName").checked;
+        settings.posEnabled=$("quickPrint").checked;
+        if(settings.posEnabled&&!settings.brandName) settings.brandName="GRAVITY58";
+        $("quickGstPercent").value=settings.gstPercent;
+        $("quickGstRate").classList.toggle("show",settings.gstEnabled);
+        $("gstEnabled").checked=settings.gstEnabled;
+        $("gstPercent").value=settings.gstPercent;
+        $("notesEnabled").checked=settings.notesEnabled;
+        $("posEnabled").checked=settings.posEnabled;
+        $("itemNoteInput").style.display=settings.notesEnabled?"block":"none";
+        $("valueEntry").classList.toggle("with-note",settings.notesEnabled);
+        localStorage.setItem("g58Settings",JSON.stringify(settings));
+        window.G58Premium?.syncSettings(settings);
+        updateProfile();
+        newBillMeta();
+        renderValues();
+      }
+
+      function updateSummary(){
+        $("subtotalAmount").textContent=formatCurrency(getSubtotal());
+        $("gstAmount").textContent=formatCurrency(getGstAmount());
+        $("gstLabel").textContent=settings.gstEnabled?`GST (${settings.gstPercent}%)`:"GST";
+        $("grandTotal").textContent=formatCurrency(getGrandTotal());
+      }
+
+      function renderValues(){
+        const list=$("itemsList");
+        list.innerHTML="";
+        if(!values.length){
+          list.innerHTML='<div class="empty">No values added yet.</div>';
+        }else{
+          values.forEach((item,index)=>{
+            const row=document.createElement("div");
+            row.className="item";
+            row.innerHTML=`
+              <div class="item-no">${index+1}</div>
+              <div class="item-main">
+                <div class="item-amount">${formatCurrency(item.amount)}</div>
+                ${item.note?`<div class="item-note">${escapeHtml(item.note)}</div>`:""}
+                <div class="item-calculation">${formatCurrency(item.unitPrice??item.amount)} × ${item.quantity||1}</div>
+              </div>
+              <button class="remove" aria-label="Remove item">×</button>
+            `;
+            row.querySelector(".remove").addEventListener("click",()=>{
+              values.splice(index,1);
+              renderValues();
+            });
+            list.appendChild(row);
+          });
+        }
+        updateSummary();
+      }
+
+      function escapeHtml(text){
+        const div=document.createElement("div");
+        div.textContent=text;
+        return div.innerHTML;
+      }
+
+      function addValue(){
+        $("valueError").style.display="none";
+        const amount=Number.parseFloat($("valueInput").value);
+        const quantity=Math.max(1,Math.floor(Number.parseFloat($("quantityInput").value)||1));
+        const note=$("itemNoteInput").value.trim();
+
+        if(!Number.isFinite(amount)||amount<=0){
+          $("valueError").textContent="Enter a valid amount greater than ₹0.";
+          $("valueError").style.display="block";
+          $("valueInput").focus();
+          return;
+        }
+
+        values.push({
+          unitPrice:Number(amount.toFixed(2)),
+          quantity,
+          amount:Number((amount*quantity).toFixed(2)),
+          note:settings.notesEnabled?note:""
+        });
+        $("valueInput").value="";
+        $("quantityInput").value="1";
+        $("itemNoteInput").value="";
+        renderValues();
+        $("valueInput").focus();
+      }
+
+      window.G58AddLineItem=({name="",price=0,quantity=1}={})=>{
+        $("valueInput").value=String(price||"");
+        $("quantityInput").value=String(Math.max(1,Math.floor(Number(quantity)||1)));
+        if(name){
+          settings.notesEnabled=true;
+          $("notesEnabled").checked=true;
+          $("quickItemName").checked=true;
+          $("itemNoteInput").style.display="block";
+          $("valueEntry").classList.add("with-note");
+          $("itemNoteInput").value=name;
+        }
+        addValue();
+      };
+
+      function saveSetup(){
+        ["setupUpiError","gstError","brandError","contactError"].forEach(id=>$(id).style.display="none");
+
+        const upiId=$("setupUpiId").value.trim();
+        const gstPercent=Number.parseFloat($("gstPercent").value);
+        const brandName=$("brandName").value.trim();
+        const contactNumber=$("contactNumber").value.trim();
+
+        if(!validUpiId(upiId)){
+          $("setupUpiError").style.display="block";
+          $("setupUpiId").focus();
+          return;
+        }
+
+        if($("gstEnabled").checked&&(!Number.isFinite(gstPercent)||gstPercent<=0||gstPercent>100)){
+          $("gstError").style.display="block";
+          $("gstPercent").focus();
+          return;
+        }
+
+        if($("posEnabled").checked&&!brandName){
+          $("brandError").style.display="block";
+          $("brandName").focus();
+          return;
+        }
+
+        if($("posEnabled").checked&&!validPhone(contactNumber)){
+          $("contactError").style.display="block";
+          $("contactNumber").focus();
+          return;
+        }
+
+        settings={
+          upiId,
+          gstEnabled:$("gstEnabled").checked,
+          gstPercent:$("gstEnabled").checked?Number(gstPercent.toFixed(2)):0,
+          notesEnabled:$("notesEnabled").checked,
+          posEnabled:$("posEnabled").checked,
+          brandName,
+          contactNumber,
+          cashierName:$("cashierName").value.trim(),
+          customerName:$("customerName").value.trim()
+        };
+
+        localStorage.setItem("g58Settings",JSON.stringify(settings));
+        window.G58Premium?.syncSettings(settings);
+        syncQuickOptions();
+        $("itemNoteInput").style.display=settings.notesEnabled?"block":"none";
+        $("valueEntry").classList.toggle("with-note",settings.notesEnabled);
+        updateProfile();
+        newBillMeta();
+        renderValues();
+        renderHistory();
+        switchScreen($("builderScreen"));
+      }
+
+      function createUpiLink(total,billNumber){
+        const params=new URLSearchParams({
+          pa:settings.upiId,
+          pn:settings.posEnabled?settings.brandName:"GRAVITY58 Payment",
+          am:total.toFixed(2),
+          cu:"INR",
+          tn:`Bill ${billNumber}${settings.gstEnabled?` incl. ${settings.gstPercent}% GST`:""}`
+        });
+        return `upi://pay?${params.toString()}`;
+      }
+
+      function buildBill(){
+        if(getGrandTotal()<=0){
+          $("valueError").textContent="Add at least one valid value.";
+          $("valueError").style.display="block";
+          $("valueInput").focus();
+          return null;
+        }
+
+        const bill={
+          billNumber:$("billNumber").textContent,
+          date:new Date().toISOString(),
+          displayDate:new Date().toLocaleString("en-IN"),
+          upiId:settings.upiId,
+          settings:{...settings},
+          items:values.map(v=>({...v})),
+          subtotal:Number(getSubtotal().toFixed(2)),
+          gstAmount:Number(getGstAmount().toFixed(2)),
+          total:Number(getGrandTotal().toFixed(2))
+        };
+
+        bill.upiLink=createUpiLink(bill.total,bill.billNumber);
+        return bill;
+      }
+
+      function saveBill(bill){
+        const history=JSON.parse(localStorage.getItem("g58Bills")||"[]");
+        const filtered=history.filter(item=>item.billNumber!==bill.billNumber);
+        filtered.unshift(bill);
+        localStorage.setItem("g58Bills",JSON.stringify(filtered.slice(0,100)));
+        window.G58Premium?.syncBill(bill);
+        renderHistory();
+      }
+
+      function saveCancelledBill(bill){
+        const history=JSON.parse(localStorage.getItem("g58CancelledBills")||"[]");
+        const filtered=history.filter(item=>item.billNumber!==bill.billNumber);
+        filtered.unshift(bill);
+        localStorage.setItem("g58CancelledBills",JSON.stringify(filtered.slice(0,100)));
+        window.G58Premium?.syncCancelledBill(bill);
+      }
+
+      function renderQrForBill(bill,target,size=235){
+        target.innerHTML="";
+        new QRCode(target,{
+          text:bill.upiLink,
+          width:size,height:size,
+          colorDark:"#07111f",colorLight:"#ffffff",
+          correctLevel:QRCode.CorrectLevel.H
+        });
+      }
+
+      function openQrPopup(){
+        const bill=buildBill();
+        if(!bill) return;
+
+        currentBill=bill;
+        currentUpiLink=bill.upiLink;
+        $("qrAmount").textContent=formatCurrency(bill.total);
+        $("qrPayee").textContent=`Pay to ${bill.upiId} · ${bill.billNumber}`;
+        renderQrForBill(bill,$("qrcode"));
+        $("printBtn").style.display=settings.posEnabled?"block":"none";
+        $("qrModal").classList.add("show");
+        startTimer();
+        showToast("UPI QR generated");
+      }
+
+      let settlementInProgress=false;
+      function settleCurrentBill(status){
+        if(settlementInProgress) return;
+        if(!currentBill){
+          showToast("No active bill to settle");
+          return;
+        }
+        settlementInProgress=true;
+        currentBill.status=status;
+        currentBill.settledAt=new Date().toISOString();
+        try{
+          if(status==="received"){
+            saveBill(currentBill);
+            showToast("Payment received and bill saved");
+          }else{
+            saveCancelledBill(currentBill);
+            showToast("Bill cancelled and saved in Cancelled Bills");
+          }
+          resetBill(false);
+        }catch(error){
+          console.error("Bill settlement failed",error);
+          showToast("Could not save bill. Please try again.");
+        }finally{
+          settlementInProgress=false;
+        }
+      }
+      window.G58SettleBill=settleCurrentBill;
+
+      function startTimer(){
+        clearInterval(timerId);
+        secondsRemaining=120;
+        $("timerRing").textContent="120s";
+        $("activeQrContent").style.display="block";
+        $("expiryMessage").style.display="none";
+        $("activeActions").style.display="grid";
+        $("expiredActions").classList.remove("show");
+
+        timerId=setInterval(()=>{
+          secondsRemaining--;
+          $("timerRing").textContent=`${secondsRemaining}s`;
+          if(secondsRemaining<=0){
+            clearInterval(timerId);
+            $("activeQrContent").style.display="none";
+            $("expiryMessage").style.display="block";
+            $("activeActions").style.display="none";
+            $("expiredActions").classList.add("show");
+            $("timerRing").textContent="0s";
+          }
+        },1000);
+      }
+
+      function resetBill(showResetToast=true){
+        clearInterval(timerId);
+        values.length=0;
+        currentBill=null;
+        currentUpiLink="";
+        $("valueInput").value="";
+        $("quantityInput").value="1";
+        $("itemNoteInput").value="";
+        $("qrModal").classList.remove("show");
+        newBillMeta();
+        renderValues();
+        if(showResetToast) showToast("New bill started");
+        setTimeout(()=>$("valueInput").focus(),100);
+      }
+
+      function clearCurrentBill(){
+        if(!values.length){
+          showToast("Current bill is already empty");
+          return;
+        }
+        if(confirm("Clear all entered values and start a new bill?")){
+          resetBill();
+        }
+      }
+
+      function showExistingQr(){
+        if(!currentBill) return;
+        $("activeQrContent").style.display="block";
+        $("expiryMessage").style.display="none";
+        $("activeActions").style.display="grid";
+        $("expiredActions").classList.remove("show");
+        startTimer();
+      }
+
+      async function copyUpiLink(){
+        if(!currentUpiLink) return;
+        try{
+          await navigator.clipboard.writeText(currentUpiLink);
+        }catch{
+          const t=document.createElement("textarea");
+          t.value=currentUpiLink;
+          document.body.appendChild(t);
+          t.select();
+          document.execCommand("copy");
+          t.remove();
+        }
+        showToast("UPI link copied");
+      }
+
+      function receiptHtml(bill){
+        const s=bill.settings;
+        const items=bill.items.map((item,index)=>`
+          <div class="receipt-item">
+            <div class="receipt-row"><span>${index+1}. ${escapeHtml(item.note||"Item")} × ${item.quantity||1}</span><strong>${formatCurrency(item.amount)}</strong></div>
+            <div class="receipt-sub">${formatCurrency(item.unitPrice??item.amount)} each</div>
+          </div>
+        `).join("");
+
+        return `
+          <div class="receipt-center">
+            <h1 class="receipt-title">${escapeHtml(s.posEnabled?s.brandName:"GRAVITY58")}</h1>
+            ${s.posEnabled?`<div class="receipt-sub">${escapeHtml(s.contactNumber)}</div>`:""}
+            <div class="receipt-sub">${bill.billNumber}</div>
+            <div class="receipt-sub">${bill.displayDate}</div>
+          </div>
+          <div class="receipt-rule"></div>
+          ${s.cashierName?`<div class="receipt-row"><span>Cashier</span><span>${escapeHtml(s.cashierName)}</span></div>`:""}
+          ${s.customerName?`<div class="receipt-row"><span>Customer</span><span>${escapeHtml(s.customerName)}</span></div>`:""}
+          <div class="receipt-rule"></div>
+          <div class="receipt-items">${items}</div>
+          <div class="receipt-rule"></div>
+          <div class="receipt-row"><span>Subtotal</span><strong>${formatCurrency(bill.subtotal)}</strong></div>
+          ${s.gstEnabled?`<div class="receipt-row"><span>GST ${s.gstPercent}%</span><strong>${formatCurrency(bill.gstAmount)}</strong></div>`:""}
+          <div class="receipt-row receipt-total"><span>TOTAL</span><strong>${formatCurrency(bill.total)}</strong></div>
+          <div class="receipt-rule"></div>
+          <div class="receipt-row"><span>UPI</span><span>${escapeHtml(bill.upiId)}</span></div>
+          <div class="receipt-center">
+            <div class="receipt-qr" id="receiptQr"></div>
+            <div class="receipt-sub">Scan to pay</div>
+            <div class="receipt-rule"></div>
+            <strong>Thank You</strong>
+            <div class="receipt-sub">Powered by GRAVITY58 · g58.in</div>
+          </div>
+        `;
+      }
+
+      function printBill(bill){
+        if(!bill) return;
+        $("printReceipt").innerHTML=receiptHtml(bill);
+        setTimeout(()=>{
+          renderQrForBill(bill,$("receiptQr"),120);
+          setTimeout(()=>window.print(),250);
+        },30);
+      }
+
+
+      function localDateKey(dateValue){
+        const d=new Date(dateValue);
+        const y=d.getFullYear();
+        const m=String(d.getMonth()+1).padStart(2,"0");
+        const day=String(d.getDate()).padStart(2,"0");
+        return `${y}-${m}-${day}`;
+      }
+
+      function getReportBills(){
+        const selected=$("reportDate").value;
+        const history=JSON.parse(localStorage.getItem("g58Bills")||"[]");
+        return history.filter(bill=>localDateKey(bill.date)===selected);
+      }
+
+      function getDailyReport(){
+        const bills=getReportBills();
+        return {
+          date:$("reportDate").value,
+          bills,
+          count:bills.length,
+          subtotal:bills.reduce((sum,b)=>sum+Number(b.subtotal||0),0),
+          gst:bills.reduce((sum,b)=>sum+Number(b.gstAmount||0),0),
+          total:bills.reduce((sum,b)=>sum+Number(b.total||0),0)
+        };
+      }
+
+      function reportDateLabel(dateString){
+        if(!dateString) return "";
+        const [year,month,day]=dateString.split("-").map(Number);
+        return new Date(year,month-1,day).toLocaleDateString("en-IN",{
+          day:"2-digit",month:"short",year:"numeric"
+        });
+      }
+
+      function renderDailyReport(){
+        const report=getDailyReport();
+        $("reportBillCount").textContent=report.count;
+        $("reportSubtotal").textContent=formatCurrency(report.subtotal);
+        $("reportGst").textContent=formatCurrency(report.gst);
+        $("reportTotal").textContent=formatCurrency(report.total);
+
+        const body=$("reportTableBody");
+        body.innerHTML="";
+
+        if(!report.bills.length){
+          body.innerHTML='<tr><td colspan="5" class="report-empty">No bills available for this date.</td></tr>';
+          return;
+        }
+
+        report.bills.forEach(bill=>{
+          const row=document.createElement("tr");
+          const time=new Date(bill.date).toLocaleTimeString("en-IN",{
+            hour:"2-digit",minute:"2-digit"
+          });
+          row.innerHTML=`
+            <td>${escapeHtml(bill.billNumber)}</td>
+            <td>${escapeHtml(time)}</td>
+            <td>${bill.items.length}</td>
+            <td>${formatCurrency(Number(bill.gstAmount||0))}</td>
+            <td><strong>${formatCurrency(Number(bill.total||0))}</strong></td>
+          `;
+          body.appendChild(row);
+        });
+      }
+
+      function dailyReportPrintHtml(report){
+        const brand=settings.posEnabled&&settings.brandName?settings.brandName:"GRAVITY58";
+        const rows=report.bills.map((bill,index)=>`
+          <div class="receipt-item">
+            <div class="receipt-row">
+              <span>${index+1}. ${escapeHtml(bill.billNumber)}</span>
+              <strong>${formatCurrency(Number(bill.total||0))}</strong>
+            </div>
+            <div class="receipt-note">${escapeHtml(new Date(bill.date).toLocaleTimeString("en-IN"))} · ${bill.items.length} item(s)</div>
+          </div>
+        `).join("");
+
+        return `
+          <div class="receipt-center">
+            <h1 class="receipt-title">${escapeHtml(brand)}</h1>
+            <div class="receipt-sub">DAILY SALES REPORT</div>
+            <div class="receipt-sub">${escapeHtml(reportDateLabel(report.date))}</div>
+          </div>
+          <div class="receipt-rule"></div>
+          <div class="receipt-row"><span>Total Bills</span><strong>${report.count}</strong></div>
+          <div class="receipt-row"><span>Subtotal</span><strong>${formatCurrency(report.subtotal)}</strong></div>
+          <div class="receipt-row"><span>GST Collected</span><strong>${formatCurrency(report.gst)}</strong></div>
+          <div class="receipt-row receipt-total"><span>TOTAL SALES</span><strong>${formatCurrency(report.total)}</strong></div>
+          <div class="receipt-rule"></div>
+          <div class="receipt-items">${rows||'<div class="receipt-center">No bills</div>'}</div>
+          <div class="receipt-rule"></div>
+          <div class="receipt-center">
+            <div class="receipt-sub">Generated by GRAVITY58 · g58.in</div>
+          </div>
+        `;
+      }
+
+      function printDailyReport(){
+        const report=getDailyReport();
+        $("printReceipt").innerHTML=dailyReportPrintHtml(report);
+        setTimeout(()=>window.print(),100);
+      }
+
+      function makeDailyReportPdf(){
+        const report=getDailyReport();
+        const {jsPDF}=window.jspdf;
+        const doc=new jsPDF({unit:"mm",format:"a4"});
+        const brand=settings.posEnabled&&settings.brandName?settings.brandName:"GRAVITY58";
+        const left=15;
+        let y=18;
+
+        doc.setFont("helvetica","bold");
+        doc.setFontSize(19);
+        doc.text(brand,left,y);
+        y+=8;
+
+        doc.setFontSize(13);
+        doc.text("Daily Sales Report",left,y);
+        y+=7;
+
+        doc.setFont("helvetica","normal");
+        doc.setFontSize(10);
+        doc.text(`Date: ${reportDateLabel(report.date)}`,left,y);
+        y+=9;
+
+        doc.setDrawColor(210);
+        doc.line(left,y,195,y);
+        y+=8;
+
+        doc.setFont("helvetica","bold");
+        doc.text(`Total Bills: ${report.count}`,left,y);
+        doc.text(`Subtotal: Rs. ${report.subtotal.toFixed(2)}`,80,y);
+        y+=7;
+        doc.text(`GST Collected: Rs. ${report.gst.toFixed(2)}`,left,y);
+        doc.text(`Total Sales: Rs. ${report.total.toFixed(2)}`,80,y);
+        y+=10;
+
+        doc.line(left,y,195,y);
+        y+=7;
+
+        doc.setFontSize(9);
+        doc.text("Bill Number",left,y);
+        doc.text("Time",70,y);
+        doc.text("Items",105,y);
+        doc.text("GST",130,y);
+        doc.text("Total",165,y);
+        y+=5;
+        doc.line(left,y,195,y);
+        y+=6;
+        doc.setFont("helvetica","normal");
+
+        report.bills.forEach(bill=>{
+          if(y>280){
+            doc.addPage();
+            y=18;
+          }
+          const time=new Date(bill.date).toLocaleTimeString("en-IN",{hour:"2-digit",minute:"2-digit"});
+          doc.text(String(bill.billNumber),left,y);
+          doc.text(time,70,y);
+          doc.text(String(bill.items.length),105,y);
+          doc.text(`Rs. ${Number(bill.gstAmount||0).toFixed(2)}`,130,y);
+          doc.text(`Rs. ${Number(bill.total||0).toFixed(2)}`,165,y);
+          y+=7;
+        });
+
+        if(!report.bills.length){
+          doc.text("No bills available for this date.",left,y);
+          y+=7;
+        }
+
+        y+=4;
+        doc.line(left,y,195,y);
+        y+=8;
+        doc.setFont("helvetica","bold");
+        doc.setFontSize(12);
+        doc.text(`Grand Total: Rs. ${report.total.toFixed(2)}`,left,y);
+        y+=10;
+        doc.setFont("helvetica","normal");
+        doc.setFontSize(8);
+        doc.text("Generated using GRAVITY58 POS · g58.in",left,y);
+
+        return {doc,report};
+      }
+
+      function downloadDailyReportPdf(){
+        const {doc,report}=makeDailyReportPdf();
+        doc.save(`GRAVITY58-Daily-Report-${report.date}.pdf`);
+        showToast("Daily report PDF downloaded");
+      }
+
+      async function shareDailyReport(){
+        const {doc,report}=makeDailyReportPdf();
+        const blob=doc.output("blob");
+        const filename=`GRAVITY58-Daily-Report-${report.date}.pdf`;
+        const file=new File([blob],filename,{type:"application/pdf"});
+        const summary=[
+          "GRAVITY58 Daily Sales Report",
+          `Date: ${reportDateLabel(report.date)}`,
+          `Bills: ${report.count}`,
+          `Subtotal: ${formatCurrency(report.subtotal)}`,
+          `GST: ${formatCurrency(report.gst)}`,
+          `Total Sales: ${formatCurrency(report.total)}`
+        ].join("\n");
+
+        try{
+          if(navigator.share&&navigator.canShare&&navigator.canShare({files:[file]})){
+            await navigator.share({
+              title:"GRAVITY58 Daily Sales Report",
+              text:summary,
+              files:[file]
+            });
+            showToast("Report shared");
+            return;
+          }
+        }catch(error){
+          if(error&&error.name==="AbortError") return;
+        }
+
+        doc.save(filename);
+        window.open(`https://wa.me/?text=${encodeURIComponent(summary+"\n\nPDF has been downloaded. Attach it in WhatsApp.")}`,"_blank");
+        showToast("PDF downloaded; WhatsApp opened");
+      }
+
+      function renderHistory(){
+        renderDailyReport();
+        const history=JSON.parse(localStorage.getItem("g58Bills")||"[]");
+        const list=$("historyList");
+        list.innerHTML="";
+
+        if(!history.length){
+          list.innerHTML='<div class="empty">No saved bills yet.</div>';
+          return;
+        }
+
+        history.forEach(bill=>{
+          const row=document.createElement("div");
+          row.className="history-item";
+          row.innerHTML=`
+            <div>
+              <strong>${escapeHtml(bill.billNumber)} · ${formatCurrency(bill.total)}</strong>
+              <small>${escapeHtml(bill.displayDate)} · ${bill.items.length} item(s)</small>
+            </div>
+            <div class="history-actions">
+              <button class="mini-btn view">View</button>
+              <button class="mini-btn print">Print</button>
+            </div>
+          `;
+          row.querySelector(".view").addEventListener("click",()=>openHistoryBill(bill));
+          row.querySelector(".print").addEventListener("click",()=>printBill(bill));
+          list.appendChild(row);
+        });
+      }
+
+      function openHistoryBill(bill){
+        selectedHistoryBill=bill;
+        $("historyBillMeta").textContent=`${bill.billNumber} · ${bill.displayDate}`;
+        $("historyAmount").textContent=formatCurrency(bill.total);
+        renderQrForBill(bill,$("historyQr"));
+        $("historyModal").classList.add("show");
+      }
+
+      function loadSavedSettings(){
+        try{
+          const saved=JSON.parse(localStorage.getItem("g58Settings")||"null");
+          if(!saved) return;
+          settings={...settings,...saved};
+          $("setupUpiId").value=saved.upiId||"";
+          $("gstEnabled").checked=!!saved.gstEnabled;
+          $("gstPercent").value=saved.gstPercent||"";
+          $("notesEnabled").checked=!!saved.notesEnabled;
+          $("posEnabled").checked=!!saved.posEnabled;
+          $("brandName").value=saved.brandName||"";
+          $("contactNumber").value=saved.contactNumber||"";
+          $("cashierName").value=saved.cashierName||"";
+          $("customerName").value=saved.customerName||"";
+          $("gstField").classList.toggle("show",!!saved.gstEnabled);
+          $("posFields").classList.toggle("show",!!saved.posEnabled);
+          $("itemNoteInput").style.display=settings.notesEnabled?"block":"none";
+          $("valueEntry").classList.toggle("with-note",settings.notesEnabled);
+          syncQuickOptions();
+          updateProfile();
+          newBillMeta();
+          switchScreen($("builderScreen"));
+        }catch{}
+      }
+
+      $("gstEnabled").addEventListener("change",()=>$("gstField").classList.toggle("show",$("gstEnabled").checked));
+      $("posEnabled").addEventListener("change",()=>$("posFields").classList.toggle("show",$("posEnabled").checked));
+      $("quickGst").addEventListener("change",applyQuickOptions);
+      $("quickGstPercent").addEventListener("change",applyQuickOptions);
+      $("quickItemName").addEventListener("change",applyQuickOptions);
+      $("quickPrint").addEventListener("change",applyQuickOptions);
+      $("continueBtn").addEventListener("click",saveSetup);
+      $("addValueBtn").addEventListener("click",addValue);
+      $("valueInput").addEventListener("keydown",e=>{if(e.key==="Enter")addValue()});
+      $("quantityInput").addEventListener("keydown",e=>{if(e.key==="Enter")addValue()});
+      $("itemNoteInput").addEventListener("keydown",e=>{if(e.key==="Enter")addValue()});
+      $("generateBtn").addEventListener("click",openQrPopup);
+      $("copyLinkBtn").addEventListener("click",copyUpiLink);
+      $("printBtn").addEventListener("click",()=>printBill(currentBill));
+      $("showExistingBtn").addEventListener("click",showExistingQr);
+      $("paymentReceivedBtn").addEventListener("click",()=>settleCurrentBill("received"));
+      $("expiredReceivedBtn").addEventListener("click",()=>settleCurrentBill("received"));
+      $("paymentCancelledBtn").addEventListener("click",()=>settleCurrentBill("cancelled"));
+      $("expiredCancelledBtn").addEventListener("click",()=>settleCurrentBill("cancelled"));
+      $("clearBillBtn").addEventListener("click",clearCurrentBill);
+
+      $("editSettingsBtn").addEventListener("click",()=>{
+        $("setupUpiId").value=settings.upiId;
+        $("gstEnabled").checked=settings.gstEnabled;
+        $("gstPercent").value=settings.gstEnabled?settings.gstPercent:"";
+        $("notesEnabled").checked=settings.notesEnabled;
+        $("posEnabled").checked=settings.posEnabled;
+        $("brandName").value=settings.brandName;
+        $("contactNumber").value=settings.contactNumber;
+        $("cashierName").value=settings.cashierName;
+        $("customerName").value=settings.customerName;
+        $("gstField").classList.toggle("show",settings.gstEnabled);
+        $("posFields").classList.toggle("show",settings.posEnabled);
+        switchScreen($("setupScreen"));
+      });
+
+      $("historyCloseBtn").addEventListener("click",()=>$("historyModal").classList.remove("show"));
+      $("historyPrintBtn").addEventListener("click",()=>printBill(selectedHistoryBill));
+
+
+      $("reportDate").addEventListener("change",renderDailyReport);
+      $("downloadReportBtn").addEventListener("click",downloadDailyReportPdf);
+      $("printReportBtn").addEventListener("click",printDailyReport);
+      $("shareReportBtn").addEventListener("click",shareDailyReport);
+
+      const posGuideModal=$("posGuideModal");
+      const closePosGuide=()=>{
+        if($("dontShowPosGuide").checked){
+          localStorage.setItem("g58HidePosGuide","1");
+        }
+        posGuideModal.classList.remove("show");
+      };
+      $("startUsingPosBtn").addEventListener("click",closePosGuide);
+      $("openPosGuideBtn").addEventListener("click",()=>{
+        $("dontShowPosGuide").checked=localStorage.getItem("g58HidePosGuide")==="1";
+        posGuideModal.classList.add("show");
+      });
+      if(localStorage.getItem("g58HidePosGuide")==="1"){
+        posGuideModal.classList.remove("show");
+      }
+
+      loadSavedSettings();
+      $("reportDate").value=localDateKey(new Date());
+      renderHistory();
+      renderValues();
+    })();
+  </script>
+
+
+<script src="/js/pos-premium.js"></script>
+
+  <script>
+  document.addEventListener("DOMContentLoaded", () => {
+    document.querySelectorAll("[data-open-tab]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const tab = btn.getAttribute("data-open-tab");
+        location.href = tab === "jobs" ? "/?view=customer" : "/?view=business";
+      });
+    });
+  });
+  
+
+</script>
+
+
+
+  <div class="upgrade-modal" id="premiumPlansModal" aria-hidden="true">
+    <div class="upgrade-dialog" role="dialog" aria-modal="true" aria-labelledby="premiumPlansTitle">
+      <div class="upgrade-head"><div><h2 id="premiumPlansTitle">Choose your G58 POS plan</h2><p>Free billing stays simple. Premium adds browser-local menu tools, CSV import, optional inventory and dashboard insights.</p></div><button type="button" class="modal-close" id="closePremiumPlansBtn" aria-label="Close" onclick="document.getElementById('premiumPlansModal').classList.remove('open');document.body.style.overflow=''">×</button></div>
+      <div class="plan-grid">
+        <article class="plan-card free"><span class="plan-label">FREE</span><h3>Standalone POS</h3><div class="plan-price">₹0</div><div class="plan-term">Forever</div><div class="plan-features"><div class="plan-feature">Data stays in this browser</div><div class="plan-feature">Manual billing, GST and UPI QR</div><div class="plan-feature">Receipts and daily reports</div><div class="plan-feature">Works without internet</div><div class="plan-feature">Local history on this device</div></div><button class="plan-action continue-free-trigger">Current Plan</button></article>
+        <article class="plan-card monthly"><span class="plan-label">MONTHLY</span><h3>Monthly Premium</h3><div class="plan-price">₹299</div><div class="plan-term">Valid for 1 month</div><div class="plan-features"><div class="plan-feature">Reusable local menu</div><div class="plan-feature">CSV menu import and removal</div><div class="plan-feature">Quantity-based automatic pricing</div><div class="plan-feature">Optional inventory tracking</div><div class="plan-feature">Local dashboard insights</div></div><button class="plan-action buy-plan" data-plan="Monthly" data-amount="299">Purchase</button></article>
+        <article class="plan-card half"><span class="plan-label">6 MONTHS</span><h3>6-Month Premium</h3><div class="plan-price">₹1,599</div><div class="plan-term">Valid for 6 months</div><div class="plan-features"><div class="plan-feature">Reusable local menu</div><div class="plan-feature">CSV menu import and removal</div><div class="plan-feature">Quantity-based automatic pricing</div><div class="plan-feature">Optional inventory tracking</div><div class="plan-feature">Sales dashboard and insights</div></div><button class="plan-action buy-plan" data-plan="6 Months" data-amount="1599">Purchase</button></article>
+        <article class="plan-card yearly"><span class="plan-label">1 YEAR</span><h3>Yearly Premium</h3><div class="plan-price">₹2,999</div><div class="plan-term">Valid for 1 year</div><div class="plan-features"><div class="plan-feature">Reusable local menu</div><div class="plan-feature">CSV menu import and removal</div><div class="plan-feature">Quantity-based automatic pricing</div><div class="plan-feature">Optional inventory tracking</div><div class="plan-feature">Dashboard and item performance</div></div><button class="plan-action buy-plan" data-plan="1 Year" data-amount="2999">Purchase</button></article>
+      </div>
+      <div class="upgrade-footer"><button class="already-premium" id="alreadyPremiumBtn">Already a Premium User</button><button class="continue-free continue-free-trigger">Continue with Free Version</button></div>
+    </div>
+  </div>
+
+</body>
+</html>

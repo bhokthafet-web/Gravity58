@@ -1,0 +1,7 @@
+GRAVITY58 WhatsApp Share
+- Landing-page business popup removed where present.
+- Added one round WhatsApp floating icon at the bottom-right.
+- The attached image is stored at /assets/g58-whatsapp-card.png.
+- Supported mobile browsers open the native share sheet with the image attached; choose WhatsApp.
+- Desktop/unsupported browsers open WhatsApp with the website text and public image link.
+- Browser security does not allow websites to silently attach an image directly into WhatsApp Web.

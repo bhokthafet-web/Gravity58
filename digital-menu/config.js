@@ -1,0 +1,19 @@
+window.GRAVITY58_CONFIG = {
+  demoMode: false,
+  appwrite: {
+    endpoint: "https://cloud.appwrite.io/v1",
+    projectId: "YOUR_APPWRITE_PROJECT_ID",
+    databaseId: "gravity58",
+    adminTeamId: "YOUR_G58_TEAM_ID",
+    collections: {
+      posts: "g58_posts",
+      profiles: "ad_customer_profiles",
+      bookings: "ad_bookings",
+      advertisements: "advertisements",
+      slots: "ad_slots",
+    },
+  },
+  gravity58Url: "../",
+  adBookingPortalUrl: "../advertise/",
+  currency: "INR",
+};

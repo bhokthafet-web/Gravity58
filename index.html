@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#07111F" />
+  <title>GRAVITY58 — Local Customer & Business Marketplace</title>
+  <meta name="description" content="GRAVITY58 helps verified users post requirements and business cards while everyone can browse local opportunities." />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/style.css">
+  <link rel="stylesheet" href="/css/mobile.css">
+  <link rel="canonical" href="https://g58.in/" />
+  <meta name="robots" content="index, follow, max-image-preview:large" />
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="GRAVITY58" />
+  <meta property="og:title" content="GRAVITY58 — Find Local Jobs and Businesses Across India" />
+  <meta property="og:description" content="Post service requirements, compare local business bids, and discover digital business cards by State and District." />
+  <meta property="og:url" content="https://g58.in/" />
+  <meta property="og:image" content="https://g58.in/assets/g58-whatsapp-card.png" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="GRAVITY58 — Local Jobs and Business Cards" />
+  <meta name="twitter:description" content="Post requirements, receive bids, and find local businesses across India." />
+  <meta name="twitter:image" content="https://g58.in/assets/g58-whatsapp-card.png" />
+  <script type="application/ld+json" id="websiteStructuredData">
+  {
+    "@context":"https://schema.org",
+    "@type":"WebSite",
+    "name":"GRAVITY58",
+    "url":"https://g58.in/",
+    "potentialAction":{
+      "@type":"SearchAction",
+      "target":"https://g58.in/business/?q={search_term_string}",
+      "query-input":"required name=search_term_string"
+    }
+  }
+  </script>
+
+</head>
+<body>
+<header class="topbar" id="topbar">
+  <div class="shell nav">
+    <div class="brand-account-group">
+      <a class="brand gravity-brand" href="#home">
+        <div class="logo3d"><span>G</span></div>
+        <div class="gravity-wordmark">
+          <div class="gravity-main">GRAVITY<span>58</span></div>
+          <small>POST. BID. CONNECT.</small>
+        </div>
+      </a>
+      <div class="header-account-controls" aria-label="Account controls">
+        <button class="header-account-btn login" id="siteLoginButton" type="button" onclick="window.G58AccountAction?.()">Login</button>
+        <span class="header-user-name hidden" id="siteUserName"></span>
+        <button class="header-account-btn hidden" id="myPostsButton" type="button" onclick="openMyPostsPage()">My Posts</button>
+        <button class="header-account-btn logout hidden" id="siteLogoutButton" type="button" onclick="window.G58LogoutAction?.()">Logout</button>
+      </div>
+    </div>
+    <div class="nav-actions" aria-label="Primary navigation">
+      <a class="nav-icon-btn" href="/" aria-label="Home" title="Home">
+        <span class="nav-letter-icon">⌂</span><span class="nav-tooltip">Home</span>
+      </a>
+      <a class="nav-icon-btn" href="/?view=customer" onclick="if(location.pathname==='/'){event.preventDefault();selectMode('customer')}" aria-label="P - Wall" title="P - Wall">
+        <span class="nav-letter-icon">P</span><span class="nav-tooltip">P - Wall</span>
+      </a>
+      <a class="nav-icon-btn" href="/business/" aria-label="C - Wall" title="C - Wall">
+        <span class="nav-letter-icon">C</span><span class="nav-tooltip">C - Wall</span>
+      </a>
+      <span class="nav-pos-wrap">
+        <a class="nav-icon-btn pos-nav-btn" href="/pos/" aria-label="Free POS billing tool" title="Free POS Billing">
+          <span class="nav-letter-icon">₹</span><span class="nav-tooltip">Free POS</span>
+        </a>
+        <span class="pos-free-callout" aria-hidden="true"><span class="pos-free-arrow">↑</span><span class="pos-free-text">FREE POS</span></span>
+      </span>
+    </div>
+  </div>
+</header>
+
+<main>
+<section class="landing" id="home">
+  <div class="shell">
+    <div class="landing-grid">
+
+      <aside class="landing-side left-side">
+        <div class="side-title"><span>Recent Posts</span><small id="recentCityLabel">Nearby</small></div>
+        <a class="digital-menu-launch recent-menu-launch" href="/digital-menu/"><span>●</span> Digital Menu</a>
+        <div class="recent-jobs" id="recentJobsPanel"></div>
+      </aside>
+
+      <div class="landing-card">
+        <div class="landing-content">
+
+          <div class="catalogue-ribbons">
+            <button class="catalogue-btn jobs" onclick="selectMode('customer')">
+              <strong>Browse Jobs</strong><small>Nearby customer requirements</small>
+            </button>
+            <button class="catalogue-btn business" onclick="selectMode('business')">
+              <strong>Browse Business</strong><small>Professional digital cards</small>
+            </button>
+            <button class="catalogue-btn whatsapp" onclick="openShortTool('whatsapp')">
+              <strong>WhatsApp Link Maker</strong><small>Create and copy a chat link</small>
+            </button>
+            <button class="catalogue-btn instagram" onclick="openShortTool('instagram')">
+              <strong>Instagram Link Maker</strong><small>Create and copy a profile link</small>
+            </button>
+          </div>
+
+          <div class="promo-split">
+  <button class="free-ad-pop promo-split-card customer-promo-card" type="button" onclick="openCustomerPostCreator()">
+    <div class="promo-mini-icon">POST</div>
+    <div class="promo-split-copy">
+      <strong>Post Your Free Ad</strong>
+      <p>Share your requirement and receive local bids.</p>
+      <span class="ad-cta">Create Free Post →</span>
+    </div>
+  </button>
+
+  <button class="free-ad-pop promo-split-card business-promo-card" type="button" onclick="openBusinessCardCreator()">
+    <div class="promo-mini-icon">CARD</div>
+    <div class="promo-split-copy">
+      <strong>Business Card</strong>
+      <p class="promo-white-text">Create your free digital card</p>
+      <span class="ad-cta">Create Business Card →</span>
+    </div>
+  </button>
+
+  <a class="free-ad-pop promo-split-card pos-promo-card" href="/pos/" aria-label="Use Free GRAVITY58 POS">
+    <div class="promo-mini-icon">POS</div>
+    <div class="promo-split-copy">
+      <strong>Secure Billing</strong>
+      <p class="promo-white-text">Generate secure QR code</p>
+      <span class="ad-cta">Open Free POS →</span>
+    </div>
+  </a>
+</div>
+
+<div class="premium-trust-strip" aria-label="GRAVITY58 trust features">
+  <div><span>✓</span><strong>Secure verified posting</strong><small>Browse freely; sign in to post or create a business card</small></div>
+  <div><span>★</span><strong>Customer ratings</strong><small>See local business feedback</small></div>
+  <div><span>₹</span><strong>Free business tools</strong><small>Cards, QR sharing and POS</small></div>
+  <div><span>⌖</span><strong>Location focused</strong><small>State and district discovery</small></div>
+</div>
+
+<h1>Find Local Work or the <span class="gradient-text">Right Local Business.</span></h1>
+          <p>Select your State, browse district-wise customer jobs, and discover professional local business cards.</p>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+
+<section class="content-area" id="contentArea">
+  <div class="shell">
+    <div class="simple-tabs">
+      <button class="btn tab-btn customer-tab" id="customerTab" onclick="selectMode('customer')">Customer Wall</button>
+      <button class="btn tab-btn business-tab" id="businessTab" onclick="selectMode('business')">Business Wall</button>
+      <button class="btn primary" onclick="openCreateModal()">Create Post</button>
+    </div>
+    <div class="wall-header">
+      <div><h2 id="wallTitle">Customer Requirements</h2><p id="wallSubtitle">Posts are shown State and District wise.</p></div>
+      <div class="wall-header-actions">
+        <button class="btn how-popup-btn" id="browseGuideButton" onclick="openBrowseGuide()">? How Browse Jobs Works</button>
+        <button class="location-chip state-change-chip" id="activeLocationChip" type="button" onclick="openStateSelection(false)">📍 Select State</button>
+      </div>
+    </div>
+    <div id="locationNotice" class="location-notice warning">Select your State / UT to view posts.</div>
+      <div class="state-district-filter">
+        <label>District Filter</label>
+        <select id="districtFilter" onchange="changeDistrictFilter()"><option value="">All Districts</option></select>
+      </div>
+      <div class="business-national-toggle hidden" id="businessNationalToggle">
+        <label class="checkbox-row compact">
+          <input id="nationalBusinessOnly" type="checkbox" onchange="toggleNationalBusinessFilter()">
+          <span><strong>National Business Cards</strong><small>Show only businesses marked for nationwide visibility.</small></span>
+        </label>
+      </div>
+      <div class="filters">
+      <input id="searchInput" placeholder="Search by service, requirement or location" oninput="renderWall()">
+      <select id="categoryFilter" onchange="renderWall()"><option value="">All categories</option><option>Interior Design</option><option>Modular Kitchen</option><option>Plumbing</option><option>Electrical</option><option>Painting</option><option>Carpentry</option><option>Cleaning</option><option>Pest Control</option><option>Home Repair</option><option>Furniture</option><option>Catering</option><option>Transport</option><option>Packers and Movers</option><option>Vehicle Repair</option><option>Beauty Services</option><option>Fitness Training</option><option>Tuition</option><option>Medical Support</option><option>Pet Care</option><option>Website Development</option><option>Digital Marketing</option><option>Graphic Design</option><option>Printing</option><option>Accounting</option><option>Legal Services</option><option>Photography</option><option>Video Production</option><option>Event Management</option><option>Other</option></select>
+      <select id="sortFilter" onchange="renderWall()"><option value="nearby">Latest first</option><option value="latest">Latest posts</option><option value="low">Price low to high</option><option value="rated">Highest rated</option><option value="shuffle">Shuffle</option></select>
+    </div>
+    <div class="wall" id="wall"></div>
+  </div>
+</section>
+</main>
+<nav class="seo-link-strip" aria-label="SEO pages">
+  <a href="/jobs/">Browse Jobs</a>
+  <a href="/business/">Browse Businesses</a>
+  <a href="/business/telangana/hyderabad/">Hyderabad Businesses</a>
+  <a href="/category/plumbing/">Plumbers</a>
+  <a href="/category/interior-design/">Interior Designers</a>
+  <a href="/about/">About</a>
+  <a href="/contact/">Contact</a>
+</nav>
+
+
+<footer><div class="shell">© 2026 GRAVITY58</div></footer>
+
+<div class="modal state-selection-modal" id="stateSelectionModal">
+  <div class="modal-card state-selection-card">
+    <div class="modal-head">
+      <div><span class="success-kicker">GRAVITY58 Location</span><h3>Select Your State / UT</h3></div>
+      <button class="close" id="stateModalClose" type="button" onclick="closeModal('stateSelectionModal')">×</button>
+    </div>
+    <p>Select once to view customer posts and business cards available in that State. You can change it later.</p>
+    <div class="field full">
+      <label>State / UT</label>
+      <select id="firstStateSelect"><option value="">Select State / UT</option></select>
+    </div>
+    <div class="state-selection-error" id="stateSelectionError"></div>
+    <button class="btn orange" type="button" style="width:100%" onclick="saveSelectedState()">Continue</button>
+  </div>
+</div>
+
+<div class="modal guide-popup-modal" id="browseGuideModal" onclick="closeOnBackdrop(event,'browseGuideModal')">
+  <div class="modal-card guide-popup-card">
+    <div class="modal-head">
+      <div><span class="guide-popup-kicker" id="guidePopupKicker">Customer Guide</span><h3 id="guidePopupTitle">How Browse Jobs Works</h3></div>
+      <button class="close" onclick="closeModal('browseGuideModal')">×</button>
+    </div>
+
+    <div class="browse-guide active" id="jobsBrowseGuide">
+      <p class="guide-popup-intro">Post your requirement, receive quotations and select the right local business.</p>
+      <div class="popup-visual-steps">
+        <article class="popup-visual-step"><span class="step-number">01</span><img src="assets/how-it-works/customer-post.svg" alt="Customer creates a requirement"><div><h4>Create your requirement</h4><p>Select Create Post, choose Customer Requirement, enter the work details, location, expected budget and your contact number.</p></div></article>
+        <article class="popup-visual-step"><span class="step-number">02</span><img src="assets/how-it-works/business-bid.svg" alt="Businesses submit quotations"><div><h4>Receive up to five bids</h4><p>Local business owners can view the public requirement and submit their quotation, completion time and proposal.</p></div></article>
+        <article class="popup-visual-step"><span class="step-number">03</span><img src="assets/how-it-works/customer-unlock.svg" alt="Customer unlocks their post"><div><h4>Unlock your own post</h4><p>Open your requirement and enter the same phone number used while publishing. Only then can you view the received bids.</p></div></article>
+        <article class="popup-visual-step"><span class="step-number">04</span><img src="assets/how-it-works/customer-compare.svg" alt="Customer compares quotations"><div><h4>Compare the quotations</h4><p>Check the business name, quoted price, proposed completion time and message before making your selection.</p></div></article>
+        <article class="popup-visual-step"><span class="step-number">05</span><img src="assets/how-it-works/customer-accept.svg" alt="Customer accepts a business"><div><h4>Accept and connect</h4><p>Accept your preferred business. WhatsApp opens for direct communication and the requirement disappears from Browse Jobs.</p></div></article>
+      </div>
+      <div class="flow-note"><strong>Why does the requirement disappear?</strong><span>Once a quotation is accepted, the work is treated as assigned. Removing the post prevents unnecessary new bids.</span></div>
+      <div class="modal-actions"><button class="btn primary" onclick="closeModal('browseGuideModal');openCreateModal();document.getElementById('postType').value='customer';updateFormType()">Create Requirement</button><button class="btn ghost" onclick="closeModal('browseGuideModal')">Close</button></div>
+    </div>
+
+    <div class="browse-guide" id="businessBrowseGuide">
+      <p class="guide-popup-intro">Create a professional business card so nearby customers can discover and contact your business.</p>
+      <div class="popup-visual-steps">
+        <article class="popup-visual-step"><span class="step-number">01</span><img src="assets/how-it-works/business-browse.svg" alt="Business owner creates a business card"><div><h4>Create a business advertisement</h4><p>Select Create Post, choose Business Advertisement and enter your business name, service category, description and location.</p></div></article>
+        <article class="popup-visual-step"><span class="step-number">02</span><img src="assets/how-it-works/customer-post.svg" alt="Business owner adds business information"><div><h4>Add complete business details</h4><p>Provide starting price, experience, contact person, phone, WhatsApp, email and one demo or social-media link where available.</p></div></article>
+        <article class="popup-visual-step"><span class="step-number">03</span><img src="assets/how-it-works/business-selected.svg" alt="Customers discover business card"><div><h4>Your card becomes visible</h4><p>After publishing, the business card appears in Browse Business based on its city, locality and service category.</p></div></article>
+        <article class="popup-visual-step"><span class="step-number">04</span><img src="assets/how-it-works/customer-unlock.svg" alt="Customer contacts business"><div><h4>Customers contact you directly</h4><p>Interested customers can open your card and use the available contact number or Check Demo link to contact your business.</p></div></article>
+        <article class="popup-visual-step"><span class="step-number">05</span><img src="assets/how-it-works/business-bid.svg" alt="Business owner browses and bids on jobs"><div><h4>You can also bid on jobs</h4><p>Open Browse Jobs, select a suitable requirement and submit your quotation. A requirement accepts a maximum of five bids.</p></div></article>
+      </div>
+      <div class="flow-note"><strong>Keep your information accurate.</strong><span>Your business card is public. Use a working contact number and clearly describe the services you provide.</span></div>
+      <div class="modal-actions"><button class="btn orange" onclick="closeModal('browseGuideModal');openCreateModal();document.getElementById('postType').value='business';updateFormType()">Create Business Card</button><button class="btn ghost" onclick="closeModal('browseGuideModal')">Close</button></div>
+    </div>
+  </div>
+</div>
+
+<div class="modal" id="createModal" onclick="closeOnBackdrop(event,'createModal')">
+  <div class="modal-card">
+    <div class="modal-head"><h3>Create a GRAVITY58 Post</h3><button class="close" onclick="closeModal('createModal')">×</button></div>
+    <div class="form-grid">
+      <div class="field full"><label>Post Type</label><select id="postType" onchange="updateFormType()"><option value="customer">Customer Requirement</option><option value="business">Business Advertisement</option></select></div>
+      <div class="field"><label id="titleLabel">Requirement Title</label><input id="postTitle"></div>
+      <div class="field"><label>Category</label><select id="postCategory"><option value="">Select category</option><option>Interior Design</option><option>Modular Kitchen</option><option>Plumbing</option><option>Electrical</option><option>Painting</option><option>Carpentry</option><option>Cleaning</option><option>Pest Control</option><option>Home Repair</option><option>Furniture</option><option>Catering</option><option>Transport</option><option>Packers and Movers</option><option>Vehicle Repair</option><option>Beauty Services</option><option>Fitness Training</option><option>Tuition</option><option>Medical Support</option><option>Pet Care</option><option>Website Development</option><option>Digital Marketing</option><option>Graphic Design</option><option>Printing</option><option>Accounting</option><option>Legal Services</option><option>Photography</option><option>Video Production</option><option>Event Management</option><option>Other</option></select></div>
+      <div class="field full"><label>Description</label><textarea id="postDescription"></textarea></div>
+      <div class="field"><label>State / UT</label><select id="postState" disabled></select></div>
+      <div class="field"><label>District</label><input id="postDistrict" placeholder="Example: Hyderabad"></div>
+      <div class="field"><label>Area</label><input id="postArea" placeholder="Example: Manikonda"></div>
+      <div class="field full"><label>Full Address</label><textarea id="postFullAddress" placeholder="Enter complete address"></textarea></div>
+      <div class="field"><label id="priceLabel">Expected Minimum Price</label><input id="postPrice" type="number" min="0"></div>
+      <div class="field customer-only"><label>Expected Maximum Price</label><input id="postMaxPrice" type="number" min="0"></div>
+      <div class="field business-only hidden"><label>Years of Experience</label><input id="postExperience" type="number" min="0"></div>
+      <div class="field business-only hidden"><label>Completed Projects</label><input id="postProjects" type="number" min="0"></div>
+      <div class="field"><label id="nameLabel">Customer Name</label><input id="postName"></div>
+      <div class="field"><label>WhatsApp Number</label><input id="postWhatsapp"></div>
+      <div class="field"><label>Email Address</label><input id="postEmail" type="email"></div>
+      <div class="field"><label>Phone Number</label><input id="postPhone"></div><div class="field business-only hidden"><label>Alternative Phone</label><input id="postAltPhone"></div><div class="field business-only hidden"><label>Demo / Social Media Link</label><input id="postSocialUrl" type="url" placeholder="https://instagram.com/yourbusiness"></div><div class="field business-only hidden full national-card-option">
+        <label class="checkbox-row">
+          <input id="postNationalBusiness" type="checkbox">
+          <span><strong>Show as National Business Card</strong><small>Allow this card to appear when users choose National Business Cards in the Business Wall.</small></span>
+        </label>
+      </div>
+      <div class="field full"><button class="btn primary" style="width:100%" onclick="validateAndPublish()">Publish Post</button></div>
+    </div>
+    <div class="moderation-status" id="moderationStatus"></div>
+  </div>
+</div>
+
+
+<div class="modal success-modal" id="publishSuccessModal" onclick="closeOnBackdrop(event,'publishSuccessModal')">
+  <div class="modal-card success-card">
+    <div class="success-check">✓</div>
+    <span class="success-kicker">Published successfully</span>
+    <h3 id="publishSuccessTitle">Thanks! Your ad is live now.</h3>
+    <p id="publishSuccessText">Nearby users can now discover your post on GRAVITY58.</p>
+    <div class="success-id" id="publishSuccessId"></div>
+    <div class="success-actions">
+      <button class="btn primary" onclick="viewPublishedPost()">View My Ad</button>
+      <button class="btn orange" onclick="copyPublishedLink(this)">Copy Link</button>
+      <button class="btn green" onclick="sharePublishedOnWhatsApp()">Share on WhatsApp</button>
+      <button class="btn" onclick="closePublishSuccess()">Close</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal" id="bidModal" onclick="closeOnBackdrop(event,'bidModal')">
+  <div class="modal-card">
+    <div class="modal-head"><h3>Submit a Business Bid</h3><button class="close" onclick="closeModal('bidModal')">×</button></div>
+    <div class="form-grid">
+      <input type="hidden" id="bidPostId">
+      <div class="field"><label>Business Name</label><input id="bidBusiness"></div>
+      <div class="field"><label>Bid Amount</label><input id="bidAmount" type="number"></div>
+      <div class="field"><label>Completion Time</label><input id="bidTime"></div>
+      <div class="field">
+        <label>Valid WhatsApp Number</label>
+        <input id="bidWhatsapp" type="tel" inputmode="numeric" autocomplete="tel" placeholder="+91 98765 43210">
+        <small class="field-help">Enter an active WhatsApp number. The customer will contact this number only after accepting your bid.</small>
+      </div>
+      <div class="field full"><label>Proposal</label><textarea id="bidProposal"></textarea></div>
+      <div class="field full"><div class="bid-lock-warning">🔒 One bid per mobile number for each customer post. The customer may delete an unsuitable bid to reopen a slot, but that mobile number cannot bid again on the same post.</div></div>
+      <div class="field full"><button class="btn orange" style="width:100%" onclick="submitBid()">Submit My Bid</button></div>
+    </div>
+  </div>
+</div>
+
+<div class="modal" id="bidSuccessModal" onclick="closeOnBackdrop(event,'bidSuccessModal')">
+  <div class="modal-card bid-success-card">
+    <div class="modal-head">
+      <h3>Bid Submitted Successfully</h3>
+      <button class="close" onclick="closeModal('bidSuccessModal')">×</button>
+    </div>
+    <div class="bid-success-icon">✓</div>
+    <h2>Your bid is now live</h2>
+    <p id="bidSuccessCount">This requirement now has 1 of 5 bids.</p>
+    <div class="bid-success-note">
+      The customer will contact you if your bid is accepted. Keep the WhatsApp number you provided active and available.
+    </div>
+    <button class="btn orange" style="width:100%" onclick="closeModal('bidSuccessModal')">Done</button>
+  </div>
+</div>
+
+
+<div class="modal" id="shortToolModal" onclick="closeOnBackdrop(event,'shortToolModal')">
+  <div class="modal-card" style="max-width:620px">
+    <div class="modal-head"><h3 id="shortToolTitle">Create Short Link</h3><button class="close" onclick="closeModal('shortToolModal')">×</button></div>
+    <div class="form-grid">
+      <input type="hidden" id="shortToolType">
+      <div class="field full"><label id="shortToolLabel">Phone number or username</label><input id="shortToolInput" placeholder=""></div>
+      <div class="field full whatsapp-tool"><label>Optional WhatsApp message</label><textarea id="shortToolMessage" placeholder="Hello, I found you through GRAVITY58."></textarea></div>
+      <div class="field full"><button class="btn orange" style="width:100%" onclick="generateShortLink()">Generate Link</button></div>
+      <div class="field full hidden" id="shortToolOutputWrap">
+        <label>Your link</label>
+        <div class="short-tool-result"><input id="shortToolOutput" readonly><button class="btn green" onclick="copyShortToolLink()">Copy</button><button class="btn" onclick="openShortToolLink()">Open</button></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+</div>
+
+<div class="floating-business-wrap" id="floatingCustomerWrap" onclick="closeFloatingCustomer(event)">
+  <div class="floating-stage customer-floating-stage">
+    <button class="floating-close" onclick="hideFloatingCustomer()">×</button>
+    <div id="floatingCustomerCard"></div>
+  </div>
+</div>
+
+
+<div class="modal" id="businessEditModal" onclick="closeOnBackdrop(event,'businessEditModal')">
+  <div class="modal-card business-edit-card">
+    <div class="modal-head">
+      <div><span class="success-kicker">Business Owner</span><h3>Edit Business Card</h3></div>
+      <button class="close" type="button" onclick="closeModal('businessEditModal')">×</button>
+    </div>
+    <input type="hidden" id="editBusinessId">
+    <div class="form-grid">
+      <div class="field"><label>Business Name</label><input id="editBusinessTitle"></div>
+      <div class="field"><label>Category</label><select id="editBusinessCategory"><option value="">Select category</option><option>Interior Design</option><option>Modular Kitchen</option><option>Plumbing</option><option>Electrical</option><option>Painting</option><option>Carpentry</option><option>Cleaning</option><option>Pest Control</option><option>Home Repair</option><option>Furniture</option><option>Catering</option><option>Transport</option><option>Packers and Movers</option><option>Vehicle Repair</option><option>Beauty Services</option><option>Fitness Training</option><option>Tuition</option><option>Medical Support</option><option>Pet Care</option><option>Website Development</option><option>Digital Marketing</option><option>Graphic Design</option><option>Printing</option><option>Accounting</option><option>Legal Services</option><option>Photography</option><option>Video Production</option><option>Event Management</option><option>Other</option></select></div>
+      <div class="field full"><label>Description</label><textarea id="editBusinessDescription"></textarea></div>
+      <div class="field"><label>State / UT</label><input id="editBusinessState"></div>
+      <div class="field"><label>District</label><input id="editBusinessDistrict"></div>
+      <div class="field"><label>Area</label><input id="editBusinessArea"></div>
+      <div class="field full"><label>Full Address</label><textarea id="editBusinessAddress"></textarea></div>
+      <div class="field"><label>Starting Price</label><input id="editBusinessPrice" type="number" min="1"></div>
+      <div class="field"><label>Years of Experience</label><input id="editBusinessExperience" type="number" min="0"></div>
+      <div class="field"><label>Completed Projects</label><input id="editBusinessProjects" type="number" min="0"></div>
+      <div class="field"><label>Contact Person</label><input id="editBusinessName"></div>
+      <div class="field"><label>WhatsApp Number</label><input id="editBusinessWhatsapp" type="tel"></div>
+      <div class="field"><label>Phone Number</label><input id="editBusinessPhone" type="tel"></div>
+      <div class="field"><label>Alternative Phone</label><input id="editBusinessAltPhone" type="tel"></div>
+      <div class="field"><label>Email Address</label><input id="editBusinessEmail" type="email"></div>
+      <div class="field"><label>Demo / Social Media Link</label><input id="editBusinessSocial" type="url"></div><div class="field full"><label class="checkbox-row"><input id="editBusinessNational" type="checkbox"><span><strong>National Business Card</strong><small>Show this card when users enable the National Business Cards filter.</small></span></label></div>
+      <div class="field full"><div class="moderation-status" id="editBusinessStatus"></div></div>
+      <div class="field full"><button class="btn green" type="button" style="width:100%" onclick="saveBusinessEdit()">Save Business Card Changes</button></div>
+    </div>
+  </div>
+</div>
+
+
+<div class="modal rating-modal" id="businessRatingModal" onclick="closeRatingOnBackdrop(event)">
+  <div class="modal-card rating-modal-card">
+    <div class="modal-head">
+      <div><span class="success-kicker">Customer Feedback</span><h3 id="ratingBusinessTitle">Rate this business</h3></div>
+      <button class="close" type="button" onclick="closeBusinessRating()">×</button>
+    </div>
+    <div class="rating-summary-large" id="ratingModalSummary"></div>
+    <div class="rating-form-box">
+      <label>Your rating</label>
+      <div class="rating-input-stars" id="ratingInputStars" aria-label="Choose a rating from 1 to 5">
+        <button type="button" data-rating="1" onclick="selectBusinessRating(1)">★</button>
+        <button type="button" data-rating="2" onclick="selectBusinessRating(2)">★</button>
+        <button type="button" data-rating="3" onclick="selectBusinessRating(3)">★</button>
+        <button type="button" data-rating="4" onclick="selectBusinessRating(4)">★</button>
+        <button type="button" data-rating="5" onclick="selectBusinessRating(5)">★</button>
+      </div>
+      <div class="rating-fields">
+        <div class="field"><label for="ratingName">Your name</label><input id="ratingName" maxlength="40" placeholder="Enter your name"></div>
+        <div class="field"><label for="ratingComment">Review (optional)</label><textarea id="ratingComment" maxlength="280" placeholder="Share your genuine experience"></textarea></div>
+      </div>
+      <p class="rating-privacy-note">Browsing remains open. Secure sign-in is required for publishing advertisements and business cards. Please post only genuine customer experiences.</p>
+      <div class="rating-form-actions">
+        <button class="btn orange" type="button" onclick="submitBusinessRating()">Submit Rating</button>
+        <button class="btn danger hidden" id="deleteMyRatingBtn" type="button" onclick="deleteMyBusinessRating()">Delete My Rating</button>
+      </div>
+      <div class="moderation-status" id="ratingFormStatus"></div>
+    </div>
+    <div class="reviews-title">Recent customer reviews</div>
+    <div class="rating-review-list" id="ratingReviewList"></div>
+  </div>
+</div>
+
+<div class="modal qr-front-modal" id="businessQrModal" onclick="closeBusinessQrOnBackdrop(event)">
+  <div class="modal-card qr-business-modal-card">
+    <div class="modal-head">
+      <div><span class="success-kicker">Share Business Card</span><h3 id="businessQrTitle">Business QR Code</h3></div>
+      <button class="close" type="button" onclick="closeBusinessQr()">×</button>
+    </div>
+    <div class="qr-business-content">
+      <img id="businessQrImage" alt="Business card QR code">
+      <p><strong>Open your phone Camera</strong>, point it at this QR code, then tap the link shown on your screen. It will open this dedicated GRAVITY58 digital business card.</p><div class="qr-permanent-note">Save the link or share it on WhatsApp for permanent access to this digital business card.</div>
+      <input id="businessQrLink" readonly>
+      <div class="qr-business-actions">
+        <button class="btn orange" type="button" onclick="openBusinessQrLink()">Open Card</button>
+        <button class="btn green" type="button" onclick="copyBusinessQrLink()">Copy Link</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="phone-modal" id="cardUnlockModal" aria-hidden="true" onclick="if(event.target===this) closeCardUnlockModal(true)">
+  <div class="phone-dialog" role="dialog" aria-modal="true" aria-labelledby="unlockModalTitle">
+    <h3 id="unlockModalTitle">Unlock card</h3>
+    <p>Enter the same phone number used while publishing this card.</p>
+    <input id="unlockModalPhone" type="tel" inputmode="numeric" maxlength="15" placeholder="Enter phone number">
+    <div class="phone-actions">
+      <button class="btn" id="cancelUnlockModal" type="button">Cancel</button>
+      <button class="btn orange" id="confirmUnlockModal" type="button">Unlock</button>
+    </div>
+  </div>
+</div>
+
+<button class="g58-whatsapp-round" type="button"
+        onclick="shareG58CardToWhatsApp()"
+        aria-label="Share GRAVITY58 card on WhatsApp"
+        title="Share on WhatsApp">
+  <svg viewBox="0 0 32 32" aria-hidden="true">
+    <path d="M16 3C9.1 3 3.5 8.4 3.5 15.1c0 2.4.7 4.7 2.1 6.6L4 29l7.6-2c1.8 1 3.8 1.5 5.9 1.5 6.9 0 12.5-5.4 12.5-12.1C30 8.4 24.4 3 17.5 3H16zm1.5 22.9c-1.9 0-3.8-.5-5.4-1.5l-.4-.2-4.5 1.2 1.2-4.2-.3-.4c-1.2-1.7-1.8-3.7-1.8-5.7 0-5.3 4.5-9.6 10.1-9.6 5.6 0 10.1 4.3 10.1 9.6s-4.5 9.6-10 9.6zm5.6-7.2c-.3-.1-1.8-.9-2.1-1-.3-.1-.5-.1-.7.2-.2.3-.8 1-1 1.2-.2.2-.4.2-.7.1-1.9-.9-3.1-1.7-4.4-3.8-.3-.5.3-.5.9-1.7.1-.2.1-.4 0-.6-.1-.2-.7-1.7-1-2.3-.3-.6-.5-.6-.7-.6h-.6c-.2 0-.6.1-.9.4-.3.3-1.2 1.1-1.2 2.8 0 1.6 1.2 3.2 1.4 3.4.2.2 2.4 3.5 5.8 4.9 2.2.9 3.1 1 4.2.8.7-.1 1.8-.7 2.1-1.4.3-.7.3-1.3.2-1.4-.1-.2-.3-.3-.6-.4z"/>
+  </svg>
+</button>
+
+<div class="g58-donate-float" aria-label="Open GRAVITY58 Digital Menu">
+  <a class="g58-donate-button digital-menu-launch" href="/digital-menu/">Digital Menu</a>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/appwrite@26.2.0"></script>
+<script src="/js/config.js"></script>
+<script src="/js/appwrite-ads.js"></script>
+<script src="/js/database.js"></script>
+<script src="/js/app.js"></script>
+<script src="/js/site-auth.js"></script>
+</body>
+</html>

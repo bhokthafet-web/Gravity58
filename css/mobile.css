@@ -1,0 +1,6 @@
+html { background: #07111f; }
+body { padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom); }
+@media (display-mode: standalone) {
+  .topbar { padding-top: env(safe-area-inset-top); }
+  button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
+}
