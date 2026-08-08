@@ -2052,8 +2052,8 @@ function generateShortLink() {
   if (type === "instagram") {
     link = `https://instagram.com/${input.replace(/^@/, "").replace(/\s+/g, "")}`;
   } else {
-    const number = cleanNumber(input);
-    if (number.length < 10) {
+    const number = normalizeBidWhatsApp(input);
+    if (number.length < 11 || number.length > 15) {
       alert("Enter a valid WhatsApp number.");
       return;
     }

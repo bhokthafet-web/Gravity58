@@ -1,0 +1,106 @@
+import { test, expect } from "@playwright/test";
+import { monitorPageErrors, prepareMockApi } from "./helpers.js";
+
+const slots = [
+  { id: "slot-1", restaurantKey: "Test Restaurant|Hyderabad", name: "Test Restaurant", city: "Hyderabad", active: true },
+];
+
+test("advertising user can register, book a timed placement and view the request", async ({ page }) => {
+  await prepareMockApi(page, { seed: { slots } });
+  const assertNoErrors = monitorPageErrors(page);
+  await page.goto("/advertise/?restaurant=Test%20Restaurant%7CHyderabad");
+  await page.locator("#showRegister").click();
+  await page.locator('#register input[name="name"]').fill("Ad Customer");
+  await page.locator('#register input[name="phone"]').fill("9876543210");
+  await page.locator('#register input[name="email"]').fill("ads@example.com");
+  await page.locator('#register input[name="password"]').fill("testing123");
+  await page.locator("#register").getByRole("button", { name: "Create Account" }).click();
+  await expect(page.getByText("Welcome, Ad Customer")).toBeVisible();
+
+  await page.locator("#newBooking").click();
+  await expect(page.getByRole("heading", { name: "Book Advertisement Space" })).toBeVisible();
+  await expect(page.locator("#restaurantKey")).toHaveValue("Test Restaurant|Hyderabad");
+  await page.locator('[data-slot="right_rail"]').click();
+  await page.locator("#hours").selectOption("3");
+  await page.locator("#title").fill("Regression Offer");
+  await page.locator("#description").fill("Three-hour automated test campaign.");
+  await page.locator("#submit").click();
+  await expect(page.getByText("Request sent", { exact: false })).toBeVisible();
+  const bookings = await page.evaluate(() => window.__g58Mock.store.bookings);
+  expect(bookings).toHaveLength(1);
+  expect(bookings[0]).toMatchObject({ status: "Requested", hours: 3, restaurantKey: "Test Restaurant|Hyderabad", title: "Regression Offer" });
+  await assertNoErrors();
+});
+
+test("team admin reviews bookings, activates campaigns, moderates posts and blocks accounts", async ({ page }) => {
+  const future = new Date(Date.now() + 3_600_000).toISOString();
+  const seed = {
+    slots,
+    profiles: [{ id: "profile-1", userId: "customer-1", name: "Customer One", email: "customer@example.com", phone: "9876543210", state: "Telangana", district: "Hyderabad", blocked: false }],
+    bookings: [
+      { id: "booking-requested", customerName: "Customer One", customerEmail: "customer@example.com", restaurantKey: "Test Restaurant|Hyderabad", slotId: "right_rail", hours: 3, amount: 300, title: "Requested Ad", description: "Waiting for link", status: "Requested" },
+      { id: "booking-proof", customerName: "Customer Two", customerEmail: "two@example.com", restaurantKey: "Test Restaurant|Hyderabad", slotId: "right_rail", hours: 1, amount: 100, title: "Proof Ad", description: "Ready to activate", status: "Proof Sent" },
+    ],
+    advertisements: [{ id: "ad-live", bookingId: "old", restaurantKey: "Test Restaurant|Hyderabad", slotId: "right_rail", title: "Live Ad", description: "Existing", active: true, status: "Live", expiresAt: future }],
+    posts: [
+      { id: "post-customer", recordKey: "C-TEST", postType: "customer", userId: "customer-1", payload: JSON.stringify({ id: "C-TEST", title: "Customer Test Post", description: "Test", state: "Telangana", district: "Hyderabad", userId: "customer-1" }) },
+      { id: "post-business", recordKey: "B-TEST", postType: "business", userId: "customer-1", payload: JSON.stringify({ id: "B-TEST", title: "Business Test Card", description: "Test", state: "Telangana", district: "Hyderabad", userId: "customer-1" }) },
+    ],
+  };
+  await prepareMockApi(page, { admin: true, seed, state: null });
+  const assertNoErrors = monitorPageErrors(page);
+  page.on("dialog", (dialog) => dialog.accept());
+  await page.goto("/team-admin/");
+  await page.locator('#login input[name="email"]').fill("admin@g58.in");
+  await page.locator('#login input[name="password"]').fill("testing123");
+  await page.locator("#login").getByRole("button", { name: "Secure Login" }).click();
+  await expect(page.getByRole("heading", { name: "Unified Administration" })).toBeVisible();
+
+  await page.locator('[data-view="bookings"]').click();
+  await page.locator('[data-payment="booking-requested"]').click();
+  await page.locator('#payForm input[name="paymentLink"]').fill("https://rzp.io/test-link");
+  await page.locator("#payForm").getByRole("button", { name: "Send to customer portal" }).click();
+  await expect(page.locator("#page")).toContainText("Payment Link Sent");
+
+  await page.locator('[data-activate="booking-proof"]').click();
+  await page.locator('#activateForm input[name="buttonLabel"]').fill("View Test Offer");
+  await page.locator("#activateForm").getByRole("button", { name: "Activate advertisement" }).click();
+  const activated = await page.evaluate(() => window.__g58Mock.store.bookings.find((row) => row.id === "booking-proof"));
+  expect(activated.status).toBe("Live");
+  const generatedCampaign = await page.evaluate(() => window.__g58Mock.store.advertisements.find((row) => row.bookingId === "booking-proof"));
+  expect(generatedCampaign).toMatchObject({ active: true, status: "Live", buttonLabel: "View Test Offer" });
+
+  await page.locator('[data-view="marketplace"]').click();
+  await expect(page.locator("#marketTable")).toContainText("Customer Test Post");
+  await page.locator('[data-edit-post="C-TEST"]').click();
+  await page.locator('#editPostForm input[name="title"]').fill("Updated Customer Post");
+  await page.locator("#editPostForm").getByRole("button", { name: "Save Changes" }).click();
+  await expect(page.locator("#marketTable")).toContainText("Updated Customer Post");
+
+  await page.locator('[data-view="accounts"]').click();
+  await page.locator('[data-block="profile-1"]').click();
+  const profile = await page.evaluate(() => window.__g58Mock.store.profiles.find((row) => row.id === "profile-1"));
+  expect(profile.blocked).toBe(true);
+
+  await page.locator('[data-view="campaigns"]').click();
+  await expect(page.locator("#page")).toContainText("Live Ad");
+  await page.locator('[data-toggle="ad-live"]').click();
+  const paused = await page.evaluate(() => window.__g58Mock.store.advertisements.find((row) => row.id === "ad-live"));
+  expect(paused).toMatchObject({ active: false, status: "Paused" });
+  await assertNoErrors();
+});
+
+test("password recovery rejects mismatches and completes a valid reset", async ({ page }) => {
+  await prepareMockApi(page, { state: null });
+  const assertNoErrors = monitorPageErrors(page);
+  await page.goto("/reset-password/?userId=test-user&secret=test-secret");
+  await expect(page.locator("#savePassword")).toBeEnabled();
+  await page.locator("#newPassword").fill("newpassword123");
+  await page.locator("#confirmPassword").fill("different123");
+  await page.locator("#savePassword").click();
+  await expect(page.locator("#resetMessage")).toContainText("match");
+  await page.locator("#confirmPassword").fill("newpassword123");
+  await page.locator("#savePassword").click();
+  await expect(page.locator("#resetMessage")).toContainText(/updated|success/i);
+  await assertNoErrors();
+});
