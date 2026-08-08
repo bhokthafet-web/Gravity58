@@ -107,11 +107,22 @@ test("customer adds quantities and preparation instructions, places order and tr
   await expect(page.getByRole("heading", { name: "Your Cart" })).toBeVisible();
   await page.locator("#confirmPlaceOrder").click();
   await expect(page).toHaveURL(/#track&order=/);
-  await expect(page.getByRole("heading", { name: /Your Food Is Being Prepared/ })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Order Received" })).toBeVisible();
+  await expect(page.getByText("Your Food Is Being Prepared", { exact: true })).toHaveCount(0);
   const order = await page.evaluate(() => JSON.parse(localStorage.getItem("gravity58DigitalMenu")).orders[0]);
   expect(order.customerName).toBe("Menu Customer");
   expect(order.items.find((item) => item.name === "Masala Dosa").qty).toBe(2);
   expect(order.items.find((item) => item.name === "Paneer Sandwich").prepareInstruction).toContain("Less spicy");
+
+  await page.evaluate(() => {
+    const saved = JSON.parse(localStorage.getItem("gravity58DigitalMenu"));
+    saved.orders[0].status = "Ready";
+    localStorage.setItem("gravity58DigitalMenu", JSON.stringify(saved));
+  });
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "Your Food Is Ready!" })).toBeVisible();
+  await expect(page.getByText("Your order will be served soon", { exact: true })).toBeVisible();
+  await expect(page.getByText("Your Food Is Being Prepared", { exact: true })).toHaveCount(0);
   await assertNoErrors();
 });
 
