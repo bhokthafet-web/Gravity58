@@ -40,7 +40,9 @@ test("restaurant owner login, menu CRUD, availability, orders, QR, reports and s
   await pendingCard.getByRole("button", { name: "Accept" }).click();
   await expect(page.locator("#ordersGrid")).toContainText("Accepted");
   const acceptedCard = page.locator("#ordersGrid .order-card", { hasText: "Accepted" }).first();
-  await acceptedCard.getByRole("button", { name: "Done" }).click();
+  await acceptedCard.getByRole("button", { name: "Start Preparing" }).click();
+  const preparingCard = page.locator("#ordersGrid .order-card", { hasText: "Preparing" }).first();
+  await preparingCard.getByRole("button", { name: "Mark Ready" }).click();
   const readyCard = page.locator("#ordersGrid .order-card", { hasText: "Ready" }).first();
   await readyCard.getByRole("button", { name: "Complete" }).click();
   await expect(page.locator("#ordersGrid")).toContainText("Completed");
@@ -119,6 +121,15 @@ test("customer adds quantities and preparation instructions, places order and tr
   expect(order.customerName).toBe("Menu Customer");
   expect(order.items.find((item) => item.name === "Masala Dosa").qty).toBe(2);
   expect(order.items.find((item) => item.name === "Paneer Sandwich").prepareInstruction).toContain("Less spicy");
+
+  await page.evaluate(() => {
+    const saved = JSON.parse(localStorage.getItem("gravity58DigitalMenu"));
+    saved.orders[0].status = "Preparing";
+    localStorage.setItem("gravity58DigitalMenu", JSON.stringify(saved));
+  });
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "Order Preparing" })).toBeVisible();
+  await expect(page.locator(".pot-scene")).toBeVisible();
 
   await page.evaluate(() => {
     const saved = JSON.parse(localStorage.getItem("gravity58DigitalMenu"));
