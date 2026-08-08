@@ -104,3 +104,16 @@ test("password recovery rejects mismatches and completes a valid reset", async (
   await expect(page.locator("#resetMessage")).toContainText(/updated|success/i);
   await assertNoErrors();
 });
+
+test("team admin login can request its own password reset link", async ({ page }) => {
+  await prepareMockApi(page, { state: null });
+  const assertNoErrors = monitorPageErrors(page);
+  await page.goto("/team-admin/");
+  await page.locator("#forgotAdminPassword").click();
+  await page.locator('#adminRecoveryForm input[name="email"]').fill("admin@g58.in");
+  await page.locator("#adminRecoveryForm").getByRole("button", { name: "Send Reset Link" }).click();
+  await expect(page.locator("#toast")).toContainText("Password reset link sent");
+  const recoveries = await page.evaluate(() => window.__g58Mock.recoveries);
+  expect(recoveries).toEqual([{ email: "admin@g58.in", url: "http://127.0.0.1:4173/reset-password/" }]);
+  await assertNoErrors();
+});
