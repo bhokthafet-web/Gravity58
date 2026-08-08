@@ -10,6 +10,8 @@
     slots: config.restaurantsCollectionId || "ad_slots",
     posts: config.postsCollectionId || "g58_posts",
   };
+  const sharedTableId = config.sharedTableId || "";
+  const tableIdFor = (kind) => sharedTableId || collections[kind];
   const configured = Boolean(window.Appwrite && config.endpoint && config.projectId && config.databaseId && !String(config.projectId).includes("YOUR_"));
   const fallbackKey = "gravity58AdvertisementData";
   const localRead = () => {
@@ -19,7 +21,12 @@
   const localWrite = (data) => localStorage.setItem(fallbackKey, JSON.stringify(data));
   const clean = (row) => {
     if (!row) return row;
-    const result = { ...row };
+    let payload = {};
+    if (typeof row.payload === "string") {
+      try { payload = JSON.parse(row.payload) || {}; }
+      catch { payload = {}; }
+    } else if (row.payload && typeof row.payload === "object") payload = row.payload;
+    const result = { ...row, ...payload };
     result.id ||= result.$id;
     return result;
   };
@@ -60,13 +67,18 @@
       return rows.map(clean);
     }
     const queries = [Appwrite.Query.limit(100), Appwrite.Query.orderDesc("$createdAt")];
-    Object.entries(filters).forEach(([key, value]) => { if (value !== undefined && value !== "") queries.push(Appwrite.Query.equal(key, value)); });
+    if (sharedTableId) queries.push(Appwrite.Query.equal("kind", kind));
+    else Object.entries(filters).forEach(([key, value]) => { if (value !== undefined && value !== "") queries.push(Appwrite.Query.equal(key, value)); });
+    let rows;
     if (tables) {
-      const response = await tables.listRows({ databaseId: config.databaseId, tableId: collections[kind], queries });
-      return response.rows.map(clean);
+      const response = await tables.listRows({ databaseId: config.databaseId, tableId: tableIdFor(kind), queries });
+      rows = response.rows.map(clean);
+    } else {
+      const response = await databases.listDocuments({ databaseId: config.databaseId, collectionId: tableIdFor(kind), queries });
+      rows = response.documents.map(clean);
     }
-    const response = await databases.listDocuments({ databaseId: config.databaseId, collectionId: collections[kind], queries });
-    return response.documents.map(clean);
+    Object.entries(filters).forEach(([key, value]) => { if (value !== undefined && value !== "") rows = rows.filter((row) => row[key] === value); });
+    return rows;
   }
 
   async function create(kind, data, documentId, permissions) {
@@ -80,8 +92,9 @@
       return row;
     }
     if (!permissions) permissions = permissionSet(kind, (await currentUser())?.$id);
-    if (tables) return clean(await tables.createRow({ databaseId: config.databaseId, tableId: collections[kind], rowId: documentId || Appwrite.ID.unique(), data: encodeData(data), permissions }));
-    return clean(await databases.createDocument({ databaseId: config.databaseId, collectionId: collections[kind], documentId: documentId || Appwrite.ID.unique(), data: encodeData(data), permissions }));
+    const rowData = sharedTableId ? { kind, payload: JSON.stringify(encodeData(data)) } : encodeData(data);
+    if (tables) return clean(await tables.createRow({ databaseId: config.databaseId, tableId: tableIdFor(kind), rowId: documentId || Appwrite.ID.unique(), data: rowData, permissions }));
+    return clean(await databases.createDocument({ databaseId: config.databaseId, collectionId: tableIdFor(kind), documentId: documentId || Appwrite.ID.unique(), data: rowData, permissions }));
   }
 
   async function update(kind, documentId, data) {
@@ -94,8 +107,17 @@
       window.dispatchEvent(new CustomEvent("g58-ad-data-changed", { detail: { kind, row } }));
       return row;
     }
-    if (tables) return clean(await tables.updateRow({ databaseId: config.databaseId, tableId: collections[kind], rowId: documentId, data: encodeData(data) }));
-    return clean(await databases.updateDocument({ databaseId: config.databaseId, collectionId: collections[kind], documentId, data: encodeData(data) }));
+    let rowData = encodeData(data);
+    if (sharedTableId) {
+      const previous = tables
+        ? await tables.getRow({ databaseId: config.databaseId, tableId: tableIdFor(kind), rowId: documentId })
+        : await databases.getDocument({ databaseId: config.databaseId, collectionId: tableIdFor(kind), documentId });
+      let previousPayload = {};
+      try { previousPayload = JSON.parse(previous.payload || "{}") || {}; } catch {}
+      rowData = { payload: JSON.stringify({ ...previousPayload, ...rowData }) };
+    }
+    if (tables) return clean(await tables.updateRow({ databaseId: config.databaseId, tableId: tableIdFor(kind), rowId: documentId, data: rowData }));
+    return clean(await databases.updateDocument({ databaseId: config.databaseId, collectionId: tableIdFor(kind), documentId, data: rowData }));
   }
 
   async function remove(kind, documentId) {
@@ -106,8 +128,8 @@
       window.dispatchEvent(new CustomEvent("g58-ad-data-changed", { detail: { kind, documentId } }));
       return true;
     }
-    if (tables) await tables.deleteRow({ databaseId: config.databaseId, tableId: collections[kind], rowId: documentId });
-    else await databases.deleteDocument({ databaseId: config.databaseId, collectionId: collections[kind], documentId });
+    if (tables) await tables.deleteRow({ databaseId: config.databaseId, tableId: tableIdFor(kind), rowId: documentId });
+    else await databases.deleteDocument({ databaseId: config.databaseId, collectionId: tableIdFor(kind), documentId });
     return true;
   }
 
@@ -152,7 +174,7 @@
       window.addEventListener("storage", handler);
       return () => { window.removeEventListener("g58-ad-data-changed", handler); window.removeEventListener("storage", handler); };
     }
-    return client.subscribe(tables ? `databases.${config.databaseId}.tables.${collections.advertisements}.rows` : `databases.${config.databaseId}.collections.${collections.advertisements}.documents`, () => onChange?.());
+    return client.subscribe(tables ? `databases.${config.databaseId}.tables.${tableIdFor("advertisements")}.rows` : `databases.${config.databaseId}.collections.${tableIdFor("advertisements")}.documents`, () => onChange?.());
   }
 
   window.Gravity58Ads = Object.freeze({
