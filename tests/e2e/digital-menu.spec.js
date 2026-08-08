@@ -50,7 +50,8 @@ test("restaurant owner login, menu CRUD, availability, orders, QR, reports and s
 
   await page.locator('[data-view="qr"]').click();
   await expect(page.locator("#qrcode [data-testid='qr-rendered']")).toBeVisible();
-  await expect(page.locator(".qr-card")).toContainText("#menu&restaurant=res_cafe");
+  await expect(page.locator(".qr-card")).not.toContainText("#menu&restaurant=res_cafe");
+  await expect(page.locator("#copyQr")).toHaveText("Copy Menu Link");
 
   await page.locator('[data-view="reports"]').click();
   await expect(page.getByRole("heading", { name: "Reports" })).toBeVisible();
