@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="theme-color" content="#07111f" />
+  <meta name="theme-color" content="#fff8ee" />
   <title>Free POS UPI Billing Tool | GRAVITY58</title>
   <meta name="description" content="Use the free GRAVITY58 POS tool to create UPI payment QR codes, calculate GST, print receipts, save recent bills and generate daily sales reports.">
   <link rel="canonical" href="https://g58.in/pos/">
@@ -435,7 +435,7 @@
     @media(max-width:560px){.topbar{align-items:stretch;flex-direction:column}.nav-actions{width:100%;justify-content:space-between}.nav-icon-btn{width:auto;flex:1}.plan-grid{grid-template-columns:1fr}.upgrade-dialog{padding:18px}.pos-security-banner{align-items:flex-start;grid-template-columns:auto minmax(0,1fr)}.pos-banner-actions{grid-column:1/-1;width:100%;display:grid;grid-template-columns:1fr 1fr}.pos-banner-actions button{width:100%}.pos-banner-actions .pos-how-button{grid-column:auto}.value-entry,.value-entry.with-note{grid-template-columns:minmax(0,1fr) 82px}.value-entry #itemNoteInput,.value-entry #addValueBtn{grid-column:1/-1}}
 
 </style>
-  <link rel="stylesheet" href="production-theme.css?v=22">
+  <link rel="stylesheet" href="production-theme.css?v=23">
 </head>
 
 <body>
@@ -456,7 +456,7 @@
       <button class="nav-icon-btn" type="button" data-open-tab="jobs" aria-label="P Wall" title="P Wall">
         <span class="nav-symbol">P</span><span class="nav-tooltip">P - Wall</span>
       </button>
-      <button class="nav-icon-btn" type="button" data-open-tab="business" aria-label="B Wall" title="B Wall">
+      <button class="nav-icon-btn" type="button" data-open-tab="business" aria-label="C Wall" title="C Wall">
         <span class="nav-symbol">C</span><span class="nav-tooltip">C - Wall</span>
       </button>
       <a class="nav-icon-btn pos-nav-btn" href="/pos/" aria-label="Secure Billing POS" title="Secure Billing">
@@ -724,33 +724,43 @@
   </div>
 
   <div class="modal" id="qrModal" role="dialog" aria-modal="true" aria-labelledby="qrModalTitle">
-    <div class="modal-card">
-      <div class="timer-ring" id="timerRing">120s</div>
-      <h2 class="modal-title" id="qrModalTitle">UPI Payment QR</h2>
-      <p class="modal-sub">Scan with PhonePe, Google Pay, Paytm, BHIM, or another UPI app.</p>
+    <div class="modal-card payment-qr-card">
+      <header class="payment-qr-header">
+        <div>
+          <span>GRAVITY58 SECURE PAYMENT</span>
+          <h2 class="modal-title" id="qrModalTitle">UPI Payment QR</h2>
+          <p class="modal-sub">Scan with PhonePe, Google Pay, Paytm, BHIM, or another UPI app.</p>
+        </div>
+        <div class="timer-ring" id="timerRing">120s</div>
+      </header>
 
-      <div id="activeQrContent">
-        <div class="qr-amount" id="qrAmount">₹0.00</div>
-        <div class="qr-payee" id="qrPayee">Pay to —</div>
-        <div id="qrcode"></div>
-        <p class="helper" style="margin-top:15px">Verify the UPI ID and amount before paying.</p>
-      </div>
+      <div class="payment-qr-body">
+        <div id="activeQrContent" class="payment-qr-content">
+          <div class="payment-qr-frame"><div id="qrcode"></div></div>
+          <div class="payment-qr-copy">
+            <span>AMOUNT TO PAY</span>
+            <div class="qr-amount" id="qrAmount">₹0.00</div>
+            <div class="qr-payee" id="qrPayee">Pay to —</div>
+            <p class="helper">Verify the UPI ID and amount before paying.</p>
+          </div>
+        </div>
 
-      <div class="expiry-message" id="expiryMessage">
-        This QR display session ended after 120 seconds. Show the existing QR again or start a new bill.
-      </div>
+        <div class="expiry-message" id="expiryMessage">
+          This QR display session ended after 120 seconds. Show the existing QR again or start a new bill.
+        </div>
 
-      <div class="modal-actions" id="activeActions">
-        <button class="btn btn-outline" id="copyLinkBtn">Copy UPI Link</button>
-        <button class="btn btn-success" id="printBtn" style="display:none">Print Receipt</button>
-        <button type="button" class="btn btn-success" id="paymentReceivedBtn">Payment Received</button>
-        <button type="button" class="btn btn-danger" id="paymentCancelledBtn">Cancelled</button>
-      </div>
+        <div class="modal-actions" id="activeActions">
+          <button class="btn btn-outline" id="copyLinkBtn">Copy UPI Link</button>
+          <button class="btn btn-success" id="printBtn" style="display:none">Print Receipt</button>
+          <button type="button" class="btn btn-success" id="paymentReceivedBtn">Payment Received</button>
+          <button type="button" class="btn btn-danger" id="paymentCancelledBtn">Cancelled</button>
+        </div>
 
-      <div class="expired-actions" id="expiredActions">
-        <button class="btn btn-primary" id="showExistingBtn">Show Existing QR</button>
-        <button type="button" class="btn btn-success" id="expiredReceivedBtn">Payment Received</button>
-        <button type="button" class="btn btn-danger" id="expiredCancelledBtn">Cancelled</button>
+        <div class="expired-actions" id="expiredActions">
+          <button class="btn btn-primary" id="showExistingBtn">Show Existing QR</button>
+          <button type="button" class="btn btn-success" id="expiredReceivedBtn">Payment Received</button>
+          <button type="button" class="btn btn-danger" id="expiredCancelledBtn">Cancelled</button>
+        </div>
       </div>
     </div>
   </div>
@@ -1643,7 +1653,7 @@
 <script src="https://cdn.jsdelivr.net/npm/appwrite@26.2.0"></script>
 <script src="/js/config.js?v=22"></script>
 <script src="/js/appwrite-ads.js?v=6"></script>
-<script src="/js/pos-premium.js?v=22"></script>
+<script src="/js/pos-premium.js?v=23"></script>
 
   <script>
   document.addEventListener("DOMContentLoaded", () => {

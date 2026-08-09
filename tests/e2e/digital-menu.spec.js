@@ -254,6 +254,7 @@ test("restaurant menu loads from the signed-in account and CSV changes persist t
   };
   await prepareMockApi(page, { initialUser: { $id: "cloud-owner-1", email: "owner@example.com", name: "Cloud Owner" }, state: null, seed: { "digital_menu_cloud-owner-1": [cloudMenu] } });
   const assertNoErrors = monitorPageErrors(page);
+  page.on("dialog", (dialog) => dialog.accept());
   await page.goto("/digital-menu/");
   await expect(page.getByRole("heading", { name: /Cloud Account Café/ })).toBeVisible();
   await expect(page.getByText("G58 Cloud")).toHaveText("G58 Cloud");
@@ -286,6 +287,16 @@ test("restaurant menu loads from the signed-in account and CSV changes persist t
   await expect(page.locator("#toast")).toContainText("100 KB or smaller");
   await expect(page.locator("#menuGrid")).not.toContainText("Large Image Item");
 
+  await page.locator("#menuImportMode").selectOption("replace");
+  const replacementCsv = "category,item_name,description,price,food_type,available\nChef Specials,Replacement Meal,Fresh replacement,225,Veg,true\n";
+  await page.locator("#menuCsvFile").setInputFiles({ name: "replacement.csv", mimeType: "text/csv", buffer: Buffer.from(replacementCsv) });
+  await expect(page.locator("#toast")).toContainText("replaced the previous menu");
+  await expect(page.locator("#menuGrid")).toContainText("Replacement Meal");
+  await expect(page.locator("#menuGrid")).not.toContainText("Masala Tea");
+  await expect(page.locator("#menuGrid")).not.toContainText("Cold Coffee");
+  const replaced = await page.evaluate(() => window.__g58Mock.store["digital_menu_cloud-owner-1"][0]);
+  expect(replaced.items.map((row) => row.name)).toEqual(["Replacement Meal"]);
+
   await page.locator('[data-view="qr"]').click();
   const qrText = await page.locator("#qrcode").getAttribute("data-qr-text");
   expect(qrText).toContain("cloud=cloud-cafe");
@@ -311,6 +322,25 @@ test("customer can load the latest account menu on another device", async ({ pag
   await expect(page.getByRole("heading", { name: "Cloud Meal" })).toBeVisible();
   await expect(page.locator('.poster-menu-item img[src="https://cdn.example.com/cloud-meal.jpg"]')).toBeVisible();
   await expect(page.getByRole("button", { name: "ADD" })).toBeVisible();
+  await assertNoErrors();
+});
+
+test("older customer links recover a missing owner and repair the URL", async ({ page }) => {
+  const cloudMenu = {
+    id: "ownerless-cafe",
+    ownerId: "recovered-owner",
+    schemaVersion: 2,
+    restaurant: { id: "ownerless-cafe", name: "Recovered Café", type: "Café", city: "Hyderabad", open: true, accepting: true, tax: 5, service: 0, identification: "Customer Name", restaurantKey: "Recovered Café|Hyderabad", social: {} },
+    categories: [{ id: "drinks", name: "Drinks" }],
+    items: [{ id: "tea", categoryId: "drinks", name: "Fresh Tea", price: 40, type: "Veg", available: true }],
+  };
+  await prepareMockApi(page, { state: null, seed: { "digital_menu_public": [cloudMenu] } });
+  const assertNoErrors = monitorPageErrors(page);
+  await page.goto("/digital-menu/#menu?cloud=ownerless-cafe");
+  await expect(page.getByRole("heading", { name: "Recovered Café", exact: true })).toBeVisible();
+  await expect(page).toHaveURL(/#menu&cloud=ownerless-cafe&owner=recovered-owner$/);
+  await page.getByRole("button", { name: "Close dialog" }).click();
+  await expect(page.getByRole("heading", { name: "Fresh Tea" })).toBeVisible();
   await assertNoErrors();
 });
 

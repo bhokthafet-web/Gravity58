@@ -184,7 +184,8 @@
       if (!isPremium()) return box('<div class="locked-note">Activate Premium to use menu import and optional inventory.</div>');
       box(`<div class="premium-grid"><article class="premium-box"><h3>Import menu CSV</h3>
         <p>CSV is the only menu-item input. Required columns: <b>name, category, price</b>. Optional columns: <b>gst, available, stock</b>.</p>
-        <input id="menuImportFile" type="file" accept=".csv,text/csv"><div class="gate-actions"><button class="btn btn-outline" id="importMenu">Import CSV</button><button class="btn btn-dark" id="sampleMenu">Download sample</button></div><p id="importStatus"></p>
+        <div class="field" style="margin-top:14px"><label>Import method</label><select id="posMenuImportMode"><option value="merge">Add or update existing menu</option><option value="replace">Overwrite entire menu</option></select></div>
+        <input id="menuImportFile" type="file" accept=".csv,text/csv"><div class="gate-actions"><button class="btn btn-outline" id="importMenu">Import CSV</button><button class="btn btn-dark" id="sampleMenu">Download sample</button></div><p id="importStatus">Add/update keeps current items. Overwrite replaces the complete Premium POS menu after confirmation.</p>
         <label class="option-card" style="margin-top:18px"><input id="inventoryToggle" type="checkbox" ${inventoryEnabled() ? "checked" : ""}><span><strong>Enable inventory</strong><small>Optional. Stock is reduced only after a bill is marked Payment Received.</small></span></label>
       </article><article class="premium-box"><h3>Configured menu</h3><div class="menu-list" id="localMenuList"></div></article></div>`);
       $("sampleMenu").onclick = downloadMenuSample;
@@ -297,15 +298,23 @@
   async function importMenuFile() {
     const file = $("menuImportFile").files[0];
     if (!file) return void ($("importStatus").textContent = "Choose a CSV file first.");
+    const mode = $("posMenuImportMode")?.value || "merge";
+    if (mode === "replace" && menu.length && !confirm("Overwrite every current Premium POS menu item?")) return;
     const lines = (await file.text()).split(/\r?\n/).filter(Boolean);
     const headers = (lines.shift() || "").split(",").map((x) => x.trim().toLowerCase());
     if (["name", "category", "price"].some((field) => !headers.includes(field))) return void ($("importStatus").textContent = "Required columns: name, category, price.");
     const imported = lines.map(parseCsvLine).map((cells) => Object.fromEntries(headers.map((header, index) => [header, cells[index] ?? ""]))).map((row) => ({
       id: id(), name: row.name.trim(), category: row.category.trim() || "General", price: Number(row.price), gst: Number(row.gst || 0), available: !["false", "no", "0"].includes(String(row.available).toLowerCase()), stock: Number(row.stock || 0),
     })).filter((row) => row.name && Number.isFinite(row.price) && row.price > 0);
-    menu.push(...imported);
+    if (!imported.length) return void ($("importStatus").textContent = "No valid menu items were found in this CSV.");
+    if (mode === "replace") menu = imported;
+    else imported.forEach((row) => {
+      const current = menu.find((item) => item.name.trim().toLowerCase() === row.name.toLowerCase() && item.category.trim().toLowerCase() === row.category.toLowerCase());
+      if (current) Object.assign(current, row, { id: current.id });
+      else menu.push(row);
+    });
     persistMenu();
-    $("importStatus").textContent = `${imported.length} menu item(s) imported. Every row can now be removed individually.`;
+    $("importStatus").textContent = mode === "replace" ? `${imported.length} menu item(s) replaced the previous menu.` : `${imported.length} menu item(s) added or updated.`;
     renderMenuList();
   }
 

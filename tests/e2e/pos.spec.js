@@ -26,6 +26,9 @@ async function configurePos(page, { gst = false } = {}) {
 test("free POS validates setup, calculates quantity and settles received/cancelled bills", async ({ page }) => {
   const assertNoErrors = monitorPageErrors(page);
   await createPosAccount(page);
+  await expect(page.getByRole("link", { name: "Home" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "P Wall" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "C Wall" })).toBeVisible();
 
   await page.locator("#continueBtn").click();
   await expect(page.locator("#setupUpiError")).toBeVisible();
@@ -42,6 +45,8 @@ test("free POS validates setup, calculates quantity and settles received/cancell
 
   await page.locator("#generateBtn").click();
   await expect(page.locator("#qrModal")).toHaveClass(/show/);
+  await expect(page.locator(".payment-qr-header")).toBeVisible();
+  await expect(page.locator(".payment-qr-content")).toBeVisible();
   await expect(page.locator("#qrcode [data-testid='qr-rendered']")).toBeVisible();
   await page.locator("#paymentReceivedBtn").click();
   await expect(page.locator("#qrModal")).not.toHaveClass(/show/);
@@ -117,12 +122,21 @@ test("premium activation, menu import/removal, optional inventory and dashboard 
   const csv = "name,category,price,gst,available,stock\nFish Fry,Starters,200,5,true,5\n\"Prawns, Spicy\",Marinations,300,5,false,0\n";
   await page.locator("#menuImportFile").setInputFiles({ name: "menu.csv", mimeType: "text/csv", buffer: Buffer.from(csv) });
   await page.locator("#importMenu").click();
-  await expect(page.locator("#importStatus")).toContainText("2 menu item(s) imported");
+  await expect(page.locator("#importStatus")).toContainText("2 menu item(s) added or updated");
   await expect(page.locator("#localMenuList")).toContainText("Prawns, Spicy");
 
   const firstRemove = page.locator("[data-remove-menu]").first();
   await firstRemove.click();
   await expect(page.locator("#localMenuList")).not.toContainText("Chicken Marination");
+
+  await page.locator("#posMenuImportMode").selectOption("replace");
+  const replacementCsv = "name,category,price,gst,available,stock\nReplacement Meal,Chef Specials,225,5,true,7\n";
+  await page.locator("#menuImportFile").setInputFiles({ name: "replacement.csv", mimeType: "text/csv", buffer: Buffer.from(replacementCsv) });
+  await page.locator("#importMenu").click();
+  await expect(page.locator("#importStatus")).toContainText("replaced the previous menu");
+  await expect(page.locator("#localMenuList")).toContainText("Replacement Meal");
+  await expect(page.locator("#localMenuList")).not.toContainText("Fish Fry");
+  await expect(page.locator("#localMenuList")).not.toContainText("Prawns, Spicy");
 
   await page.locator('#premiumShell [data-p="dashboard"]').click();
   await expect(page.locator("#pp")).toContainText("Business dashboard");
