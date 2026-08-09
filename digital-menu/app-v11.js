@@ -162,6 +162,21 @@ async function persistCloudMenu(restaurantId=state.activeRestaurantId){
   return record;
 }
 function applyCloudMenus(records){const userId=state.session?.userId;if(!userId)return;const oldIds=new Set(state.restaurants.filter(row=>row.ownerId===userId).map(row=>row.id));state.restaurants=state.restaurants.filter(row=>row.ownerId!==userId);state.categories=state.categories.filter(row=>!oldIds.has(row.restaurantId));state.items=state.items.filter(row=>!oldIds.has(row.restaurantId));for(const record of records){if(!record?.restaurant?.id)continue;const rid=record.restaurant.id;state.restaurants.push({...record.restaurant,id:rid,ownerId:userId,cloudRecordId:record.$id||record.id||rid,logo:'G',restaurantKey:record.restaurant.restaurantKey||`${record.restaurant.name}|${record.restaurant.city}`});state.categories.push(...(record.categories||[]).map(row=>({...row,restaurantId:rid})));state.items.push(...(record.items||[]).map(row=>({...row,restaurantId:rid,available:row.available!==false,prepareInstructionsEnabled:!!row.prepareInstructionsEnabled})))}}
+function applyCloudMenusDeduped(records){
+  const userId=state.session?.userId;if(!userId)return;
+  const incomingIds=new Set(records.map(record=>record?.restaurant?.id).filter(Boolean));
+  const oldIds=new Set(state.restaurants.filter(row=>row.ownerId===userId).map(row=>row.id));
+  const replaceIds=new Set([...oldIds,...incomingIds]);
+  state.restaurants=state.restaurants.filter(row=>row.ownerId!==userId&&!incomingIds.has(row.id));
+  state.categories=state.categories.filter(row=>!replaceIds.has(row.restaurantId));
+  state.items=state.items.filter(row=>!replaceIds.has(row.restaurantId));
+  for(const record of records){
+    if(!record?.restaurant?.id)continue;const rid=record.restaurant.id;
+    state.restaurants.push({...record.restaurant,id:rid,ownerId:userId,cloudRecordId:record.$id||record.id||rid,logo:'G',restaurantKey:record.restaurant.restaurantKey||`${record.restaurant.name}|${record.restaurant.city}`});
+    state.categories.push(...(record.categories||[]).map(row=>({...row,restaurantId:rid})));
+    state.items.push(...(record.items||[]).map(row=>({...row,restaurantId:rid,available:row.available!==false,prepareInstructionsEnabled:!!row.prepareInstructionsEnabled})));
+  }
+}
 async function syncCloudMenus(){
   if(!isCloudMenuSession()||cloudMenuSyncing)return;
   cloudMenuSyncing=true;
@@ -180,7 +195,7 @@ async function syncCloudMenus(){
         if(permissions?.[0]&&record.$permissions?.includes(permissions[0]))return record;
         try{return await Gravity58Ads.update(kind,recordId,{},permissions)}catch(error){console.warn('Customer menu access repair failed',error);return record}
       }));
-      applyCloudMenus(records);
+      applyCloudMenusDeduped(records);
       if(!ownerRestaurants().some(row=>row.id===state.activeRestaurantId))state.activeRestaurantId=ownerRestaurants()[0]?.id||'';
       save();
     }
@@ -533,6 +548,18 @@ async function loadRemoteMenuConfig(source){
 
 function cloudRecordToConfig(record){if(!record?.restaurant?.id||!Array.isArray(record.categories)||!Array.isArray(record.items))throw new Error('This restaurant menu is not available');return {g58MenuConfig:1,restaurant:{...record.restaurant},categories:record.categories.map(row=>({...row,restaurantId:record.restaurant.id})),items:record.items.map(row=>({...row,restaurantId:record.restaurant.id,available:row.available!==false}))}}
 function cacheCloudMenuForOrders(config,ownerId){const rid=config.restaurant.id,existing=state.restaurants.find(row=>row.id===rid),ownerIdForCache=existing?.ownerId||`public_${ownerId}`;state.restaurants=state.restaurants.filter(row=>row.id!==rid);state.categories=state.categories.filter(row=>row.restaurantId!==rid);state.items=state.items.filter(row=>row.restaurantId!==rid);state.restaurants.push({...config.restaurant,ownerId:ownerIdForCache,cloudRecordId:rid,logo:'G'});state.categories.push(...config.categories.map(row=>({...row,restaurantId:rid})));state.items.push(...config.items.map(row=>({...row,restaurantId:rid})));save()}
+function cacheCloudMenuForOrdersSafely(config,ownerId){
+  const rid=config.restaurant.id,existing=state.restaurants.find(row=>row.id===rid);
+  const signedInOwner=state.session?.provider==='gravity58'&&cloudOwnerId()===ownerId?state.session.userId:'';
+  const ownerIdForCache=existing?.ownerId||signedInOwner||`public_${ownerId}`;
+  state.restaurants=state.restaurants.filter(row=>row.id!==rid);
+  state.categories=state.categories.filter(row=>row.restaurantId!==rid);
+  state.items=state.items.filter(row=>row.restaurantId!==rid);
+  state.restaurants.push({...config.restaurant,ownerId:ownerIdForCache,cloudRecordId:rid,logo:'G'});
+  state.categories.push(...config.categories.map(row=>({...row,restaurantId:rid})));
+  state.items.push(...config.items.map(row=>({...row,restaurantId:rid})));
+  save();
+}
 async function loadCloudMenuConfig(recordId,ownerId){
   if(remoteMenuLoading)return;
   remoteMenuLoading=true;
@@ -546,7 +573,7 @@ async function loadCloudMenuConfig(recordId,ownerId){
     if(ownerId&&record.ownerId!==ownerId)throw new Error('Restaurant menu owner does not match this link');
     remoteMenuConfig=cloudRecordToConfig(record);
     remoteMenuSource=`cloud:${resolvedOwnerId}:${recordId}`;
-    cacheCloudMenuForOrders(remoteMenuConfig,resolvedOwnerId);
+    cacheCloudMenuForOrdersSafely(remoteMenuConfig,resolvedOwnerId);
     if(!ownerId){
       const repaired=`#menu&cloud=${encodeURIComponent(recordId)}&owner=${encodeURIComponent(resolvedOwnerId)}`;
       history.replaceState(null,'',repaired);

@@ -394,6 +394,38 @@ test("restaurant menu loads from the signed-in account and CSV changes persist t
   await assertNoErrors();
 });
 
+test("cloud menu sync removes a public-cache duplicate of the owner's restaurant", async ({ page }) => {
+  const cloudMenu = {
+    id: "dedupe-cafe", ownerId: "dedupe-owner", schemaVersion: 2,
+    restaurant: { id: "dedupe-cafe", name: "Dedupe Café", type: "Café", city: "Hyderabad", open: true, accepting: true, tax: 0, service: 0, restaurantKey: "Dedupe Café|Hyderabad", social: {} },
+    categories: [{ id: "dedupe-drinks", name: "Drinks" }],
+    items: [{ id: "dedupe-tea", categoryId: "dedupe-drinks", name: "Dedupe Tea", description: "One cloud item", price: 40, type: "Veg", available: true }],
+  };
+  await prepareMockApi(page, { initialUser: { $id: "dedupe-owner", email: "dedupe@example.com", name: "Dedupe Owner" }, state: null, seed: { "digital_menu_dedupe-owner": [cloudMenu] } });
+  const assertNoErrors = monitorPageErrors(page);
+  await page.goto("/digital-menu/");
+  await expect(page.getByRole("heading", { name: /Dedupe Café/ })).toBeVisible();
+  await page.evaluate(() => {
+    const saved = JSON.parse(localStorage.getItem("gravity58DigitalMenu"));
+    saved.restaurants.find((row) => row.id === "dedupe-cafe").ownerId = "public_dedupe-owner";
+    saved.categories.push({ ...saved.categories.find((row) => row.restaurantId === "dedupe-cafe"), id: "duplicate-category" });
+    saved.items.push({ ...saved.items.find((row) => row.restaurantId === "dedupe-cafe"), id: "duplicate-item" });
+    localStorage.setItem("gravity58DigitalMenu", JSON.stringify(saved));
+  });
+  await page.reload();
+  await expect(page.getByRole("heading", { name: /Dedupe Café/ })).toBeVisible();
+  const counts = await page.evaluate(() => {
+    const saved = JSON.parse(localStorage.getItem("gravity58DigitalMenu"));
+    return {
+      restaurants: saved.restaurants.filter((row) => row.id === "dedupe-cafe").length,
+      categories: saved.categories.filter((row) => row.restaurantId === "dedupe-cafe").length,
+      items: saved.items.filter((row) => row.restaurantId === "dedupe-cafe").length,
+    };
+  });
+  expect(counts).toEqual({ restaurants: 1, categories: 1, items: 1 });
+  await assertNoErrors();
+});
+
 test("customer can load the latest account menu on another device", async ({ page }) => {
   const cloudMenu = {
     id: "public-cloud-cafe",
