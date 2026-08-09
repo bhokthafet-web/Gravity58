@@ -203,13 +203,8 @@ async function syncCloudOrders({alertNew=false}={}){
 async function persistCloudOrder(order){
   if(!order?.id||!order.cloudOwnerId)return order;
   const kind=cloudOrderKind(order.cloudOwnerId);
-  // Existing orders must be updated directly. Re-creating an order from the
-  // restaurant session attempts to grant the customer's permissions again,
-  // which Appwrite correctly rejects before it can report the duplicate ID.
-  try{return await Gravity58Ads.update(kind,order.id,order)}
-  catch(error){
-    if(error?.code!==404&&!/not found|record not found/i.test(error?.message||''))throw error;
-  }
+  // This function is only used for a brand-new checkout. Existing orders use
+  // patchCloudOrder so staff never recreate a customer's permission set.
   const current=await Gravity58Ads.ensureUser();
   order.customerAccountId||=current?.$id||'';
   const permissions=Gravity58Ads.collaborativePermissionSet?.(order.customerAccountId)||Gravity58Ads.userPermissionSet([order.customerAccountId]);
@@ -772,7 +767,7 @@ function openCart(r){
         };
         state.orders=Array.isArray(state.orders)?state.orders:[];
         state.orders.unshift(order);
-        await persistCloudOrder(order);
+        Object.assign(order,await persistCloudOrder(order));
         save();
         const verify=JSON.parse(localStorage.getItem('gravity58DigitalMenu')||'{}');
         if(!verify.orders?.some(x=>x.id===order.id)) throw new Error('Order was not saved');
@@ -784,7 +779,7 @@ function openCart(r){
       }catch(err){
         console.error('Place order failed',err);
         button.dataset.busy='0';button.disabled=false;button.textContent='Place Order';
-        fail('Order could not be placed. Please reload this menu and try again.');
+        fail(`Order could not be placed. ${err?.message||'Please reload this menu and try again.'}`);
       }
     });
   });
