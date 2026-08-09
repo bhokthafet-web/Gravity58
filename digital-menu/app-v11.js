@@ -540,8 +540,8 @@ function renderPublicMenu(){
   app.innerHTML=`<main class="public-menu compact-public-menu">
     <section class="menu-sticky-header">
     <section class="compact-menu-hero">
-      <nav class="menu-nav compact-nav"><div><h2>${html(r.name)}</h2><p>${html(r.type)} · ${html(r.city)}</p>${published?'<span class="published-menu-badge">Published customer menu</span>':cloudMenu?'<span class="published-menu-badge">Live account menu</span>':''}</div><a class="sponsor-mini" href="https://www.g58.in" target="_blank" rel="noopener">Sponsored by <strong>Gravity58</strong></a></nav>
-      <div class="compact-hero-layout"><div><p class="eyebrow">PREMIUM DIGITAL MENU</p><h1>Fresh favourites,<br>ready to order</h1><p>${html(r.description)}</p><div class="compact-details"><span>📍 ${html(r.address||r.city)}</span><span>☎ ${html(r.phone||'Contact restaurant')}</span><span class="open-tag">${r.open?'Open now':'Closed'}</span></div></div><div class="compact-hero-dish">${imageMarkup(restaurantHero,r.name?.[0]||'G','compact-hero-photo')}</div></div>
+      <nav class="menu-nav compact-nav"><div>${published?'<span class="published-menu-badge">Published customer menu</span>':cloudMenu?'<span class="published-menu-badge">Live account menu</span>':''}</div><a class="sponsor-mini" href="https://www.g58.in" target="_blank" rel="noopener">Sponsored by <strong>Gravity58</strong></a></nav>
+      <div class="compact-hero-layout"><div><p class="eyebrow">PREMIUM DIGITAL MENU</p><h1>${html(r.name)}</h1><p>${html(r.description)}</p><div class="compact-details"><span>📍 ${html(r.address||r.city)}</span><span>☎ ${html(r.phone||'Contact restaurant')}</span><span class="open-tag">${r.open?'Open now':'Closed'}</span></div></div><div class="compact-hero-dish">${imageMarkup(restaurantHero,r.name?.[0]||'G','compact-hero-photo')}</div></div>
     </section>
     <aside class="header-ad-panel">
       <button class="ad-space-contact" id="contactG58Ads" type="button">Book this ad space · 1080 × 1350 px</button>
