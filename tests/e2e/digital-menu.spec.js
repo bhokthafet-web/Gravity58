@@ -31,6 +31,24 @@ test("restaurant owner login, menu CRUD, availability, orders, QR, reports and s
   const itemCard = page.locator("#menuGrid .menu-item", { hasText: "Regression Platter" });
   await expect(itemCard).toBeVisible();
   await expect(itemCard.locator("img.menu-owner-photo")).toBeVisible();
+  const localImageStorage = await page.evaluate(async () => {
+    const localRecord = localStorage.getItem("gravity58DigitalMenu") || "";
+    const saved = JSON.parse(localRecord);
+    const item = saved.items.find((row) => row.name === "Regression Platter");
+    const blob = await new Promise((resolve, reject) => {
+      const open = indexedDB.open("gravity58LocalMedia", 1);
+      open.onerror = () => reject(open.error);
+      open.onsuccess = () => {
+        const request = open.result.transaction("images", "readonly").objectStore("images").get(item.imageKey);
+        request.onerror = () => reject(request.error);
+        request.onsuccess = () => resolve(request.result);
+      };
+    });
+    return { containsBase64: localRecord.includes("data:image/"), imageKey: item.imageKey, blobSize: blob?.size || 0 };
+  });
+  expect(localImageStorage.containsBase64).toBe(false);
+  expect(localImageStorage.imageKey).toMatch(/^menu-item:/);
+  expect(localImageStorage.blobSize).toBeGreaterThan(0);
   await itemCard.getByRole("button", { name: "Out of stock" }).click();
   await expect(page.locator("#menuGrid .menu-item", { hasText: "Regression Platter" })).toContainText("Out of stock");
   await page.locator("#menuGrid .menu-item", { hasText: "Regression Platter" }).getByRole("button", { name: "Make available" }).click();
@@ -107,6 +125,34 @@ test("mobile menu uses photo cards and keeps advertisement rail on the right", a
   expect(adBox).toBeTruthy();
   expect(adBox.x).toBeGreaterThan(menuBox.x);
   expect(adBox.y).toBeLessThan(menuBox.y + menuBox.height / 2);
+  await assertNoErrors();
+});
+
+test("public menu offers premium category, veg, non-veg, search and availability filters", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await prepareOffline(page, { state: null });
+  const assertNoErrors = monitorPageErrors(page);
+  await page.goto("/digital-menu/#menu&restaurant=res_family");
+  await page.getByRole("button", { name: "Close dialog" }).click();
+
+  await expect(page.locator("#publicMenuCount")).toHaveText("3 items");
+  await page.getByRole("button", { name: "Veg", exact: true }).click();
+  await expect(page.locator("#publicMenuCount")).toHaveText("1 item");
+  await expect(page.locator(".poster-menu-item:visible")).toContainText("Paneer Butter Masala");
+
+  await page.getByRole("button", { name: "Non-Veg", exact: true }).click();
+  await expect(page.locator("#publicMenuCount")).toHaveText("2 items");
+  await page.locator("#publicMenuSearch").fill("biryani");
+  await expect(page.locator("#publicMenuCount")).toHaveText("1 item");
+  await expect(page.locator(".poster-menu-item:visible")).toContainText("Chicken Biryani");
+
+  await page.locator("#publicMenuSearch").fill("");
+  await page.getByRole("button", { name: "All", exact: true }).click();
+  await page.getByRole("button", { name: "Main Course", exact: true }).click();
+  await expect(page.locator("#publicMenuHeading")).toHaveText("Main Course");
+  await expect(page.locator("#publicMenuCount")).toHaveText("2 items");
+  await page.locator("label.availability-filter").click();
+  await expect(page.locator("#publicMenuCount")).toHaveText("2 items");
   await assertNoErrors();
 });
 
