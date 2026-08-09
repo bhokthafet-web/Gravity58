@@ -161,6 +161,15 @@ test("public menu offers premium category, veg, non-veg, search and availability
   await page.getByRole("button", { name: "Continue to Menu" }).click();
 
   await expect(page.locator("#publicMenuCount")).toHaveText("3 items");
+  const firstNonVeg = page.locator(".poster-menu-item", { hasText: "Chicken 65" });
+  await expect(firstNonVeg.locator(".poster-meta")).toBeVisible();
+  await expect(firstNonVeg.locator(".poster-meta")).toContainText("Non-Veg");
+  const itemBoundary = await firstNonVeg.evaluate((element) => {
+    const style = getComputedStyle(element);
+    return { borderWidth: parseFloat(style.borderTopWidth), radius: parseFloat(style.borderTopLeftRadius) };
+  });
+  expect(itemBoundary.borderWidth).toBeGreaterThanOrEqual(1);
+  expect(itemBoundary.radius).toBeGreaterThanOrEqual(12);
   await page.getByRole("button", { name: "Veg", exact: true }).click();
   await expect(page.locator("#publicMenuCount")).toHaveText("1 item");
   await expect(page.locator(".poster-menu-item:visible")).toContainText("Paneer Butter Masala");

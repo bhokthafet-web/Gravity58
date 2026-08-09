@@ -810,8 +810,8 @@ window.addEventListener('storage',()=>{state=load();render();hydrateLocalMedia()
 async function refreshTrackedCloudOrder(){if(!location.hash.startsWith('#track'))return;state=load();const params=new URLSearchParams(location.hash.replace('#track&','')),id=params.get('order'),local=state.orders.find(row=>row.id===id);if(local?.cloudOwnerId)try{const latest=await Gravity58Ads.get(cloudOrderKind(local.cloudOwnerId),id);Object.assign(local,latest);save()}catch(error){console.warn('Order status refresh failed',error)}renderTrack()}
 setInterval(refreshTrackedCloudOrder,2500);
 setInterval(async()=>{if(state.session?.provider==='gravity58'&&view==='orders'&&!location.hash){try{await syncCloudOrders();ordersView()}catch(error){console.warn('Order board refresh failed',error)}}},10000);
-function refreshExpiryLabels(){$$('[data-ad-expiry]').forEach(label=>{const expiresAt=label.dataset.adExpiry;if(!expiresAt){label.textContent='Contact G58 for slot duration';return}label.textContent=adTimeLeft({expiresAt})})}
-setInterval(refreshExpiryLabels,30000);
+function refreshExpiryLabels(){let expiredVisibleAd=false;$$('[data-ad-expiry]').forEach(label=>{const expiresAt=label.dataset.adExpiry;if(!expiresAt){label.textContent='Contact G58 for slot duration';return}label.textContent=adTimeLeft({expiresAt});if(new Date(expiresAt).getTime()<=Date.now())expiredVisibleAd=true});if(expiredVisibleAd&&location.hash.startsWith('#menu'))renderPublicMenu()}
+setInterval(refreshExpiryLabels,15000);
 async function resumeGravity58Account(){if(location.hash.startsWith('#menu')||!Gravity58Ads?.configured)return;try{const account=await Gravity58Ads.currentUser();if(!account?.email)return;const user=ensureGravity58User(account);state.session={userId:user.id,provider:'gravity58'};save();await syncCloudMenus();render()}catch(error){console.warn('Gravity58 account resume failed',error)}}
 Gravity58Ads?.subscribeAdvertisements(hydrateAdvertisements);
 render();

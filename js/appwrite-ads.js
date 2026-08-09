@@ -237,6 +237,14 @@
       Appwrite.Permission.update(Appwrite.Role.user(current.$id)),
       Appwrite.Permission.delete(Appwrite.Role.user(current.$id)),
     ];
+    if (config.adminTeamId && !String(config.adminTeamId).includes("YOUR_")) {
+      const adminTeam = Appwrite.Role.team(config.adminTeamId);
+      permissions.push(
+        Appwrite.Permission.read(adminTeam),
+        Appwrite.Permission.update(adminTeam),
+        Appwrite.Permission.delete(adminTeam),
+      );
+    }
     const uploaded = await storage.createFile({ bucketId: mediaBucketId, fileId: Appwrite.ID.unique(), file, permissions });
     return { fileId: uploaded.$id, mediaUrl: String(storage.getFileView({ bucketId: mediaBucketId, fileId: uploaded.$id })), mediaType: file.type, mediaName: file.name };
   }

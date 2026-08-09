@@ -97,6 +97,31 @@ test("advertiser submits payment reference and proof inside the portal", async (
   await assertNoErrors();
 });
 
+test("advertiser receives an extension payment link and submits extension proof", async ({ page }) => {
+  await prepareMockApi(page, {
+    initialUser: { $id: "mock-user", email: "advertiser@example.com", name: "Sample Advertiser" },
+    seed: {
+      bookings: [{
+        id: "extension-booking", customerId: "mock-user", restaurantKey: "Test Restaurant|Hyderabad",
+        slotId: "right_rail", hours: 3, amount: 360, title: "Live Offer",
+        status: "Extension Payment Link Sent", expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+        extensionHours: 2, extensionAmount: 240, extensionPaymentLink: "https://rzp.io/extension-link",
+      }],
+    },
+  });
+  const assertNoErrors = monitorPageErrors(page);
+  await page.goto("/advertise/");
+  await expect(page.getByRole("link", { name: "Pay Extension ₹240" })).toHaveAttribute("href", "https://rzp.io/extension-link");
+  await page.getByRole("button", { name: "Submit Extension Payment Proof" }).click();
+  await page.locator('#proofForm input[name="paymentReference"]').fill("EXT-UTR-1234");
+  await page.locator('#proofForm input[name="proofFile"]').setInputFiles({ name: "extension-proof.png", mimeType: "image/png", buffer: Buffer.from("proof") });
+  await page.getByRole("button", { name: "Submit for Verification" }).click();
+  const booking = await page.evaluate(() => window.__g58Mock.store.bookings.find((row) => row.id === "extension-booking"));
+  expect(booking).toMatchObject({ status: "Extension Proof Sent", extensionPaymentReference: "EXT-UTR-1234", extensionProofMediaType: "image/png" });
+  await expect(page.getByText("Extension payment submitted", { exact: false })).toBeVisible();
+  await assertNoErrors();
+});
+
 test("team admin reviews bookings, activates campaigns, moderates posts and blocks accounts", async ({ page }) => {
   const future = new Date(Date.now() + 3_600_000).toISOString();
   const past = new Date(Date.now() - 3_600_000).toISOString();
@@ -132,12 +157,15 @@ test("team admin reviews bookings, activates campaigns, moderates posts and bloc
   await expect(page.locator("#page")).toContainText("Payment Link Sent");
 
   await page.locator('[data-activate="booking-proof"]').click();
+  await expect(page.locator('#activateSlot option[value="right_rail"]')).toBeDisabled();
+  await expect(page.locator("#activateSlot")).toHaveValue("preparing");
+  await expect(page.locator("#slotAvailability")).toContainText("Available now");
   await page.locator('#activateForm input[name="buttonLabel"]').fill("View Test Offer");
-  await page.locator("#activateForm").getByRole("button", { name: "Activate advertisement" }).click();
+  await page.locator("#activateForm").getByRole("button", { name: "Publish for 1 hours" }).click();
   const activated = await page.evaluate(() => window.__g58Mock.store.bookings.find((row) => row.id === "booking-proof"));
   expect(activated.status).toBe("Live");
   const generatedCampaign = await page.evaluate(() => window.__g58Mock.store.advertisements.find((row) => row.bookingId === "booking-proof"));
-  expect(generatedCampaign).toMatchObject({ active: true, status: "Live", buttonLabel: "View Test Offer" });
+  expect(generatedCampaign).toMatchObject({ active: true, status: "Live", slotId: "preparing", imageSize: "1200 × 628 px", buttonLabel: "View Test Offer" });
 
   await page.locator('[data-view="marketplace"]').click();
   await expect(page.locator("#marketTable")).toContainText("Customer Test Post");
@@ -180,6 +208,74 @@ test("team admin reviews bookings, activates campaigns, moderates posts and bloc
   await page.getByRole("button", { name: "Publish campaign" }).click();
   const manual = await page.evaluate(() => window.__g58Mock.store.advertisements.find((row) => row.title === "Sample Preparing Offer"));
   expect(manual).toMatchObject({ restaurantKey: "Sample Restaurant|Hyderabad", slotId: "preparing", imageSize: "1200 × 628 px", imageRatio: "1.91:1", hours: 24, creativeStyle: "pulse", active: true, status: "Live" });
+  await assertNoErrors();
+});
+
+test("admin requests a paid extension, confirms it, and permanently deletes all ad records and media", async ({ page }) => {
+  const originalExpiry = new Date(Date.now() + 3_600_000).toISOString();
+  await prepareMockApi(page, {
+    admin: true,
+    state: null,
+    seed: {
+      slots,
+      bookings: [{
+        id: "paid-booking", customerId: "customer-1", customerName: "Customer One", customerEmail: "customer@example.com",
+        restaurantKey: "Test Restaurant|Hyderabad", slotId: "right_rail", hours: 1, rate: 100, amount: 100,
+        title: "Paid Campaign", description: "Live campaign", status: "Live", expiresAt: originalExpiry,
+        mediaFileId: "creative-file", proofMediaFileId: "initial-proof-file",
+      }],
+      advertisements: [{
+        id: "paid-ad", bookingId: "paid-booking", restaurantKey: "Test Restaurant|Hyderabad", slotId: "right_rail",
+        hours: 1, rate: 100, amount: 100, title: "Paid Campaign", description: "Live campaign",
+        active: true, status: "Live", expiresAt: originalExpiry, mediaFileId: "creative-file",
+      }],
+    },
+  });
+  const assertNoErrors = monitorPageErrors(page);
+  page.on("dialog", (dialog) => dialog.accept());
+  await page.goto("/team-admin/");
+  await page.locator('#login input[name="email"]').fill("admin@g58.in");
+  await page.locator('#login input[name="password"]').fill("testing123");
+  await page.locator("#login").getByRole("button", { name: "Secure Login" }).click();
+
+  await page.locator('[data-view="campaigns"]').click();
+  await page.locator('[data-campaign-id="paid-ad"] [data-extend="paid-ad"]').click();
+  await page.locator("#extensionHours").fill("2");
+  await page.locator("#extensionRate").fill("75");
+  await expect(page.locator("#extensionAmount")).toHaveText("₹150");
+  await page.locator('#extendForm input[name="paymentLink"]').fill("https://rzp.io/paid-extension");
+  await page.getByRole("button", { name: "Send extension payment link" }).click();
+  let booking = await page.evaluate(() => window.__g58Mock.store.bookings.find((row) => row.id === "paid-booking"));
+  expect(booking).toMatchObject({ status: "Extension Payment Link Sent", extensionHours: 2, extensionRate: 75, extensionAmount: 150, extensionPaymentLink: "https://rzp.io/paid-extension" });
+
+  await page.evaluate(async () => {
+    await window.Gravity58Ads.update("bookings", "paid-booking", {
+      status: "Extension Proof Sent",
+      extensionPaymentReference: "EXT-PAID-123",
+      extensionProofMediaFileId: "extension-proof-file",
+      extensionProofFileIds: ["extension-proof-file"],
+    });
+  });
+  await page.locator('[data-view="overview"]').click();
+  await page.locator("#refresh").click();
+  await page.locator('[data-view="bookings"]').click();
+  await page.locator('[data-confirm-extension="paid-booking"]').click();
+  booking = await page.evaluate(() => window.__g58Mock.store.bookings.find((row) => row.id === "paid-booking"));
+  const campaign = await page.evaluate(() => window.__g58Mock.store.advertisements.find((row) => row.id === "paid-ad"));
+  expect(booking).toMatchObject({ status: "Live", hours: 3, amount: 250, lastExtensionHours: 2, lastExtensionAmount: 150 });
+  expect(new Date(booking.expiresAt).getTime()).toBe(new Date(originalExpiry).getTime() + 2 * 3_600_000);
+  expect(campaign).toMatchObject({ status: "Live", active: true, hours: 3, amount: 250 });
+
+  await page.locator('[data-view="campaigns"]').click();
+  await page.locator('[data-campaign-id="paid-ad"] [data-delete="paid-ad"]').click();
+  const remaining = await page.evaluate(() => ({
+    bookings: window.__g58Mock.store.bookings,
+    advertisements: window.__g58Mock.store.advertisements,
+    removedMedia: window.__g58Mock.removedMedia,
+  }));
+  expect(remaining.bookings).toHaveLength(0);
+  expect(remaining.advertisements).toHaveLength(0);
+  expect(new Set(remaining.removedMedia)).toEqual(new Set(["creative-file", "initial-proof-file", "extension-proof-file"]));
   await assertNoErrors();
 });
 

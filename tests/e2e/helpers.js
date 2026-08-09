@@ -38,7 +38,7 @@ export function mockApiScript({ initialUser = null, admin = false, seed = {} } =
     let serial=0;
     const clean=row=>({...row,id:row.id||row.$id,$id:row.$id||row.id});
     const notify=(kind,row)=>window.dispatchEvent(new CustomEvent('g58-ad-data-changed',{detail:{kind,row}}));
-    window.__g58Mock={store,get user(){return user},recoveries:[],permissionCalls:[]};
+    window.__g58Mock={store,get user(){return user},recoveries:[],permissionCalls:[],removedMedia:[]};
     window.Gravity58Ads={
       configured:true,config:{adminTeamId:'test-team'},collections:{},client:null,account:null,databases:null,tables:null,
       list:async(kind,filters={})=>(store[kind]||[]).filter(row=>Object.entries(filters).every(([key,value])=>value===''||value===undefined||row[key]===value)).map(clean),
@@ -58,7 +58,7 @@ export function mockApiScript({ initialUser = null, admin = false, seed = {} } =
       isTeamAdmin:async()=>${admin ? "true" : "false"},
       validateMediaFile:(file)=>{if(!file||!file.size)throw new Error('Select a file first')},
       uploadAdMedia:async(file)=>({fileId:'mock-file-'+(++serial),mediaUrl:'https://example.com/'+encodeURIComponent(file.name),mediaType:file.type,mediaName:file.name}),
-      removeAdMedia:async()=>true,
+      removeAdMedia:async(fileId)=>{window.__g58Mock.removedMedia.push(fileId);return true},
       validateMenuImage:(file)=>{if(!file?.size)throw new Error('Select a restaurant or menu image first');if(file.size>100*1024)throw new Error('Restaurant and menu images must be 100 KB or smaller')},
       uploadMenuMedia:async(file)=>({fileId:'mock-menu-'+(++serial),path:'mock-menu-'+serial,mediaUrl:'https://media.example.com/'+encodeURIComponent(file.name),mediaType:file.type,mediaName:file.name}),
       removeMenuMedia:async()=>true,
