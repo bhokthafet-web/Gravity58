@@ -26,15 +26,48 @@
   let menu = read(KEYS.menu, []);
   let premium = read(KEYS.premium, null);
   let dashboardFilter = { period: "month", from: "", to: "" };
+  let workspaceRecordId = "";
+  let syncTimer = null;
 
   const isPremium = () => Boolean(premium?.active && (!premium.expiresAt || new Date(premium.expiresAt) > new Date()));
   const inventoryEnabled = () => localStorage.getItem(KEYS.inventory) === "1";
 
-  async function digest(value) {
-    const bytes = new TextEncoder().encode(value);
-    const hash = await crypto.subtle.digest("SHA-256", bytes);
-    return [...new Uint8Array(hash)].map((x) => x.toString(16).padStart(2, "0")).join("");
+  const workspaceKind = () => `pos_workspace_${String(session?.id || "account").replace(/[^a-zA-Z0-9._-]/g, "-").slice(0, 45)}`;
+  const workspaceId = () => `pos-${String(session?.id || "account").replace(/[^a-zA-Z0-9._-]/g, "-").slice(0, 30)}`;
+  const workspacePayload = () => ({
+    ownerId: session?.id, updatedAt: new Date().toISOString(),
+    settings: read("g58Settings", {}), bills: read("g58Bills", []), cancelledBills: read("g58CancelledBills", []),
+    billCounter: Number(localStorage.getItem("g58BillCounter") || 0), menu, premium,
+    inventoryEnabled: inventoryEnabled(), subscription: read(KEYS.subscription, null),
+  });
+  async function loadWorkspace() {
+    if (!session || !window.Gravity58Ads?.configured) return;
+    const records = await Gravity58Ads.list(workspaceKind());
+    const record = records.find((row) => row.ownerId === session.id);
+    if (!record) return;
+    workspaceRecordId = record.id || record.$id;
+    write("g58Settings", record.settings || {}); write("g58Bills", record.bills || []); write("g58CancelledBills", record.cancelledBills || []);
+    localStorage.setItem("g58BillCounter", String(record.billCounter || 0));
+    menu = Array.isArray(record.menu) ? record.menu : []; premium = record.premium || null;
+    write(KEYS.menu, menu); write(KEYS.premium, premium); write(KEYS.subscription, record.subscription || null);
+    localStorage.setItem(KEYS.inventory, record.inventoryEnabled ? "1" : "0");
   }
+  async function syncWorkspace() {
+    if (!session || !window.Gravity58Ads?.configured) return;
+    const data = workspacePayload(), permissions = Gravity58Ads.permissionSet(workspaceKind(), session.id);
+    try {
+      const record = workspaceRecordId
+        ? await Gravity58Ads.update(workspaceKind(), workspaceRecordId, data)
+        : await Gravity58Ads.create(workspaceKind(), data, workspaceId(), permissions);
+      workspaceRecordId = record.id || record.$id || workspaceId();
+    } catch (error) {
+      if (error?.code === 409 || /already exists/i.test(error?.message || "")) {
+        workspaceRecordId = workspaceId(); await Gravity58Ads.update(workspaceKind(), workspaceRecordId, data); return;
+      }
+      throw error;
+    }
+  }
+  function scheduleWorkspaceSync() { clearTimeout(syncTimer); syncTimer = setTimeout(() => syncWorkspace().catch((error) => toast(error.message || "Cloud sync failed")), 250); }
 
   function toast(message) {
     const target = $("toast");
@@ -53,12 +86,12 @@
     gate.id = "posAccountGate";
     gate.className = "local-account-gate";
     gate.innerHTML = `<section class="card local-account-card">
-      <div class="local-account-brand"><span class="logo">G</span><div><h2>Restaurant workspace</h2><p>Sign in on this browser to open G58 POS. Bills, menu, inventory and settings remain on this device.</p></div></div>
+      <div class="local-account-brand"><span class="logo">G</span><div><h2>Restaurant workspace</h2><p>Sign in to open your account-synced G58 POS workspace.</p></div></div>
       <div class="field"><label>Email</label><input id="gateEmail" type="email" autocomplete="email" placeholder="owner@restaurant.com"></div>
       <div class="field"><label>Password</label><input id="gatePassword" type="password" autocomplete="current-password" placeholder="Minimum 6 characters"></div>
       <div class="gate-actions"><button class="btn btn-primary" id="gateLogin">Login</button><button class="btn btn-outline" id="gateSignup">Create account</button><button class="btn btn-dark" id="gateForgot">Forgot password</button></div>
       <p class="local-account-message" id="gateMessage"></p>
-      <small class="local-storage-note">Private browser workspace: removing browser data removes this local account and its restaurant records.</small>
+      <small class="local-storage-note">Your settings, bills, menu and inventory are stored in your G58 account.</small>
     </section>`;
     document.body.appendChild(gate);
     $("gateLogin").onclick = login;
@@ -69,16 +102,12 @@
   async function login() {
     const email = $("gateEmail").value.trim().toLowerCase();
     const password = $("gatePassword").value;
-    const account = read(KEYS.accounts, []).find((row) => row.email === email);
-    if (!account || account.passwordHash !== await digest(password)) {
-      $("gateMessage").textContent = "Email or password is incorrect on this browser.";
-      return;
-    }
-    session = { id: account.id, email: account.email, name: account.name || account.email.split("@")[0] };
-    write(KEYS.session, session);
-    renderGate();
-    renderShell();
-    toast("Restaurant workspace opened");
+    if (!email || !password) return void ($("gateMessage").textContent = "Enter your email and password.");
+    try {
+      await Gravity58Ads.login(email, password); const account = await Gravity58Ads.currentUser();
+      session = { id: account.$id, email: account.email, name: account.name || account.email.split("@")[0] };
+      write(KEYS.session, session); await loadWorkspace(); window.G58ApplyCloudWorkspace?.(); renderGate(); renderShell(); toast("Restaurant workspace opened");
+    } catch (error) { $("gateMessage").textContent = error.message || "Email or password is incorrect."; }
   }
 
   async function signup() {
@@ -88,31 +117,18 @@
       $("gateMessage").textContent = "Enter a valid email and a password of at least 6 characters.";
       return;
     }
-    const accounts = read(KEYS.accounts, []);
-    if (accounts.some((row) => row.email === email)) {
-      $("gateMessage").textContent = "This account already exists on this browser. Select Login.";
-      return;
-    }
-    const account = { id: crypto.randomUUID(), email, name: email.split("@")[0], passwordHash: await digest(password), createdAt: new Date().toISOString() };
-    accounts.push(account);
-    write(KEYS.accounts, accounts);
-    session = { id: account.id, email: account.email, name: account.name };
-    write(KEYS.session, session);
-    renderGate();
-    renderShell();
-    toast("Local restaurant account created");
+    try {
+      const account = await Gravity58Ads.register(email, password, email.split("@")[0]);
+      session = { id: account.$id, email: account.email, name: account.name || email.split("@")[0] };
+      write(KEYS.session, session); await syncWorkspace(); renderGate(); renderShell(); toast("G58 restaurant account created");
+    } catch (error) { $("gateMessage").textContent = error.message || "Could not create account."; }
   }
 
   async function resetPassword() {
     const email = $("gateEmail").value.trim().toLowerCase();
-    const password = $("gatePassword").value;
-    const accounts = read(KEYS.accounts, []);
-    const account = accounts.find((row) => row.email === email);
-    if (!account) return void ($("gateMessage").textContent = "No local account exists for this email on this browser.");
-    if (password.length < 6) return void ($("gateMessage").textContent = "Enter the new password above (minimum 6 characters), then select Forgot password again.");
-    account.passwordHash = await digest(password);
-    write(KEYS.accounts, accounts);
-    $("gateMessage").textContent = "Password updated on this browser. You can now log in.";
+    if (!/^\S+@\S+\.\S+$/.test(email)) return void ($("gateMessage").textContent = "Enter your account email first.");
+    try { await Gravity58Ads.forgotPassword(email, `${location.origin}/reset-password/`); $("gateMessage").textContent = "Password reset email sent. Open the secure link in your email."; }
+    catch (error) { $("gateMessage").textContent = error.message || "Could not send reset email."; }
   }
 
   function renderShell() {
@@ -120,7 +136,7 @@
     if (!shell) return;
     shell.style.setProperty("display", "block", "important");
     shell.innerHTML = `<div class="premium-bar">
-      <div class="premium-title"><span class="logo">G</span><div><strong>G58 Restaurant POS</strong><small>${esc(session?.email || "Local workspace")} · private browser storage</small></div></div>
+      <div class="premium-title"><span class="logo">G</span><div><strong>G58 Restaurant POS</strong><small>${esc(session?.email || "G58 account")} · cloud workspace</small></div></div>
       <span class="premium-badge ${isPremium() ? "active" : ""}">${isPremium() ? "PREMIUM ACTIVE" : "FREE POS"}</span>
     </div>
     <div class="premium-tabs">
@@ -146,38 +162,34 @@
   function renderTab(tab) {
     if (tab === "account") {
       const request = read(KEYS.subscription, null);
-      box(`<div class="premium-grid"><article class="premium-box"><h3>Signed in on this device</h3><p><strong>${esc(session?.email)}</strong></p><p style="margin-top:10px">Your POS bills, restaurant menu, inventory and digital-menu orders remain in this browser.</p><button class="btn btn-outline" id="localLogout" style="margin-top:14px">Sign out</button></article><article class="premium-box"><h3>Storage privacy</h3><p>No restaurant transaction or order is uploaded to Appwrite. Export reports regularly if this browser is your only copy.</p>${request ? `<div class="locked-note" style="margin-top:12px">Premium request: ${esc(request.plan)} · ${esc(request.status)}</div>` : ""}</article></div>`);
-      $("localLogout").onclick = () => { localStorage.removeItem(KEYS.session); session = null; renderShell(); renderGate(); };
+      box(`<div class="premium-grid"><article class="premium-box"><h3>Signed in to G58 Cloud</h3><p><strong>${esc(session?.email)}</strong></p><p style="margin-top:10px">Your POS settings, received bills, cancelled bills, menu and inventory sync to this account.</p><button class="btn btn-outline" id="localLogout" style="margin-top:14px">Sign out</button></article><article class="premium-box"><h3>Cloud status</h3><p>Changes sync automatically. Restaurant and menu images are stored securely in Appwrite with a 100 KB file limit.</p>${request ? `<div class="locked-note" style="margin-top:12px">Premium request: ${esc(request.plan)} · ${esc(request.status)}</div>` : ""}</article></div>`);
+      $("localLogout").onclick = async () => { try { await syncWorkspace(); await Gravity58Ads.logout(); } catch {} localStorage.removeItem(KEYS.session); session = null; renderShell(); renderGate(); };
     }
 
     if (tab === "license") {
-      box(`<div class="premium-grid"><article class="premium-box"><h3>Activate Premium</h3><p>Enter the activation key supplied by the G58 team.</p><div class="field" style="margin-top:14px"><label>Activation key</label><input id="localPremiumKey" placeholder="G58-POS-XXXX-XXXX"></div><button class="btn btn-primary" id="activateLocalPremium">Activate on this browser</button><p id="premiumMessage" style="margin-top:12px">${isPremium() ? `Active until ${new Date(premium.expiresAt).toLocaleDateString("en-IN")}` : "Premium is not active."}</p></article><article class="premium-box"><h3>Premium includes</h3><p>Reusable menu, CSV import, item removal, availability control, optional inventory, item performance and browser-local restaurant dashboard.</p></article></div>`);
+      box(`<div class="premium-grid"><article class="premium-box"><h3>Activate Premium</h3><p>Enter the activation key supplied by the G58 team.</p><div class="field" style="margin-top:14px"><label>Activation key</label><input id="localPremiumKey" placeholder="G58-POS-XXXX-XXXX"></div><button class="btn btn-primary" id="activateLocalPremium">Activate for this account</button><p id="premiumMessage" style="margin-top:12px">${isPremium() ? `Active until ${new Date(premium.expiresAt).toLocaleDateString("en-IN")}` : "Premium is not active."}</p></article><article class="premium-box"><h3>Premium includes</h3><p>Reusable menu, CSV import, item removal, availability control, optional inventory, item performance and an account-synced restaurant dashboard.</p></article></div>`);
       $("activateLocalPremium").onclick = () => {
         const key = $("localPremiumKey").value.trim().toUpperCase();
         if (!/^G58-POS-[A-Z0-9-]{4,}$/.test(key)) return void ($("premiumMessage").textContent = "Enter a valid G58-POS activation key.");
         const expires = new Date(); expires.setFullYear(expires.getFullYear() + 1);
         premium = { active: true, key, activatedAt: new Date().toISOString(), expiresAt: expires.toISOString() };
         write(KEYS.premium, premium);
+        scheduleWorkspaceSync();
         renderShell();
-        toast("Premium activated on this browser");
+        toast("Premium activated for this account");
       };
     }
 
     if (tab === "menu") {
       if (!isPremium()) return box('<div class="locked-note">Activate Premium to use menu import and optional inventory.</div>');
-      box(`<div class="premium-grid"><article class="premium-box"><h3>Add or import menu</h3>
-        <div class="field"><label>Item name</label><input id="mn" placeholder="Chicken marination"></div>
-        <div class="two-col"><div class="field"><label>Category</label><input id="mc" placeholder="Marinations"></div><div class="field"><label>Price</label><input id="mp" type="number" min="0.01" step="0.01"></div></div>
-        <div class="two-col"><div class="field"><label>GST %</label><input id="mg" type="number" min="0" step="0.01" value="0"></div><div class="field inventory-field ${inventoryEnabled() ? "" : "hide"}"><label>Opening stock</label><input id="msq" type="number" min="0" step="1" value="0"></div></div>
-        <button class="btn btn-primary" id="saveLocalMenu">Save item</button>
-        <hr style="border-color:var(--line);margin:20px 0"><p>Import CSV columns: <b>name, category, price, gst, available, stock</b>.</p>
+      box(`<div class="premium-grid"><article class="premium-box"><h3>Import menu CSV</h3>
+        <p>CSV is the only menu-item input. Required columns: <b>name, category, price</b>. Optional columns: <b>gst, available, stock</b>.</p>
         <input id="menuImportFile" type="file" accept=".csv,text/csv"><div class="gate-actions"><button class="btn btn-outline" id="importMenu">Import CSV</button><button class="btn btn-dark" id="sampleMenu">Download sample</button></div><p id="importStatus"></p>
         <label class="option-card" style="margin-top:18px"><input id="inventoryToggle" type="checkbox" ${inventoryEnabled() ? "checked" : ""}><span><strong>Enable inventory</strong><small>Optional. Stock is reduced only after a bill is marked Payment Received.</small></span></label>
       </article><article class="premium-box"><h3>Configured menu</h3><div class="menu-list" id="localMenuList"></div></article></div>`);
-      $("saveLocalMenu").onclick = saveMenuItem;
       $("sampleMenu").onclick = downloadMenuSample;
       $("importMenu").onclick = importMenuFile;
-      $("inventoryToggle").onchange = () => { localStorage.setItem(KEYS.inventory, $("inventoryToggle").checked ? "1" : "0"); renderTab("menu"); };
+      $("inventoryToggle").onchange = () => { localStorage.setItem(KEYS.inventory, $("inventoryToggle").checked ? "1" : "0"); scheduleWorkspaceSync(); renderTab("menu"); };
       renderMenuList();
     }
 
@@ -271,7 +283,7 @@
     });
   }
 
-  function persistMenu() { write(KEYS.menu, menu); window.G58Premium.menu = menu; refreshMenuPicker(); }
+  function persistMenu() { write(KEYS.menu, menu); window.G58Premium.menu = menu; refreshMenuPicker(); scheduleWorkspaceSync(); }
 
   function downloadMenuSample() {
     const csv = "name,category,price,gst,available,stock\nChicken Biryani,Rice,249,5,true,30\nFish Marination,Marinations,299,5,true,12\nPrawns Marination,Marinations,349,5,false,0\n";
@@ -344,13 +356,14 @@
       if (!session) { renderGate(); return false; }
       const request = { plan, amount: Number(amount), status: "requested", requestedAt: new Date().toISOString(), email: session.email };
       write(KEYS.subscription, request);
+      await syncWorkspace();
       toast("Premium request saved. The G58 team can issue your activation key.");
       renderShell();
       return true;
     },
-    syncSettings: async () => true,
-    syncBill: async (bill) => { deductInventory(bill); return true; },
-    syncCancelledBill: async () => true,
+    syncSettings: async () => { scheduleWorkspaceSync(); return true; },
+    syncBill: async (bill) => { deductInventory(bill); await syncWorkspace(); return true; },
+    syncCancelledBill: async () => { await syncWorkspace(); return true; },
   };
 
   const openPlans = () => { const modal = $("premiumPlansModal"); if (modal) { modal.classList.add("open"); modal.setAttribute("aria-hidden", "false"); document.body.style.overflow = "hidden"; } };
@@ -372,6 +385,15 @@
   extraStyle.textContent = `.local-account-gate{position:fixed;inset:0;z-index:20000;background:radial-gradient(circle at 15% 10%,rgba(249,115,22,.2),transparent 35%),rgba(3,9,17,.97);display:grid;place-items:center;padding:18px}.local-account-card{width:min(580px,100%);padding:28px}.local-account-brand{display:flex;gap:16px;align-items:center;margin-bottom:22px}.local-account-brand h2{margin:0 0 7px}.local-account-brand p,.local-storage-note{color:var(--muted);line-height:1.6}.gate-actions{display:flex;gap:10px;flex-wrap:wrap}.gate-actions .btn-primary{width:auto}.local-account-message{min-height:24px;color:#ffd0ae}.premium-menu-quick-add{padding:15px;border:1px solid rgba(249,115,22,.25);border-radius:16px;background:rgba(249,115,22,.06);margin-bottom:12px}.premium-menu-quick-add>div{display:grid;grid-template-columns:1fr 88px auto;gap:9px}.premium-menu-quick-add select,.premium-menu-quick-add input{min-height:45px}.menu-admin-row{grid-template-columns:minmax(0,1fr) auto auto}.danger-mini{color:#ffaaaa!important;border-color:rgba(239,68,68,.35)!important}.digital-menu-tab{color:#fff!important;background:linear-gradient(135deg,#ef2b2b,#9d1010)!important;box-shadow:0 0 20px rgba(239,43,43,.28)}.dashboard-filter{display:flex;justify-content:space-between;align-items:end;gap:18px;margin-bottom:14px}.dashboard-filter p{margin:6px 0 0;color:var(--muted)}.dashboard-filter-controls{display:grid;grid-template-columns:1.25fr 1fr 1fr;gap:8px;min-width:min(520px,100%)}.dashboard-filter-controls>*{min-height:44px}.dashboard-metrics{margin-bottom:14px}.dashboard-metrics em{display:block;margin-top:7px;font-size:11px;font-style:normal}.dashboard-metrics .positive{color:#86efac}.dashboard-metrics .negative{color:#fca5a5}.dashboard-detail-grid{grid-template-columns:1.2fr .8fr}.dashboard-bars{height:210px;display:grid;grid-template-columns:repeat(7,1fr);gap:9px;align-items:end;padding-top:25px}.dashboard-bar{height:100%;display:grid;grid-template-rows:24px 1fr 20px;align-items:end;text-align:center;gap:5px}.dashboard-bar strong{font-size:10px;color:var(--muted);white-space:nowrap}.dashboard-bar span{display:block;min-height:5px;border-radius:8px 8px 3px 3px;background:linear-gradient(180deg,#fb923c,#c2410c);box-shadow:0 0 16px rgba(249,115,22,.22)}.dashboard-bar small{font-size:10px;color:var(--muted)}@media(max-width:760px){.dashboard-filter{display:block}.dashboard-filter-controls{grid-template-columns:1fr;margin-top:14px;min-width:0}.dashboard-detail-grid{grid-template-columns:1fr}.dashboard-bar strong{font-size:8px}}@media(max-width:600px){.local-account-card{padding:20px}.gate-actions>*{width:100%!important}.premium-menu-quick-add>div{grid-template-columns:1fr 78px}.premium-menu-quick-add button{grid-column:1/-1}.menu-admin-row{grid-template-columns:1fr auto}.menu-admin-row [data-remove-menu]{grid-column:1/-1}}`;
   document.head.appendChild(extraStyle);
 
+  async function resumeCloudSession() {
+    if (!window.Gravity58Ads?.configured) { session = null; localStorage.removeItem(KEYS.session); renderGate(); return; }
+    const account = await Gravity58Ads.currentUser();
+    if (!account) { session = null; localStorage.removeItem(KEYS.session); renderGate(); return; }
+    session = { id: account.$id, email: account.email, name: account.name || account.email.split("@")[0] };
+    write(KEYS.session, session); await loadWorkspace(); window.G58ApplyCloudWorkspace?.(); renderGate(); renderShell();
+  }
+
   renderGate();
   renderShell();
+  resumeCloudSession().catch((error) => toast(error.message || "Could not open G58 Cloud workspace"));
 })();

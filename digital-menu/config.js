@@ -1,5 +1,5 @@
 window.GRAVITY58_CONFIG = {
-  demoMode: false,
+  testMode: false,
   appwrite: {
     endpoint: "https://sgp.cloud.appwrite.io/v1",
     projectId: "6a776883001717bca81c",

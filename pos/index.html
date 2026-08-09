@@ -435,6 +435,7 @@
     @media(max-width:560px){.topbar{align-items:stretch;flex-direction:column}.nav-actions{width:100%;justify-content:space-between}.nav-icon-btn{width:auto;flex:1}.plan-grid{grid-template-columns:1fr}.upgrade-dialog{padding:18px}.pos-security-banner{align-items:flex-start;grid-template-columns:auto minmax(0,1fr)}.pos-banner-actions{grid-column:1/-1;width:100%;display:grid;grid-template-columns:1fr 1fr}.pos-banner-actions button{width:100%}.pos-banner-actions .pos-how-button{grid-column:auto}.value-entry,.value-entry.with-note{grid-template-columns:minmax(0,1fr) 82px}.value-entry #itemNoteInput,.value-entry #addValueBtn{grid-column:1/-1}}
 
 </style>
+  <link rel="stylesheet" href="production-theme.css?v=22">
 </head>
 
 <body>
@@ -468,8 +469,8 @@
     <section class="pos-security-banner">
       <div class="pos-security-badge">✓</div>
       <div>
-        <strong>Simple billing for Free and Premium users</strong>
-        <p>Bills stay in this browser. Premium adds a reusable menu, CSV import, optional inventory and business insights on this device.</p>
+        <strong>Secure G58 Cloud billing for Free and Premium users</strong>
+        <p>Your account keeps settings, bills, menu and inventory available across signed-in devices.</p>
       </div>
       <div class="pos-banner-actions">
         <button class="pos-how-button" id="openPosGuideBtn" type="button">How It Works</button>
@@ -631,6 +632,12 @@
               </div>
             </div>
 
+            <div class="side-qr-preview" id="sideQrPreview" aria-live="polite">
+              <div class="side-qr-empty" id="sideQrEmpty"><strong>Live payment QR</strong><span>Add an item to preview the payable QR here.</span></div>
+              <div id="sideQrcode"></div>
+              <small id="sideQrCaption"></small>
+            </div>
+
             <button class="btn btn-primary" id="generateBtn" style="margin-top:18px">Generate UPI QR Code</button>
             <button class="btn btn-dark" id="editSettingsBtn" style="width:100%;margin-top:10px">Change UPI / Options</button>
             <button class="btn btn-danger" id="clearBillBtn" style="width:100%;margin-top:10px">Clear Current Bill</button>
@@ -705,7 +712,7 @@
       <section class="card history">
         <div class="card-head">
           <h2>Recent Bills</h2>
-          <p>The latest 100 generated bills are stored only in this browser.</p>
+          <p>The latest generated bills are synced to your G58 account.</p>
         </div>
         <div class="card-body">
           <div class="history-list" id="historyList">
@@ -771,13 +778,10 @@
         <article><span>01</span><div><strong>Set payment details</strong><p>Enter your UPI ID and optionally enable GST, item notes and receipt details.</p></div></article>
         <article><span>02</span><div><strong>Build the bill</strong><p>Add one or more amounts. The subtotal, GST and payable total update automatically.</p></div></article>
         <article><span>03</span><div><strong>Generate the UPI QR</strong><p>Show the QR to the customer and print a receipt when POS mode is enabled.</p></div></article>
-        <article><span>04</span><div><strong>Use local reports</strong><p>Recent bills and daily reports stay in this browser for printing and PDF download.</p></div></article>
+        <article><span>04</span><div><strong>Use cloud reports</strong><p>Recent bills and daily reports remain available after signing in on another device.</p></div></article>
       </div>
 
-      <div class="pos-local-security">
-        <strong>100% local browser memory</strong>
-        <p>GRAVITY58 does not receive, transmit or store your UPI ID, bills, reports or customer information. Clearing this browser's website data will permanently remove the locally stored POS information.</p>
-      </div>
+      <div class="pos-local-security"><strong>G58 account protection</strong><p>Your POS workspace is account-scoped in G58 Cloud. Restaurant and menu images are stored in Appwrite with a 100 KB upload limit.</p></div>
 
       <label class="pos-guide-check">
         <input id="dontShowPosGuide" type="checkbox">
@@ -910,6 +914,18 @@
         $("gstAmount").textContent=formatCurrency(getGstAmount());
         $("gstLabel").textContent=settings.gstEnabled?`GST (${settings.gstPercent}%)`:"GST";
         $("grandTotal").textContent=formatCurrency(getGrandTotal());
+        renderSideQrPreview();
+      }
+
+      function renderSideQrPreview(){
+        const target=$("sideQrcode"),empty=$("sideQrEmpty"),caption=$("sideQrCaption"),total=getGrandTotal();
+        if(!target||!empty||!caption)return;
+        target.innerHTML="";
+        if(!values.length||!validUpiId(settings.upiId)||total<=0){empty.style.display="grid";caption.textContent="";return}
+        empty.style.display="none";
+        const preview={upiLink:createUpiLink(total,$("billNumber").textContent)};
+        renderQrForBill(preview,target,178);
+        caption.textContent=`${formatCurrency(total)} · ${settings.upiId}`;
       }
 
       function renderValues(){
@@ -1182,7 +1198,9 @@
         newBillMeta();
         renderValues();
         if(showResetToast) showToast("New bill started");
-        setTimeout(()=>$("valueInput").focus(),100);
+        // Focus immediately after the modal closes. A delayed focus can steal
+        // keyboard input from the next item on slower/mobile devices.
+        $("valueInput").focus();
       }
 
       function clearCurrentBill(){
@@ -1617,11 +1635,15 @@
       $("reportDate").value=localDateKey(new Date());
       renderHistory();
       renderValues();
+      window.G58ApplyCloudWorkspace=()=>{loadSavedSettings();renderHistory();renderValues();syncQuickOptions();updateProfile()};
     })();
   </script>
 
 
-<script src="/js/pos-premium.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/appwrite@26.2.0"></script>
+<script src="/js/config.js?v=22"></script>
+<script src="/js/appwrite-ads.js?v=6"></script>
+<script src="/js/pos-premium.js?v=22"></script>
 
   <script>
   document.addEventListener("DOMContentLoaded", () => {
@@ -1640,9 +1662,9 @@
 
   <div class="upgrade-modal" id="premiumPlansModal" aria-hidden="true">
     <div class="upgrade-dialog" role="dialog" aria-modal="true" aria-labelledby="premiumPlansTitle">
-      <div class="upgrade-head"><div><h2 id="premiumPlansTitle">Choose your G58 POS plan</h2><p>Free billing stays simple. Premium adds browser-local menu tools, CSV import, optional inventory and dashboard insights.</p></div><button type="button" class="modal-close" id="closePremiumPlansBtn" aria-label="Close" onclick="document.getElementById('premiumPlansModal').classList.remove('open');document.body.style.overflow=''">×</button></div>
+      <div class="upgrade-head"><div><h2 id="premiumPlansTitle">Choose your G58 POS plan</h2><p>Free billing stays simple. Premium adds CSV menu tools, optional inventory and cloud dashboard insights.</p></div><button type="button" class="modal-close" id="closePremiumPlansBtn" aria-label="Close" onclick="document.getElementById('premiumPlansModal').classList.remove('open');document.body.style.overflow=''">×</button></div>
       <div class="plan-grid">
-        <article class="plan-card free"><span class="plan-label">FREE</span><h3>Standalone POS</h3><div class="plan-price">₹0</div><div class="plan-term">Forever</div><div class="plan-features"><div class="plan-feature">Data stays in this browser</div><div class="plan-feature">Manual billing, GST and UPI QR</div><div class="plan-feature">Receipts and daily reports</div><div class="plan-feature">Works without internet</div><div class="plan-feature">Local history on this device</div></div><button class="plan-action continue-free-trigger">Current Plan</button></article>
+        <article class="plan-card free"><span class="plan-label">FREE</span><h3>G58 Cloud POS</h3><div class="plan-price">₹0</div><div class="plan-term">Forever</div><div class="plan-features"><div class="plan-feature">Account-synced settings and bills</div><div class="plan-feature">Manual billing, GST and UPI QR</div><div class="plan-feature">Receipts and daily reports</div><div class="plan-feature">Received and cancelled settlement</div><div class="plan-feature">Secure signed-in history</div></div><button class="plan-action continue-free-trigger">Current Plan</button></article>
         <article class="plan-card monthly"><span class="plan-label">MONTHLY</span><h3>Monthly Premium</h3><div class="plan-price">₹299</div><div class="plan-term">Valid for 1 month</div><div class="plan-features"><div class="plan-feature">Reusable local menu</div><div class="plan-feature">CSV menu import and removal</div><div class="plan-feature">Quantity-based automatic pricing</div><div class="plan-feature">Optional inventory tracking</div><div class="plan-feature">Local dashboard insights</div></div><button class="plan-action buy-plan" data-plan="Monthly" data-amount="299">Purchase</button></article>
         <article class="plan-card half"><span class="plan-label">6 MONTHS</span><h3>6-Month Premium</h3><div class="plan-price">₹1,599</div><div class="plan-term">Valid for 6 months</div><div class="plan-features"><div class="plan-feature">Reusable local menu</div><div class="plan-feature">CSV menu import and removal</div><div class="plan-feature">Quantity-based automatic pricing</div><div class="plan-feature">Optional inventory tracking</div><div class="plan-feature">Sales dashboard and insights</div></div><button class="plan-action buy-plan" data-plan="6 Months" data-amount="1599">Purchase</button></article>
         <article class="plan-card yearly"><span class="plan-label">1 YEAR</span><h3>Yearly Premium</h3><div class="plan-price">₹2,999</div><div class="plan-term">Valid for 1 year</div><div class="plan-features"><div class="plan-feature">Reusable local menu</div><div class="plan-feature">CSV menu import and removal</div><div class="plan-feature">Quantity-based automatic pricing</div><div class="plan-feature">Optional inventory tracking</div><div class="plan-feature">Dashboard and item performance</div></div><button class="plan-action buy-plan" data-plan="1 Year" data-amount="2999">Purchase</button></article>

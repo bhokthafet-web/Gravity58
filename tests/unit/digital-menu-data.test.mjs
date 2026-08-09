@@ -12,13 +12,14 @@ const menuData = context.globalThis.Gravity58MenuData;
 test("digital menu CSV parser supports quoted values and normalises aliases", () => {
   const rows = menuData.parseMenuCsv([
     "category,name,description,price,type,available,prep,instructions,image",
-    'Starters,"Paneer, Pepper Fry","Fresh, spicy paneer",249,Veg,yes,18,enabled,https://cdn.example.com/paneer.jpg',
+    'Starters,"Paneer, Pepper Fry","Fresh, spicy paneer",249,Veg,yes,18,enabled,paneer.jpg',
   ].join("\n"));
 
   assert.equal(rows.length, 1);
   assert.equal(rows[0].item_name, "Paneer, Pepper Fry");
   assert.equal(rows[0].description, "Fresh, spicy paneer");
   assert.equal(rows[0].food_type, "Veg");
+  assert.equal(rows[0].image_file, "paneer.jpg");
   assert.equal(menuData.csvBoolean(rows[0].available, false), true);
   assert.equal(menuData.csvBoolean(rows[0].preparation_instructions, false), true);
 });
@@ -30,7 +31,7 @@ test("digital menu CSV parser rejects missing columns and invalid prices", () =>
 
 test("download template contains every supported menu field", () => {
   const header = menuData.MENU_CSV_TEMPLATE.split("\n")[0];
-  for (const column of ["category", "item_name", "description", "price", "food_type", "available", "preparation_minutes", "preparation_instructions", "image_url"]) {
+  for (const column of ["category", "item_name", "description", "price", "food_type", "available", "preparation_minutes", "preparation_instructions", "image_file"]) {
     assert.ok(header.includes(column), `Template is missing ${column}`);
   }
 });

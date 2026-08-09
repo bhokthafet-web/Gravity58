@@ -3,58 +3,41 @@ import { monitorPageErrors, prepareMockApi, prepareOffline } from "./helpers.js"
 
 async function loginDemoOwner(page) {
   await page.goto("/digital-menu/");
-  await page.locator('#loginForm input[name="email"]').fill("demo@g58.in");
-  await page.locator('#loginForm input[name="password"]').fill("demo123");
+  await page.locator('#loginForm input[name="email"]').fill("testing@g58.in");
+  await page.locator('#loginForm input[name="password"]').fill("test123");
   await page.locator("#loginForm").getByRole("button", { name: "Login" }).click();
   await expect(page.getByRole("heading", { name: /Gravity58 Café/ })).toBeVisible();
 }
 
-test("restaurant owner login, menu CRUD, availability, orders, QR, reports and settings work", async ({ page }) => {
+test("restaurant owner imports CSV, controls availability, orders, QR, reports and settings", async ({ page }) => {
   await prepareOffline(page, { state: null });
   const assertNoErrors = monitorPageErrors(page);
   page.on("dialog", (dialog) => dialog.accept());
   await loginDemoOwner(page);
 
-  await page.locator('[data-view="menu"]').click();
-  await page.locator("#addItem").click();
-  await page.locator('#itemForm input[name="name"]').fill("Regression Platter");
-  await page.locator('#itemForm input[name="categoryName"]').fill("Regression Specials");
-  await page.locator('#itemForm input[name="price"]').fill("299");
-  await page.locator('#itemForm textarea[name="description"]').fill("Automated test menu item");
-  await page.locator('#itemForm input[name="imageFile"]').setInputFiles({
-    name: "regression.png",
+  await page.locator("#openImageCompressor").click();
+  await page.locator("#compressorFile").setInputFiles({
+    name: "restaurant.png",
     mimeType: "image/png",
-    buffer: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl2nWQAAAAASUVORK5CYII=", "base64"),
+    buffer: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9ZkMcAAAAASUVORK5CYII=", "base64"),
   });
-  await page.locator("#itemForm").getByRole("button", { name: "Save Menu Item" }).click();
+  await expect(page.locator("#compressorResult")).toContainText("KB ready");
+  await expect(page.locator("#downloadCompressedImage")).toBeVisible();
+  await page.getByRole("button", { name: "Close dialog" }).click();
+
+  await page.locator('[data-view="menu"]').click();
+  await expect(page.locator("#addItem")).toHaveCount(0);
+  const csv = "category,item_name,description,price,food_type,available,preparation_minutes,preparation_instructions,image_file\nRegression Specials,Regression Platter,Automated test menu item,299,Veg,true,12,false,\n";
+  await page.locator("#menuCsvFile").setInputFiles({ name: "menu.csv", mimeType: "text/csv", buffer: Buffer.from(csv) });
   await expect(page.locator("#catFilter")).toContainText("Regression Specials");
   const itemCard = page.locator("#menuGrid .menu-item", { hasText: "Regression Platter" });
   await expect(itemCard).toBeVisible();
-  await expect(itemCard.locator("img.menu-owner-photo")).toBeVisible();
-  const localImageStorage = await page.evaluate(async () => {
-    const localRecord = localStorage.getItem("gravity58DigitalMenu") || "";
-    const saved = JSON.parse(localRecord);
-    const item = saved.items.find((row) => row.name === "Regression Platter");
-    const blob = await new Promise((resolve, reject) => {
-      const open = indexedDB.open("gravity58LocalMedia", 1);
-      open.onerror = () => reject(open.error);
-      open.onsuccess = () => {
-        const request = open.result.transaction("images", "readonly").objectStore("images").get(item.imageKey);
-        request.onerror = () => reject(request.error);
-        request.onsuccess = () => resolve(request.result);
-      };
-    });
-    return { containsBase64: localRecord.includes("data:image/"), imageKey: item.imageKey, blobSize: blob?.size || 0 };
-  });
-  expect(localImageStorage.containsBase64).toBe(false);
-  expect(localImageStorage.imageKey).toMatch(/^menu-item:/);
-  expect(localImageStorage.blobSize).toBeGreaterThan(0);
+  await expect(itemCard.locator(".media-fallback")).toBeVisible();
   await itemCard.getByRole("button", { name: "Out of stock" }).click();
   await expect(page.locator("#menuGrid .menu-item", { hasText: "Regression Platter" })).toContainText("Out of stock");
   await page.locator("#menuGrid .menu-item", { hasText: "Regression Platter" }).getByRole("button", { name: "Make available" }).click();
 
   await page.locator('[data-view="orders"]').click();
-  await page.locator("#simulate").click();
   await expect(page.locator("#ordersGrid")).toContainText("Pending");
   const pendingCard = page.locator("#ordersGrid .order-card", { hasText: "Pending" }).first();
   await pendingCard.getByRole("button", { name: "Accept" }).click();
@@ -86,7 +69,7 @@ test("restaurant owner login, menu CRUD, availability, orders, QR, reports and s
 
   await page.locator('[data-view="menu"]').click();
   const removable = page.locator("#menuGrid .menu-item", { hasText: "Regression Platter" });
-  await removable.getByRole("button", { name: "Delete" }).click();
+  await removable.getByRole("button", { name: "Remove" }).click();
   await expect(page.locator("#menuGrid")).not.toContainText("Regression Platter");
   await assertNoErrors();
 });
@@ -111,7 +94,7 @@ test("customer QR entry popup closes and table/counter validation works", async 
   await assertNoErrors();
 });
 
-test("mobile menu uses photo cards and keeps advertisement rail on the right", async ({ page }) => {
+test("mobile menu uses photo cards and keeps the advertisement beside the restaurant header", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await prepareOffline(page, { state: null });
   const assertNoErrors = monitorPageErrors(page);
@@ -119,12 +102,12 @@ test("mobile menu uses photo cards and keeps advertisement rail on the right", a
   await page.getByRole("button", { name: "Close dialog" }).click();
   await expect(page.locator(".category-chip-strip")).toBeVisible();
   await expect(page.locator("#categoryWheel")).toHaveCount(0);
-  const menuBox = await page.locator(".focused-menu-panel").boundingBox();
-  const adBox = await page.locator(".vertical-ad-rail").boundingBox();
-  expect(menuBox).toBeTruthy();
+  const heroBox = await page.locator(".compact-menu-hero").boundingBox();
+  const adBox = await page.locator(".header-ad-panel").boundingBox();
+  expect(heroBox).toBeTruthy();
   expect(adBox).toBeTruthy();
-  expect(adBox.x).toBeGreaterThan(menuBox.x);
-  expect(adBox.y).toBeLessThan(menuBox.y + menuBox.height / 2);
+  expect(adBox.x).toBeGreaterThan(heroBox.x);
+  expect(Math.abs(adBox.y - heroBox.y)).toBeLessThan(5);
   await assertNoErrors();
 });
 
@@ -218,7 +201,7 @@ test("digital-menu local account creation and password reset work", async ({ pag
   await page.locator('#registerForm input[name="email"]').fill("newowner@example.com");
   await page.locator('#registerForm input[name="password"]').fill("newpass123");
   await page.locator('#registerForm input[name="confirm"]').fill("newpass123");
-  await page.getByRole("button", { name: "Create Account" }).click();
+  await page.locator("#registerForm").getByRole("button", { name: "Create Account" }).click();
   await expect(page.getByRole("heading", { name: "Create your first Digital Menu" })).toBeVisible();
   await page.locator("#onboardingLogout").click();
 
@@ -273,13 +256,19 @@ test("restaurant menu loads from the signed-in account and CSV changes persist t
   const assertNoErrors = monitorPageErrors(page);
   await page.goto("/digital-menu/");
   await expect(page.getByRole("heading", { name: /Cloud Account Café/ })).toBeVisible();
-  await expect(page.getByText("Synced to G58 account")).toHaveText("Synced to G58 account");
+  await expect(page.getByText("G58 Cloud")).toHaveText("G58 Cloud");
 
   await page.locator('[data-view="menu"]').click();
   await expect(page.locator("#menuGrid")).toContainText("Masala Tea");
+  await page.locator("#menuImageFiles").setInputFiles({
+    name: "cold-coffee.png",
+    mimeType: "image/png",
+    buffer: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9ZkMcAAAAASUVORK5CYII=", "base64"),
+  });
+  await expect(page.locator("#imageSelectionStatus")).toContainText("1 food image");
   const csv = [
-    "category,item_name,description,price,food_type,available,preparation_minutes,preparation_instructions,image_url",
-    'Drinks,"Cold Coffee","Chilled coffee",140,Veg,true,6,false,https://cdn.example.com/cold-coffee.jpg',
+    "category,item_name,description,price,food_type,available,preparation_minutes,preparation_instructions,image_file",
+    'Drinks,"Cold Coffee","Chilled coffee",140,Veg,true,6,false,cold-coffee.png',
     'Main Course,"Chicken Biryani","Account imported dish",340,Non-Veg,false,25,true,',
   ].join("\n");
   await page.locator("#menuCsvFile").setInputFiles({ name: "menu.csv", mimeType: "text/csv", buffer: Buffer.from(csv) });
@@ -287,9 +276,15 @@ test("restaurant menu loads from the signed-in account and CSV changes persist t
   await expect(page.locator("#menuGrid")).toContainText("Chicken Biryani");
   const stored = await page.evaluate(() => window.__g58Mock.store["digital_menu_cloud-owner-1"][0]);
   expect(stored.ownerId).toBe("cloud-owner-1");
-  expect(stored.items.find((row) => row.name === "Cold Coffee")).toMatchObject({ price: 140, available: true, imageUrl: "https://cdn.example.com/cold-coffee.jpg" });
+  expect(stored.items.find((row) => row.name === "Cold Coffee")).toMatchObject({ price: 140, available: true, imageUrl: "https://media.example.com/cold-coffee.png", imageFileId: "mock-menu-1" });
   expect(stored.items.find((row) => row.name === "Chicken Biryani")).toMatchObject({ type: "Non-Veg", available: false, prepareInstructionsEnabled: true });
   expect(stored.orders).toBeUndefined();
+
+  await page.locator("#menuImageFiles").setInputFiles({ name: "too-large.png", mimeType: "image/png", buffer: Buffer.alloc(100 * 1024 + 1) });
+  const oversizedCsv = "category,item_name,price,image_file\nDrinks,Large Image Item,50,too-large.png\n";
+  await page.locator("#menuCsvFile").setInputFiles({ name: "oversized.csv", mimeType: "text/csv", buffer: Buffer.from(oversizedCsv) });
+  await expect(page.locator("#toast")).toContainText("100 KB or smaller");
+  await expect(page.locator("#menuGrid")).not.toContainText("Large Image Item");
 
   await page.locator('[data-view="qr"]').click();
   const qrText = await page.locator("#qrcode").getAttribute("data-qr-text");
@@ -319,24 +314,20 @@ test("customer can load the latest account menu on another device", async ({ pag
   await assertNoErrors();
 });
 
-test("owner can download a portable config and generate a customer menu link", async ({ page }) => {
-  await prepareOffline(page, { state: null });
+test("owner gets an automatic G58 Cloud customer menu link", async ({ page }) => {
+  const cloudMenu = {
+    id: "share-cafe", ownerId: "share-owner", schemaVersion: 2,
+    restaurant: { id: "share-cafe", name: "Share Café", type: "Café", city: "Hyderabad", open: true, accepting: true, tax: 5, service: 0, identification: "Customer Name", restaurantKey: "Share Café|Hyderabad", social: {} },
+    categories: [], items: [],
+  };
+  await prepareMockApi(page, { initialUser: { $id: "share-owner", email: "share@example.com", name: "Share Owner" }, state: null, seed: { "digital_menu_share-owner": [cloudMenu] } });
   const assertNoErrors = monitorPageErrors(page);
-  await loginDemoOwner(page);
+  await page.goto("/digital-menu/");
   await page.locator('[data-view="publish"]').click();
-  await expect(page.getByRole("heading", { name: "Publish & Setup" })).toBeVisible();
-
-  const downloadPromise = page.waitForEvent("download");
-  await page.getByRole("button", { name: "Download Menu Config" }).click();
-  const download = await downloadPromise;
-  expect(download.suggestedFilename()).toBe("gravity58-cafe-g58-menu.json");
-
-  await page.locator('#publishUrlForm input[name="configUrl"]').fill("https://menus.example.com/gravity58-cafe.json");
-  await page.getByRole("button", { name: "Save URL & Generate Link" }).click();
-  await expect(page.locator("#publishResult")).toContainText("CUSTOMER MENU LINK");
-  await expect(page.locator("#publishedMenuQr [data-testid='qr-rendered']")).toBeVisible();
-  const saved = await page.evaluate(() => JSON.parse(localStorage.getItem("gravity58DigitalMenu")).restaurants.find((row) => row.id === "res_cafe"));
-  expect(saved.publishedConfigUrl).toBe("https://menus.example.com/gravity58-cafe.json");
+  await expect(page.getByRole("heading", { name: "Share Menu" })).toBeVisible();
+  await expect(page.locator("#cloudMenuQr [data-testid='qr-rendered']")).toBeVisible();
+  await expect(page.locator("#page")).toContainText("cloud=share-cafe");
+  await expect(page.locator("#publishUrlForm")).toHaveCount(0);
   await assertNoErrors();
 });
 
@@ -357,6 +348,6 @@ test("customer can load a hosted static config without menu records in Appwrite"
   await expect(page.getByText("View-only published menu")).toBeVisible();
   await expect(page.getByRole("button", { name: "ADD" })).toHaveCount(0);
   await expect(page.locator("#modal")).toHaveCount(0);
-  await expect(page.locator(".vertical-ad-rail")).toBeVisible();
+  await expect(page.locator(".header-ad-panel")).toBeVisible();
   await assertNoErrors();
 });

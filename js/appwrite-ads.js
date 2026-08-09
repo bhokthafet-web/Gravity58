@@ -47,6 +47,13 @@
     }
     return [...new Set(permissions)];
   }
+  function userPermissionSet(userIds = []) {
+    if (!configured || !Appwrite.Permission || !Appwrite.Role) return undefined;
+    return [...new Set(userIds.filter(Boolean).flatMap((userId) => {
+      const role = Appwrite.Role.user(userId);
+      return [Appwrite.Permission.read(role), Appwrite.Permission.update(role), Appwrite.Permission.delete(role)];
+    }))];
+  }
 
   let client = null;
   let account = null;
@@ -175,13 +182,31 @@
   const login = async (email, password) => configured ? account.createEmailPasswordSession({ email, password }) : Promise.reject(new Error("Appwrite is not configured yet."));
   const logout = async () => configured ? account.deleteSession({ sessionId: "current" }) : true;
   const currentUser = async () => { if (!configured) return null; try { return await account.get(); } catch { return null; } };
+  async function ensureUser() {
+    let user = await currentUser();
+    if (!user && configured) {
+      await account.createAnonymousSession();
+      user = await currentUser();
+    }
+    return user;
+  }
   const forgotPassword = async (email, url) => configured ? account.createRecovery({ email, url }) : Promise.reject(new Error("Appwrite is not configured yet."));
   const completeRecovery = async (userId, secret, password) => configured ? account.updateRecovery({ userId, secret, password }) : Promise.reject(new Error("Appwrite is not configured yet."));
+  const createJWT = async () => {
+    if (!configured || !account) throw new Error("Sign in to G58 before uploading media.");
+    const result = await account.createJWT();
+    return result.jwt;
+  };
   function validateMediaFile(file, purpose = "advertisement") {
     if (!file?.size) throw new Error(`Select a ${purpose} file first.`);
     const allowed = ["image/jpeg", "image/png", "image/webp", "image/gif", "video/mp4", "video/webm"];
     if (!allowed.includes(file.type)) throw new Error("Use JPG, PNG, WebP, GIF, MP4 or WebM media.");
     if (file.size > 15 * 1024 * 1024) throw new Error("Media must be below 15 MB.");
+  }
+  function validateMenuImage(file) {
+    if (!file?.size) throw new Error("Select a restaurant or menu image first.");
+    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) throw new Error("Use a JPG, PNG or WebP image.");
+    if (file.size > 100 * 1024) throw new Error("Restaurant and menu images must be 100 KB or smaller. Use the dashboard Image Compressor first.");
   }
   async function uploadAdMedia(file) {
     validateMediaFile(file);
@@ -204,6 +229,20 @@
     await storage.deleteFile({ bucketId: mediaBucketId, fileId });
     return true;
   }
+  async function uploadMenuMedia(file) {
+    validateMenuImage(file);
+    if (!configured || !storage) throw new Error("G58 Appwrite image storage is unavailable.");
+    const current = await currentUser();
+    if (!current) throw new Error("Login before uploading restaurant or menu images.");
+    const permissions = [
+      Appwrite.Permission.read(Appwrite.Role.any()),
+      Appwrite.Permission.update(Appwrite.Role.user(current.$id)),
+      Appwrite.Permission.delete(Appwrite.Role.user(current.$id)),
+    ];
+    const uploaded = await storage.createFile({ bucketId: mediaBucketId, fileId: Appwrite.ID.unique(), file, permissions });
+    return { fileId: uploaded.$id, path: uploaded.$id, mediaUrl: String(storage.getFileView({ bucketId: mediaBucketId, fileId: uploaded.$id })), mediaType: file.type, mediaName: file.name };
+  }
+  const removeMenuMedia = removeAdMedia;
   async function isTeamAdmin() {
     if (!configured || !config.adminTeamId) return false;
     try { await teams.get({ teamId: config.adminTeamId }); return true; }
@@ -222,9 +261,9 @@
 
   window.Gravity58Ads = Object.freeze({
     configured, config, collections, client, account, databases, tables, storage, mediaBucketId,
-    list, get, create, update, remove, upsertSlot, permissionSet,
-    register, login, logout, currentUser, forgotPassword, completeRecovery, isTeamAdmin,
-    validateMediaFile, uploadAdMedia, removeAdMedia,
+    list, get, create, update, remove, upsertSlot, permissionSet, userPermissionSet,
+    register, login, logout, currentUser, ensureUser, forgotPassword, completeRecovery, createJWT, isTeamAdmin,
+    validateMediaFile, uploadAdMedia, removeAdMedia, validateMenuImage, uploadMenuMedia, removeMenuMedia,
     subscribeAdvertisements,
   });
 })();

@@ -1,7 +1,7 @@
 import { expect } from "@playwright/test";
 
 export const emptyConfigScript = `
-window.GRAVITY58_CONFIG={demoMode:true,gravity58Url:'http://127.0.0.1:4173/',adBookingPortalUrl:'/advertise/',appwrite:{}};
+window.GRAVITY58_CONFIG={testMode:true,gravity58Url:'http://127.0.0.1:4173/',adBookingPortalUrl:'/advertise/',appwrite:{}};
 window.GRAVITY58_AD_BOOKING_CONFIG=window.GRAVITY58_CONFIG;
 window.GRAVITY58_AD_ADMIN_CONFIG=window.GRAVITY58_CONFIG;
 `;
@@ -51,13 +51,19 @@ export function mockApiScript({ initialUser = null, admin = false, seed = {} } =
       login:async(email,password)=>{if(!email||!password)throw new Error('Email and password are required');user={\$id:'mock-user',email,name:email.split('@')[0]};return {\$id:'session'}},
       logout:async()=>{user=null;return true},
       currentUser:async()=>user?clone(user):null,
+      ensureUser:async()=>{if(!user)user={\$id:'anon-'+(++serial),email:'',name:'Guest'};return clone(user)},
       forgotPassword:async(email,url)=>{window.__g58Mock.recoveries.push({email,url});return true},
       completeRecovery:async()=>true,
+      createJWT:async()=>"mock-g58-jwt",
       isTeamAdmin:async()=>${admin ? "true" : "false"},
       validateMediaFile:(file)=>{if(!file||!file.size)throw new Error('Select a file first')},
       uploadAdMedia:async(file)=>({fileId:'mock-file-'+(++serial),mediaUrl:'https://example.com/'+encodeURIComponent(file.name),mediaType:file.type,mediaName:file.name}),
       removeAdMedia:async()=>true,
+      validateMenuImage:(file)=>{if(!file?.size)throw new Error('Select a restaurant or menu image first');if(file.size>100*1024)throw new Error('Restaurant and menu images must be 100 KB or smaller')},
+      uploadMenuMedia:async(file)=>({fileId:'mock-menu-'+(++serial),path:'mock-menu-'+serial,mediaUrl:'https://media.example.com/'+encodeURIComponent(file.name),mediaType:file.type,mediaName:file.name}),
+      removeMenuMedia:async()=>true,
       permissionSet:()=>[],
+      userPermissionSet:()=>[],
       subscribeAdvertisements:()=>()=>{},
     };
   })();`;

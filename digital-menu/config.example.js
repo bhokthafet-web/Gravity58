@@ -1,5 +1,5 @@
 window.GRAVITY58_CONFIG = {
-  demoMode: false,
+  testMode: false,
   appwrite: {
     endpoint: 'https://cloud.appwrite.io/v1',
     projectId: 'YOUR_APPWRITE_PROJECT_ID',

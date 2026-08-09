@@ -1,6 +1,6 @@
 # Gravity58 GitHub + Appwrite Release
 
-This folder is the production deployment package for the Gravity58 public marketplace, local-first POS, account-synced restaurant Digital Menu, advertisement booking and private team administration.
+This folder is the production deployment package for the Gravity58 public marketplace, account-synced POS, restaurant Digital Menu, advertisement booking and private team administration.
 
 ## Routes
 
@@ -12,7 +12,7 @@ This folder is the production deployment package for the Gravity58 public market
 
 ## Storage boundary
 
-Digital Menu restaurant configuration, categories, items, availability and menu media are saved as owner-editable Appwrite records so an authenticated restaurant user can manage the same menu on another device. POS bills, inventory, Digital Menu customer orders and reports remain browser-local. Appwrite also stores public marketplace/advertisement records, advertiser authentication, ad bookings, targeting keys and published campaigns.
+Restaurant/menu records, live orders, POS settings, bills, cancellations and inventory are account-scoped in G58 Cloud through Appwrite. Restaurant and food images also use Appwrite Storage with public viewing, owner-only update/delete permissions and an application-enforced 100 KB limit. The dashboard compressor processes images only in browser memory and lets the owner download an upload-ready WebP. Appwrite also stores public marketplace/advertisement records, advertiser authentication, ad bookings, targeting keys and published campaigns.
 
 ## Deployment
 

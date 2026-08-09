@@ -1,8 +1,8 @@
 import { test, expect } from "@playwright/test";
-import { monitorPageErrors, prepareOffline } from "./helpers.js";
+import { monitorPageErrors, prepareMockApi } from "./helpers.js";
 
 async function createPosAccount(page) {
-  await prepareOffline(page, { state: null });
+  await prepareMockApi(page, { state: null });
   await page.goto("/pos/");
   await expect(page.locator("#posAccountGate")).toBeVisible();
   await page.locator("#gateEmail").fill("owner@example.com");
@@ -38,6 +38,7 @@ test("free POS validates setup, calculates quantity and settles received/cancell
   await expect(page.locator("#subtotalAmount")).toHaveText("₹240.00");
   await expect(page.locator("#gstAmount")).toHaveText("₹12.00");
   await expect(page.locator("#grandTotal")).toHaveText("₹252.00");
+  await expect(page.locator("#sideQrcode [data-testid='qr-rendered']")).toBeVisible();
 
   await page.locator("#generateBtn").click();
   await expect(page.locator("#qrModal")).toHaveClass(/show/);
@@ -54,7 +55,9 @@ test("free POS validates setup, calculates quantity and settles received/cancell
   await page.locator("#quantityInput").fill("1");
   await page.locator("#itemNoteInput").fill("Cancelled Item");
   await page.locator("#addValueBtn").click();
+  await expect(page.locator("#subtotalAmount")).toHaveText("₹50.00");
   await page.locator("#generateBtn").click();
+  await expect(page.locator("#qrModal")).toHaveClass(/show/);
   await page.locator("#paymentCancelledBtn").click();
   const cancelled = await page.evaluate(() => JSON.parse(localStorage.getItem("g58CancelledBills") || "[]"));
   expect(cancelled).toHaveLength(1);
@@ -64,15 +67,17 @@ test("free POS validates setup, calculates quantity and settles received/cancell
   await assertNoErrors();
 });
 
-test("POS account logout, local forgot-password and new login work", async ({ page }) => {
+test("POS account logout, cloud forgot-password and new login work", async ({ page }) => {
   const assertNoErrors = monitorPageErrors(page);
   await createPosAccount(page);
   await page.locator("#localLogout").click();
   await expect(page.locator("#posAccountGate")).toBeVisible();
   await page.locator("#gateEmail").fill("owner@example.com");
-  await page.locator("#gatePassword").fill("newsecret123");
   await page.locator("#gateForgot").click();
-  await expect(page.locator("#gateMessage")).toContainText("Password updated");
+  await expect(page.locator("#gateMessage")).toContainText("Password reset email sent");
+  const recovery = await page.evaluate(() => window.__g58Mock.recoveries[0]);
+  expect(recovery).toMatchObject({ email: "owner@example.com" });
+  await page.locator("#gatePassword").fill("secret123");
   await page.locator("#gateLogin").click();
   await expect(page.locator("#posAccountGate")).toHaveCount(0);
   await expect(page.locator("#premiumShell")).toContainText("owner@example.com");
@@ -92,12 +97,10 @@ test("premium activation, menu import/removal, optional inventory and dashboard 
 
   await page.locator('#premiumShell [data-p="menu"]').click();
   await page.locator("#inventoryToggle").check();
-  await page.locator("#mn").fill("Chicken Marination");
-  await page.locator("#mc").fill("Marinations");
-  await page.locator("#mp").fill("120");
-  await page.locator("#mg").fill("5");
-  await page.locator("#msq").fill("10");
-  await page.locator("#saveLocalMenu").click();
+  await expect(page.locator("#saveLocalMenu")).toHaveCount(0);
+  const firstCsv = "name,category,price,gst,available,stock\nChicken Marination,Marinations,120,5,true,10\n";
+  await page.locator("#menuImportFile").setInputFiles({ name: "menu.csv", mimeType: "text/csv", buffer: Buffer.from(firstCsv) });
+  await page.locator("#importMenu").click();
   await expect(page.locator("#localMenuList")).toContainText("Chicken Marination");
   await expect(page.locator("#localMenuList")).toContainText("Stock 10");
 

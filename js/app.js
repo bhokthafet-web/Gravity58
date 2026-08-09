@@ -577,7 +577,7 @@ function openBusinessDemo(id) {
   if (!b) return;
   const url = businessDemoUrl(b);
   if (!url)
-    return alert("Demo or social-media link is not added for this business.");
+    return alert("Website or social-media link is not added for this business.");
   window.open(url, "_blank", "noopener");
 }
 
@@ -811,7 +811,7 @@ function businessCard(b) {
       <p>${escapeHtml(b.description)}</p>
       <div class="business-card-actions" style="margin-bottom:14px">
         <button class="btn orange" onclick="callBusinessPhone('${b.id}')">Call Now</button>
-        <button class="btn" onclick="openBusinessDemo('${b.id}')">Check Demo</button>
+        <button class="btn" onclick="openBusinessDemo('${b.id}')">Visit Website / Profile</button>
       </div>
       <div class="business-details">
         <span>📍 ${escapeHtml(b.area)}, ${escapeHtml(itemDistrict(b))}</span>
@@ -1220,7 +1220,7 @@ function floatingBusinessMarkup(b) {
   return `<article class="business-card floating-card">
     <div class="business-card-top"><div class="business-avatar">${initials}</div><div class="business-identity"><h3>${escapeHtml(b.title)}</h3><span>${escapeHtml(b.category)}</span></div><div class="verified-dot">● Available</div></div>
     <div class="business-card-body"><p>${escapeHtml(b.description)}</p>
-      <div class="business-card-actions" style="margin-bottom:14px"><button class="btn orange" onclick="callBusinessPhone('${b.id}')">Call Now</button><button class="btn" onclick="openBusinessDemo('${b.id}')">Check Demo</button></div>
+      <div class="business-card-actions" style="margin-bottom:14px"><button class="btn orange" onclick="callBusinessPhone('${b.id}')">Call Now</button><button class="btn" onclick="openBusinessDemo('${b.id}')">Visit Website / Profile</button></div>
       <div class="business-details"><span>📍 ${escapeHtml(b.area)}, ${escapeHtml(itemDistrict(b))}</span><span>💰 From ${formatMoney(b.price)}</span><span class="copyable-number" onclick="callBusinessPhone('${b.id}')" title="Click to call">📞 ${escapeHtml(b.phone || "Not added")}</span><span>☎ ${escapeHtml(b.altPhone || "No alternative")}</span><span>⭐ ${b.experience || 0} Years</span><span>✅ ${b.projects || 0}+ Projects</span></div>
       <div class="business-card-actions"><button class="btn" onclick="openBusinessQr('${b.id}')">QR Code</button><button class="btn share-btn" onclick="copyBusinessLink('${b.id}',this)">Copy Link</button><button class="btn green" onclick="shareBusinessOnWhatsApp('${b.id}')">Share WhatsApp</button></div>
       <div class="business-owner-box">

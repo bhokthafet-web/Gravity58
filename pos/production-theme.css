@@ -1,0 +1,22 @@
+:root{--bg:#fff8ee;--bg2:#fff1df;--panel:#fffdf9;--panel2:#fff2e2;--line:#ead6c3;--text:#2d1b0e;--muted:#795d48;--orange:#ff7600;--orange2:#ff9a3d;--success:#2e8b57;--danger:#c63d2f;--shadow:0 16px 45px rgba(78,37,8,.14)}
+body{color:var(--text);background:radial-gradient(circle at 9% 8%,#ffe0b7 0,transparent 30%),radial-gradient(circle at 92% 18%,#fff0df 0,transparent 28%),var(--bg)}
+.card,.premium-shell{background:rgba(255,253,249,.96);border-color:var(--line);box-shadow:var(--shadow)}
+.brand-title{color:var(--text)}.tagline,.card-head p,.helper,.payment-profile small,.meta-box small{color:var(--muted)}
+.site-pill{color:#a84005;background:#fff0df;border-color:#efbf91}.logo{background:linear-gradient(145deg,#ff9a3d,#ff7600 56%,#d84c00)}
+.pos-security-banner{background:linear-gradient(135deg,#fff2df,#ffe1bd);border-color:#edbf90;color:var(--text)}.pos-security-banner p{color:var(--muted)}
+.card{border-radius:24px}.card-head{border-color:var(--line)}.card-body{background:transparent}
+label{color:#684a34}input,select{color:var(--text);background:#fff;border-color:#ddc6b0}input::placeholder{color:#a68d78}
+.option-card,.meta-box,.item,.payment-profile,.summary-box{background:#fff8ee;border-color:var(--line)}.option-card small,.profile-options{color:var(--muted)}
+.quick-options{background:#fff0df;border-color:var(--line)}.quick-options>strong{color:#b64200}.quick-toggle{background:#fff;border-color:#dfc4a9}.quick-toggle span{color:#684a34}
+.btn-primary{color:#fff;background:linear-gradient(135deg,#ff922f,#e85600)}.btn-dark{color:#5c3b25;background:#fff6e9;border-color:#dfc6ad}.btn-outline{color:#b84705;background:#fff0df;border-color:#efb982}.btn-success{color:#fff;background:linear-gradient(135deg,#43a66d,#2e8b57)}.btn-danger{color:#fff;background:#c63d2f;border-color:#ad2f23}
+.builder-layout{grid-template-columns:minmax(0,1.15fr) minmax(330px,.85fr)}.summary-card{top:14px;background:linear-gradient(155deg,#fffdf9,#fff0dc)}
+.summary-row{color:var(--muted)}.summary-row strong,.grand-total{color:var(--text)}.total-row{border-color:#e6c7aa}.grand-total{color:#d84c00!important}
+.side-qr-preview{display:grid;place-items:center;min-height:230px;margin-top:18px;padding:16px;border:1px solid #edbf91;border-radius:20px;background:linear-gradient(145deg,#fff8ed,#ffe8cc);text-align:center}.side-qr-preview #sideQrcode{display:grid;place-items:center;padding:9px;border-radius:14px;background:#fff;box-shadow:0 10px 24px rgba(87,43,13,.12)}.side-qr-preview #sideQrcode:empty{display:none}.side-qr-preview small{display:block;margin-top:10px;color:#7d4b2c;font-weight:850}.side-qr-empty{display:grid;gap:6px;color:#8c5a37}.side-qr-empty strong{font-size:18px}.side-qr-empty span{font-size:12px;color:var(--muted)}
+.daily-report,.history{margin-top:22px}.report-stat,.report-table-wrap,.history-item{background:#fff;border-color:var(--line)}.report-stat small{color:var(--muted)}
+.premium-bar,.premium-tabs{border-color:var(--line)}.premium-title small,.premium-box p{color:var(--muted)}.premium-tab{color:#684a34;background:#fff7ec;border-color:#e3c9ae}.premium-tab.active{color:#fff;background:linear-gradient(135deg,#ff8b20,#df5100)}.premium-box,.insight-card{background:#fff8ee;border-color:var(--line)}
+.local-account-gate{background:radial-gradient(circle at 15% 10%,rgba(255,118,0,.24),transparent 34%),linear-gradient(145deg,#2b1007,#6f210c)!important}.local-account-card{background:#fffaf2;color:var(--text)}.local-account-brand p,.local-storage-note{color:var(--muted)!important}.local-account-message{color:#b94600!important}
+.modal{background:rgba(45,23,12,.68)}.modal-card,.upgrade-dialog{background:#fffaf2;color:var(--text);border-color:#e6b989}.modal-sub{color:var(--muted)}.modal-close{color:var(--text)}
+.plan-card{background:#fff;border-color:var(--line)}.plan-feature{color:#5f4634}.plan-term,.upgrade-head p{color:var(--muted)}.plan-action{background:#6b442c}.already-premium{background:#fff1df;color:#6c4127;border-color:#e5c4a5}
+.pos-guide-grid article,.pos-local-security{background:#fff8ee;border-color:var(--line)}
+@media(max-width:820px){.builder-layout{grid-template-columns:1fr}.summary-card{position:relative;top:0}.side-qr-preview{min-height:210px}.card-head,.card-body{padding-inline:18px}}
+@media(max-width:560px){body{padding:14px 8px 36px}.card{border-radius:19px}.bill-meta{grid-template-columns:1fr 1fr}.bill-meta .meta-box:last-child{grid-column:1/-1}.quick-options{padding-inline:14px}.side-qr-preview{min-height:200px}.report-controls{grid-template-columns:1fr}}
