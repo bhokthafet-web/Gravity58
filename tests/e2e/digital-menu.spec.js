@@ -368,7 +368,7 @@ test("customer can load the latest account menu on another device", async ({ pag
     id: "public-cloud-cafe",
     ownerId: "public-owner",
     schemaVersion: 2,
-    restaurant: { id: "public-cloud-cafe", name: "Public Cloud Café", type: "Restaurant", city: "Hyderabad", description: "Loaded from Appwrite", address: "Market Road", phone: "+91 9888888888", open: true, accepting: true, tax: 5, service: 0, identification: "Customer Name", restaurantKey: "Public Cloud Café|Hyderabad", social: {} },
+    restaurant: { id: "public-cloud-cafe", name: "Public Cloud Café", type: "Restaurant", city: "Hyderabad", description: "Loaded from Appwrite", address: "Market Road", phone: "+91 9888888888", open: true, accepting: true, tax: 5, service: 0, identification: "Customer Name", restaurantKey: "Public Cloud Café|Hyderabad", social: {}, logoImageUrl: "https://cdn.example.com/restaurant.jpg" },
     categories: [{ id: "specials", name: "Specials" }],
     items: [{ id: "cloud-meal", categoryId: "specials", name: "Cloud Meal", description: "Visible on every device", price: 299, type: "Veg", available: true, prep: 12, prepareInstructionsEnabled: false, imageUrl: "https://cdn.example.com/cloud-meal.jpg" }],
   };
@@ -380,7 +380,11 @@ test("customer can load the latest account menu on another device", async ({ pag
   await page.getByRole("button", { name: "Close dialog" }).click();
   await expect(page.getByRole("heading", { name: "Cloud Meal" })).toBeVisible();
   await expect(page.locator('.poster-menu-item img[src="https://cdn.example.com/cloud-meal.jpg"]')).toBeVisible();
+  await expect(page.locator('.compact-hero-photo[src="https://cdn.example.com/restaurant.jpg"]')).toBeVisible();
   await expect(page.getByRole("button", { name: "ADD" })).toBeVisible();
+  await page.getByRole("button", { name: "ADD" }).click();
+  await expect(page.locator('.compact-hero-photo[src="https://cdn.example.com/restaurant.jpg"]')).toBeVisible();
+  await expect(page.locator('.compact-hero-photo[src="https://cdn.example.com/cloud-meal.jpg"]')).toHaveCount(0);
   await assertNoErrors();
 });
 
@@ -408,9 +412,13 @@ test("simultaneous cloud orders receive unique serial tokens and remain independ
   const result = await page.evaluate(() => ({
     tokens: window.__g58Mock.store["digital_order_queue-owner"].map((row) => row.tokenNumber).sort((a, b) => a - b),
     reservations: window.__g58Mock.store["digital_token_queue-owner"].map((row) => row.tokenNumber).sort((a, b) => a - b),
+    orderPermissions: window.__g58Mock.permissionCalls.filter((row) => row.action === "create" && row.kind === "digital_order_queue-owner").map((row) => row.permissions),
+    tokenPermissions: window.__g58Mock.permissionCalls.filter((row) => row.action === "create" && row.kind === "digital_token_queue-owner").map((row) => row.permissions),
   }));
   expect(result.tokens).toEqual([1, 2]);
   expect(result.reservations).toEqual([1, 2]);
+  expect(result.orderPermissions.every((permissions) => permissions.includes("read:users") && permissions.includes("update:users"))).toBe(true);
+  expect(result.tokenPermissions.every((permissions) => !permissions.some((permission) => permission.includes("queue-owner")))).toBe(true);
   await assertNoErrors();
 });
 

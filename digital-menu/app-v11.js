@@ -200,14 +200,14 @@ async function persistCloudOrder(order){
   if(!order?.id||!order.cloudOwnerId)return order;
   const current=await Gravity58Ads.ensureUser();
   order.customerAccountId||=current?.$id||'';
-  const permissions=Gravity58Ads.userPermissionSet([order.cloudOwnerId,order.customerAccountId]);
+  const permissions=Gravity58Ads.collaborativePermissionSet?.(order.customerAccountId)||Gravity58Ads.userPermissionSet([order.customerAccountId]);
   try{return await Gravity58Ads.create(cloudOrderKind(order.cloudOwnerId),order,order.id,permissions)}
-  catch(error){if(error?.code===409||/already exists/i.test(error?.message||''))return Gravity58Ads.update(cloudOrderKind(order.cloudOwnerId),order.id,order,permissions);throw error}
+  catch(error){if(error?.code===409||/already exists/i.test(error?.message||''))return Gravity58Ads.update(cloudOrderKind(order.cloudOwnerId),order.id,order);throw error}
 }
 async function reserveOrderToken(ownerId,restaurantId){
   const day=orderDay(),localOrders=(state.orders||[]).filter(order=>order.restaurantId===restaurantId&&order.orderDay===day),localNext=Math.max(0,...localOrders.map(order=>Number(order.tokenNumber)||0))+1;
   if(!Gravity58Ads?.configured||!ownerId)return localNext;
-  const current=await Gravity58Ads.ensureUser(),permissions=Gravity58Ads.userPermissionSet([ownerId,current?.$id]),prefix=`tok-${String(restaurantId).replace(/[^a-zA-Z0-9._-]/g,'-').slice(0,14)}-${day.slice(2)}-`;
+  const current=await Gravity58Ads.ensureUser(),permissions=Gravity58Ads.userPermissionSet([current?.$id]),prefix=`tok-${String(restaurantId).replace(/[^a-zA-Z0-9._-]/g,'-').slice(0,14)}-${day.slice(2)}-`;
   for(let number=Math.max(1,localNext);number<=9999;number++){
     const reservationId=`${prefix}${formatToken(number)}`.slice(0,36);
     try{
@@ -529,7 +529,7 @@ function renderPublicMenu(){
   if(!published&&!customerContext){
     modal('Welcome to '+r.name,`<form id="identityForm" class="customer-entry-form"><div class="field centered-field"><label>Customer name <small id="nameRequirement">(required for counter orders)</small></label><input name="customerName" required placeholder="Enter your name"></div><div class="service-choice"><label class="choice-card"><input type="radio" name="serviceMode" value="counter" checked><span><strong>Single Counter</strong><small>Collect from the service counter</small></span></label><label class="choice-card"><input type="radio" name="serviceMode" value="table"><span><strong>Enter Table Number</strong><small>Order for your table</small></span></label></div><div class="field" id="tableNumberField" hidden><label>Table number</label><input name="tableNumber" placeholder="Example: 12"></div><div class="field"><label>Phone number <small>(optional)</small></label><input name="phone" type="tel" placeholder="Optional contact number"></div><button class="btn full">Continue to Menu</button></form>`,()=>{const form=$('#identityForm'),tableField=$('#tableNumberField'),nameNote=$('#nameRequirement');const syncIdentity=()=>{const table=form.serviceMode.value==='table';tableField.hidden=!table;form.tableNumber.required=table;form.customerName.required=!table;nameNote.textContent=table?'(optional for table orders)':'(required for counter orders)';form.customerName.placeholder=table?'Optional customer name':'Enter your name'};$$('input[name="serviceMode"]',form).forEach(x=>x.onchange=syncIdentity);syncIdentity();form.onsubmit=e=>{e.preventDefault();const d=Object.fromEntries(new FormData(e.target));const customerName=(d.customerName||'').trim();const tableNumber=(d.tableNumber||'').trim();if(d.serviceMode==='counter'&&!customerName)return toast('Enter customer name for counter order');if(d.serviceMode==='table'&&!tableNumber)return toast('Enter table number');customerContext={restaurantId:rid,customerName,serviceMode:d.serviceMode,tableNumber:d.serviceMode==='table'?tableNumber:'',phone:(d.phone||'').trim(),customer:d.serviceMode==='table'?`${customerName?customerName+' · ':''}Table ${tableNumber}`:customerName};sessionStorage.setItem(`gravity58Customer_${rid}`,JSON.stringify(customerContext));closeModal();renderPublicMenu()}})
   }
-  const cats=sharedMenu?remoteMenuConfig.categories:restaurantCategories(rid),items=sharedMenu?remoteMenuConfig.items:restaurantItems(rid),heroItem=items.find(i=>i.available)||items[0];
+  const cats=sharedMenu?remoteMenuConfig.categories:restaurantCategories(rid),items=sharedMenu?remoteMenuConfig.items:restaurantItems(rid),restaurantHero=localMediaSource(r,'logoImageKey','logoImage');
   const filterKey=`gravity58MenuFilters_${rid}`;
   const filters={category:'all',diet:'all',search:'',available:false,sort:'recommended',...JSON.parse(sessionStorage.getItem(filterKey)||'{}')};
   const activeCategory=cats.find(c=>c.id===filters.category);
@@ -538,7 +538,7 @@ function renderPublicMenu(){
     <section class="menu-sticky-header">
     <section class="compact-menu-hero">
       <nav class="menu-nav compact-nav"><div><h2>${html(r.name)}</h2><p>${html(r.type)} · ${html(r.city)}</p>${published?'<span class="published-menu-badge">Published customer menu</span>':cloudMenu?'<span class="published-menu-badge">Live account menu</span>':''}</div><a class="sponsor-mini" href="https://www.g58.in" target="_blank" rel="noopener">Sponsored by <strong>Gravity58</strong></a></nav>
-      <div class="compact-hero-layout"><div><p class="eyebrow">PREMIUM DIGITAL MENU</p><h1>Fresh favourites,<br>ready to order</h1><p>${html(r.description)}</p><div class="compact-details"><span>📍 ${html(r.address||r.city)}</span><span>☎ ${html(r.phone||'Contact restaurant')}</span><span class="open-tag">${r.open?'Open now':'Closed'}</span></div></div><div class="compact-hero-dish">${imageMarkup(localMediaSource(heroItem,'imageKey','imageData')||localMediaSource(r,'logoImageKey','logoImage'),heroItem?.name?.[0]||r.name?.[0]||'G','compact-hero-photo')}</div></div>
+      <div class="compact-hero-layout"><div><p class="eyebrow">PREMIUM DIGITAL MENU</p><h1>Fresh favourites,<br>ready to order</h1><p>${html(r.description)}</p><div class="compact-details"><span>📍 ${html(r.address||r.city)}</span><span>☎ ${html(r.phone||'Contact restaurant')}</span><span class="open-tag">${r.open?'Open now':'Closed'}</span></div></div><div class="compact-hero-dish">${imageMarkup(restaurantHero,r.name?.[0]||'G','compact-hero-photo')}</div></div>
     </section>
     <aside class="header-ad-panel">
       <button class="ad-space-contact" id="contactG58Ads" type="button">Book this ad space · 1080 × 1350 px</button>
@@ -735,7 +735,7 @@ function openCart(r){
       }catch(err){
         console.error('Place order failed',err);
         button.dataset.busy='0';button.disabled=false;button.textContent='Place Order';
-        fail('Order could not be placed. Please check your connection and try again.');
+        fail('Order could not be placed. Please reload this menu and try again.');
       }
     });
   });

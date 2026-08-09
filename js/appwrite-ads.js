@@ -54,6 +54,22 @@
       return [Appwrite.Permission.read(role), Appwrite.Permission.update(role), Appwrite.Permission.delete(role)];
     }))];
   }
+  function collaborativePermissionSet(userId) {
+    if (!configured || !Appwrite.Permission || !Appwrite.Role) return undefined;
+    const permissions = [
+      Appwrite.Permission.read(Appwrite.Role.users()),
+      Appwrite.Permission.update(Appwrite.Role.users()),
+    ];
+    if (userId) {
+      const role = Appwrite.Role.user(userId);
+      permissions.push(
+        Appwrite.Permission.read(role),
+        Appwrite.Permission.update(role),
+        Appwrite.Permission.delete(role),
+      );
+    }
+    return [...new Set(permissions)];
+  }
 
   let client = null;
   let account = null;
@@ -275,7 +291,7 @@
 
   window.Gravity58Ads = Object.freeze({
     configured, config, collections, client, account, databases, tables, storage, mediaBucketId,
-    list, get, create, update, remove, upsertSlot, permissionSet, userPermissionSet,
+    list, get, create, update, remove, upsertSlot, permissionSet, userPermissionSet, collaborativePermissionSet,
     register, login, logout, currentUser, ensureUser, forgotPassword, completeRecovery, createJWT, isTeamAdmin,
     validateMediaFile, uploadAdMedia, removeAdMedia, validateMenuImage, uploadMenuMedia, removeMenuMedia,
     subscribeAdvertisements, subscribeKind,
