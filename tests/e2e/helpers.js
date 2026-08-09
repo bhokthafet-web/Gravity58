@@ -38,13 +38,13 @@ export function mockApiScript({ initialUser = null, admin = false, seed = {} } =
     let serial=0;
     const clean=row=>({...row,id:row.id||row.$id,$id:row.$id||row.id});
     const notify=(kind,row)=>window.dispatchEvent(new CustomEvent('g58-ad-data-changed',{detail:{kind,row}}));
-    window.__g58Mock={store,get user(){return user},recoveries:[]};
+    window.__g58Mock={store,get user(){return user},recoveries:[],permissionCalls:[]};
     window.Gravity58Ads={
       configured:true,config:{adminTeamId:'test-team'},collections:{},client:null,account:null,databases:null,tables:null,
       list:async(kind,filters={})=>(store[kind]||[]).filter(row=>Object.entries(filters).every(([key,value])=>value===''||value===undefined||row[key]===value)).map(clean),
       get:async(kind,id)=>{const row=(store[kind]||[]).find(item=>(item.id||item.$id)===id);if(!row)throw new Error('Record not found');return clean(row)},
-      create:async(kind,data,documentId)=>{const id=documentId||kind+'-'+(++serial);if((store[kind]||[]).some(item=>(item.id||item.$id)===id)){const error=new Error('Record already exists');error.code=409;throw error}const row=clean({id,...clone(data),$createdAt:new Date().toISOString(),$updatedAt:new Date().toISOString()});(store[kind]||=[]).unshift(row);notify(kind,row);return row},
-      update:async(kind,id,data)=>{const row=(store[kind]||[]).find(item=>(item.id||item.$id)===id);if(!row)throw new Error('Record not found');Object.assign(row,clone(data),{$updatedAt:new Date().toISOString()});notify(kind,row);return clean(row)},
+      create:async(kind,data,documentId,permissions)=>{const id=documentId||kind+'-'+(++serial);if((store[kind]||[]).some(item=>(item.id||item.$id)===id)){const error=new Error('Record already exists');error.code=409;throw error}const row=clean({id,...clone(data),$createdAt:new Date().toISOString(),$updatedAt:new Date().toISOString()});(store[kind]||=[]).unshift(row);window.__g58Mock.permissionCalls.push({action:'create',kind,id,permissions:clone(permissions||[])});notify(kind,row);return row},
+      update:async(kind,id,data,permissions)=>{const row=(store[kind]||[]).find(item=>(item.id||item.$id)===id);if(!row)throw new Error('Record not found');Object.assign(row,clone(data),{$updatedAt:new Date().toISOString()});window.__g58Mock.permissionCalls.push({action:'update',kind,id,permissions:clone(permissions||[])});notify(kind,row);return clean(row)},
       remove:async(kind,id)=>{store[kind]=(store[kind]||[]).filter(item=>(item.id||item.$id)!==id);notify(kind,{id});return true},
       upsertSlot:async(slot)=>{const existing=(store.slots||[]).find(row=>row.restaurantKey===slot.restaurantKey);if(existing){Object.assign(existing,slot);return clean(existing)}const row=clean({id:slot.id||'slot-'+(++serial),...slot});store.slots.unshift(row);return row},
       register:async(email,password,name,phone='')=>{user={\$id:'user-'+(++serial),email,name};const profile=clean({id:'profile-'+serial,userId:user.\$id,email,name,phone,accountType:'customer',state:'',district:'',blocked:false});store.profiles.unshift(profile);return clone(user)},
@@ -62,7 +62,7 @@ export function mockApiScript({ initialUser = null, admin = false, seed = {} } =
       validateMenuImage:(file)=>{if(!file?.size)throw new Error('Select a restaurant or menu image first');if(file.size>100*1024)throw new Error('Restaurant and menu images must be 100 KB or smaller')},
       uploadMenuMedia:async(file)=>({fileId:'mock-menu-'+(++serial),path:'mock-menu-'+serial,mediaUrl:'https://media.example.com/'+encodeURIComponent(file.name),mediaType:file.type,mediaName:file.name}),
       removeMenuMedia:async()=>true,
-      permissionSet:()=>[],
+      permissionSet:(kind,userId)=>['read:any','read:user:'+userId,'update:user:'+userId,'delete:user:'+userId],
       userPermissionSet:()=>[],
       subscribeAdvertisements:()=>()=>{},
     };

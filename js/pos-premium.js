@@ -162,7 +162,7 @@
   function renderTab(tab) {
     if (tab === "account") {
       const request = read(KEYS.subscription, null);
-      box(`<div class="premium-grid"><article class="premium-box"><h3>Signed in to G58 Cloud</h3><p><strong>${esc(session?.email)}</strong></p><p style="margin-top:10px">Your POS settings, received bills, cancelled bills, menu and inventory sync to this account.</p><button class="btn btn-outline" id="localLogout" style="margin-top:14px">Sign out</button></article><article class="premium-box"><h3>Cloud status</h3><p>Changes sync automatically. Restaurant and menu images are stored securely in Appwrite with a 100 KB file limit.</p>${request ? `<div class="locked-note" style="margin-top:12px">Premium request: ${esc(request.plan)} · ${esc(request.status)}</div>` : ""}</article></div>`);
+      box(`<div class="premium-grid"><article class="premium-box"><h3>Signed in securely</h3><p><strong>${esc(session?.email)}</strong></p><p style="margin-top:10px">Your POS settings, received bills, cancelled bills, menu and inventory sync to this account.</p><button class="btn btn-outline" id="localLogout" style="margin-top:14px">Sign out</button></article><article class="premium-box"><h3>Account status</h3><p>Changes sync automatically. Restaurant and menu images have a 100 KB file limit.</p>${request ? `<div class="locked-note" style="margin-top:12px">Premium request: ${esc(request.plan)} · ${esc(request.status)}</div>` : ""}</article></div>`);
       $("localLogout").onclick = async () => { try { await syncWorkspace(); await Gravity58Ads.logout(); } catch {} localStorage.removeItem(KEYS.session); session = null; renderShell(); renderGate(); };
     }
 
@@ -404,5 +404,5 @@
 
   renderGate();
   renderShell();
-  resumeCloudSession().catch((error) => toast(error.message || "Could not open G58 Cloud workspace"));
+  resumeCloudSession().catch((error) => toast(error.message || "Could not open your POS workspace"));
 })();

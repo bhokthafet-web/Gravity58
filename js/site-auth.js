@@ -44,7 +44,7 @@
     pending = action;
     setSignupMode(false);
     wrap.classList.add("show");
-    if (!api?.configured) $("authMessage").textContent = "Appwrite setup is not complete. Browsing still works; account actions will start after deployment configuration.";
+    if (!api?.configured) $("authMessage").textContent = "Account services are temporarily unavailable. You can continue browsing and try again shortly.";
   }
   const close = () => wrap.classList.remove("show");
   const showSuccess = (title, message) => { $("authSuccessTitle").textContent = title; $("authSuccessText").textContent = message; successWrap.classList.add("show"); };

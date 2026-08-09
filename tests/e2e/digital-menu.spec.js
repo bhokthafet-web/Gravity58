@@ -263,10 +263,33 @@ test("restaurant menu loads from the signed-in account and CSV changes persist t
   page.on("dialog", (dialog) => dialog.accept());
   await page.goto("/digital-menu/");
   await expect(page.getByRole("heading", { name: /Cloud Account Café/ })).toBeVisible();
-  await expect(page.getByText("G58 Cloud")).toHaveText("G58 Cloud");
+  await expect(page.getByText("Menu synced")).toHaveText("Menu synced");
 
   await page.locator('[data-view="menu"]').click();
   await expect(page.locator("#menuGrid")).toContainText("Masala Tea");
+  await page.getByRole("button", { name: "+ Add Menu Item" }).click();
+  await page.getByLabel("Item name").fill("Paneer Tikka");
+  await page.getByLabel("Category").fill("Starters");
+  await page.getByLabel("Price (₹)").fill("220");
+  await page.getByLabel("Description").fill("Char-grilled paneer");
+  await page.getByLabel("Allow customer preparation instructions").check();
+  await page.getByLabel("Food image").setInputFiles({
+    name: "paneer-tikka.png",
+    mimeType: "image/png",
+    buffer: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9ZkMcAAAAASUVORK5CYII=", "base64"),
+  });
+  await page.getByRole("button", { name: "Add Menu Item", exact: true }).click();
+  const manualItem = page.locator(".menu-item", { hasText: "Paneer Tikka" });
+  await expect(manualItem).toContainText("₹220");
+  await manualItem.getByRole("button", { name: "Edit" }).click();
+  await page.getByLabel("Price (₹)").fill("230");
+  await page.getByRole("button", { name: "Save Changes" }).click();
+  await expect(page.locator(".menu-item", { hasText: "Paneer Tikka" })).toContainText("₹230");
+  const manualStored = await page.evaluate(() => window.__g58Mock.store["digital_menu_cloud-owner-1"][0]);
+  expect(manualStored.items.find((row) => row.name === "Paneer Tikka")).toMatchObject({ price: 230, categoryId: expect.any(String), available: true, prepareInstructionsEnabled: true, imageUrl: "https://media.example.com/paneer-tikka.png" });
+  const accessRepair = await page.evaluate(() => window.__g58Mock.permissionCalls.find((row) => row.action === "update" && row.id === "cloud-cafe"));
+  expect(accessRepair.permissions).toContain("read:any");
+
   await page.locator("#menuImageFiles").setInputFiles({
     name: "cold-coffee.png",
     mimeType: "image/png",
@@ -283,7 +306,7 @@ test("restaurant menu loads from the signed-in account and CSV changes persist t
   await expect(page.locator("#menuGrid")).toContainText("Chicken Biryani");
   const stored = await page.evaluate(() => window.__g58Mock.store["digital_menu_cloud-owner-1"][0]);
   expect(stored.ownerId).toBe("cloud-owner-1");
-  expect(stored.items.find((row) => row.name === "Cold Coffee")).toMatchObject({ price: 140, available: true, imageUrl: "https://media.example.com/cold-coffee.png", imageFileId: "mock-menu-1" });
+  expect(stored.items.find((row) => row.name === "Cold Coffee")).toMatchObject({ price: 140, available: true, imageUrl: "https://media.example.com/cold-coffee.png", imageFileId: expect.stringMatching(/^mock-menu-/) });
   expect(stored.items.find((row) => row.name === "Chicken Biryani")).toMatchObject({ type: "Non-Veg", available: false, prepareInstructionsEnabled: true });
   expect(stored.orders).toBeUndefined();
 

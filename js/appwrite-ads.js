@@ -120,7 +120,7 @@
     return clean(await databases.createDocument({ databaseId: config.databaseId, collectionId: tableIdFor(kind), documentId: documentId || Appwrite.ID.unique(), data: rowData, permissions }));
   }
 
-  async function update(kind, documentId, data) {
+  async function update(kind, documentId, data, permissions) {
     if (!configured) {
       const store = localRead();
       const row = (store[kind] || []).find((item) => (item.id || item.$id) === documentId);
@@ -139,8 +139,8 @@
       try { previousPayload = JSON.parse(previous.payload || "{}") || {}; } catch {}
       rowData = { payload: JSON.stringify({ ...previousPayload, ...rowData }) };
     }
-    if (tables) return clean(await tables.updateRow({ databaseId: config.databaseId, tableId: tableIdFor(kind), rowId: documentId, data: rowData }));
-    return clean(await databases.updateDocument({ databaseId: config.databaseId, collectionId: tableIdFor(kind), documentId, data: rowData }));
+    if (tables) return clean(await tables.updateRow({ databaseId: config.databaseId, tableId: tableIdFor(kind), rowId: documentId, data: rowData, permissions }));
+    return clean(await databases.updateDocument({ databaseId: config.databaseId, collectionId: tableIdFor(kind), documentId, data: rowData, permissions }));
   }
 
   async function remove(kind, documentId) {
@@ -173,13 +173,13 @@
   }
 
   async function register(email, password, name, phone = "") {
-    if (!configured) throw new Error("Appwrite is not configured yet.");
+    if (!configured) throw new Error("Account services are temporarily unavailable.");
     const user = await account.create({ userId: Appwrite.ID.unique(), email, password, name });
     await account.createEmailPasswordSession({ email, password });
     await create("profiles", { userId: user.$id, email, name, phone, accountType: "customer", state: "", district: "", blocked: false }, undefined, permissionSet("profiles", user.$id));
     return user;
   }
-  const login = async (email, password) => configured ? account.createEmailPasswordSession({ email, password }) : Promise.reject(new Error("Appwrite is not configured yet."));
+  const login = async (email, password) => configured ? account.createEmailPasswordSession({ email, password }) : Promise.reject(new Error("Account services are temporarily unavailable."));
   const logout = async () => configured ? account.deleteSession({ sessionId: "current" }) : true;
   const currentUser = async () => { if (!configured) return null; try { return await account.get(); } catch { return null; } };
   async function ensureUser() {
@@ -190,8 +190,8 @@
     }
     return user;
   }
-  const forgotPassword = async (email, url) => configured ? account.createRecovery({ email, url }) : Promise.reject(new Error("Appwrite is not configured yet."));
-  const completeRecovery = async (userId, secret, password) => configured ? account.updateRecovery({ userId, secret, password }) : Promise.reject(new Error("Appwrite is not configured yet."));
+  const forgotPassword = async (email, url) => configured ? account.createRecovery({ email, url }) : Promise.reject(new Error("Account services are temporarily unavailable."));
+  const completeRecovery = async (userId, secret, password) => configured ? account.updateRecovery({ userId, secret, password }) : Promise.reject(new Error("Account services are temporarily unavailable."));
   const createJWT = async () => {
     if (!configured || !account) throw new Error("Sign in to G58 before uploading media.");
     const result = await account.createJWT();
@@ -231,7 +231,7 @@
   }
   async function uploadMenuMedia(file) {
     validateMenuImage(file);
-    if (!configured || !storage) throw new Error("G58 Appwrite image storage is unavailable.");
+    if (!configured || !storage) throw new Error("Image storage is temporarily unavailable. Please try again shortly.");
     const current = await currentUser();
     if (!current) throw new Error("Login before uploading restaurant or menu images.");
     const permissions = [
