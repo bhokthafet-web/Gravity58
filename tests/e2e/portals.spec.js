@@ -21,6 +21,8 @@ test("advertising user can register, book a timed placement and view the request
   await expect(page.getByRole("heading", { name: "Book Advertisement Space" })).toBeVisible();
   await expect(page.locator("#restaurantKey")).toHaveValue("Test Restaurant|Hyderabad");
   await page.locator('[data-slot="right_rail"]').click();
+  await expect(page.locator('[data-slot="right_rail"]')).toContainText("1080 × 1350 px");
+  await expect(page.locator("#bookingImageSize")).toContainText("1080 × 1350 px");
   await page.locator("#hours").selectOption("3");
   await page.locator("#title").fill("Regression Offer");
   await page.locator("#description").fill("Three-hour automated test campaign.");
@@ -31,7 +33,7 @@ test("advertising user can register, book a timed placement and view the request
   await expect(page.getByRole("heading", { name: "Regression Offer" })).toBeVisible();
   const bookings = await page.evaluate(() => window.__g58Mock.store.bookings);
   expect(bookings).toHaveLength(1);
-  expect(bookings[0]).toMatchObject({ status: "Requested", hours: 3, restaurantKey: "Test Restaurant|Hyderabad", title: "Regression Offer" });
+  expect(bookings[0]).toMatchObject({ status: "Requested", hours: 3, restaurantKey: "Test Restaurant|Hyderabad", title: "Regression Offer", imageSize: "1080 × 1350 px", imageRatio: "4:5" });
   await assertNoErrors();
 });
 
@@ -154,13 +156,14 @@ test("team admin reviews bookings, activates campaigns, moderates posts and bloc
   await page.getByRole("button", { name: "+ Manual campaign" }).click();
   await page.getByLabel("Restaurant placement key").fill("Sample Restaurant|Hyderabad");
   await page.getByLabel("Placement", { exact: true }).selectOption("preparing");
+  await expect(page.locator("#manualImageSize")).toContainText("1200 × 628 px");
   await page.getByLabel("Title").fill("Sample Preparing Offer");
   await page.getByLabel("Description").fill("A production-safe sample advertisement.");
   await page.getByLabel("Hours").fill("24");
   await page.getByLabel("Animation style").selectOption("pulse");
   await page.getByRole("button", { name: "Publish campaign" }).click();
   const manual = await page.evaluate(() => window.__g58Mock.store.advertisements.find((row) => row.title === "Sample Preparing Offer"));
-  expect(manual).toMatchObject({ restaurantKey: "Sample Restaurant|Hyderabad", slotId: "preparing", hours: 24, creativeStyle: "pulse", active: true, status: "Live" });
+  expect(manual).toMatchObject({ restaurantKey: "Sample Restaurant|Hyderabad", slotId: "preparing", imageSize: "1200 × 628 px", imageRatio: "1.91:1", hours: 24, creativeStyle: "pulse", active: true, status: "Live" });
   await assertNoErrors();
 });
 

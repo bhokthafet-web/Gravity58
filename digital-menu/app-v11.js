@@ -81,7 +81,16 @@ let remoteMenuLoading = false;
 let activeCompressorUrl = '';
 const CLOUD_MENU_KIND_PREFIX = 'digital_menu_';
 const CLOUD_ORDER_KIND_PREFIX = 'digital_order_';
+const CLOUD_TOKEN_KIND_PREFIX = 'digital_token_';
 let cloudMenuSyncing = false;
+let ownerOrderUnsubscribe = null;
+let ownerOrderSubscriptionKind = '';
+let customerOrderUnsubscribe = null;
+let customerOrderSubscriptionKind = '';
+let orderAlertTimer = null;
+let orderAlertContext = null;
+const ringingOrderIds = new Set();
+const knownCloudOrderIds = new Set();
 
 function load(){
   try{
@@ -90,6 +99,7 @@ function load(){
     stored.adRequests=[];
     stored.restaurants=(stored.restaurants||[]).map(r=>({...r,logoImageKey:r.logoImageKey||(isWebImage(r.logoImage)&&String(r.logoImage).startsWith('data:')?`restaurant:${r.id}`:''),address:r.address||'',phone:r.phone||'',email:r.email||'',paymentEnabled:!!r.paymentEnabled,upiId:r.upiId||'',paymentLink:r.paymentLink||'',restaurantKey:`${r.name}|${r.city}`}));
     stored.items=(stored.items||[]).map(i=>({...i,imageKey:i.imageKey||(isWebImage(i.imageData)&&String(i.imageData).startsWith('data:')?`menu-item:${i.id}`:''),prepareInstructionsEnabled:!!i.prepareInstructionsEnabled}));
+    stored.orders=(stored.orders||[]).map((order,index)=>({...order,tokenNumber:Number(order.tokenNumber)||index+1,orderDay:order.orderDay||orderDay(order.createdAt),messages:Array.isArray(order.messages)?order.messages:[]}));
     return stored;
   }catch{return {...structuredClone(seed),advertisements:[],adRequests:[]}}
 }
@@ -122,6 +132,10 @@ function isCloudMenuSession(){return state.session?.provider==='gravity58'&&Grav
 function cloudOwnerId(){return state.users.find(row=>row.id===state.session?.userId)?.cloudUserId||''}
 function cloudMenuKind(ownerId=cloudOwnerId()){return `${CLOUD_MENU_KIND_PREFIX}${String(ownerId||'public').replace(/[^a-zA-Z0-9._-]/g,'-').slice(0,48)}`}
 function cloudOrderKind(ownerId=cloudOwnerId()){return `${CLOUD_ORDER_KIND_PREFIX}${String(ownerId||'public').replace(/[^a-zA-Z0-9._-]/g,'-').slice(0,47)}`}
+function cloudTokenKind(ownerId=cloudOwnerId()){return `${CLOUD_TOKEN_KIND_PREFIX}${String(ownerId||'public').replace(/[^a-zA-Z0-9._-]/g,'-').slice(0,47)}`}
+function orderDay(value=now()){return new Date(value).toLocaleDateString('en-CA',{timeZone:'Asia/Kolkata'}).replaceAll('-','')}
+function formatToken(value){return String(Math.max(0,Number(value)||0)).padStart(4,'0')}
+function activeQueueStatus(status){return !['Completed','Rejected','Payment Rejected'].includes(status)}
 function restaurantCloudFields(r){const fields=['id','name','type','city','description','address','phone','email','open','accepting','tax','service','identification','restaurantKey','social','paymentEnabled','upiId','paymentLink','logoImageUrl','logoImageFileId'];return Object.fromEntries(fields.map(key=>[key,r?.[key]]))}
 function itemCloudFields(item){const fields=['id','categoryId','name','description','price','type','available','prep','prepareInstructionsEnabled','imageUrl','imageFileId'];return Object.fromEntries(fields.map(key=>[key,item?.[key]]))}
 function buildCloudMenuRecord(restaurantId=state.activeRestaurantId){const restaurant=state.restaurants.find(row=>row.id===restaurantId);if(!restaurant)throw new Error('Restaurant not found');return {schemaVersion:2,ownerId:cloudOwnerId(),updatedAt:now(),restaurant:restaurantCloudFields(restaurant),categories:restaurantCategories(restaurantId).map(row=>({id:row.id,name:row.name})),items:restaurantItems(restaurantId).map(itemCloudFields)}}
@@ -169,8 +183,61 @@ async function syncCloudMenus(){
     await syncCloudOrders();
   }finally{cloudMenuSyncing=false}
 }
-async function syncCloudOrders(){if(!isCloudMenuSession())return;const ownerId=cloudOwnerId(),restaurantIds=new Set(ownerRestaurants().map(row=>row.id)),records=(await Gravity58Ads.list(cloudOrderKind(ownerId))).filter(row=>row.ownerId===ownerId&&restaurantIds.has(row.restaurantId));state.orders=(state.orders||[]).filter(row=>!restaurantIds.has(row.restaurantId));state.orders.push(...records.map(row=>({...row,id:row.id||row.$id})));save()}
-async function persistCloudOrder(order){if(!order?.id||!order.cloudOwnerId)return order;const current=await Gravity58Ads.ensureUser(),permissions=Gravity58Ads.userPermissionSet([order.cloudOwnerId,current?.$id]);try{return await Gravity58Ads.create(cloudOrderKind(order.cloudOwnerId),order,order.id,permissions)}catch(error){if(error?.code===409||/already exists/i.test(error?.message||''))return Gravity58Ads.update(cloudOrderKind(order.cloudOwnerId),order.id,order);throw error}}
+async function syncCloudOrders({alertNew=false}={}){
+  if(!isCloudMenuSession())return;
+  const ownerId=cloudOwnerId(),restaurantIds=new Set(ownerRestaurants().map(row=>row.id));
+  const records=(await Gravity58Ads.list(cloudOrderKind(ownerId))).filter(row=>row.ownerId===ownerId&&restaurantIds.has(row.restaurantId)&&!row.tokenReservation);
+  if(alertNew){
+    records.filter(order=>!knownCloudOrderIds.has(order.id||order.$id)&&['Pending','Payment Verification'].includes(order.status)).forEach(order=>ringingOrderIds.add(order.id||order.$id));
+  }
+  records.forEach(order=>knownCloudOrderIds.add(order.id||order.$id));
+  state.orders=(state.orders||[]).filter(row=>!restaurantIds.has(row.restaurantId));
+  state.orders.push(...records.map(row=>({...row,id:row.id||row.$id,messages:Array.isArray(row.messages)?row.messages:[]})));
+  save();
+  updateOrderAlertSound();
+}
+async function persistCloudOrder(order){
+  if(!order?.id||!order.cloudOwnerId)return order;
+  const current=await Gravity58Ads.ensureUser();
+  order.customerAccountId||=current?.$id||'';
+  const permissions=Gravity58Ads.userPermissionSet([order.cloudOwnerId,order.customerAccountId]);
+  try{return await Gravity58Ads.create(cloudOrderKind(order.cloudOwnerId),order,order.id,permissions)}
+  catch(error){if(error?.code===409||/already exists/i.test(error?.message||''))return Gravity58Ads.update(cloudOrderKind(order.cloudOwnerId),order.id,order,permissions);throw error}
+}
+async function reserveOrderToken(ownerId,restaurantId){
+  const day=orderDay(),localOrders=(state.orders||[]).filter(order=>order.restaurantId===restaurantId&&order.orderDay===day),localNext=Math.max(0,...localOrders.map(order=>Number(order.tokenNumber)||0))+1;
+  if(!Gravity58Ads?.configured||!ownerId)return localNext;
+  const current=await Gravity58Ads.ensureUser(),permissions=Gravity58Ads.userPermissionSet([ownerId,current?.$id]),prefix=`tok-${String(restaurantId).replace(/[^a-zA-Z0-9._-]/g,'-').slice(0,14)}-${day.slice(2)}-`;
+  for(let number=Math.max(1,localNext);number<=9999;number++){
+    const reservationId=`${prefix}${formatToken(number)}`.slice(0,36);
+    try{
+      await Gravity58Ads.create(cloudTokenKind(ownerId),{tokenReservation:true,ownerId,restaurantId,orderDay:day,tokenNumber:number,createdAt:now()},reservationId,permissions);
+      return number;
+    }catch(error){if(error?.code!==409&&!/already exists/i.test(error?.message||''))throw error}
+  }
+  throw new Error('Today’s token queue is full. Please contact the restaurant.');
+}
+function orderAlertBeep(duration=.18,frequency=880){
+  try{
+    orderAlertContext||=new (window.AudioContext||window.webkitAudioContext)();
+    if(orderAlertContext.state==='suspended')orderAlertContext.resume();
+    const oscillator=orderAlertContext.createOscillator(),gain=orderAlertContext.createGain(),start=orderAlertContext.currentTime;
+    oscillator.frequency.value=frequency;gain.gain.setValueAtTime(.0001,start);gain.gain.exponentialRampToValueAtTime(.16,start+.015);gain.gain.exponentialRampToValueAtTime(.0001,start+duration);
+    oscillator.connect(gain);gain.connect(orderAlertContext.destination);oscillator.start(start);oscillator.stop(start+duration+.02);
+  }catch(error){console.warn('Audio alert unavailable',error)}
+}
+function updateOrderAlertSound(){
+  [...ringingOrderIds].forEach(id=>{const order=state.orders.find(row=>row.id===id);if(!order||!['Pending','Payment Verification'].includes(order.status))ringingOrderIds.delete(id)});
+  if(!ringingOrderIds.size){if(orderAlertTimer)clearInterval(orderAlertTimer);orderAlertTimer=null;return}
+  if(!orderAlertTimer){orderAlertBeep();orderAlertTimer=setInterval(()=>orderAlertBeep(),2200)}
+}
+function startOwnerOrderRealtime(){
+  const ownerId=cloudOwnerId(),kind=ownerId?cloudOrderKind(ownerId):'';
+  if(!Gravity58Ads?.subscribeKind||!kind||ownerOrderSubscriptionKind===kind)return;
+  ownerOrderUnsubscribe?.();ownerOrderSubscriptionKind=kind;
+  ownerOrderUnsubscribe=Gravity58Ads.subscribeKind(kind,async()=>{try{await syncCloudOrders({alertNew:true});if(!location.hash&&state.session){renderView()}}catch(error){console.warn('Live order update failed',error)}});
+}
+function stopOrderRealtime(){ownerOrderUnsubscribe?.();customerOrderUnsubscribe?.();ownerOrderUnsubscribe=customerOrderUnsubscribe=null;ownerOrderSubscriptionKind=customerOrderSubscriptionKind='';ringingOrderIds.clear();knownCloudOrderIds.clear();updateOrderAlertSound()}
 async function removeCloudMenu(restaurant){if(!isCloudMenuSession())return;await Gravity58Ads.remove(cloudMenuKind(),restaurant.cloudRecordId||restaurant.id)}
 async function hydrateAdvertisements(){
   if(!window.Gravity58Ads)return;
@@ -197,7 +264,7 @@ function registerForm(){return `<form id="registerForm"><div class="form-grid"><
 function ensureGravity58User(account,details={}){let user=state.users.find(row=>row.cloudUserId===account.$id||row.email?.toLowerCase()===account.email?.toLowerCase());if(!user){user={id:`g58_${account.$id}`,cloudUserId:account.$id,name:account.name||details.name||account.email.split('@')[0],email:account.email,mobile:details.mobile||'',city:details.city||'',provider:'gravity58'};state.users.push(user)}else Object.assign(user,{cloudUserId:account.$id,name:account.name||user.name,email:account.email,provider:'gravity58'});return user}
 function bindRegister(){$('#registerForm').onsubmit=async e=>{e.preventDefault();const d=Object.fromEntries(new FormData(e.target));if(state.users.some(x=>x.email.toLowerCase()===d.email.trim().toLowerCase()))return toast('This email already has an account on this browser');if(d.password.length<6)return toast('Use at least 6 characters');if(d.password!==d.confirm)return toast('Passwords do not match');const button=e.submitter;button.disabled=true;button.textContent='Creating…';try{let user;if(Gravity58Ads?.configured){const account=await Gravity58Ads.register(d.email.trim().toLowerCase(),d.password,d.name,d.mobile);user=ensureGravity58User(account,d)}else{user={id:uid('usr'),name:d.name,email:d.email.trim().toLowerCase(),password:d.password,mobile:d.mobile,city:d.city,provider:'local'};state.users.push(user)}state.session={userId:user.id,provider:user.provider};save();closeModal();renderOwnerOnboarding()}catch(error){button.disabled=false;button.textContent='Create Account';toast(error.message||'Could not create account')}}}
 
-async function logoutOwner(){if(state.session?.provider==='gravity58')try{await Gravity58Ads?.logout()}catch{}state.session=null;save();render()}
+async function logoutOwner(){stopOrderRealtime();if(state.session?.provider==='gravity58')try{await Gravity58Ads?.logout()}catch{}state.session=null;save();render()}
 function renderOwnerOnboarding(){app.innerHTML=`<main class="screen auth"><section class="auth-card glass"><a class="menu-home-link" href="../">← Gravity58 Home</a><div class="premium-menu-kicker">SET UP YOUR RESTAURANT</div><div class="brand"><div class="brand-mark">G</div><div><h2>Create your first Digital Menu</h2><p class="tagline">Your restaurant and menu are securely saved to your G58 account.</p></div></div><button class="btn full" id="createFirstRestaurant">Add Restaurant</button><button class="link-btn full" id="onboardingLogout">Logout</button></section></main>`;$('#createFirstRestaurant').onclick=()=>openRestaurantForm(true);$('#onboardingLogout').onclick=logoutOwner}
 
 function renderShell(){const r=activeRestaurant();if(!r)return renderOwnerOnboarding();app.innerHTML=`<div class="shell"><aside class="sidebar"><div class="brand"><div class="brand-mark">G</div><div><strong>Gravity58 Menu</strong><small class="muted">Restaurant workspace</small></div></div><nav class="nav">${navButton('dashboard','⌂','Dashboard')}${navButton('restaurants','◫','Restaurants')}${navButton('menu','☰','Menu')}${navButton('orders','◉','Orders')}${navButton('qr','▦','QR Codes')}${navButton('reports','◒','Reports')}${navButton('publish','⇧','Share Menu')}${navButton('settings','⚙','Settings')}<a class="owner-book-ad" href="${CONFIG.adBookingPortalUrl||'../advertise/'}?restaurant=${encodeURIComponent(`${r.name}|${r.city}`)}">✦ Book Ad Space</a><button id="logout">⇥ Logout</button></nav></aside><main class="main"><header class="topbar"><div class="restaurant-switch"><span>${r.name?.[0]||'G'}</span><select id="restaurantSelect">${ownerRestaurants().map(x=>`<option value="${x.id}" ${x.id===r.id?'selected':''}>${x.name}</option>`).join('')}</select><button class="btn small secondary" id="addRestaurant">+ Add</button></div><div class="user-label"><button class="status-pill sync-menu-button" id="syncCloudMenu"><span class="dot"></span> Menu synced</button></div></header><section class="content" id="page"></section></main></div>`;
@@ -206,6 +273,7 @@ function renderShell(){const r=activeRestaurant();if(!r)return renderOwnerOnboar
   $('#syncCloudMenu')?.addEventListener('click',async e=>{e.currentTarget.disabled=true;try{await syncCloudMenus();renderShell();toast('Latest account menu loaded')}catch(error){e.currentTarget.disabled=false;toast(error.message||'Could not sync menu')}});
   $('#logout').onclick=logoutOwner;
   $$('.nav button[data-view]').forEach(b=>b.onclick=()=>{view=b.dataset.view;renderShell()});
+  startOwnerOrderRealtime();
   renderView();
 }
 function navButton(v,i,t){return `<button data-view="${v}" class="${view===v?'active':''}"><span>${i}</span>${t}</button>`}
@@ -341,11 +409,55 @@ async function importMenuCsvFile(file,imageFiles=[],mode='merge'){
   }finally{$('#menuCsvFile')&&($('#menuCsvFile').value='')}
 }
 function bindMenuActions(){$$('[data-stock]').forEach(b=>b.onclick=async()=>{const i=state.items.find(x=>x.id===b.dataset.stock);i.available=!i.available;try{await persistCloudMenu();menuView()}catch(error){i.available=!i.available;toast(error.message||'Could not update availability')}});$$('[data-item-edit]').forEach(b=>b.onclick=()=>openMenuItemForm(b.dataset.itemEdit));$$('[data-item-delete]').forEach(b=>b.onclick=async()=>{const i=state.items.find(x=>x.id===b.dataset.itemDelete);if(!i||!confirm(`Delete ${i.name} from this menu?`))return;state.items=state.items.filter(x=>x.id!==i.id);try{await persistCloudMenu();deleteLocalMedia(i.imageKey);if(isCloudMenuSession()&&i.imageFileId)Gravity58Ads.removeMenuMedia(i.imageFileId).catch(()=>{});menuView();toast('Menu item deleted')}catch(error){state.items.push(i);toast(error.message||'Could not delete menu item')}})}
-function ordersView(){const statuses=['All','Pending','Accepted','Preparing','Ready','Completed','Rejected'];$('#page').innerHTML=`<div class="section-head"><div><h1>Live Orders</h1><p class="muted">Restaurant-specific order board</p></div></div><div class="tabs">${statuses.map((s,i)=>`<button class="btn small ${i?'secondary':''}" data-tab="${s}">${s}</button>`).join('')}</div><div class="grid order-grid" id="ordersGrid" style="margin-top:16px">${restaurantOrders().map(orderCard).join('')||empty('No orders yet')}</div>`;$$('[data-tab]').forEach(b=>b.onclick=()=>{$$('[data-tab]').forEach(x=>x.className='btn small secondary');b.className='btn small';const s=b.dataset.tab;$('#ordersGrid').innerHTML=restaurantOrders().filter(o=>s==='All'||o.status===s).map(orderCard).join('')||empty(`No ${s.toLowerCase()} orders`);bindOrderActions()});bindOrderActions()}
-function orderCard(o){const identity=o.serviceMode==='table'?`Table ${o.tableNumber||'-'}`:'Single Counter';const pay=o.paymentMethod==='online'?`Online · ${o.transactionId||'No ID'}`:'Pay at counter';return `<article class="card order-card" data-status="${o.status}"><div class="section-head" style="margin:0 0 8px"><div><strong>${o.id}</strong><div class="muted">${o.customerName||o.customer||'Guest'} · ${identity}</div>${o.phone?`<small class="muted">☎ ${o.phone}</small>`:''}</div><span class="chip">${o.status}</span></div><div class="chips"><span class="chip">${pay}</span>${o.paymentStatus?`<span class="chip">${o.paymentStatus}</span>`:''}</div><div class="order-items">${o.items.map(i=>`<div class="staff-order-item"><strong>${i.qty} × ${i.name}</strong>${i.prepareInstruction?`<div class="staff-prep-note"><span>Preparation:</span> ${i.prepareInstruction}</div>`:''}</div>`).join('')}</div><h3 style="margin:12px 0">${money(o.total)}</h3><div class="actions">${orderActions(o)}</div></article>`}
-function orderActions(o){const map={'Payment Verification':['Confirm Payment','Reject Payment'],Pending:['Accept','Reject'],Accepted:['Start Preparing'],Preparing:['Mark Ready'],Ready:['Complete']};return (map[o.status]||[]).map(a=>`<button class="btn small ${a==='Reject'?'red':['Start Preparing','Mark Ready','Complete'].includes(a)?'green':''}" data-order="${o.id}" data-action="${a}">${a}</button>`).join('')}
-function bindOrderActions(){$$('[data-order]').forEach(b=>b.onclick=()=>updateOrder(b.dataset.order,b.dataset.action))}
-async function updateOrder(id,action){const o=state.orders.find(x=>x.id===id);const next={Accept:'Accepted',Reject:'Rejected','Confirm Payment':'Pending','Reject Payment':'Payment Rejected','Start Preparing':'Preparing','Mark Ready':'Ready',Complete:'Completed'}[action];if(!next)return;const previous={status:o.status,paymentStatus:o.paymentStatus};o.status=next;if(action==='Confirm Payment')o.paymentStatus='Confirmed';if(action==='Reject Payment')o.paymentStatus='Rejected';o.updatedAt=now();try{await persistCloudOrder(o);save();toast(action==='Mark Ready'?`Order ${o.id}: Food is ready`:`Order ${o.id}: ${next}`);view==='orders'?ordersView():dashboardView()}catch(error){Object.assign(o,previous);toast(error.message||'Could not update order')}}
+function sortedRestaurantOrders(){return restaurantOrders().slice().sort((a,b)=>{const active=Number(activeQueueStatus(b.status))-Number(activeQueueStatus(a.status));if(active)return active;const day=String(a.orderDay||'').localeCompare(String(b.orderDay||''));if(day)return day;return (Number(a.tokenNumber)||99999)-(Number(b.tokenNumber)||99999)||new Date(a.createdAt)-new Date(b.createdAt)})}
+function ordersView(){
+  const statuses=['All','Payment Verification','Pending','Accepted','Preparing','Ready','Completed','Rejected'],orders=sortedRestaurantOrders(),active=orders.filter(order=>activeQueueStatus(order.status));
+  $('#page').innerHTML=`<div class="section-head"><div><h1>Live Orders</h1><p class="muted">Instant order board · ${active.length} token(s) in the active queue</p></div><span class="status-pill live-sync-pill"><span class="dot"></span> Live sync & sound alerts</span></div><div class="tabs">${statuses.map((s,i)=>`<button class="btn small ${i?'secondary':''}" data-tab="${s}">${s}</button>`).join('')}</div><div class="grid order-grid" id="ordersGrid" style="margin-top:16px">${orders.map(orderCard).join('')||empty('No orders yet')}</div>`;
+  $$('[data-tab]').forEach(b=>b.onclick=()=>{$$('[data-tab]').forEach(x=>x.className='btn small secondary');b.className='btn small';const s=b.dataset.tab;$('#ordersGrid').innerHTML=orders.filter(o=>s==='All'||o.status===s).map(orderCard).join('')||empty(`No ${s.toLowerCase()} orders`);bindOrderActions()});
+  bindOrderActions();
+}
+function orderMessagesMarkup(o,role='owner'){
+  const messages=(o.messages||[]).slice(-6);
+  return `<div class="order-chat"><div class="order-chat-log">${messages.map(message=>`<div class="order-message ${message.senderRole===role?'mine':''}"><strong>${html(message.senderRole==='owner'?'Restaurant':message.senderName||'Customer')}</strong><span>${html(message.text)}</span><small>${new Date(message.createdAt).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'})}</small></div>`).join('')||'<p class="muted no-messages">No messages yet.</p>'}</div><form class="order-chat-form" data-order-chat="${html(o.id)}"><input name="message" maxlength="240" placeholder="Message the customer" aria-label="Message customer"><button class="btn small" type="submit">Send</button></form></div>`
+}
+function orderCard(o){
+  const identity=o.serviceMode==='table'?`Table ${o.tableNumber||'-'}`:'Single Counter',pay=o.paymentMethod==='online'?`Online · ${o.transactionId||'No ID'}`:'Pay at counter',token=formatToken(o.tokenNumber);
+  return `<article class="card order-card" data-status="${html(o.status)}" data-order-card="${html(o.id)}"><div class="order-card-head"><div><span class="order-token">TOKEN ${token}</span><strong class="order-id">${html(o.id)}</strong><div class="muted">${html(o.customerName||o.customer||'Guest')} · ${html(identity)}</div>${o.phone?`<small class="muted">☎ ${html(o.phone)}</small>`:''}</div><span class="chip order-status">${html(o.status)}</span></div><div class="chips"><span class="chip">${html(pay)}</span>${o.paymentStatus?`<span class="chip">${html(o.paymentStatus)}</span>`:''}<span class="chip">${new Date(o.createdAt).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'})}</span></div><div class="order-items">${o.items.map(i=>`<div class="staff-order-item"><strong>${Number(i.qty)||1} × ${html(i.name)}</strong>${i.prepareInstruction?`<div class="staff-prep-note"><span>Preparation:</span> ${html(i.prepareInstruction)}</div>`:''}</div>`).join('')}</div><h3 style="margin:12px 0">${money(o.total)}</h3><div class="actions order-primary-actions">${orderActions(o)}${o.serviceMode==='table'?`<button class="btn small secondary" data-edit-table="${html(o.id)}">Correct table</button>`:''}<button class="btn small secondary" data-print-order="${html(o.id)}">Print</button></div>${orderMessagesMarkup(o)}</article>`
+}
+function orderActions(o){const map={'Payment Verification':['Confirm Payment','Reject Payment'],Pending:['Accept','Reject'],Accepted:['Start Preparing'],Preparing:['Mark Ready'],Ready:['Complete']};return (map[o.status]||[]).map(a=>`<button class="btn small ${['Reject','Reject Payment'].includes(a)?'red':['Start Preparing','Mark Ready','Complete'].includes(a)?'green':''}" data-order="${html(o.id)}" data-action="${a}">${a}</button>`).join('')}
+function bindOrderActions(){
+  $$('[data-order]').forEach(b=>b.onclick=()=>updateOrder(b.dataset.order,b.dataset.action));
+  $$('[data-edit-table]').forEach(b=>b.onclick=()=>editOrderTable(b.dataset.editTable));
+  $$('[data-print-order]').forEach(b=>b.onclick=()=>printOrderReceipt(b.dataset.printOrder));
+  $$('[data-order-chat]').forEach(form=>form.onsubmit=event=>sendOrderMessage(event,form.dataset.orderChat,'owner'));
+}
+async function updateOrder(id,action){
+  const o=state.orders.find(x=>x.id===id),next={Accept:'Accepted',Reject:'Rejected','Confirm Payment':'Pending','Reject Payment':'Payment Rejected','Start Preparing':'Preparing','Mark Ready':'Ready',Complete:'Completed'}[action];if(!o||!next)return;
+  const previous={status:o.status,paymentStatus:o.paymentStatus,acceptedAt:o.acceptedAt,readyAt:o.readyAt,completedAt:o.completedAt};
+  o.status=next;if(action==='Confirm Payment')o.paymentStatus='Confirmed';if(action==='Reject Payment')o.paymentStatus='Rejected';if(action==='Accept')o.acceptedAt=now();if(action==='Mark Ready')o.readyAt=now();if(action==='Complete')o.completedAt=now();o.updatedAt=now();
+  if(!['Pending','Payment Verification'].includes(next))ringingOrderIds.delete(id);updateOrderAlertSound();
+  try{await persistCloudOrder(o);save();toast(action==='Mark Ready'?`Token ${formatToken(o.tokenNumber)} is ready`:`Order ${o.id}: ${next}`);view==='orders'?ordersView():dashboardView()}catch(error){Object.assign(o,previous);toast(error.message||'Could not update order')}
+}
+function editOrderTable(id){
+  const order=state.orders.find(row=>row.id===id);if(!order)return;
+  modal('Correct Table Number',`<form id="correctTableForm"><p class="muted">Update the customer’s table if it is duplicated or incorrect. Their live order screen updates automatically.</p><div class="field"><label for="correctTableNumber">Table number</label><input id="correctTableNumber" name="tableNumber" value="${html(order.tableNumber||'')}" maxlength="20" required></div><button class="btn full">Update table</button></form>`,()=>{$('#correctTableForm').onsubmit=async event=>{event.preventDefault();const value=String(new FormData(event.target).get('tableNumber')||'').trim();if(!value)return;const previous=order.tableNumber;order.tableNumber=value;order.customer=`${order.customerName?order.customerName+' · ':''}Table ${value}`;order.updatedAt=now();try{await persistCloudOrder(order);save();closeModal();ordersView();toast(`Token ${formatToken(order.tokenNumber)} moved to Table ${value}`)}catch(error){order.tableNumber=previous;toast(error.message||'Could not update table')}}})
+}
+async function sendOrderMessage(event,id,senderRole){
+  event.preventDefault();const form=event.currentTarget,input=$('input[name="message"]',form),text=String(input?.value||'').trim();if(!text)return;
+  const order=state.orders.find(row=>row.id===id);if(!order)return;
+  const button=$('button',form);button.disabled=true;
+  try{
+    let latest=order;if(order.cloudOwnerId&&Gravity58Ads?.configured)try{latest=await Gravity58Ads.get(cloudOrderKind(order.cloudOwnerId),id)}catch{}
+    const message={id:uid('msg'),senderRole,senderName:senderRole==='owner'?activeRestaurant()?.name:(order.customerName||'Customer'),text,createdAt:now()};
+    order.messages=[...(latest.messages||[]),message].slice(-50);order.updatedAt=now();await persistCloudOrder(order);save();input.value='';senderRole==='owner'?(view==='orders'?ordersView():dashboardView()):renderTrack();toast('Message sent');
+  }catch(error){button.disabled=false;toast(error.message||'Could not send message')}
+}
+function printOrderReceipt(id){
+  const order=state.orders.find(row=>row.id===id),restaurant=state.restaurants.find(row=>row.id===order?.restaurantId);if(!order||!restaurant)return;
+  const frame=document.createElement('iframe');frame.className='receipt-print-frame';frame.setAttribute('title','Order receipt');document.body.appendChild(frame);
+  const doc=frame.contentDocument;doc.open();doc.write(`<!doctype html><html><head><title>Token ${formatToken(order.tokenNumber)}</title><style>@page{size:80mm auto;margin:3mm}*{box-sizing:border-box}body{width:74mm;margin:0;font:12px/1.35 monospace;color:#000}h1,h2,p{margin:0 0 5px;text-align:center}.token{margin:8px 0;padding:7px;border:2px solid #000;font-size:24px;font-weight:900;text-align:center}.line{display:flex;justify-content:space-between;gap:8px;border-bottom:1px dashed #777;padding:5px 0}.note{font-size:10px;padding:3px 0}.total{font-size:16px;font-weight:900}.meta{margin:8px 0;border-top:1px dashed #000;border-bottom:1px dashed #000;padding:7px 0}</style></head><body><h2>${html(restaurant.name)}</h2><p>${html(restaurant.address||restaurant.city||'')}</p><div class="token">TOKEN ${formatToken(order.tokenNumber)}</div><div class="meta">${html(order.customerName||'Guest')} · ${html(order.serviceMode==='table'?`Table ${order.tableNumber}`:'Single Counter')}<br>${new Date(order.createdAt).toLocaleString('en-IN')}<br>${html(order.id)}</div>${order.items.map(item=>`<div class="line"><span>${Number(item.qty)||1} × ${html(item.name)}</span><b>${money((Number(item.qty)||1)*Number(item.price))}</b></div>${item.prepareInstruction?`<div class="note">Preparation: ${html(item.prepareInstruction)}</div>`:''}`).join('')}<div class="line total"><span>TOTAL</span><span>${money(order.total)}</span></div><p style="margin-top:10px">Thank you</p></body></html>`);doc.close();
+  setTimeout(()=>{try{frame.contentWindow?.focus();frame.contentWindow?.print()}finally{setTimeout(()=>frame.remove(),800)}},180)
+}
 function slugify(value){return String(value||'restaurant').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,60)||'restaurant'}
 function downloadFile(name,contents,type='application/json'){const url=URL.createObjectURL(new Blob([contents],{type})),link=document.createElement('a');link.href=url;link.download=name;document.body.appendChild(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1000)}
 function validateMenuConfig(config){if(!config||config.g58MenuConfig!==1||!config.restaurant?.name||!Array.isArray(config.categories)||!Array.isArray(config.items))throw new Error('Invalid restaurant menu data');if(config.items.length>1000)throw new Error('Restaurant menu contains too many items');return config}
@@ -358,7 +470,13 @@ function reportsView(){const orders=restaurantOrders(),sales=orders.filter(x=>x.
 function adsView(){const key=`${activeRestaurant().name}|${activeRestaurant().city}`;const ads=(state.advertisements||[]).filter(a=>a.restaurantKey===key);const requests=state.adRequests||[];$('#page').innerHTML=`<div class="section-head"><div><h1>Gravity58 Advertisement Control</h1><p class="muted">Central ad control using unique restaurant key: <strong>${key}</strong></p></div><button class="btn" id="createAd">+ Create Advertisement</button></div><div class="grid stats">${metric('Active Ads',ads.filter(a=>a.active).length)}${metric('Restaurant Ads',ads.length)}${metric('Ad Enquiries',requests.length)}${metric('Pending Enquiries',requests.filter(x=>x.status!=='Contacted').length)}</div><div class="section-head"><h2>Advertisements for this restaurant</h2></div><div class="grid restaurant-grid">${ads.map(a=>`<article class="card"><div class="ad-icon">${a.image||'📣'}</div><h3>${a.title}</h3><p class="muted">${a.description}</p><div class="chips"><span class="chip">${a.active?'Enabled':'Disabled'}</span><span class="chip">${a.restaurantKey}</span></div><div class="actions"><button class="btn small" data-toggle-ad="${a.id}">${a.active?'Disable':'Enable'}</button><button class="btn small red" data-delete-ad="${a.id}">Delete</button></div></article>`).join('')||empty('No advertisement enabled. Customers will see the Ad Space placeholder.')}</div><div class="section-head"><h2>Ad-space enquiries</h2></div><div class="card table-wrap"><table><thead><tr><th>Name</th><th>Phone</th><th>Email</th><th>Restaurant</th><th>Status</th><th></th></tr></thead><tbody>${requests.map(q=>`<tr><td>${q.name}</td><td>${q.phone}</td><td>${q.email}</td><td>${q.restaurantKey}</td><td>${q.status||'New'}</td><td><button class="btn small secondary" data-contacted="${q.id}">Mark Contacted</button></td></tr>`).join('')||'<tr><td colspan="6" class="muted">No enquiries yet.</td></tr>'}</tbody></table></div>`;$('#createAd').onclick=()=>modal('Create G58 Advertisement',`<form id="adForm"><div class="field"><label>Restaurant key</label><input value="${key}" disabled></div><div class="field"><label>Title</label><input name="title" required></div><div class="field"><label>Description</label><textarea name="description" required></textarea></div><div class="form-grid"><div class="field"><label>Button label</label><input name="buttonLabel" value="View Offer"></div><div class="field"><label>Destination URL</label><input name="destinationUrl" value="#"></div><div class="field"><label>Icon / Emoji</label><input name="image" value="📣"></div><div class="field"><label>Status</label><select name="active"><option value="true">Enabled</option><option value="false">Disabled</option></select></div></div><button class="btn full">Save Advertisement</button></form>`,()=>{$('#adForm').onsubmit=e=>{e.preventDefault();const d=Object.fromEntries(new FormData(e.target));state.advertisements.push({id:uid('ad'),restaurantKey:key,...d,active:d.active==='true'});save();closeModal();adsView();toast('Advertisement saved')}});$$('[data-toggle-ad]').forEach(b=>b.onclick=()=>{const a=state.advertisements.find(x=>x.id===b.dataset.toggleAd);a.active=!a.active;save();adsView()});$$('[data-delete-ad]').forEach(b=>b.onclick=()=>{state.advertisements=state.advertisements.filter(x=>x.id!==b.dataset.deleteAd);save();adsView()});$$('[data-contacted]').forEach(b=>b.onclick=()=>{const q=state.adRequests.find(x=>x.id===b.dataset.contacted);q.status='Contacted';save();adsView()})}
 function currentAdvertisement(r,slotId='right_rail'){const restaurantKey=`${r.name}|${r.city}`,ts=Date.now();return (state.advertisements||[]).filter(a=>a.restaurantKey===restaurantKey&&a.active&&(!a.slotId||a.slotId===slotId)&&(!a.expiresAt||new Date(a.expiresAt).getTime()>ts)).sort((a,b)=>new Date(b.activatedAt||b.createdAt||0)-new Date(a.activatedAt||a.createdAt||0))[0]}
 function adTimeLeft(ad){if(!ad?.expiresAt)return 'Slot duration not set';const ms=new Date(ad.expiresAt).getTime()-Date.now();if(ms<=0)return 'Expired';const h=Math.floor(ms/36e5),m=Math.floor((ms%36e5)/6e4);return `${h}h ${m}m remaining`}
-function publicAdSection(r){const slotId=location.hash.includes('track')?(location.hash.includes('Completed')?'thankyou':'preparing'):'right_rail';const ad=currentAdvertisement(r,slotId);if(ad)return `<section class="public-ad active-ad"><div class="ad-art">${ad.image||'📣'}</div><div><p class="eyebrow">SPONSORED PROMOTION</p><h3>${ad.title}</h3><p>${ad.description}</p><small class="ad-expiry" data-ad-expiry="${ad.expiresAt||''}">${adTimeLeft(ad)}</small></div><a class="btn" href="${ad.destinationUrl||'#'}" target="_blank">${ad.buttonLabel||'View Offer'}</a></section>`;return `<section class="public-ad ad-placeholder"><div class="ad-art">✦</div><div><p class="eyebrow">GRAVITY58 AD SPACE</p><h3>Your advertisement can appear here</h3><p>Book a restaurant-specific advertising slot through Gravity58.</p></div><button class="btn secondary" id="contactG58Ads">Contact Gravity58 for Ad Space</button></section>`}
+function publicAdSection(r){
+  let slotId='right_rail';
+  if(location.hash.includes('track')){const id=new URLSearchParams(location.hash.replace('#track&','')).get('order'),order=state.orders.find(row=>row.id===id);slotId=order?.status==='Completed'?'thankyou':'preparing'}
+  const ad=currentAdvertisement(r,slotId),size=slotId==='right_rail'?'1080 × 1350 px':slotId==='preparing'?'1200 × 628 px':'1080 × 1080 px';
+  if(ad)return `<section class="public-ad active-ad"><div class="ad-art">${adMediaMarkup(ad,'public-ad-media')}</div><div><p class="eyebrow">SPONSORED PROMOTION</p><h3>${html(ad.title)}</h3><p>${html(ad.description)}</p></div><a class="btn" href="${html(ad.destinationUrl||'#')}" target="_blank" rel="noopener">${html(ad.buttonLabel||'View Offer')}</a><small class="ad-expiry ad-expiry-badge" data-ad-expiry="${html(ad.expiresAt||'')}">${adTimeLeft(ad)}</small></section>`;
+  return `<section class="public-ad ad-placeholder"><div class="ad-art">✦</div><div><p class="eyebrow">GRAVITY58 AD SPACE</p><h3>Your advertisement can appear here</h3><p>Book a restaurant-specific advertising slot through Gravity58.</p><small class="ad-size-note">Recommended creative: ${size}</small></div><button class="btn secondary" id="contactG58Ads">Contact Gravity58 for Ad Space</button></section>`
+}
 function bindPublicAdContact(r){const b=$('#contactG58Ads');if(!b)return;b.onclick=()=>{const base=CONFIG.adBookingPortalUrl||'../advertise/';location.href=`${base}?restaurant=${encodeURIComponent(`${r.name}|${r.city}`)}`}}
 function settingsView(){const r=activeRestaurant();$('#page').innerHTML=`<div class="section-head"><div><h1>Restaurant Settings</h1><p class="muted">Settings apply only to ${r.name}</p></div></div><article class="card"><form id="settingsForm"><div class="form-grid"><div class="field"><label>Restaurant status</label><select name="open"><option value="true" ${r.open?'selected':''}>Open</option><option value="false" ${!r.open?'selected':''}>Closed</option></select></div><div class="field"><label>Accept orders</label><select name="accepting"><option value="true" ${r.accepting?'selected':''}>Yes</option><option value="false" ${!r.accepting?'selected':''}>No</option></select></div><div class="field"><label>Tax %</label><input name="tax" type="number" value="${r.tax||0}"></div><div class="field"><label>Service charge %</label><input name="service" type="number" value="${r.service||0}"></div><div class="field"><label>Enable customer payment</label><select name="paymentEnabled"><option value="true" ${r.paymentEnabled?'selected':''}>Enabled</option><option value="false" ${!r.paymentEnabled?'selected':''}>Disabled</option></select></div><div class="field"><label>UPI ID</label><input name="upiId" value="${r.upiId||''}" placeholder="restaurant@upi"></div><div class="field"><label>Payment link (optional)</label><input name="paymentLink" value="${r.paymentLink||''}" placeholder="https://..."></div><div class="field"><label>Instagram URL</label><input name="instagram" value="${r.social?.Instagram||''}"></div><div class="field"><label>WhatsApp URL</label><input name="whatsapp" value="${r.social?.WhatsApp||''}"></div></div><p class="muted">These settings sync with your G58 account. Online payments remain unconfirmed until staff verify the customer transaction ID.</p><button class="btn">Save Settings</button></form></article>`;$('#settingsForm').onsubmit=async e=>{e.preventDefault();const d=Object.fromEntries(new FormData(e.target)),button=e.submitter;button.disabled=true;Object.assign(r,{open:d.open==='true',accepting:d.accepting==='true',tax:+d.tax,service:+d.service,paymentEnabled:d.paymentEnabled==='true',upiId:d.upiId,paymentLink:d.paymentLink,social:{...r.social,Instagram:d.instagram,WhatsApp:d.whatsapp}});try{await persistCloudMenu(r.id);toast('Settings saved');renderShell()}catch(error){button.disabled=false;toast(error.message||'Could not save settings')}}}
 
@@ -423,8 +541,8 @@ function renderPublicMenu(){
       <div class="compact-hero-layout"><div><p class="eyebrow">PREMIUM DIGITAL MENU</p><h1>Fresh favourites,<br>ready to order</h1><p>${html(r.description)}</p><div class="compact-details"><span>📍 ${html(r.address||r.city)}</span><span>☎ ${html(r.phone||'Contact restaurant')}</span><span class="open-tag">${r.open?'Open now':'Closed'}</span></div></div><div class="compact-hero-dish">${imageMarkup(localMediaSource(heroItem,'imageKey','imageData')||localMediaSource(r,'logoImageKey','logoImage'),heroItem?.name?.[0]||r.name?.[0]||'G','compact-hero-photo')}</div></div>
     </section>
     <aside class="header-ad-panel">
-      <button class="ad-space-contact" id="contactG58Ads" type="button">Book this ad space</button>
-      ${ad?`<a class="header-active-ad creative-${html(ad.creativeStyle||'spotlight')}" href="${html(ad.destinationUrl||'#')}" target="_blank"><span class="ad-label">SPONSORED</span><div class="header-ad-art">${adMediaMarkup(ad,'header-ad-media')}</div><div><h3>${html(ad.title)}</h3><p>${html(ad.description)}</p><strong>${html(ad.buttonLabel||'View Offer')} →</strong><small class="ad-expiry" data-ad-expiry="${html(ad.expiresAt||'')}">${adTimeLeft(ad)}</small></div></a>`:`<div class="header-ad-placeholder"><span class="ad-label">GRAVITY58 AD SPACE</span><div class="header-ad-art"><span class="media-fallback">G58</span></div><div><h3>Put your brand beside the menu</h3><p>Reserve this restaurant-specific promotion slot by the hour.</p></div></div>`}
+      <button class="ad-space-contact" id="contactG58Ads" type="button">Book this ad space · 1080 × 1350 px</button>
+      ${ad?`<a class="header-active-ad creative-${html(ad.creativeStyle||'spotlight')}" href="${html(ad.destinationUrl||'#')}" target="_blank" rel="noopener"><span class="ad-label">SPONSORED</span><div class="header-ad-art">${adMediaMarkup(ad,'header-ad-media')}</div><div><h3>${html(ad.title)}</h3><p>${html(ad.description)}</p><strong>${html(ad.buttonLabel||'View Offer')} →</strong></div><small class="ad-expiry ad-expiry-badge" data-ad-expiry="${html(ad.expiresAt||'')}">${adTimeLeft(ad)}</small></a>`:`<div class="header-ad-placeholder"><span class="ad-label">GRAVITY58 AD SPACE</span><div class="header-ad-art"><span class="media-fallback">G58</span></div><div><h3>Put your brand beside the menu</h3><p>Best image: 1080 × 1350 px (4:5)</p></div></div>`}
     </aside>
     </section>
     <section class="menu-workspace" id="menu-list">
@@ -513,8 +631,8 @@ function openPreparationInstructions(itemId){
   if(!cartItem){ customerCart.push({...item,qty:1}); cartItem=customerCart.find(x=>x.id===itemId); }
   const current=cartItem.prepareInstruction||'';
   const selected=new Set((cartItem.prepareOptions||[]));
-  const options=['Less spicy','Medium spicy','Extra spicy','No onion','No garlic','Less oil','Well cooked'];
-  modal('Prepare '+item.name,`<form id="prepareInstructionForm" class="prepare-instruction-form"><p class="muted">Choose quick instructions or add your own note for the kitchen.</p><div class="prep-option-grid">${options.map(o=>`<label class="prep-option"><input type="checkbox" name="prepOption" value="${o}" ${selected.has(o)?'checked':''}><span>${o}</span></label>`).join('')}</div><div class="field"><label>Additional preparation note</label><textarea name="customNote" maxlength="250" placeholder="Example: Make it less salty and serve sauce separately">${cartItem.customPrepareNote||''}</textarea></div><button class="btn full">Save Instructions</button></form>`,()=>{$('#prepareInstructionForm').onsubmit=e=>{e.preventDefault();const fd=new FormData(e.target);const opts=fd.getAll('prepOption');const note=(fd.get('customNote')||'').trim();cartItem.prepareOptions=opts;cartItem.customPrepareNote=note;cartItem.prepareInstruction=[...opts,note].filter(Boolean).join(' · ');closeModal();renderPublicMenu();toast('Preparation instructions saved')}})
+  const options=['Spicy','Medium spicy','Low spicy','No salt'];
+  modal('Prepare '+item.name,`<form id="prepareInstructionForm" class="prepare-instruction-form"><p class="muted">Select one or more kitchen preferences. Use the note box for anything else.</p><div class="prep-option-grid">${options.map(o=>`<label class="prep-option"><input type="checkbox" name="prepOption" value="${o}" ${selected.has(o)?'checked':''}><span>${o}</span></label>`).join('')}</div><div class="field"><label>Other preparation request</label><textarea name="customNote" maxlength="250" placeholder="Type any other request for the kitchen">${html(cartItem.customPrepareNote||'')}</textarea></div><button class="btn full">Save Instructions</button></form>`,()=>{$('#prepareInstructionForm').onsubmit=e=>{e.preventDefault();const fd=new FormData(e.target);const opts=fd.getAll('prepOption');const note=(fd.get('customNote')||'').trim();cartItem.prepareOptions=opts;cartItem.customPrepareNote=note;cartItem.prepareInstruction=[...opts,note].filter(Boolean).join(' · ');closeModal();renderPublicMenu();toast('Preparation instructions saved')}})
 }
 
 function changeCartQuantity(id,action){const item=currentPublicItem(id);if(!item||!item.available)return;const existing=customerCart.find(x=>x.id===id);if(action==='plus'){existing?existing.qty++:customerCart.push({...item,qty:1})}else if(existing){existing.qty--;if(existing.qty<=0)customerCart=customerCart.filter(x=>x.id!==id)}renderPublicMenu()}
@@ -590,9 +708,11 @@ function openCart(r){
           ? `${customerContext.customerName?customerContext.customerName+' · ':''}Table ${customerContext.tableNumber}`
           : customerContext.customerName;
         const orderOwnerId=remoteMenuSource.startsWith('cloud:')?remoteMenuSource.split(':')[1]:cloudOwnerId();
+        const tokenNumber=await reserveOrderToken(orderOwnerId,r.id);
         const order={
           id:orderId,restaurantId:r.id,customer:identity||'Guest',
           ownerId:orderOwnerId,cloudOwnerId:orderOwnerId,
+          tokenNumber,orderDay:orderDay(),messages:[],
           customerName:customerContext.customerName||'',serviceMode:customerContext.serviceMode,
           tableNumber:customerContext.tableNumber||'',phone:customerContext.phone||'',
           items:customerCart.map(i=>({id:i.id,name:i.name,qty:i.qty,price:i.price,prepareInstruction:i.prepareInstruction||'',prepareOptions:i.prepareOptions||[],customPrepareNote:i.customPrepareNote||''})),
@@ -625,7 +745,9 @@ function renderTrack(){const params=new URLSearchParams(location.hash.replace('#
 
 function applyOrderTrackingCopy(){
   if(!location.hash.startsWith('#track')) return;
-  const status=$('.status-pill',app)?.textContent.trim();
+  const params=new URLSearchParams(location.hash.replace('#track&','')),id=params.get('order'),order=state.orders.find(row=>row.id===id);
+  if(!order)return;
+  const status=order.status;
   const heading=$('.public-menu > .card > h1',app);
   const message=$('.track-message',app);
   const copy={
@@ -638,6 +760,24 @@ function applyOrderTrackingCopy(){
   if(copy&&heading) heading.textContent=copy.heading;
   if(copy&&message) message.textContent=copy.message;
   if(status!=='Preparing') $('.pot-scene',app)?.remove();
+  const card=$('.public-menu > .card',app),restaurant=state.restaurants.find(row=>row.id===order.restaurantId);
+  if(card&&!$('.customer-token-panel',card))card.insertAdjacentHTML('afterbegin',`<section class="customer-token-panel"><span>YOUR QUEUE TOKEN</span><strong>${formatToken(order.tokenNumber)}</strong><small>${html(order.serviceMode==='table'?`Table ${order.tableNumber||'-'}`:'Single Counter')} · ${html(order.status)}</small></section>`);
+  if(card&&!$('.customer-order-chat',card)){
+    const ad=$('.public-ad',card);
+    const chat=`<section class="customer-order-chat"><div><span class="eyebrow">LIVE RESTAURANT CHAT</span><h2>Need help with this order?</h2><p class="muted">Messages and corrected table details update for both you and the restaurant.</p></div><div class="order-chat-log">${(order.messages||[]).slice(-8).map(item=>`<div class="order-message ${item.senderRole==='customer'?'mine':''}"><strong>${html(item.senderRole==='owner'?'Restaurant':item.senderName||'You')}</strong><span>${html(item.text)}</span><small>${new Date(item.createdAt).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'})}</small></div>`).join('')||'<p class="muted no-messages">No messages yet.</p>'}</div><form class="order-chat-form" data-customer-chat="${html(order.id)}"><input name="message" maxlength="240" placeholder="Message the restaurant" aria-label="Message restaurant"><button class="btn" type="submit">Send</button></form></section>`;
+    if(ad)ad.insertAdjacentHTML('beforebegin',chat);else card.insertAdjacentHTML('beforeend',chat);
+    $('[data-customer-chat]',card).onsubmit=event=>sendOrderMessage(event,order.id,'customer');
+  }
+  if(status==='Completed'&&card&&!$('.public-ad',card)&&restaurant){card.insertAdjacentHTML('beforeend',publicAdSection(restaurant));bindPublicAdContact(restaurant)}
+  $('#refreshTrack')?.remove();
+  if(status==='Ready'&&!sessionStorage.getItem(`gravity58ReadyPeep_${order.id}`)){sessionStorage.setItem(`gravity58ReadyPeep_${order.id}`,'1');orderAlertBeep(.22,1040)}
+  startCustomerOrderRealtime(order);
+}
+function startCustomerOrderRealtime(order){
+  const kind=order?.cloudOwnerId?cloudOrderKind(order.cloudOwnerId):'';
+  if(!Gravity58Ads?.subscribeKind||!kind||customerOrderSubscriptionKind===kind)return;
+  customerOrderUnsubscribe?.();customerOrderSubscriptionKind=kind;
+  customerOrderUnsubscribe=Gravity58Ads.subscribeKind(kind,async row=>{if(row&&(row.id||row.$id)!==order.id)return;try{const latest=row||await Gravity58Ads.get(kind,order.id),local=state.orders.find(item=>item.id===order.id);if(local)Object.assign(local,latest);save();renderTrack()}catch(error){console.warn('Customer live order update failed',error)}});
 }
 const renderTrackBase=renderTrack;
 renderTrack=function(){renderTrackBase();applyOrderTrackingCopy()};
@@ -661,6 +801,7 @@ function closeModal(){
   document.body.classList.remove('modal-open');
 }
 document.addEventListener('keydown',event=>{if(event.key==='Escape'&&$('#modal'))closeModal()});
+document.addEventListener('pointerdown',()=>{if(ringingOrderIds.size)orderAlertBeep()},{passive:true});
 function empty(t){return `<div class="empty">${t}</div>`}
 window.addEventListener('hashchange',render);
 window.addEventListener('storage',()=>{state=load();render();hydrateLocalMedia()});

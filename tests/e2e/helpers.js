@@ -65,6 +65,7 @@ export function mockApiScript({ initialUser = null, admin = false, seed = {} } =
       permissionSet:(kind,userId)=>['read:any','read:user:'+userId,'update:user:'+userId,'delete:user:'+userId],
       userPermissionSet:()=>[],
       subscribeAdvertisements:()=>()=>{},
+      subscribeKind:(kind,onChange)=>{const handler=event=>{if(!event.detail?.kind||event.detail.kind===kind)onChange?.(event.detail?.row||null,event)};window.addEventListener('g58-ad-data-changed',handler);return()=>window.removeEventListener('g58-ad-data-changed',handler)},
     };
   })();`;
 }

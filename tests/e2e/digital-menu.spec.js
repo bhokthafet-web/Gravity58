@@ -37,9 +37,30 @@ test("restaurant owner imports CSV, controls availability, orders, QR, reports a
   await expect(page.locator("#menuGrid .menu-item", { hasText: "Regression Platter" })).toContainText("Out of stock");
   await page.locator("#menuGrid .menu-item", { hasText: "Regression Platter" }).getByRole("button", { name: "Make available" }).click();
 
+  await page.evaluate(() => {
+    const saved = JSON.parse(localStorage.getItem("gravity58DigitalMenu"));
+    const pending = saved.orders.find((row) => row.restaurantId === "res_cafe" && row.status === "Pending");
+    Object.assign(pending, { serviceMode: "table", tableNumber: "2", customerName: "Table Guest", tokenNumber: 7, messages: [] });
+    localStorage.setItem("gravity58DigitalMenu", JSON.stringify(saved));
+  });
+  await page.reload();
+  await expect(page.getByRole("heading", { name: /Gravity58 Café/ })).toBeVisible();
+
   await page.locator('[data-view="orders"]').click();
   await expect(page.locator("#ordersGrid")).toContainText("Pending");
-  const pendingCard = page.locator("#ordersGrid .order-card", { hasText: "Pending" }).first();
+  let pendingCard = page.locator("#ordersGrid .order-card", { hasText: "Pending" }).first();
+  await expect(pendingCard).toContainText("TOKEN 0007");
+  await pendingCard.getByRole("button", { name: "Correct table" }).click();
+  await page.locator("#correctTableNumber").fill("12");
+  await page.getByRole("button", { name: "Update table" }).click();
+  pendingCard = page.locator("#ordersGrid .order-card", { hasText: "Pending" }).first();
+  await expect(pendingCard).toContainText("Table 12");
+  await pendingCard.getByRole("textbox", { name: "Message customer" }).fill("Your table is now 12");
+  await pendingCard.locator("[data-order-chat]").getByRole("button", { name: "Send" }).click();
+  pendingCard = page.locator("#ordersGrid .order-card", { hasText: "Pending" }).first();
+  await expect(pendingCard).toContainText("Your table is now 12");
+  await pendingCard.getByRole("button", { name: "Print" }).click();
+  await expect(page.locator(".receipt-print-frame")).toHaveCount(1);
   await pendingCard.getByRole("button", { name: "Accept" }).click();
   await expect(page.locator("#ordersGrid")).toContainText("Accepted");
   const acceptedCard = page.locator("#ordersGrid .order-card", { hasText: "Accepted" }).first();
@@ -161,7 +182,7 @@ test("customer adds quantities and preparation instructions, places order and tr
 
   const sandwich = page.locator(".poster-menu-item", { hasText: "Paneer Sandwich" });
   await sandwich.getByRole("checkbox", { name: "Prepare instructions" }).check();
-  await page.locator('#prepareInstructionForm input[value="Less spicy"]').check();
+  await page.locator('#prepareInstructionForm input[value="Medium spicy"]').check();
   await page.locator('#prepareInstructionForm textarea[name="customNote"]').fill("No butter");
   await page.getByRole("button", { name: "Save Instructions" }).click();
   await expect(page.locator("#cartCount")).toHaveText("3");
@@ -172,10 +193,17 @@ test("customer adds quantities and preparation instructions, places order and tr
   await expect(page).toHaveURL(/#track&order=/);
   await expect(page.getByRole("heading", { name: "Order Received" })).toBeVisible();
   await expect(page.getByText("Your Food Is Being Prepared", { exact: true })).toHaveCount(0);
+  await expect(page.locator(".customer-token-panel strong")).toHaveText(/\d{4}/);
+  await expect(page.locator("#refreshTrack")).toHaveCount(0);
+  await page.getByRole("textbox", { name: "Message restaurant" }).fill("Please confirm my order");
+  await page.locator("[data-customer-chat]").getByRole("button", { name: "Send" }).click();
+  await expect(page.locator(".customer-order-chat")).toContainText("Please confirm my order");
   const order = await page.evaluate(() => JSON.parse(localStorage.getItem("gravity58DigitalMenu")).orders[0]);
   expect(order.customerName).toBe("Menu Customer");
+  expect(order.tokenNumber).toBeGreaterThan(0);
+  expect(order.messages.at(-1)).toMatchObject({ senderRole: "customer", text: "Please confirm my order" });
   expect(order.items.find((item) => item.name === "Masala Dosa").qty).toBe(2);
-  expect(order.items.find((item) => item.name === "Paneer Sandwich").prepareInstruction).toContain("Less spicy");
+  expect(order.items.find((item) => item.name === "Paneer Sandwich").prepareInstruction).toContain("Medium spicy");
 
   await page.evaluate(() => {
     const saved = JSON.parse(localStorage.getItem("gravity58DigitalMenu"));
@@ -195,6 +223,8 @@ test("customer adds quantities and preparation instructions, places order and tr
   await expect(page.getByRole("heading", { name: "Your Food Is Ready!" })).toBeVisible();
   await expect(page.getByText("Your order will be served soon", { exact: true })).toBeVisible();
   await expect(page.getByText("Your Food Is Being Prepared", { exact: true })).toHaveCount(0);
+  const readyPeep = await page.evaluate(() => sessionStorage.getItem(`gravity58ReadyPeep_${JSON.parse(localStorage.getItem("gravity58DigitalMenu")).orders[0].id}`));
+  expect(readyPeep).toBe("1");
   await assertNoErrors();
 });
 
@@ -351,6 +381,64 @@ test("customer can load the latest account menu on another device", async ({ pag
   await expect(page.getByRole("heading", { name: "Cloud Meal" })).toBeVisible();
   await expect(page.locator('.poster-menu-item img[src="https://cdn.example.com/cloud-meal.jpg"]')).toBeVisible();
   await expect(page.getByRole("button", { name: "ADD" })).toBeVisible();
+  await assertNoErrors();
+});
+
+test("simultaneous cloud orders receive unique serial tokens and remain independently trackable", async ({ page }) => {
+  const cloudMenu = {
+    id: "queue-cafe", ownerId: "queue-owner", schemaVersion: 2,
+    restaurant: { id: "queue-cafe", name: "Queue Café", type: "Café", city: "Hyderabad", description: "Live queue test", address: "Queue Road", phone: "+91 9000000000", open: true, accepting: true, tax: 0, service: 0, identification: "Customer Name", restaurantKey: "Queue Café|Hyderabad", social: {} },
+    categories: [{ id: "quick", name: "Quick Bites" }],
+    items: [{ id: "queue-tea", categoryId: "quick", name: "Queue Tea", description: "Fresh tea", price: 40, type: "Veg", available: true, prep: 5, prepareInstructionsEnabled: false }],
+  };
+  await prepareMockApi(page, { state: null, seed: { "digital_menu_queue-owner": [cloudMenu] } });
+  const assertNoErrors = monitorPageErrors(page);
+  await page.goto("/digital-menu/#menu&cloud=queue-cafe&owner=queue-owner");
+  await page.getByRole("textbox", { name: "Enter your name" }).fill("Queue Customer");
+  await page.getByRole("button", { name: "Continue to Menu" }).click();
+
+  for (let index = 0; index < 2; index += 1) {
+    await page.getByRole("button", { name: "ADD" }).click();
+    await page.locator("#openCart").click();
+    await page.locator("#confirmPlaceOrder").click();
+    await expect(page.locator(".customer-token-panel strong")).toHaveText(index === 0 ? "0001" : "0002");
+    if (index === 0) await page.getByRole("button", { name: "View Menu" }).click();
+  }
+
+  const result = await page.evaluate(() => ({
+    tokens: window.__g58Mock.store["digital_order_queue-owner"].map((row) => row.tokenNumber).sort((a, b) => a - b),
+    reservations: window.__g58Mock.store["digital_token_queue-owner"].map((row) => row.tokenNumber).sort((a, b) => a - b),
+  }));
+  expect(result.tokens).toEqual([1, 2]);
+  expect(result.reservations).toEqual([1, 2]);
+  await assertNoErrors();
+});
+
+test("restaurant dashboard receives a new cloud order without a manual refresh", async ({ page }) => {
+  const cloudMenu = {
+    id: "live-cafe", ownerId: "live-owner", schemaVersion: 2,
+    restaurant: { id: "live-cafe", name: "Live Café", type: "Café", city: "Hyderabad", description: "Realtime kitchen", open: true, accepting: true, tax: 0, service: 0, identification: "Table Number", restaurantKey: "Live Café|Hyderabad", social: {} },
+    categories: [], items: [],
+  };
+  await prepareMockApi(page, { initialUser: { $id: "live-owner", email: "live@example.com", name: "Live Owner" }, state: null, seed: { "digital_menu_live-owner": [cloudMenu], "digital_order_live-owner": [] } });
+  const assertNoErrors = monitorPageErrors(page);
+  await page.goto("/digital-menu/");
+  await expect(page.getByRole("heading", { name: /Live Café/ })).toBeVisible();
+
+  await page.evaluate(async () => {
+    await window.Gravity58Ads.create("digital_order_live-owner", {
+      id: "LIVE-ORDER-1", ownerId: "live-owner", cloudOwnerId: "live-owner", restaurantId: "live-cafe",
+      customerName: "Realtime Guest", customer: "Realtime Guest · Table 4", serviceMode: "table", tableNumber: "4",
+      tokenNumber: 11, orderDay: "20260809", items: [{ name: "Tea", qty: 2, price: 40 }], total: 80,
+      paymentMethod: "counter", paymentStatus: "Not required", status: "Pending", messages: [], createdAt: new Date().toISOString(),
+    }, "LIVE-ORDER-1", []);
+  });
+
+  const liveCard = page.locator(".order-card", { hasText: "Realtime Guest" });
+  await expect(liveCard).toBeVisible();
+  await expect(liveCard).toContainText("TOKEN 0011");
+  await liveCard.getByRole("button", { name: "Accept" }).click();
+  await expect(page.locator(".order-card", { hasText: "Realtime Guest" })).toContainText("Accepted");
   await assertNoErrors();
 });
 

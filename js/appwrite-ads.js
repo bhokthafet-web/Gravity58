@@ -250,13 +250,27 @@
   }
 
   function subscribeAdvertisements(onChange) {
+    return subscribeKind("advertisements", onChange);
+  }
+
+  function subscribeKind(kind, onChange) {
     if (!configured) {
-      const handler = () => onChange?.();
+      const handler = (event) => {
+        const changedKind = event?.detail?.kind;
+        if (!changedKind || changedKind === kind) onChange?.(event?.detail?.row || null, event);
+      };
       window.addEventListener("g58-ad-data-changed", handler);
       window.addEventListener("storage", handler);
       return () => { window.removeEventListener("g58-ad-data-changed", handler); window.removeEventListener("storage", handler); };
     }
-    return client.subscribe(tables ? `databases.${config.databaseId}.tables.${tableIdFor("advertisements")}.rows` : `databases.${config.databaseId}.collections.${tableIdFor("advertisements")}.documents`, () => onChange?.());
+    const channel = tables
+      ? `databases.${config.databaseId}.tables.${tableIdFor(kind)}.rows`
+      : `databases.${config.databaseId}.collections.${tableIdFor(kind)}.documents`;
+    return client.subscribe(channel, (event) => {
+      const raw = event?.payload || null;
+      if (sharedTableId && raw?.kind !== kind) return;
+      onChange?.(clean(raw), event);
+    });
   }
 
   window.Gravity58Ads = Object.freeze({
@@ -264,6 +278,6 @@
     list, get, create, update, remove, upsertSlot, permissionSet, userPermissionSet,
     register, login, logout, currentUser, ensureUser, forgotPassword, completeRecovery, createJWT, isTeamAdmin,
     validateMediaFile, uploadAdMedia, removeAdMedia, validateMenuImage, uploadMenuMedia, removeMenuMedia,
-    subscribeAdvertisements,
+    subscribeAdvertisements, subscribeKind,
   });
 })();
