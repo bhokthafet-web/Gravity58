@@ -15,6 +15,9 @@ test("restaurant owner imports CSV, controls availability, orders, QR, reports a
   page.on("dialog", (dialog) => dialog.accept());
   await loginDemoOwner(page);
 
+  await expect(page.locator("#openImageCompressor")).toHaveCount(0);
+  await page.locator('[data-view="menu"]').click();
+  await expect(page.locator("#openImageCompressor")).toBeVisible();
   await page.locator("#openImageCompressor").click();
   await page.locator("#compressorFile").setInputFiles({
     name: "restaurant.png",
@@ -25,7 +28,6 @@ test("restaurant owner imports CSV, controls availability, orders, QR, reports a
   await expect(page.locator("#downloadCompressedImage")).toBeVisible();
   await page.getByRole("button", { name: "Close dialog" }).click();
 
-  await page.locator('[data-view="menu"]').click();
   await expect(page.locator("#addItem")).toHaveCount(0);
   const csv = "category,item_name,description,price,food_type,available,preparation_minutes,preparation_instructions,image_file\nRegression Specials,Regression Platter,Automated test menu item,299,Veg,true,12,false,\n";
   await page.locator("#menuCsvFile").setInputFiles({ name: "menu.csv", mimeType: "text/csv", buffer: Buffer.from(csv) });
@@ -49,6 +51,7 @@ test("restaurant owner imports CSV, controls availability, orders, QR, reports a
   await page.locator('[data-view="orders"]').click();
   await expect(page.locator("#ordersGrid")).toContainText("Pending");
   let pendingCard = page.locator("#ordersGrid .order-card", { hasText: "Pending" }).first();
+  await expect(pendingCard.locator(".incoming-order-beacon")).toBeVisible();
   await expect(pendingCard).toContainText("TOKEN 0007");
   await pendingCard.getByRole("button", { name: "Correct table" }).click();
   await page.locator("#correctTableNumber").fill("12");
@@ -64,6 +67,7 @@ test("restaurant owner imports CSV, controls availability, orders, QR, reports a
   await pendingCard.getByRole("button", { name: "Accept" }).click();
   await expect(page.locator("#ordersGrid")).toContainText("Accepted");
   const acceptedCard = page.locator("#ordersGrid .order-card", { hasText: "Accepted" }).first();
+  await expect(acceptedCard.locator(".incoming-order-beacon")).toHaveCount(0);
   await acceptedCard.getByRole("button", { name: "Start Preparing" }).click();
   const preparingCard = page.locator("#ordersGrid .order-card", { hasText: "Preparing" }).first();
   await preparingCard.getByRole("button", { name: "Mark Ready" }).click();
@@ -95,15 +99,13 @@ test("restaurant owner imports CSV, controls availability, orders, QR, reports a
   await assertNoErrors();
 });
 
-test("customer QR entry popup closes and table/counter validation works", async ({ page }) => {
+test("customer QR entry requires a customer name or table number", async ({ page }) => {
   await prepareOffline(page, { state: null });
   const assertNoErrors = monitorPageErrors(page);
   await page.goto("/digital-menu/#menu&restaurant=res_cafe");
   await expect(page.locator("#modal")).toHaveCount(1);
-  await page.getByRole("button", { name: "Close dialog" }).click();
-  await expect(page.locator("#modal")).toHaveCount(0);
-
-  await page.reload();
+  await expect(page.getByRole("button", { name: "Close dialog" })).toHaveCount(0);
+  await page.keyboard.press("Escape");
   await expect(page.locator("#modal")).toHaveCount(1);
   await page.getByRole("radio", { name: /Enter Table Number/ }).check();
   await expect(page.locator("#tableNumberField")).toBeVisible();
@@ -120,8 +122,11 @@ test("mobile menu uses photo cards and keeps the advertisement beside the restau
   await prepareOffline(page, { state: null });
   const assertNoErrors = monitorPageErrors(page);
   await page.goto("/digital-menu/#menu&restaurant=res_cafe");
-  await page.getByRole("button", { name: "Close dialog" }).click();
-  await expect(page.locator(".category-chip-strip")).toBeVisible();
+  await page.getByRole("textbox", { name: "Enter your name" }).fill("Mobile Guest");
+  await page.getByRole("button", { name: "Continue to Menu" }).click();
+  await expect(page.locator("#publicMenuCategory")).toBeVisible();
+  await expect(page.locator(".category-chip-strip")).toHaveCount(0);
+  await expect(page.locator("#publicMenuSort")).toHaveCount(0);
   await expect(page.locator("#categoryWheel")).toHaveCount(0);
   const heroBox = await page.locator(".compact-menu-hero").boundingBox();
   const adBox = await page.locator(".header-ad-panel").boundingBox();
@@ -143,7 +148,8 @@ test("public menu offers premium category, veg, non-veg, search and availability
   await prepareOffline(page, { state: null });
   const assertNoErrors = monitorPageErrors(page);
   await page.goto("/digital-menu/#menu&restaurant=res_family");
-  await page.getByRole("button", { name: "Close dialog" }).click();
+  await page.getByRole("textbox", { name: "Enter your name" }).fill("Filter Guest");
+  await page.getByRole("button", { name: "Continue to Menu" }).click();
 
   await expect(page.locator("#publicMenuCount")).toHaveText("3 items");
   await page.getByRole("button", { name: "Veg", exact: true }).click();
@@ -158,7 +164,7 @@ test("public menu offers premium category, veg, non-veg, search and availability
 
   await page.locator("#publicMenuSearch").fill("");
   await page.getByRole("button", { name: "All", exact: true }).click();
-  await page.getByRole("button", { name: "Main Course", exact: true }).click();
+  await page.locator("#publicMenuCategory").selectOption({ label: "Main Course" });
   await expect(page.locator("#publicMenuHeading")).toHaveText("Main Course");
   await expect(page.locator("#publicMenuCount")).toHaveText("2 items");
   await page.locator("label.availability-filter").click();
@@ -195,6 +201,10 @@ test("customer adds quantities and preparation instructions, places order and tr
   await expect(page.getByText("Your Food Is Being Prepared", { exact: true })).toHaveCount(0);
   await expect(page.locator(".customer-token-panel strong")).toHaveText(/\d{4}/);
   await expect(page.locator("#refreshTrack")).toHaveCount(0);
+  await expect(page.locator(".customer-chat-toggle")).toBeVisible();
+  await expect(page.locator(".customer-chat-panel")).not.toBeVisible();
+  await page.locator(".customer-chat-toggle").click();
+  await expect(page.locator(".customer-chat-panel")).toBeVisible();
   await page.getByRole("textbox", { name: "Message restaurant" }).fill("Please confirm my order");
   await page.locator("[data-customer-chat]").getByRole("button", { name: "Send" }).click();
   await expect(page.locator(".customer-order-chat")).toContainText("Please confirm my order");
@@ -377,7 +387,8 @@ test("customer can load the latest account menu on another device", async ({ pag
   await page.goto("/digital-menu/#menu&cloud=public-cloud-cafe&owner=public-owner");
   await expect(page.getByRole("heading", { name: "Public Cloud Café", exact: true })).toBeVisible();
   await expect(page.getByText("Live account menu")).toBeVisible();
-  await page.getByRole("button", { name: "Close dialog" }).click();
+  await page.getByRole("textbox", { name: "Enter your name" }).fill("Cloud Guest");
+  await page.getByRole("button", { name: "Continue to Menu" }).click();
   await expect(page.getByRole("heading", { name: "Cloud Meal" })).toBeVisible();
   await expect(page.locator('.poster-menu-item img[src="https://cdn.example.com/cloud-meal.jpg"]')).toBeVisible();
   await expect(page.locator('.compact-hero-photo[src="https://cdn.example.com/restaurant.jpg"]')).toBeVisible();
@@ -445,8 +456,11 @@ test("restaurant dashboard receives a new cloud order without a manual refresh",
   const liveCard = page.locator(".order-card", { hasText: "Realtime Guest" });
   await expect(liveCard).toBeVisible();
   await expect(liveCard).toContainText("TOKEN 0011");
+  await expect(liveCard.locator(".incoming-order-beacon")).toBeVisible();
   await liveCard.getByRole("button", { name: "Accept" }).click();
-  await expect(page.locator(".order-card", { hasText: "Realtime Guest" })).toContainText("Accepted");
+  const acceptedLiveCard = page.locator(".order-card", { hasText: "Realtime Guest" });
+  await expect(acceptedLiveCard).toContainText("Accepted");
+  await expect(acceptedLiveCard.locator(".incoming-order-beacon")).toHaveCount(0);
   await assertNoErrors();
 });
 
@@ -464,7 +478,8 @@ test("older customer links recover a missing owner and repair the URL", async ({
   await page.goto("/digital-menu/#menu?cloud=ownerless-cafe");
   await expect(page.getByRole("heading", { name: "Recovered Café", exact: true })).toBeVisible();
   await expect(page).toHaveURL(/#menu&cloud=ownerless-cafe&owner=recovered-owner$/);
-  await page.getByRole("button", { name: "Close dialog" }).click();
+  await page.getByRole("textbox", { name: "Enter your name" }).fill("Recovered Guest");
+  await page.getByRole("button", { name: "Continue to Menu" }).click();
   await expect(page.getByRole("heading", { name: "Fresh Tea" })).toBeVisible();
   await assertNoErrors();
 });
