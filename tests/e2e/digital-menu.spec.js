@@ -16,19 +16,21 @@ test("restaurant owner login, menu CRUD, availability, orders, QR, reports and s
   await loginDemoOwner(page);
 
   await page.locator('[data-view="menu"]').click();
-  await page.locator("#addCategory").click();
-  await page.locator('#categoryForm input[name="name"]').fill("Regression Specials");
-  await page.locator("#categoryForm").getByRole("button", { name: "Create Category" }).click();
-  await expect(page.locator("#catFilter")).toContainText("Regression Specials");
-
   await page.locator("#addItem").click();
   await page.locator('#itemForm input[name="name"]').fill("Regression Platter");
-  await page.locator('#itemForm select[name="categoryId"]').selectOption({ label: "Regression Specials" });
+  await page.locator('#itemForm input[name="categoryName"]').fill("Regression Specials");
   await page.locator('#itemForm input[name="price"]').fill("299");
   await page.locator('#itemForm textarea[name="description"]').fill("Automated test menu item");
+  await page.locator('#itemForm input[name="imageFile"]').setInputFiles({
+    name: "regression.png",
+    mimeType: "image/png",
+    buffer: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl2nWQAAAAASUVORK5CYII=", "base64"),
+  });
   await page.locator("#itemForm").getByRole("button", { name: "Save Menu Item" }).click();
+  await expect(page.locator("#catFilter")).toContainText("Regression Specials");
   const itemCard = page.locator("#menuGrid .menu-item", { hasText: "Regression Platter" });
   await expect(itemCard).toBeVisible();
+  await expect(itemCard.locator("img.menu-owner-photo")).toBeVisible();
   await itemCard.getByRole("button", { name: "Out of stock" }).click();
   await expect(page.locator("#menuGrid .menu-item", { hasText: "Regression Platter" })).toContainText("Out of stock");
   await page.locator("#menuGrid .menu-item", { hasText: "Regression Platter" }).getByRole("button", { name: "Make available" }).click();
@@ -88,6 +90,23 @@ test("customer QR entry popup closes and table/counter validation works", async 
   await expect(page.locator("#modal")).toHaveCount(0);
   const context = await page.evaluate(() => JSON.parse(sessionStorage.getItem("gravity58Customer_res_cafe")));
   expect(context).toMatchObject({ serviceMode: "table", tableNumber: "7", customer: "Table 7" });
+  await assertNoErrors();
+});
+
+test("mobile menu uses photo cards and keeps advertisement rail on the right", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await prepareOffline(page, { state: null });
+  const assertNoErrors = monitorPageErrors(page);
+  await page.goto("/digital-menu/#menu&restaurant=res_cafe");
+  await page.getByRole("button", { name: "Close dialog" }).click();
+  await expect(page.locator(".category-chip-strip")).toBeVisible();
+  await expect(page.locator("#categoryWheel")).toHaveCount(0);
+  const menuBox = await page.locator(".focused-menu-panel").boundingBox();
+  const adBox = await page.locator(".vertical-ad-rail").boundingBox();
+  expect(menuBox).toBeTruthy();
+  expect(adBox).toBeTruthy();
+  expect(adBox.x).toBeGreaterThan(menuBox.x);
+  expect(adBox.y).toBeLessThan(menuBox.y + menuBox.height / 2);
   await assertNoErrors();
 });
 
@@ -166,5 +185,20 @@ test("digital-menu local account creation and password reset work", async ({ pag
   await page.locator('#loginForm input[name="password"]').fill("updated123");
   await page.locator("#loginForm").getByRole("button", { name: "Login" }).click();
   await expect(page.getByRole("heading", { name: "Create your first Digital Menu" })).toBeVisible();
+  await assertNoErrors();
+});
+
+test("restaurant owner can permanently delete a restaurant and its local records", async ({ page }) => {
+  await prepareOffline(page, { state: null });
+  const assertNoErrors = monitorPageErrors(page);
+  page.on("dialog", (dialog) => dialog.accept());
+  await loginDemoOwner(page);
+  await page.locator('[data-view="restaurants"]').click();
+  const restaurant = page.locator(".restaurant-card", { hasText: "Gravity58 Cloud Kitchen" });
+  await restaurant.getByRole("button", { name: "Delete" }).click();
+  await expect(page.locator(".restaurant-grid")).not.toContainText("Gravity58 Cloud Kitchen");
+  const saved = await page.evaluate(() => JSON.parse(localStorage.getItem("gravity58DigitalMenu")));
+  expect(saved.restaurants.some((row) => row.id === "res_cloud")).toBe(false);
+  expect(saved.items.some((row) => row.restaurantId === "res_cloud")).toBe(false);
   await assertNoErrors();
 });

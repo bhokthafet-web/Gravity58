@@ -11,6 +11,7 @@
     posts: config.postsCollectionId || "g58_posts",
   };
   const sharedTableId = config.sharedTableId || "";
+  const mediaBucketId = config.mediaBucketId || "ad-media";
   const tableIdFor = (kind) => sharedTableId || collections[kind];
   const configured = Boolean(window.Appwrite && config.endpoint && config.projectId && config.databaseId && !String(config.projectId).includes("YOUR_"));
   const fallbackKey = "gravity58AdvertisementData";
@@ -52,12 +53,14 @@
   let databases = null;
   let tables = null;
   let teams = null;
+  let storage = null;
   if (configured) {
     client = new Appwrite.Client().setEndpoint(config.endpoint).setProject(config.projectId);
     account = new Appwrite.Account(client);
     if (Appwrite.TablesDB) tables = new Appwrite.TablesDB(client);
     if (Appwrite.Databases) databases = new Appwrite.Databases(client);
     teams = new Appwrite.Teams(client);
+    if (Appwrite.Storage) storage = new Appwrite.Storage(client);
   }
 
   async function list(kind, filters = {}) {
@@ -164,6 +167,33 @@
   const currentUser = async () => { if (!configured) return null; try { return await account.get(); } catch { return null; } };
   const forgotPassword = async (email, url) => configured ? account.createRecovery({ email, url }) : Promise.reject(new Error("Appwrite is not configured yet."));
   const completeRecovery = async (userId, secret, password) => configured ? account.updateRecovery({ userId, secret, password }) : Promise.reject(new Error("Appwrite is not configured yet."));
+  function validateMediaFile(file, purpose = "advertisement") {
+    if (!file?.size) throw new Error(`Select a ${purpose} file first.`);
+    const allowed = ["image/jpeg", "image/png", "image/webp", "image/gif", "video/mp4", "video/webm"];
+    if (!allowed.includes(file.type)) throw new Error("Use JPG, PNG, WebP, GIF, MP4 or WebM media.");
+    if (file.size > 15 * 1024 * 1024) throw new Error("Media must be below 15 MB.");
+  }
+  async function uploadAdMedia(file) {
+    validateMediaFile(file);
+    if (!configured || !storage) {
+      const mediaUrl = URL.createObjectURL(file);
+      return { fileId: "local-" + Date.now(), mediaUrl, mediaType: file.type, mediaName: file.name, localOnly: true };
+    }
+    const current = await currentUser();
+    if (!current) throw new Error("Login before uploading advertisement media.");
+    const permissions = [
+      Appwrite.Permission.read(Appwrite.Role.any()),
+      Appwrite.Permission.update(Appwrite.Role.user(current.$id)),
+      Appwrite.Permission.delete(Appwrite.Role.user(current.$id)),
+    ];
+    const uploaded = await storage.createFile({ bucketId: mediaBucketId, fileId: Appwrite.ID.unique(), file, permissions });
+    return { fileId: uploaded.$id, mediaUrl: String(storage.getFileView({ bucketId: mediaBucketId, fileId: uploaded.$id })), mediaType: file.type, mediaName: file.name };
+  }
+  async function removeAdMedia(fileId) {
+    if (!fileId || String(fileId).startsWith("local-") || !configured || !storage) return true;
+    await storage.deleteFile({ bucketId: mediaBucketId, fileId });
+    return true;
+  }
   async function isTeamAdmin() {
     if (!configured || !config.adminTeamId) return false;
     try { await teams.get({ teamId: config.adminTeamId }); return true; }
@@ -181,9 +211,10 @@
   }
 
   window.Gravity58Ads = Object.freeze({
-    configured, config, collections, client, account, databases, tables,
+    configured, config, collections, client, account, databases, tables, storage, mediaBucketId,
     list, create, update, remove, upsertSlot, permissionSet,
     register, login, logout, currentUser, forgotPassword, completeRecovery, isTeamAdmin,
+    validateMediaFile, uploadAdMedia, removeAdMedia,
     subscribeAdvertisements,
   });
 })();

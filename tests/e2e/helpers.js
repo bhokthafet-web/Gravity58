@@ -53,6 +53,9 @@ export function mockApiScript({ initialUser = null, admin = false, seed = {} } =
       forgotPassword:async(email,url)=>{window.__g58Mock.recoveries.push({email,url});return true},
       completeRecovery:async()=>true,
       isTeamAdmin:async()=>${admin ? "true" : "false"},
+      validateMediaFile:(file)=>{if(!file||!file.size)throw new Error('Select a file first')},
+      uploadAdMedia:async(file)=>({fileId:'mock-file-'+(++serial),mediaUrl:'https://example.com/'+encodeURIComponent(file.name),mediaType:file.type,mediaName:file.name}),
+      removeAdMedia:async()=>true,
       permissionSet:()=>[],
       subscribeAdvertisements:()=>()=>{},
     };

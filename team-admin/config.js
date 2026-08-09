@@ -5,6 +5,7 @@ window.GRAVITY58_AD_ADMIN_CONFIG = {
     databaseId: "gravity58",
     adminTeamId: "6a776960001ca2fb66bf",
     sharedTableId: "g58_records",
+    mediaBucketId: "ad-media",
     collections: { posts:"g58_posts", profiles:"ad_customer_profiles", bookings:"ad_bookings", advertisements:"advertisements", slots:"ad_slots" },
   },
 };

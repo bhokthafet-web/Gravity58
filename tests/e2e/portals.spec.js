@@ -28,7 +28,7 @@ test("advertising user can register, book a timed placement and view the request
   await expect(page.getByText("Request sent", { exact: false })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Current Advertisements" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Advertising History" })).toBeVisible();
-  await expect(page.getByText("Regression Offer")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Regression Offer" })).toBeVisible();
   const bookings = await page.evaluate(() => window.__g58Mock.store.bookings);
   expect(bookings).toHaveLength(1);
   expect(bookings[0]).toMatchObject({ status: "Requested", hours: 3, restaurantKey: "Test Restaurant|Hyderabad", title: "Regression Offer" });
@@ -53,7 +53,45 @@ test("advertising dashboard separates live ads, expiry and history", async ({ pa
   await expect(liveCard).toBeVisible();
   await expect(liveCard).toContainText("Expires:");
   await expect(page.getByRole("heading", { name: "Advertising History" })).toBeVisible();
-  await expect(page.getByText("Previous Offer")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Previous Offer" })).toBeVisible();
+  await assertNoErrors();
+});
+
+test("advertiser creative studio supplies animated copy and uploaded media to booking", async ({ page }) => {
+  await prepareMockApi(page, {
+    initialUser: { $id: "mock-user", email: "creative@example.com", name: "Creative Owner" },
+    seed: { slots },
+  });
+  const assertNoErrors = monitorPageErrors(page);
+  await page.goto("/advertise/");
+  await page.getByRole("button", { name: "Creative Studio" }).click();
+  await page.locator('[data-sample="pulse"]').click();
+  await page.locator("#studioTitle").fill("Animated Restaurant Offer");
+  await page.locator("#studioMedia").setInputFiles({ name: "offer.gif", mimeType: "image/gif", buffer: Buffer.from("gif") });
+  await page.getByRole("button", { name: "Use Creative in Booking" }).click();
+  await expect(page.locator("#title")).toHaveValue("Animated Restaurant Offer");
+  await page.locator("#submit").click();
+  const booking = await page.evaluate(() => window.__g58Mock.store.bookings[0]);
+  expect(booking).toMatchObject({ title: "Animated Restaurant Offer", creativeStyle: "pulse", mediaType: "image/gif", status: "Requested" });
+  await assertNoErrors();
+});
+
+test("advertiser submits payment reference and proof inside the portal", async ({ page }) => {
+  await prepareMockApi(page, {
+    initialUser: { $id: "mock-user", email: "advertiser@example.com", name: "Sample Advertiser" },
+    seed: {
+      bookings: [{ id: "payment-booking", customerId: "mock-user", restaurantKey: "Test Restaurant|Hyderabad", slotId: "right_rail", hours: 1, amount: 120, title: "Paid Offer", status: "Payment Link Sent", paymentLink: "https://rzp.io/test-link" }],
+    },
+  });
+  const assertNoErrors = monitorPageErrors(page);
+  await page.goto("/advertise/");
+  await page.getByRole("button", { name: "Submit Payment Proof" }).click();
+  await page.locator('#proofForm input[name="paymentReference"]').fill("UTR-123456");
+  await page.locator('#proofForm input[name="proofFile"]').setInputFiles({ name: "proof.png", mimeType: "image/png", buffer: Buffer.from("proof") });
+  await page.getByRole("button", { name: "Submit for Verification" }).click();
+  const booking = await page.evaluate(() => window.__g58Mock.store.bookings.find((row) => row.id === "payment-booking"));
+  expect(booking).toMatchObject({ status: "Proof Sent", paymentReference: "UTR-123456", proofMediaType: "image/png" });
+  await expect(page.getByText("Payment submitted for admin verification.")).toBeVisible();
   await assertNoErrors();
 });
 
