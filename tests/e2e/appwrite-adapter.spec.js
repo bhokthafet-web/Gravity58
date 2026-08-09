@@ -8,6 +8,7 @@ test("Appwrite adapter local fallback supports CRUD, filters, slots and change e
     let events = 0;
     window.addEventListener("g58-ad-data-changed", () => events += 1);
     const created = await Gravity58Ads.create("bookings", { customerId: "u1", status: "Requested", amount: 299 }, "booking-1");
+    const fetched = await Gravity58Ads.get("bookings", "booking-1");
     await Gravity58Ads.create("bookings", { customerId: "u2", status: "Requested", amount: 599 }, "booking-2");
     const filtered = await Gravity58Ads.list("bookings", { customerId: "u1" });
     const updated = await Gravity58Ads.update("bookings", created.id, { status: "Live" });
@@ -16,6 +17,7 @@ test("Appwrite adapter local fallback supports CRUD, filters, slots and change e
     const slot2 = await Gravity58Ads.upsertSlot({ id: "restaurant-1", restaurantKey: "Cafe|Hyderabad", name: "Cafe Updated", city: "Hyderabad", active: true });
     return {
       configured: Gravity58Ads.configured,
+      fetched,
       filtered,
       updated,
       bookings: await Gravity58Ads.list("bookings"),
@@ -25,6 +27,7 @@ test("Appwrite adapter local fallback supports CRUD, filters, slots and change e
     };
   });
   expect(result.configured).toBe(false);
+  expect(result.fetched).toMatchObject({ id: "booking-1", customerId: "u1", amount: 299 });
   expect(result.filtered).toHaveLength(1);
   expect(result.updated.status).toBe("Live");
   expect(result.bookings).toHaveLength(1);

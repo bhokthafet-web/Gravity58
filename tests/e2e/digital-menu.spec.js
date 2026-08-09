@@ -249,7 +249,7 @@ test("restaurant owner can permanently delete a restaurant and its local records
   await assertNoErrors();
 });
 
-test("existing Gravity58 account can open restaurant setup while menu data stays local", async ({ page }) => {
+test("existing Gravity58 account can open its account-scoped restaurant setup", async ({ page }) => {
   await prepareMockApi(page, { initialUser: { $id: "cloud-owner-1", email: "owner@example.com", name: "Cloud Owner" }, state: null });
   const assertNoErrors = monitorPageErrors(page);
   await page.goto("/digital-menu/");
@@ -257,6 +257,65 @@ test("existing Gravity58 account can open restaurant setup while menu data stays
   const saved = await page.evaluate(() => JSON.parse(localStorage.getItem("gravity58DigitalMenu")));
   expect(saved.session).toMatchObject({ userId: "g58_cloud-owner-1", provider: "gravity58" });
   expect(saved.users.find((row) => row.id === "g58_cloud-owner-1")).toMatchObject({ email: "owner@example.com", provider: "gravity58" });
+  await assertNoErrors();
+});
+
+test("restaurant menu loads from the signed-in account and CSV changes persist to Appwrite", async ({ page }) => {
+  const cloudMenu = {
+    id: "cloud-cafe",
+    ownerId: "cloud-owner-1",
+    schemaVersion: 2,
+    restaurant: { id: "cloud-cafe", name: "Cloud Account Café", type: "Café", city: "Hyderabad", description: "Account menu", address: "Central Road", phone: "+91 9000000000", open: true, accepting: true, tax: 5, service: 0, identification: "Customer Name", restaurantKey: "Cloud Account Café|Hyderabad", social: {} },
+    categories: [{ id: "cloud-drinks", name: "Drinks" }],
+    items: [{ id: "cloud-tea", categoryId: "cloud-drinks", name: "Masala Tea", description: "Fresh tea", price: 40, type: "Veg", available: true, prep: 5, prepareInstructionsEnabled: false, imageUrl: "" }],
+  };
+  await prepareMockApi(page, { initialUser: { $id: "cloud-owner-1", email: "owner@example.com", name: "Cloud Owner" }, state: null, seed: { "digital_menu_cloud-owner-1": [cloudMenu] } });
+  const assertNoErrors = monitorPageErrors(page);
+  await page.goto("/digital-menu/");
+  await expect(page.getByRole("heading", { name: /Cloud Account Café/ })).toBeVisible();
+  await expect(page.getByText("Synced to G58 account")).toHaveText("Synced to G58 account");
+
+  await page.locator('[data-view="menu"]').click();
+  await expect(page.locator("#menuGrid")).toContainText("Masala Tea");
+  const csv = [
+    "category,item_name,description,price,food_type,available,preparation_minutes,preparation_instructions,image_url",
+    'Drinks,"Cold Coffee","Chilled coffee",140,Veg,true,6,false,https://cdn.example.com/cold-coffee.jpg',
+    'Main Course,"Chicken Biryani","Account imported dish",340,Non-Veg,false,25,true,',
+  ].join("\n");
+  await page.locator("#menuCsvFile").setInputFiles({ name: "menu.csv", mimeType: "text/csv", buffer: Buffer.from(csv) });
+  await expect(page.locator("#menuGrid")).toContainText("Cold Coffee");
+  await expect(page.locator("#menuGrid")).toContainText("Chicken Biryani");
+  const stored = await page.evaluate(() => window.__g58Mock.store["digital_menu_cloud-owner-1"][0]);
+  expect(stored.ownerId).toBe("cloud-owner-1");
+  expect(stored.items.find((row) => row.name === "Cold Coffee")).toMatchObject({ price: 140, available: true, imageUrl: "https://cdn.example.com/cold-coffee.jpg" });
+  expect(stored.items.find((row) => row.name === "Chicken Biryani")).toMatchObject({ type: "Non-Veg", available: false, prepareInstructionsEnabled: true });
+  expect(stored.orders).toBeUndefined();
+
+  await page.locator('[data-view="qr"]').click();
+  const qrText = await page.locator("#qrcode").getAttribute("data-qr-text");
+  expect(qrText).toContain("cloud=cloud-cafe");
+  expect(qrText).toContain("owner=cloud-owner-1");
+  await assertNoErrors();
+});
+
+test("customer can load the latest account menu on another device", async ({ page }) => {
+  const cloudMenu = {
+    id: "public-cloud-cafe",
+    ownerId: "public-owner",
+    schemaVersion: 2,
+    restaurant: { id: "public-cloud-cafe", name: "Public Cloud Café", type: "Restaurant", city: "Hyderabad", description: "Loaded from Appwrite", address: "Market Road", phone: "+91 9888888888", open: true, accepting: true, tax: 5, service: 0, identification: "Customer Name", restaurantKey: "Public Cloud Café|Hyderabad", social: {} },
+    categories: [{ id: "specials", name: "Specials" }],
+    items: [{ id: "cloud-meal", categoryId: "specials", name: "Cloud Meal", description: "Visible on every device", price: 299, type: "Veg", available: true, prep: 12, prepareInstructionsEnabled: false, imageUrl: "https://cdn.example.com/cloud-meal.jpg" }],
+  };
+  await prepareMockApi(page, { state: null, seed: { "digital_menu_public-owner": [cloudMenu] } });
+  const assertNoErrors = monitorPageErrors(page);
+  await page.goto("/digital-menu/#menu&cloud=public-cloud-cafe&owner=public-owner");
+  await expect(page.getByRole("heading", { name: "Public Cloud Café", exact: true })).toBeVisible();
+  await expect(page.getByText("Live account menu")).toBeVisible();
+  await page.getByRole("button", { name: "Close dialog" }).click();
+  await expect(page.getByRole("heading", { name: "Cloud Meal" })).toBeVisible();
+  await expect(page.locator('.poster-menu-item img[src="https://cdn.example.com/cloud-meal.jpg"]')).toBeVisible();
+  await expect(page.getByRole("button", { name: "ADD" })).toBeVisible();
   await assertNoErrors();
 });
 

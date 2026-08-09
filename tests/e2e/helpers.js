@@ -33,7 +33,7 @@ export async function prepareOffline(page, { state = "Telangana", blockSiteAuth 
 export function mockApiScript({ initialUser = null, admin = false, seed = {} } = {}) {
   return `(() => {
     const clone=value=>JSON.parse(JSON.stringify(value));
-    const store=clone(${JSON.stringify({ profiles: [], bookings: [], advertisements: [], slots: [], posts: [], ...seed })});
+    const store=clone(${JSON.stringify({ profiles: [], bookings: [], advertisements: [], slots: [], posts: [], digital_menus: [], ...seed })});
     let user=${JSON.stringify(initialUser)};
     let serial=0;
     const clean=row=>({...row,id:row.id||row.$id,$id:row.$id||row.id});
@@ -42,7 +42,8 @@ export function mockApiScript({ initialUser = null, admin = false, seed = {} } =
     window.Gravity58Ads={
       configured:true,config:{adminTeamId:'test-team'},collections:{},client:null,account:null,databases:null,tables:null,
       list:async(kind,filters={})=>(store[kind]||[]).filter(row=>Object.entries(filters).every(([key,value])=>value===''||value===undefined||row[key]===value)).map(clean),
-      create:async(kind,data,documentId)=>{const row=clean({id:documentId||kind+'-'+(++serial),...clone(data),$createdAt:new Date().toISOString(),$updatedAt:new Date().toISOString()});(store[kind]||=[]).unshift(row);notify(kind,row);return row},
+      get:async(kind,id)=>{const row=(store[kind]||[]).find(item=>(item.id||item.$id)===id);if(!row)throw new Error('Record not found');return clean(row)},
+      create:async(kind,data,documentId)=>{const id=documentId||kind+'-'+(++serial);if((store[kind]||[]).some(item=>(item.id||item.$id)===id)){const error=new Error('Record already exists');error.code=409;throw error}const row=clean({id,...clone(data),$createdAt:new Date().toISOString(),$updatedAt:new Date().toISOString()});(store[kind]||=[]).unshift(row);notify(kind,row);return row},
       update:async(kind,id,data)=>{const row=(store[kind]||[]).find(item=>(item.id||item.$id)===id);if(!row)throw new Error('Record not found');Object.assign(row,clone(data),{$updatedAt:new Date().toISOString()});notify(kind,row);return clean(row)},
       remove:async(kind,id)=>{store[kind]=(store[kind]||[]).filter(item=>(item.id||item.$id)!==id);notify(kind,{id});return true},
       upsertSlot:async(slot)=>{const existing=(store.slots||[]).find(row=>row.restaurantKey===slot.restaurantKey);if(existing){Object.assign(existing,slot);return clean(existing)}const row=clean({id:slot.id||'slot-'+(++serial),...slot});store.slots.unshift(row);return row},

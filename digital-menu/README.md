@@ -1,8 +1,8 @@
 # Gravity58 Digital Menu
 
-This mobile-first restaurant portal includes browser-local restaurant accounts, separate menus, optional preparation instructions, QR menus, customer ordering, order status, reporting and a Gravity58 advertising rail.
+This mobile-first restaurant portal includes Gravity58-authenticated restaurant accounts, account-synced menus, optional preparation instructions, QR menus, customer ordering, order status, reporting and a Gravity58 advertising rail.
 
-Restaurant accounts, menus, settings and orders remain in that browser. The portal **cannot create, approve, pause or delete advertisements**. It only reads campaigns published by the G58 team through Appwrite and links restaurant owners to `/advertise/` for slot booking.
+Restaurant configuration, categories, menu items, availability and menu images sync through the signed-in user’s Appwrite permissions. Customer orders and reports continue to remain in the browser. The portal **cannot create, approve, pause or delete advertisements**. It only reads campaigns published by the G58 team through Appwrite and links restaurant owners to `/advertise/` for slot booking.
 
 ## Local test
 
@@ -19,7 +19,11 @@ From the deployment folder run `python3 -m http.server 8080`, then open:
 
 ## Appwrite
 
-Edit `config.js` and follow the root `APPWRITE-SETUP.md`. Appwrite is used only for advertising placement keys and published advertisements. Do not expose API keys in frontend code.
+Edit `config.js` and follow the root `APPWRITE-SETUP.md`. The shared row-secured table stores account-scoped Digital Menu configuration as `digital_menu_<user-id>` records. Customers receive public-read access; only the authenticated owner can edit or delete the restaurant menu. No API key is exposed in frontend code.
+
+## CSV bulk menu import
+
+Open **Menu Setup**, download the CSV template, complete the menu rows, and import the file. Required columns are `category`, `item_name`, and `price`; optional columns control description, food type, availability, preparation time, preparation instructions and an HTTPS image URL.
 
 ## Customer identification
 

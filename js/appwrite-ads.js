@@ -35,7 +35,7 @@
   function permissionSet(kind, userId, includeAdminTeam = false) {
     if (!configured || !Appwrite.Permission || !Appwrite.Role) return undefined;
     const permissions = [];
-    const readAny = ["advertisements", "slots", "posts"].includes(kind);
+    const readAny = ["advertisements", "slots", "posts", "digital_menus"].includes(kind) || String(kind).startsWith("digital_menu_");
     if (readAny) permissions.push(Appwrite.Permission.read(Appwrite.Role.any()));
     if (userId) {
       const role = Appwrite.Role.user(userId);
@@ -82,6 +82,16 @@
     }
     Object.entries(filters).forEach(([key, value]) => { if (value !== undefined && value !== "") rows = rows.filter((row) => row[key] === value); });
     return rows;
+  }
+
+  async function get(kind, documentId) {
+    if (!configured) {
+      const row = (localRead()[kind] || []).find((item) => (item.id || item.$id) === documentId);
+      if (!row) throw new Error("Record not found");
+      return clean(row);
+    }
+    if (tables) return clean(await tables.getRow({ databaseId: config.databaseId, tableId: tableIdFor(kind), rowId: documentId }));
+    return clean(await databases.getDocument({ databaseId: config.databaseId, collectionId: tableIdFor(kind), documentId }));
   }
 
   async function create(kind, data, documentId, permissions) {
@@ -212,7 +222,7 @@
 
   window.Gravity58Ads = Object.freeze({
     configured, config, collections, client, account, databases, tables, storage, mediaBucketId,
-    list, create, update, remove, upsertSlot, permissionSet,
+    list, get, create, update, remove, upsertSlot, permissionSet,
     register, login, logout, currentUser, forgotPassword, completeRecovery, isTeamAdmin,
     validateMediaFile, uploadAdMedia, removeAdMedia,
     subscribeAdvertisements,
