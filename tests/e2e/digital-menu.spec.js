@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { monitorPageErrors, prepareOffline } from "./helpers.js";
+import { monitorPageErrors, prepareMockApi, prepareOffline } from "./helpers.js";
 
 async function loginDemoOwner(page) {
   await page.goto("/digital-menu/");
@@ -246,5 +246,58 @@ test("restaurant owner can permanently delete a restaurant and its local records
   const saved = await page.evaluate(() => JSON.parse(localStorage.getItem("gravity58DigitalMenu")));
   expect(saved.restaurants.some((row) => row.id === "res_cloud")).toBe(false);
   expect(saved.items.some((row) => row.restaurantId === "res_cloud")).toBe(false);
+  await assertNoErrors();
+});
+
+test("existing Gravity58 account can open restaurant setup while menu data stays local", async ({ page }) => {
+  await prepareMockApi(page, { initialUser: { $id: "cloud-owner-1", email: "owner@example.com", name: "Cloud Owner" }, state: null });
+  const assertNoErrors = monitorPageErrors(page);
+  await page.goto("/digital-menu/");
+  await expect(page.getByRole("heading", { name: "Create your first Digital Menu" })).toBeVisible();
+  const saved = await page.evaluate(() => JSON.parse(localStorage.getItem("gravity58DigitalMenu")));
+  expect(saved.session).toMatchObject({ userId: "g58_cloud-owner-1", provider: "gravity58" });
+  expect(saved.users.find((row) => row.id === "g58_cloud-owner-1")).toMatchObject({ email: "owner@example.com", provider: "gravity58" });
+  await assertNoErrors();
+});
+
+test("owner can download a portable config and generate a customer menu link", async ({ page }) => {
+  await prepareOffline(page, { state: null });
+  const assertNoErrors = monitorPageErrors(page);
+  await loginDemoOwner(page);
+  await page.locator('[data-view="publish"]').click();
+  await expect(page.getByRole("heading", { name: "Publish & Setup" })).toBeVisible();
+
+  const downloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Download Menu Config" }).click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toBe("gravity58-cafe-g58-menu.json");
+
+  await page.locator('#publishUrlForm input[name="configUrl"]').fill("https://menus.example.com/gravity58-cafe.json");
+  await page.getByRole("button", { name: "Save URL & Generate Link" }).click();
+  await expect(page.locator("#publishResult")).toContainText("CUSTOMER MENU LINK");
+  await expect(page.locator("#publishedMenuQr [data-testid='qr-rendered']")).toBeVisible();
+  const saved = await page.evaluate(() => JSON.parse(localStorage.getItem("gravity58DigitalMenu")).restaurants.find((row) => row.id === "res_cafe"));
+  expect(saved.publishedConfigUrl).toBe("https://menus.example.com/gravity58-cafe.json");
+  await assertNoErrors();
+});
+
+test("customer can load a hosted static config without menu records in Appwrite", async ({ page }) => {
+  await prepareOffline(page, { state: null });
+  const assertNoErrors = monitorPageErrors(page);
+  const hostedConfig = {
+    g58MenuConfig: 1,
+    restaurant: { id: "published-cafe", name: "Published Café", type: "Café", city: "Hyderabad", description: "Static hosted menu", address: "High Street", phone: "+91 9000000000", open: true, restaurantKey: "Published Café|Hyderabad" },
+    categories: [{ id: "published-cat", name: "Chef Specials" }],
+    items: [{ id: "published-item", categoryId: "published-cat", name: "Premium Bowl", description: "Customer-visible static dish", price: 249, type: "Veg", available: true, prep: 12, imageData: "" }],
+  };
+  await page.route("https://menus.example.com/published-cafe.json", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify(hostedConfig) }));
+  await page.goto(`/digital-menu/#menu&config=${encodeURIComponent("https://menus.example.com/published-cafe.json")}`);
+  await expect(page.getByRole("heading", { name: "Published Café" })).toBeVisible();
+  await expect(page.getByText("Published customer menu")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Premium Bowl" })).toBeVisible();
+  await expect(page.getByText("View-only published menu")).toBeVisible();
+  await expect(page.getByRole("button", { name: "ADD" })).toHaveCount(0);
+  await expect(page.locator("#modal")).toHaveCount(0);
+  await expect(page.locator(".vertical-ad-rail")).toBeVisible();
   await assertNoErrors();
 });
