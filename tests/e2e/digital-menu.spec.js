@@ -108,6 +108,12 @@ test("mobile menu uses photo cards and keeps the advertisement beside the restau
   expect(adBox).toBeTruthy();
   expect(adBox.x).toBeGreaterThan(heroBox.x);
   expect(Math.abs(adBox.y - heroBox.y)).toBeLessThan(5);
+  expect(heroBox.height).toBeLessThanOrEqual(140);
+  expect(adBox.height).toBeLessThanOrEqual(140);
+  const cartBox = await page.locator(".cart-bar").boundingBox();
+  const cartButtonFontSize = await page.locator("#openCart").evaluate((element) => parseFloat(getComputedStyle(element).fontSize));
+  expect(cartBox.height).toBeLessThanOrEqual(38);
+  expect(cartButtonFontSize).toBeLessThanOrEqual(10);
   await assertNoErrors();
 });
 
