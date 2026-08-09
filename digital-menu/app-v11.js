@@ -92,6 +92,9 @@ let orderAlertTimer = null;
 let orderAlertContext = null;
 const ringingOrderIds = new Set();
 const knownCloudOrderIds = new Set();
+const orderMutationIds = new Set();
+const stableAdvertisementIds = new Map();
+let customerCartRestaurantId = '';
 
 function load(){
   try{
@@ -199,11 +202,42 @@ async function syncCloudOrders({alertNew=false}={}){
 }
 async function persistCloudOrder(order){
   if(!order?.id||!order.cloudOwnerId)return order;
+  const kind=cloudOrderKind(order.cloudOwnerId);
+  // Existing orders must be updated directly. Re-creating an order from the
+  // restaurant session attempts to grant the customer's permissions again,
+  // which Appwrite correctly rejects before it can report the duplicate ID.
+  try{return await Gravity58Ads.update(kind,order.id,order)}
+  catch(error){
+    if(error?.code!==404&&!/not found|record not found/i.test(error?.message||''))throw error;
+  }
   const current=await Gravity58Ads.ensureUser();
   order.customerAccountId||=current?.$id||'';
   const permissions=Gravity58Ads.collaborativePermissionSet?.(order.customerAccountId)||Gravity58Ads.userPermissionSet([order.customerAccountId]);
-  try{return await Gravity58Ads.create(cloudOrderKind(order.cloudOwnerId),order,order.id,permissions)}
-  catch(error){if(error?.code===409||/already exists/i.test(error?.message||''))return Gravity58Ads.update(cloudOrderKind(order.cloudOwnerId),order.id,order);throw error}
+  return Gravity58Ads.create(kind,order,order.id,permissions);
+}
+async function patchCloudOrder(order,changes){
+  if(!order)return null;
+  if(order.cloudOwnerId&&Gravity58Ads?.configured){
+    const updated=await Gravity58Ads.update(cloudOrderKind(order.cloudOwnerId),order.id,changes);
+    Object.assign(order,updated);
+  }else Object.assign(order,changes);
+  save();
+  return order;
+}
+async function appendOrderMessage(order,message){
+  if(!order.cloudOwnerId||!Gravity58Ads?.configured){
+    order.messages=[...(order.messages||[]),message].slice(-50);
+    order.updatedAt=now();save();return order;
+  }
+  const kind=cloudOrderKind(order.cloudOwnerId);
+  for(let attempt=0;attempt<3;attempt++){
+    const latest=await Gravity58Ads.get(kind,order.id);
+    const merged=[...(latest.messages||[]),...(order.messages||[]),message].filter((entry,index,all)=>all.findIndex(candidate=>candidate.id===entry.id)===index).slice(-50);
+    await Gravity58Ads.update(kind,order.id,{messages:merged,updatedAt:now()});
+    const verified=await Gravity58Ads.get(kind,order.id);
+    if((verified.messages||[]).some(entry=>entry.id===message.id)){Object.assign(order,verified,{messages:verified.messages});save();return order}
+  }
+  throw new Error('Message could not be saved. Please try again.');
 }
 async function reserveOrderToken(ownerId,restaurantId){
   const day=orderDay(),localOrders=(state.orders||[]).filter(order=>order.restaurantId===restaurantId&&order.orderDay===day),localNext=Math.max(0,...localOrders.map(order=>Number(order.tokenNumber)||0))+1;
@@ -279,8 +313,8 @@ function renderShell(){const r=activeRestaurant();if(!r)return renderOwnerOnboar
 }
 function navButton(v,i,t){return `<button data-view="${v}" class="${view===v?'active':''}"><span>${i}</span>${t}</button>`}
 function renderView(){({dashboard:dashboardView,restaurants:restaurantsView,menu:menuView,orders:ordersView,qr:qrView,reports:reportsView,publish:publishSetupView,settings:settingsView}[view]||dashboardView)()}
-function dashboardView(){const r=activeRestaurant(),items=restaurantItems(),orders=restaurantOrders();$('#page').innerHTML=`<div class="hero"><div><span class="status-pill"><span class="dot"></span>${r.open?'Open':'Closed'}</span><h1 style="margin:12px 0 6px">${r.logo} ${r.name}</h1><p>${r.description||r.type+' in '+r.city}</p></div><div class="actions"><button class="btn secondary" id="previewMenu">Preview Menu</button><button class="btn" id="openCsv">Manage Menu</button></div></div><div class="grid stats">${metric('Categories',restaurantCategories().length)}${metric('Menu Items',items.length)}${metric('Pending Orders',orders.filter(x=>x.status==='Pending').length)}${metric('Today Revenue',money(orders.filter(x=>x.status==='Completed').reduce((a,b)=>a+b.total,0)))}</div><div class="section-head"><h2>Live Orders</h2><button class="btn small secondary" data-go="orders">View all</button></div><div class="grid order-grid">${orders.slice(0,3).map(orderCard).join('')||empty('No orders yet')}</div>`;
-  $('#previewMenu').onclick=()=>{location.hash=`menu&restaurant=${r.id}`};$('#openCsv').onclick=()=>{view='menu';renderShell()};$('[data-go="orders"]').onclick=()=>{view='orders';renderShell()};bindOrderActions();}
+function dashboardView(){const r=activeRestaurant(),items=restaurantItems(),orders=restaurantOrders();$('#page').innerHTML=`<div class="hero"><div><span class="status-pill"><span class="dot"></span>${r.open?'Open':'Closed'}</span><h1 style="margin:12px 0 6px">${r.logo} ${r.name}</h1><p>${r.description||r.type+' in '+r.city}</p></div><div class="actions"><button class="btn secondary" id="previewMenu">Preview Menu</button><button class="btn secondary" id="openOrders">Open Orders</button><button class="btn" id="openCsv">Manage Menu</button></div></div><div class="grid stats">${metric('Categories',restaurantCategories().length)}${metric('Menu Items',items.length)}${metric('Pending Orders',orders.filter(x=>['Pending','Payment Verification'].includes(x.status)).length)}${metric('Today Revenue',money(orders.filter(x=>x.status==='Completed').reduce((a,b)=>a+b.total,0)))}</div>`;
+  $('#previewMenu').onclick=()=>{location.hash=`menu&restaurant=${r.id}`};$('#openCsv').onclick=()=>{view='menu';renderShell()};$('#openOrders').onclick=()=>{view='orders';renderShell()};}
 function metric(label,value){return `<article class="card"><span class="muted">${label}</span><div class="metric">${value}</div></article>`}
 function restaurantVisual(r,className=''){return imageMarkup(localMediaSource(r,'logoImageKey','logoImage'),r.name?.trim()?.[0]||'G',className)}
 function restaurantsView(){$('#page').innerHTML=`<div class="section-head"><div><h1>My Restaurants</h1><p class="muted">Manage each restaurant, its menu, availability and orders.</p></div><button class="btn" id="createRestaurant">+ New Restaurant</button></div><div class="grid restaurant-grid">${ownerRestaurants().map(r=>`<article class="card restaurant-card"><div class="logo restaurant-logo">${restaurantVisual(r,'restaurant-logo-image')}</div><h3>${html(r.name)}</h3><p class="muted">${html(r.type)} · ${html(r.city)}</p><div class="chips"><span class="chip">${restaurantItems(r.id).length} items</span><span class="chip">${restaurantOrders(r.id).length} orders</span><span class="chip">${r.open?'Open':'Closed'}</span></div><div class="actions"><button class="btn small" data-open="${r.id}">Open Dashboard</button><button class="btn small secondary" data-edit="${r.id}">Edit</button><button class="btn small red" data-delete-restaurant="${r.id}">Delete</button></div></article>`).join('')}</div>`;$('#createRestaurant').onclick=()=>openRestaurantForm(false);$$('[data-open]').forEach(b=>b.onclick=()=>{state.activeRestaurantId=b.dataset.open;view='dashboard';save();renderShell()});$$('[data-edit]').forEach(b=>b.onclick=()=>openRestaurantForm(false,b.dataset.edit));$$('[data-delete-restaurant]').forEach(b=>b.onclick=()=>deleteRestaurant(b.dataset.deleteRestaurant))}
@@ -429,30 +463,38 @@ function orderCard(o){
 }
 function orderActions(o){const map={'Payment Verification':['Confirm Payment','Reject Payment'],Pending:['Accept','Reject'],Accepted:['Start Preparing'],Preparing:['Mark Ready'],Ready:['Complete']};return (map[o.status]||[]).map(a=>`<button class="btn small ${['Reject','Reject Payment'].includes(a)?'red':['Start Preparing','Mark Ready','Complete'].includes(a)?'green':''}" data-order="${html(o.id)}" data-action="${a}">${a}</button>`).join('')}
 function bindOrderActions(){
-  $$('[data-order]').forEach(b=>b.onclick=()=>updateOrder(b.dataset.order,b.dataset.action));
+  $$('[data-order]').forEach(b=>b.onclick=async()=>{if(orderMutationIds.has(b.dataset.order))return;b.disabled=true;await updateOrder(b.dataset.order,b.dataset.action)});
   $$('[data-edit-table]').forEach(b=>b.onclick=()=>editOrderTable(b.dataset.editTable));
   $$('[data-print-order]').forEach(b=>b.onclick=()=>printOrderReceipt(b.dataset.printOrder));
   $$('[data-order-chat]').forEach(form=>form.onsubmit=event=>sendOrderMessage(event,form.dataset.orderChat,'owner'));
 }
 async function updateOrder(id,action){
+  if(orderMutationIds.has(id))return;
   const o=state.orders.find(x=>x.id===id),next={Accept:'Accepted',Reject:'Rejected','Confirm Payment':'Pending','Reject Payment':'Payment Rejected','Start Preparing':'Preparing','Mark Ready':'Ready',Complete:'Completed'}[action];if(!o||!next)return;
-  const previous={status:o.status,paymentStatus:o.paymentStatus,acceptedAt:o.acceptedAt,readyAt:o.readyAt,completedAt:o.completedAt};
-  o.status=next;if(action==='Confirm Payment')o.paymentStatus='Confirmed';if(action==='Reject Payment')o.paymentStatus='Rejected';if(action==='Accept')o.acceptedAt=now();if(action==='Mark Ready')o.readyAt=now();if(action==='Complete')o.completedAt=now();o.updatedAt=now();
-  if(!['Pending','Payment Verification'].includes(next))ringingOrderIds.delete(id);updateOrderAlertSound();
-  try{await persistCloudOrder(o);save();toast(action==='Mark Ready'?`Token ${formatToken(o.tokenNumber)} is ready`:`Order ${o.id}: ${next}`);view==='orders'?ordersView():dashboardView()}catch(error){Object.assign(o,previous);toast(error.message||'Could not update order')}
+  orderMutationIds.add(id);const previous=structuredClone(o);
+  try{
+    if(o.cloudOwnerId&&Gravity58Ads?.configured)try{Object.assign(o,await Gravity58Ads.get(cloudOrderKind(o.cloudOwnerId),id))}catch{}
+    const allowed={PaymentVerification:['Confirm Payment','Reject Payment'],Pending:['Accept','Reject'],Accepted:['Start Preparing'],Preparing:['Mark Ready'],Ready:['Complete']}[String(o.status).replace(/\s/g,'')]||[];
+    if(!allowed.includes(action))throw new Error(`This order is already ${o.status}. Reloading the latest status.`);
+    const changes={status:next,updatedAt:now()};
+    if(action==='Confirm Payment')changes.paymentStatus='Confirmed';if(action==='Reject Payment')changes.paymentStatus='Rejected';if(action==='Accept')changes.acceptedAt=now();if(action==='Mark Ready')changes.readyAt=now();if(action==='Complete')changes.completedAt=now();
+    await patchCloudOrder(o,changes);
+    if(!['Pending','Payment Verification'].includes(next))ringingOrderIds.delete(id);updateOrderAlertSound();
+    toast(action==='Mark Ready'?`Token ${formatToken(o.tokenNumber)} is ready`:`Order ${o.id}: ${next}`);view==='orders'?ordersView():dashboardView();
+  }catch(error){Object.assign(o,previous);save();toast(error.message||'Could not update order')}
+  finally{orderMutationIds.delete(id)}
 }
 function editOrderTable(id){
   const order=state.orders.find(row=>row.id===id);if(!order)return;
-  modal('Correct Table Number',`<form id="correctTableForm"><p class="muted">Update the customer’s table if it is duplicated or incorrect. Their live order screen updates automatically.</p><div class="field"><label for="correctTableNumber">Table number</label><input id="correctTableNumber" name="tableNumber" value="${html(order.tableNumber||'')}" maxlength="20" required></div><button class="btn full">Update table</button></form>`,()=>{$('#correctTableForm').onsubmit=async event=>{event.preventDefault();const value=String(new FormData(event.target).get('tableNumber')||'').trim();if(!value)return;const previous=order.tableNumber;order.tableNumber=value;order.customer=`${order.customerName?order.customerName+' · ':''}Table ${value}`;order.updatedAt=now();try{await persistCloudOrder(order);save();closeModal();ordersView();toast(`Token ${formatToken(order.tokenNumber)} moved to Table ${value}`)}catch(error){order.tableNumber=previous;toast(error.message||'Could not update table')}}})
+  modal('Correct Table Number',`<form id="correctTableForm"><p class="muted">Update the customer’s table if it is duplicated or incorrect. Their live order screen updates automatically.</p><div class="field"><label for="correctTableNumber">Table number</label><input id="correctTableNumber" name="tableNumber" value="${html(order.tableNumber||'')}" maxlength="20" required></div><button class="btn full">Update table</button></form>`,()=>{$('#correctTableForm').onsubmit=async event=>{event.preventDefault();const value=String(new FormData(event.target).get('tableNumber')||'').trim();if(!value)return;const previous={tableNumber:order.tableNumber,customer:order.customer};try{await patchCloudOrder(order,{tableNumber:value,customer:`${order.customerName?order.customerName+' · ':''}Table ${value}`,updatedAt:now()});closeModal();ordersView();toast(`Token ${formatToken(order.tokenNumber)} moved to Table ${value}`)}catch(error){Object.assign(order,previous);toast(error.message||'Could not update table')}}})
 }
 async function sendOrderMessage(event,id,senderRole){
   event.preventDefault();const form=event.currentTarget,input=$('input[name="message"]',form),text=String(input?.value||'').trim();if(!text)return;
   const order=state.orders.find(row=>row.id===id);if(!order)return;
   const button=$('button',form);button.disabled=true;
   try{
-    let latest=order;if(order.cloudOwnerId&&Gravity58Ads?.configured)try{latest=await Gravity58Ads.get(cloudOrderKind(order.cloudOwnerId),id)}catch{}
     const message={id:uid('msg'),senderRole,senderName:senderRole==='owner'?activeRestaurant()?.name:(order.customerName||'Customer'),text,createdAt:now()};
-    order.messages=[...(latest.messages||[]),message].slice(-50);order.updatedAt=now();await persistCloudOrder(order);save();input.value='';senderRole==='owner'?(view==='orders'?ordersView():dashboardView()):renderTrack();toast('Message sent');
+    await appendOrderMessage(order,message);input.value='';senderRole==='owner'?ordersView():renderTrack();toast('Message sent');
   }catch(error){button.disabled=false;toast(error.message||'Could not send message')}
 }
 function printOrderReceipt(id){
@@ -471,7 +513,13 @@ function publishSetupView(){
 function qrView(){const r=activeRestaurant(),url=cloudCustomerMenuUrl(r);$('#page').innerHTML=`<div class="section-head"><div><h1>QR Codes</h1><p class="muted">Share your live customer menu</p></div><button class="btn secondary" id="previewQr">Preview Menu</button></div><article class="card qr-card"><h2>${html(r.name)}</h2><p>Scan to View Menu</p><div class="qr-wrap"><div id="qrcode"></div></div><div class="actions" style="margin-top:18px"><button class="btn" id="copyQr">Copy Menu Link</button><button class="btn secondary" onclick="window.print()">Print</button></div><small class="muted" style="margin-top:16px">Powered by Gravity58 Digital Menu</small></article>`;try{new QRCode($('#qrcode'),{text:url,width:220,height:220})}catch{$('#qrcode').innerHTML='<div style="color:#111;padding:70px 25px">QR unavailable</div>'}$('#copyQr').onclick=()=>navigator.clipboard?.writeText(url).then(()=>toast('Menu link copied'));$('#previewQr').onclick=()=>window.open(url,'_blank')}
 function reportsView(){const orders=restaurantOrders(),sales=orders.filter(x=>x.status==='Completed').reduce((a,b)=>a+b.total,0);$('#page').innerHTML=`<div class="section-head"><div><h1>Reports</h1><p class="muted">Data for ${activeRestaurant().name} only</p></div></div><div class="grid stats">${metric('Total Orders',orders.length)}${metric('Completed',orders.filter(x=>x.status==='Completed').length)}${metric('Total Sales',money(sales))}${metric('Average Order',money(orders.length?orders.reduce((a,b)=>a+b.total,0)/orders.length:0))}</div><div class="section-head"><h2>All Restaurants Overview</h2></div><div class="grid restaurant-grid">${ownerRestaurants().map(r=>{const os=restaurantOrders(r.id);return `<article class="card"><h3>${r.logo} ${r.name}</h3><p class="muted">${os.length} orders · ${money(os.filter(x=>x.status==='Completed').reduce((a,b)=>a+b.total,0))} sales</p></article>`}).join('')}</div>`}
 function adsView(){const key=`${activeRestaurant().name}|${activeRestaurant().city}`;const ads=(state.advertisements||[]).filter(a=>a.restaurantKey===key);const requests=state.adRequests||[];$('#page').innerHTML=`<div class="section-head"><div><h1>Gravity58 Advertisement Control</h1><p class="muted">Central ad control using unique restaurant key: <strong>${key}</strong></p></div><button class="btn" id="createAd">+ Create Advertisement</button></div><div class="grid stats">${metric('Active Ads',ads.filter(a=>a.active).length)}${metric('Restaurant Ads',ads.length)}${metric('Ad Enquiries',requests.length)}${metric('Pending Enquiries',requests.filter(x=>x.status!=='Contacted').length)}</div><div class="section-head"><h2>Advertisements for this restaurant</h2></div><div class="grid restaurant-grid">${ads.map(a=>`<article class="card"><div class="ad-icon">${a.image||'📣'}</div><h3>${a.title}</h3><p class="muted">${a.description}</p><div class="chips"><span class="chip">${a.active?'Enabled':'Disabled'}</span><span class="chip">${a.restaurantKey}</span></div><div class="actions"><button class="btn small" data-toggle-ad="${a.id}">${a.active?'Disable':'Enable'}</button><button class="btn small red" data-delete-ad="${a.id}">Delete</button></div></article>`).join('')||empty('No advertisement enabled. Customers will see the Ad Space placeholder.')}</div><div class="section-head"><h2>Ad-space enquiries</h2></div><div class="card table-wrap"><table><thead><tr><th>Name</th><th>Phone</th><th>Email</th><th>Restaurant</th><th>Status</th><th></th></tr></thead><tbody>${requests.map(q=>`<tr><td>${q.name}</td><td>${q.phone}</td><td>${q.email}</td><td>${q.restaurantKey}</td><td>${q.status||'New'}</td><td><button class="btn small secondary" data-contacted="${q.id}">Mark Contacted</button></td></tr>`).join('')||'<tr><td colspan="6" class="muted">No enquiries yet.</td></tr>'}</tbody></table></div>`;$('#createAd').onclick=()=>modal('Create G58 Advertisement',`<form id="adForm"><div class="field"><label>Restaurant key</label><input value="${key}" disabled></div><div class="field"><label>Title</label><input name="title" required></div><div class="field"><label>Description</label><textarea name="description" required></textarea></div><div class="form-grid"><div class="field"><label>Button label</label><input name="buttonLabel" value="View Offer"></div><div class="field"><label>Destination URL</label><input name="destinationUrl" value="#"></div><div class="field"><label>Icon / Emoji</label><input name="image" value="📣"></div><div class="field"><label>Status</label><select name="active"><option value="true">Enabled</option><option value="false">Disabled</option></select></div></div><button class="btn full">Save Advertisement</button></form>`,()=>{$('#adForm').onsubmit=e=>{e.preventDefault();const d=Object.fromEntries(new FormData(e.target));state.advertisements.push({id:uid('ad'),restaurantKey:key,...d,active:d.active==='true'});save();closeModal();adsView();toast('Advertisement saved')}});$$('[data-toggle-ad]').forEach(b=>b.onclick=()=>{const a=state.advertisements.find(x=>x.id===b.dataset.toggleAd);a.active=!a.active;save();adsView()});$$('[data-delete-ad]').forEach(b=>b.onclick=()=>{state.advertisements=state.advertisements.filter(x=>x.id!==b.dataset.deleteAd);save();adsView()});$$('[data-contacted]').forEach(b=>b.onclick=()=>{const q=state.adRequests.find(x=>x.id===b.dataset.contacted);q.status='Contacted';save();adsView()})}
-function currentAdvertisement(r,slotId='right_rail'){const restaurantKey=`${r.name}|${r.city}`,ts=Date.now();return (state.advertisements||[]).filter(a=>a.restaurantKey===restaurantKey&&a.active&&(!a.slotId||a.slotId===slotId)&&(!a.expiresAt||new Date(a.expiresAt).getTime()>ts)).sort((a,b)=>new Date(b.activatedAt||b.createdAt||0)-new Date(a.activatedAt||a.createdAt||0))[0]}
+function currentAdvertisement(r,slotId='right_rail'){
+  const restaurantKey=`${r.name}|${r.city}`,cacheKey=`${restaurantKey}|${slotId}`,ts=Date.now();
+  const candidates=(state.advertisements||[]).filter(a=>a.restaurantKey===restaurantKey&&a.active&&(!a.slotId||a.slotId===slotId)&&(!a.expiresAt||new Date(a.expiresAt).getTime()>ts)).sort((a,b)=>new Date(b.activatedAt||b.createdAt||0)-new Date(a.activatedAt||a.createdAt||0));
+  const cachedId=stableAdvertisementIds.get(cacheKey),cached=candidates.find(ad=>(ad.id||ad.$id)===cachedId);
+  if(cached)return cached;
+  const selected=candidates[0];if(selected)stableAdvertisementIds.set(cacheKey,selected.id||selected.$id);else stableAdvertisementIds.delete(cacheKey);return selected;
+}
 function adTimeLeft(ad){if(!ad?.expiresAt)return 'Slot duration not set';const ms=new Date(ad.expiresAt).getTime()-Date.now();if(ms<=0)return 'Expired';const h=Math.floor(ms/36e5),m=Math.floor((ms%36e5)/6e4);return `${h}h ${m}m remaining`}
 function publicAdSection(r){
   let slotId='right_rail';
@@ -533,6 +581,7 @@ function renderPublicMenu(){
     modal('Welcome to '+r.name,`<form id="identityForm" class="customer-entry-form"><div class="field centered-field"><label>Customer name <small id="nameRequirement">(required for counter orders)</small></label><input name="customerName" required placeholder="Enter your name"></div><div class="service-choice"><label class="choice-card"><input type="radio" name="serviceMode" value="counter" checked><span><strong>Single Counter</strong><small>Collect from the service counter</small></span></label><label class="choice-card"><input type="radio" name="serviceMode" value="table"><span><strong>Enter Table Number</strong><small>Order for your table</small></span></label></div><div class="field" id="tableNumberField" hidden><label>Table number</label><input name="tableNumber" placeholder="Example: 12"></div><div class="field"><label>Phone number <small>(optional)</small></label><input name="phone" type="tel" placeholder="Optional contact number"></div><button class="btn full">Continue to Menu</button></form>`,()=>{const form=$('#identityForm'),tableField=$('#tableNumberField'),nameNote=$('#nameRequirement');const syncIdentity=()=>{const table=form.serviceMode.value==='table';tableField.hidden=!table;form.tableNumber.required=table;form.customerName.required=!table;nameNote.textContent=table?'(optional for table orders)':'(required for counter orders)';form.customerName.placeholder=table?'Optional customer name':'Enter your name'};$$('input[name="serviceMode"]',form).forEach(x=>x.onchange=syncIdentity);syncIdentity();form.onsubmit=e=>{e.preventDefault();const d=Object.fromEntries(new FormData(e.target));const customerName=(d.customerName||'').trim();const tableNumber=(d.tableNumber||'').trim();if(d.serviceMode==='counter'&&!customerName)return toast('Enter customer name for counter order');if(d.serviceMode==='table'&&!tableNumber)return toast('Enter table number');customerContext={restaurantId:rid,customerName,serviceMode:d.serviceMode,tableNumber:d.serviceMode==='table'?tableNumber:'',phone:(d.phone||'').trim(),customer:d.serviceMode==='table'?`${customerName?customerName+' · ':''}Table ${tableNumber}`:customerName};sessionStorage.setItem(`gravity58Customer_${rid}`,JSON.stringify(customerContext));closeModal();renderPublicMenu()}},{dismissible:false})
   }
   const cats=sharedMenu?remoteMenuConfig.categories:restaurantCategories(rid),items=sharedMenu?remoteMenuConfig.items:restaurantItems(rid),restaurantHero=localMediaSource(r,'logoImageKey','logoImage');
+  if(customerCartRestaurantId!==rid){customerCartRestaurantId=rid;try{customerCart=JSON.parse(sessionStorage.getItem(`gravity58Cart_${rid}`)||'[]').filter(entry=>items.some(item=>item.id===entry.id))}catch{customerCart=[]}}
   const filterKey=`gravity58MenuFilters_${rid}`;
   const filters={category:'all',diet:'all',search:'',available:false,...JSON.parse(sessionStorage.getItem(filterKey)||'{}')};
   const activeCategory=cats.find(c=>c.id===filters.category);
@@ -581,7 +630,7 @@ function renderPublicMenu(){
   $$('[data-diet]').forEach(b=>b.onclick=()=>{filters.diet=b.dataset.diet;applyFilters()});
   $('#availableOnlyFilter').onchange=e=>{filters.available=e.target.checked;applyFilters()};
   $('#publicMenuSearch').oninput=e=>{filters.search=e.target.value;applyFilters()};
-  if(!published){$$('[data-qty-action]').forEach(b=>b.onclick=()=>changeCartQuantity(b.dataset.item,b.dataset.qtyAction));$$('[data-prepare-item]').forEach(c=>c.onchange=()=>{if(c.checked)openPreparationInstructions(c.dataset.prepareItem);else{const ci=customerCart.find(x=>x.id===c.dataset.prepareItem);if(ci){ci.prepareInstruction='';ci.prepareOptions=[];ci.customPrepareNote=''}renderPublicMenu()}});$('#openCart').onclick=()=>openCart(r)}
+  if(!published){$$('[data-qty-action]').forEach(b=>b.onclick=()=>changeCartQuantity(b.dataset.item,b.dataset.qtyAction));$$('[data-prepare-item]').forEach(c=>c.onchange=()=>{if(c.checked)openPreparationInstructions(c.dataset.prepareItem);else{const ci=customerCart.find(x=>x.id===c.dataset.prepareItem);if(ci){ci.prepareInstruction='';ci.prepareOptions=[];ci.customPrepareNote=''}persistCustomerCart();renderPublicMenu()}});$('#openCart').onclick=()=>openCart(r)}
   bindPublicAdContact(r);applyFilters()
 }
 function selectPublicCategory(rid,catId){const key=`gravity58MenuFilters_${rid}`,filters={category:'all',diet:'all',search:'',available:false,...JSON.parse(sessionStorage.getItem(key)||'{}'),category:catId};sessionStorage.setItem(key,JSON.stringify(filters));renderPublicMenu()}
@@ -631,10 +680,11 @@ function openPreparationInstructions(itemId){
   const current=cartItem.prepareInstruction||'';
   const selected=new Set((cartItem.prepareOptions||[]));
   const options=['Spicy','Medium spicy','Low spicy','No salt'];
-  modal('Prepare '+item.name,`<form id="prepareInstructionForm" class="prepare-instruction-form"><p class="muted">Select one or more kitchen preferences. Use the note box for anything else.</p><div class="prep-option-grid">${options.map(o=>`<label class="prep-option"><input type="checkbox" name="prepOption" value="${o}" ${selected.has(o)?'checked':''}><span>${o}</span></label>`).join('')}</div><div class="field"><label>Other preparation request</label><textarea name="customNote" maxlength="250" placeholder="Type any other request for the kitchen">${html(cartItem.customPrepareNote||'')}</textarea></div><button class="btn full">Save Instructions</button></form>`,()=>{$('#prepareInstructionForm').onsubmit=e=>{e.preventDefault();const fd=new FormData(e.target);const opts=fd.getAll('prepOption');const note=(fd.get('customNote')||'').trim();cartItem.prepareOptions=opts;cartItem.customPrepareNote=note;cartItem.prepareInstruction=[...opts,note].filter(Boolean).join(' · ');closeModal();renderPublicMenu();toast('Preparation instructions saved')}})
+  modal('Prepare '+item.name,`<form id="prepareInstructionForm" class="prepare-instruction-form"><p class="muted">Select one or more kitchen preferences. Use the note box for anything else.</p><div class="prep-option-grid">${options.map(o=>`<label class="prep-option"><input type="checkbox" name="prepOption" value="${o}" ${selected.has(o)?'checked':''}><span>${o}</span></label>`).join('')}</div><div class="field"><label>Other preparation request</label><textarea name="customNote" maxlength="250" placeholder="Type any other request for the kitchen">${html(cartItem.customPrepareNote||'')}</textarea></div><button class="btn full">Save Instructions</button></form>`,()=>{$('#prepareInstructionForm').onsubmit=e=>{e.preventDefault();const fd=new FormData(e.target);const opts=fd.getAll('prepOption');const note=(fd.get('customNote')||'').trim();cartItem.prepareOptions=opts;cartItem.customPrepareNote=note;cartItem.prepareInstruction=[...opts,note].filter(Boolean).join(' · ');persistCustomerCart();closeModal();renderPublicMenu();toast('Preparation instructions saved')}})
 }
 
-function changeCartQuantity(id,action){const item=currentPublicItem(id);if(!item||!item.available)return;const existing=customerCart.find(x=>x.id===id);if(action==='plus'){existing?existing.qty++:customerCart.push({...item,qty:1})}else if(existing){existing.qty--;if(existing.qty<=0)customerCart=customerCart.filter(x=>x.id!==id)}renderPublicMenu()}
+function persistCustomerCart(){if(customerCartRestaurantId)sessionStorage.setItem(`gravity58Cart_${customerCartRestaurantId}`,JSON.stringify(customerCart))}
+function changeCartQuantity(id,action){const item=currentPublicItem(id);if(!item||!item.available)return;const existing=customerCart.find(x=>x.id===id);if(action==='plus'){existing?existing.qty++:customerCart.push({...item,qty:1})}else if(existing){existing.qty--;if(existing.qty<=0)customerCart=customerCart.filter(x=>x.id!==id)}persistCustomerCart();renderPublicMenu()}
 function openCart(r){
   if(!customerCart.length){ toast('Cart is empty'); return; }
   if(!customerContext){ toast('Customer details are missing. Reopen the menu.'); return; }

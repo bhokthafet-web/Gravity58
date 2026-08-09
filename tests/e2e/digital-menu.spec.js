@@ -8,6 +8,9 @@ async function loginDemoOwner(page) {
   await page.locator('#loginForm input[name="password"]').fill("test123");
   await page.locator("#loginForm").getByRole("button", { name: "Login" }).click();
   await expect(page.getByRole("heading", { name: /Gravity58 Café/ })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Live Orders" })).toHaveCount(0);
+  await expect(page.locator(".order-card")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Open Orders" })).toBeVisible();
 }
 
 test("restaurant owner imports CSV, controls availability, orders, QR, reports and settings", async ({ page }) => {
@@ -400,7 +403,13 @@ test("customer can load the latest account menu on another device", async ({ pag
     categories: [{ id: "specials", name: "Specials" }],
     items: [{ id: "cloud-meal", categoryId: "specials", name: "Cloud Meal", description: "Visible on every device", price: 299, type: "Veg", available: true, prep: 12, prepareInstructionsEnabled: false, imageUrl: "https://cdn.example.com/cloud-meal.jpg" }],
   };
-  await prepareMockApi(page, { state: null, seed: { "digital_menu_public-owner": [cloudMenu] } });
+  await prepareMockApi(page, { state: null, seed: {
+    "digital_menu_public-owner": [cloudMenu],
+    advertisements: [
+      { id: "stable-ad", restaurantKey: "Public Cloud Café|Hyderabad", slotId: "right_rail", title: "Stable Campaign", description: "This image must stay fixed while ordering.", mediaUrl: "https://cdn.example.com/stable-ad.jpg", active: true, activatedAt: "2026-08-09T12:00:00.000Z", expiresAt: "2099-08-10T12:00:00.000Z" },
+      { id: "second-ad", restaurantKey: "Public Cloud Café|Hyderabad", slotId: "right_rail", title: "Second Campaign", description: "Secondary campaign.", mediaUrl: "https://cdn.example.com/second-ad.jpg", active: true, activatedAt: "2026-08-09T11:00:00.000Z", expiresAt: "2099-08-10T12:00:00.000Z" },
+    ],
+  } });
   const assertNoErrors = monitorPageErrors(page);
   await page.goto("/digital-menu/#menu&cloud=public-cloud-cafe&owner=public-owner");
   await expect(page.getByRole("heading", { name: "Public Cloud Café", exact: true })).toBeVisible();
@@ -410,10 +419,17 @@ test("customer can load the latest account menu on another device", async ({ pag
   await expect(page.getByRole("heading", { name: "Cloud Meal" })).toBeVisible();
   await expect(page.locator('.poster-menu-item img[src="https://cdn.example.com/cloud-meal.jpg"]')).toBeVisible();
   await expect(page.locator('.compact-hero-photo[src="https://cdn.example.com/restaurant.jpg"]')).toBeVisible();
+  await expect(page.locator('.header-ad-media[src="https://cdn.example.com/stable-ad.jpg"]')).toBeVisible();
+  await page.evaluate(() => {
+    window.__g58Mock.store.advertisements.reverse();
+    window.dispatchEvent(new CustomEvent("g58-ad-data-changed", { detail: { kind: "advertisements" } }));
+  });
+  await expect(page.locator('.header-ad-media[src="https://cdn.example.com/stable-ad.jpg"]')).toBeVisible();
   await expect(page.getByRole("button", { name: "ADD" })).toBeVisible();
   await page.getByRole("button", { name: "ADD" }).click();
   await expect(page.locator('.compact-hero-photo[src="https://cdn.example.com/restaurant.jpg"]')).toBeVisible();
   await expect(page.locator('.compact-hero-photo[src="https://cdn.example.com/cloud-meal.jpg"]')).toHaveCount(0);
+  await expect(page.locator('.header-ad-media[src="https://cdn.example.com/stable-ad.jpg"]')).toBeVisible();
   await assertNoErrors();
 });
 
@@ -435,7 +451,13 @@ test("simultaneous cloud orders receive unique serial tokens and remain independ
     await page.locator("#openCart").click();
     await page.locator("#confirmPlaceOrder").click();
     await expect(page.locator(".customer-token-panel strong")).toHaveText(index === 0 ? "0001" : "0002");
-    if (index === 0) await page.getByRole("button", { name: "View Menu" }).click();
+    if (index === 0) {
+      await page.locator(".customer-chat-toggle").click();
+      await page.getByRole("textbox", { name: "Message restaurant" }).fill("First order message");
+      await page.locator("[data-customer-chat]").getByRole("button", { name: "Send" }).click();
+      await expect(page.locator(".customer-order-chat")).toContainText("First order message");
+      await page.getByRole("button", { name: "View Menu" }).click();
+    }
   }
 
   const result = await page.evaluate(() => ({
@@ -448,6 +470,8 @@ test("simultaneous cloud orders receive unique serial tokens and remain independ
   expect(result.reservations).toEqual([1, 2]);
   expect(result.orderPermissions.every((permissions) => permissions.includes("read:users") && permissions.includes("update:users"))).toBe(true);
   expect(result.tokenPermissions.every((permissions) => !permissions.some((permission) => permission.includes("queue-owner")))).toBe(true);
+  const storedOrders = await page.evaluate(() => window.__g58Mock.store["digital_order_queue-owner"]);
+  expect(storedOrders.find((row) => row.tokenNumber === 1).messages.at(-1)).toMatchObject({ senderRole: "customer", text: "First order message" });
   await assertNoErrors();
 });
 
@@ -461,6 +485,8 @@ test("restaurant dashboard receives a new cloud order without a manual refresh",
   const assertNoErrors = monitorPageErrors(page);
   await page.goto("/digital-menu/");
   await expect(page.getByRole("heading", { name: /Live Café/ })).toBeVisible();
+  await page.getByRole("button", { name: "Open Orders" }).click();
+  await expect(page.getByRole("heading", { name: "Live Orders" })).toBeVisible();
 
   await page.evaluate(async () => {
     await window.Gravity58Ads.create("digital_order_live-owner", {
@@ -469,16 +495,39 @@ test("restaurant dashboard receives a new cloud order without a manual refresh",
       tokenNumber: 11, orderDay: "20260809", items: [{ name: "Tea", qty: 2, price: 40 }], total: 80,
       paymentMethod: "counter", paymentStatus: "Not required", status: "Pending", messages: [], createdAt: new Date().toISOString(),
     }, "LIVE-ORDER-1", []);
+    await window.Gravity58Ads.create("digital_order_live-owner", {
+      id: "LIVE-ORDER-2", ownerId: "live-owner", cloudOwnerId: "live-owner", restaurantId: "live-cafe",
+      customerName: "Second Guest", customer: "Second Guest · Table 5", serviceMode: "table", tableNumber: "5",
+      tokenNumber: 12, orderDay: "20260809", items: [{ name: "Tea", qty: 1, price: 40 }], total: 40,
+      paymentMethod: "counter", paymentStatus: "Not required", status: "Pending", messages: [], createdAt: new Date().toISOString(),
+    }, "LIVE-ORDER-2", []);
   });
 
   const liveCard = page.locator(".order-card", { hasText: "Realtime Guest" });
   await expect(liveCard).toBeVisible();
   await expect(liveCard).toContainText("TOKEN 0011");
   await expect(liveCard.locator(".incoming-order-beacon")).toBeVisible();
+  const createsBeforeAccept = await page.evaluate(() => window.__g58Mock.createAttempts.filter((row) => row.kind === "digital_order_live-owner" && row.id === "LIVE-ORDER-1").length);
   await liveCard.getByRole("button", { name: "Accept" }).click();
   const acceptedLiveCard = page.locator(".order-card", { hasText: "Realtime Guest" });
   await expect(acceptedLiveCard).toContainText("Accepted");
   await expect(acceptedLiveCard.locator(".incoming-order-beacon")).toHaveCount(0);
+  const secondCard = page.locator(".order-card", { hasText: "Second Guest" });
+  await expect(secondCard).toContainText("TOKEN 0012");
+  await secondCard.getByRole("button", { name: "Accept" }).click();
+  await expect(page.locator(".order-card", { hasText: "Second Guest" })).toContainText("Accepted");
+  await acceptedLiveCard.getByRole("textbox", { name: "Message customer" }).fill("Order accepted successfully");
+  await acceptedLiveCard.locator("[data-order-chat]").getByRole("button", { name: "Send" }).click();
+  await expect(page.locator(".order-card", { hasText: "Realtime Guest" })).toContainText("Order accepted successfully");
+  const cloudMutation = await page.evaluate(() => ({
+    order: window.__g58Mock.store["digital_order_live-owner"].find((row) => row.id === "LIVE-ORDER-1"),
+    creates: window.__g58Mock.createAttempts.filter((row) => row.kind === "digital_order_live-owner" && row.id === "LIVE-ORDER-1").length,
+  }));
+  expect(cloudMutation.creates).toBe(createsBeforeAccept);
+  expect(cloudMutation.order).toMatchObject({ status: "Accepted" });
+  expect(cloudMutation.order.messages.at(-1)).toMatchObject({ senderRole: "owner", text: "Order accepted successfully" });
+  const secondOrder = await page.evaluate(() => window.__g58Mock.store["digital_order_live-owner"].find((row) => row.id === "LIVE-ORDER-2"));
+  expect(secondOrder).toMatchObject({ status: "Accepted", tokenNumber: 12 });
   await assertNoErrors();
 });
 

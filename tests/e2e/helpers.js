@@ -38,12 +38,12 @@ export function mockApiScript({ initialUser = null, admin = false, seed = {} } =
     let serial=0;
     const clean=row=>({...row,id:row.id||row.$id,$id:row.$id||row.id});
     const notify=(kind,row)=>window.dispatchEvent(new CustomEvent('g58-ad-data-changed',{detail:{kind,row}}));
-    window.__g58Mock={store,get user(){return user},recoveries:[],permissionCalls:[],removedMedia:[]};
+    window.__g58Mock={store,get user(){return user},recoveries:[],permissionCalls:[],createAttempts:[],removedMedia:[]};
     window.Gravity58Ads={
       configured:true,config:{adminTeamId:'test-team'},collections:{},client:null,account:null,databases:null,tables:null,
       list:async(kind,filters={})=>(store[kind]||[]).filter(row=>Object.entries(filters).every(([key,value])=>value===''||value===undefined||row[key]===value)).map(clean),
       get:async(kind,id)=>{const row=(store[kind]||[]).find(item=>(item.id||item.$id)===id);if(!row)throw new Error('Record not found');return clean(row)},
-      create:async(kind,data,documentId,permissions)=>{const id=documentId||kind+'-'+(++serial);if((store[kind]||[]).some(item=>(item.id||item.$id)===id)){const error=new Error('Record already exists');error.code=409;throw error}const row=clean({id,...clone(data),$createdAt:new Date().toISOString(),$updatedAt:new Date().toISOString()});(store[kind]||=[]).unshift(row);window.__g58Mock.permissionCalls.push({action:'create',kind,id,permissions:clone(permissions||[])});notify(kind,row);return row},
+      create:async(kind,data,documentId,permissions)=>{const id=documentId||kind+'-'+(++serial);window.__g58Mock.createAttempts.push({kind,id,permissions:clone(permissions||[])});if((store[kind]||[]).some(item=>(item.id||item.$id)===id)){const error=new Error(kind.startsWith('digital_order_')?'Permissions must be one of the roles available to this restaurant account':'Record already exists');error.code=kind.startsWith('digital_order_')?401:409;throw error}const row=clean({id,...clone(data),$createdAt:new Date().toISOString(),$updatedAt:new Date().toISOString()});(store[kind]||=[]).unshift(row);window.__g58Mock.permissionCalls.push({action:'create',kind,id,permissions:clone(permissions||[])});notify(kind,row);return row},
       update:async(kind,id,data,permissions)=>{const row=(store[kind]||[]).find(item=>(item.id||item.$id)===id);if(!row)throw new Error('Record not found');Object.assign(row,clone(data),{$updatedAt:new Date().toISOString()});window.__g58Mock.permissionCalls.push({action:'update',kind,id,permissions:clone(permissions||[])});notify(kind,row);return clean(row)},
       remove:async(kind,id)=>{store[kind]=(store[kind]||[]).filter(item=>(item.id||item.$id)!==id);notify(kind,{id});return true},
       upsertSlot:async(slot)=>{const existing=(store.slots||[]).find(row=>row.restaurantKey===slot.restaurantKey);if(existing){Object.assign(existing,slot);return clean(existing)}const row=clean({id:slot.id||'slot-'+(++serial),...slot});store.slots.unshift(row);return row},
@@ -65,7 +65,7 @@ export function mockApiScript({ initialUser = null, admin = false, seed = {} } =
       permissionSet:(kind,userId)=>['read:any','read:user:'+userId,'update:user:'+userId,'delete:user:'+userId],
       userPermissionSet:(userIds=[])=>userIds.filter(Boolean).flatMap(id=>['read:user:'+id,'update:user:'+id,'delete:user:'+id]),
       collaborativePermissionSet:(userId)=>['read:users','update:users','read:user:'+userId,'update:user:'+userId,'delete:user:'+userId],
-      subscribeAdvertisements:()=>()=>{},
+      subscribeAdvertisements:(onChange)=>{const handler=event=>{if(!event.detail?.kind||event.detail.kind==='advertisements')onChange?.(event.detail?.row||null,event)};window.addEventListener('g58-ad-data-changed',handler);return()=>window.removeEventListener('g58-ad-data-changed',handler)},
       subscribeKind:(kind,onChange)=>{const handler=event=>{if(!event.detail?.kind||event.detail.kind===kind)onChange?.(event.detail?.row||null,event)};window.addEventListener('g58-ad-data-changed',handler);return()=>window.removeEventListener('g58-ad-data-changed',handler)},
     };
   })();`;
