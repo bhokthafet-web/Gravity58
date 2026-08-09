@@ -150,6 +150,17 @@ test("team admin reviews bookings, activates campaigns, moderates posts and bloc
   await page.locator('[data-toggle="ad-live"]').click();
   const paused = await page.evaluate(() => window.__g58Mock.store.advertisements.find((row) => row.id === "ad-live"));
   expect(paused).toMatchObject({ active: false, status: "Paused" });
+
+  await page.getByRole("button", { name: "+ Manual campaign" }).click();
+  await page.getByLabel("Restaurant placement key").fill("Sample Restaurant|Hyderabad");
+  await page.getByLabel("Placement", { exact: true }).selectOption("preparing");
+  await page.getByLabel("Title").fill("Sample Preparing Offer");
+  await page.getByLabel("Description").fill("A production-safe sample advertisement.");
+  await page.getByLabel("Hours").fill("24");
+  await page.getByLabel("Animation style").selectOption("pulse");
+  await page.getByRole("button", { name: "Publish campaign" }).click();
+  const manual = await page.evaluate(() => window.__g58Mock.store.advertisements.find((row) => row.title === "Sample Preparing Offer"));
+  expect(manual).toMatchObject({ restaurantKey: "Sample Restaurant|Hyderabad", slotId: "preparing", hours: 24, creativeStyle: "pulse", active: true, status: "Live" });
   await assertNoErrors();
 });
 
