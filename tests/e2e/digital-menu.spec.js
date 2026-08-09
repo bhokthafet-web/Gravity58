@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { readFile } from "node:fs/promises";
 import { monitorPageErrors, prepareMockApi, prepareOffline } from "./helpers.js";
 
 async function loginDemoOwner(page) {
@@ -24,8 +25,16 @@ test("restaurant owner imports CSV, controls availability, orders, QR, reports a
     mimeType: "image/png",
     buffer: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9ZkMcAAAAASUVORK5CYII=", "base64"),
   });
-  await expect(page.locator("#compressorResult")).toContainText("KB ready");
+  await expect(page.locator("#compressorResult")).toContainText("KB JPG ready");
   await expect(page.locator("#downloadCompressedImage")).toBeVisible();
+  const downloadPromise = page.waitForEvent("download");
+  await page.locator("#downloadCompressedImage").click();
+  const compressedDownload = await downloadPromise;
+  expect(compressedDownload.suggestedFilename()).toBe("restaurant-g58.jpg");
+  const compressedPath = await compressedDownload.path();
+  const compressedBytes = await readFile(compressedPath);
+  expect(compressedBytes.subarray(0, 2).toString("hex")).toBe("ffd8");
+  expect(compressedBytes.length).toBeLessThanOrEqual(100 * 1024);
   await page.getByRole("button", { name: "Close dialog" }).click();
 
   await expect(page.locator("#addItem")).toHaveCount(0);

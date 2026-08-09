@@ -99,6 +99,7 @@ test("advertiser submits payment reference and proof inside the portal", async (
 
 test("team admin reviews bookings, activates campaigns, moderates posts and blocks accounts", async ({ page }) => {
   const future = new Date(Date.now() + 3_600_000).toISOString();
+  const past = new Date(Date.now() - 3_600_000).toISOString();
   const seed = {
     slots,
     profiles: [{ id: "profile-1", userId: "customer-1", name: "Customer One", email: "customer@example.com", phone: "9876543210", state: "Telangana", district: "Hyderabad", blocked: false }],
@@ -106,7 +107,10 @@ test("team admin reviews bookings, activates campaigns, moderates posts and bloc
       { id: "booking-requested", customerName: "Customer One", customerEmail: "customer@example.com", restaurantKey: "Test Restaurant|Hyderabad", slotId: "right_rail", hours: 3, amount: 300, title: "Requested Ad", description: "Waiting for link", status: "Requested" },
       { id: "booking-proof", customerName: "Customer Two", customerEmail: "two@example.com", restaurantKey: "Test Restaurant|Hyderabad", slotId: "right_rail", hours: 1, amount: 100, title: "Proof Ad", description: "Ready to activate", status: "Proof Sent" },
     ],
-    advertisements: [{ id: "ad-live", bookingId: "old", restaurantKey: "Test Restaurant|Hyderabad", slotId: "right_rail", title: "Live Ad", description: "Existing", active: true, status: "Live", expiresAt: future }],
+    advertisements: [
+      { id: "ad-live", bookingId: "old", restaurantKey: "Test Restaurant|Hyderabad", slotId: "right_rail", title: "Live Ad", description: "Existing", active: true, status: "Live", expiresAt: future },
+      { id: "ad-expired", restaurantKey: "Old Restaurant|Hyderabad", slotId: "right_rail", title: "Expired Ad", description: "Past campaign", active: true, status: "Live", expiresAt: past },
+    ],
     posts: [
       { id: "post-customer", recordKey: "C-TEST", postType: "customer", userId: "customer-1", payload: JSON.stringify({ id: "C-TEST", title: "Customer Test Post", description: "Test", state: "Telangana", district: "Hyderabad", userId: "customer-1" }) },
       { id: "post-business", recordKey: "B-TEST", postType: "business", userId: "customer-1", payload: JSON.stringify({ id: "B-TEST", title: "Business Test Card", description: "Test", state: "Telangana", district: "Hyderabad", userId: "customer-1" }) },
@@ -149,6 +153,18 @@ test("team admin reviews bookings, activates campaigns, moderates posts and bloc
 
   await page.locator('[data-view="campaigns"]').click();
   await expect(page.locator("#page")).toContainText("Live Ad");
+  const expiredCard = page.locator('[data-campaign-id="ad-expired"]');
+  await expect(expiredCard).toContainText("Expired");
+  await expect(expiredCard).toContainText("Extend to republish");
+  await expect(expiredCard.locator('[data-toggle="ad-expired"]')).toHaveCount(0);
+  await page.locator("#campaignStatus").selectOption("Expired");
+  await expect(page.locator("#campaignGrid")).toContainText("Expired Ad");
+  await expect(page.locator("#campaignGrid")).not.toContainText("Live Ad");
+  await page.locator("#campaignStatus").selectOption("All");
+  await page.locator("#campaignSearch").fill("Live Ad");
+  await expect(page.locator("#campaignGrid")).toContainText("Live Ad");
+  await expect(page.locator("#campaignGrid")).not.toContainText("Expired Ad");
+  await page.locator("#campaignSearch").fill("");
   await page.locator('[data-toggle="ad-live"]').click();
   const paused = await page.evaluate(() => window.__g58Mock.store.advertisements.find((row) => row.id === "ad-live"));
   expect(paused).toMatchObject({ active: false, status: "Paused" });

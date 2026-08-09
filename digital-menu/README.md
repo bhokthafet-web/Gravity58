@@ -2,7 +2,7 @@
 
 This mobile-first restaurant portal includes Gravity58-authenticated restaurant accounts, account-synced menus, optional preparation instructions, QR menus, customer ordering, order status, reporting and a fixed restaurant-specific advertising header.
 
-Restaurant configuration, categories, menu items, availability, customer orders, reports and images sync through the signed-in user’s Appwrite permissions. Restaurant/menu images must be 100 KB or smaller; the dashboard compressor creates a downloadable upload-ready WebP entirely in browser memory. The portal **cannot create, approve, pause or delete advertisements**. It only reads campaigns published by the G58 team and links restaurant owners to `/advertise/` for slot booking.
+Restaurant configuration, categories, menu items, availability, customer orders, reports and images sync through the signed-in user’s Appwrite permissions. Restaurant/menu images must be 100 KB or smaller; the Menu-tab compressor creates a downloadable upload-ready JPG entirely in browser memory. The portal **cannot create, approve, pause or delete advertisements**. It only reads campaigns published by the G58 team and links restaurant owners to `/advertise/` for slot booking.
 
 ## Local test
 

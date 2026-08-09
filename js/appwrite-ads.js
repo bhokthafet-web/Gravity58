@@ -222,7 +222,7 @@
   function validateMenuImage(file) {
     if (!file?.size) throw new Error("Select a restaurant or menu image first.");
     if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) throw new Error("Use a JPG, PNG or WebP image.");
-    if (file.size > 100 * 1024) throw new Error("Restaurant and menu images must be 100 KB or smaller. Use the dashboard Image Compressor first.");
+    if (file.size > 100 * 1024) throw new Error("Restaurant and menu images must be 100 KB or smaller. Use the Menu Image Compressor first.");
   }
   async function uploadAdMedia(file) {
     validateMediaFile(file);
