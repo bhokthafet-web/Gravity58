@@ -58,6 +58,7 @@ export function mockApiScript({ initialUser = null, admin = false, seed = {} } =
       isTeamAdmin:async()=>${admin ? "true" : "false"},
       validateMediaFile:(file)=>{if(!file||!file.size)throw new Error('Select a file first')},
       uploadAdMedia:async(file)=>({fileId:'mock-file-'+(++serial),mediaUrl:'https://example.com/'+encodeURIComponent(file.name),mediaType:file.type,mediaName:file.name}),
+      uploadPaymentReceipt:async(file)=>({fileId:'mock-receipt-'+(++serial),mediaUrl:'https://example.com/'+encodeURIComponent(file.name),mediaType:file.type,mediaName:file.name}),
       removeAdMedia:async(fileId)=>{window.__g58Mock.removedMedia.push(fileId);return true},
       validateMenuImage:(file)=>{if(!file?.size)throw new Error('Select a restaurant or menu image first');if(file.size>100*1024)throw new Error('Restaurant and menu images must be 100 KB or smaller')},
       uploadMenuMedia:async(file)=>({fileId:'mock-menu-'+(++serial),path:'mock-menu-'+serial,mediaUrl:'https://media.example.com/'+encodeURIComponent(file.name),mediaType:file.type,mediaName:file.name}),

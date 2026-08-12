@@ -1052,7 +1052,7 @@ async function openCart(r){
           : customerContext.customerName;
         const orderOwnerId=remoteMenuSource.startsWith('cloud:')?remoteMenuSource.split(':')[1]:(cloudOwnerId()||r.ownerId||'');
         let receipt={};
-        if(receiptFile){const optimizedReceipt=await optimizePaymentReceipt(receiptFile);progress('Uploading receipt…');Gravity58Ads.validateMediaFile(optimizedReceipt,'payment receipt');const uploaded=await Gravity58Ads.uploadAdMedia(optimizedReceipt);uploadedReceiptFileId=uploaded.fileId;receipt={paymentReceiptUrl:uploaded.mediaUrl,paymentReceiptFileId:uploaded.fileId,paymentReceiptName:uploaded.mediaName,paymentReceiptType:uploaded.mediaType}}
+        if(receiptFile){const optimizedReceipt=await optimizePaymentReceipt(receiptFile);progress('Uploading receipt…');Gravity58Ads.validateMediaFile(optimizedReceipt,'payment receipt');const uploadReceipt=Gravity58Ads.uploadPaymentReceipt;if(typeof uploadReceipt!=='function')throw new Error('Secure receipt upload is unavailable. Reload this menu and try again.');const uploaded=await uploadReceipt(optimizedReceipt);uploadedReceiptFileId=uploaded.fileId;receipt={paymentReceiptUrl:uploaded.mediaUrl,paymentReceiptFileId:uploaded.fileId,paymentReceiptName:uploaded.mediaName,paymentReceiptType:uploaded.mediaType}}
         const order={
           id:orderId,restaurantId:r.id,customer:identity||'Guest',
           ownerId:orderOwnerId,cloudOwnerId:orderOwnerId,

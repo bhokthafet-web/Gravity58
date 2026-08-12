@@ -277,6 +277,26 @@
     const uploaded = await storage.createFile({ bucketId: mediaBucketId, fileId: Appwrite.ID.unique(), file, permissions });
     return { fileId: uploaded.$id, mediaUrl: String(storage.getFileView({ bucketId: mediaBucketId, fileId: uploaded.$id })), mediaType: file.type, mediaName: file.name };
   }
+  async function uploadPaymentReceipt(file) {
+    validateMediaFile(file, "payment receipt");
+    if (!configured || !storage) {
+      const mediaUrl = URL.createObjectURL(file);
+      return { fileId: "local-" + Date.now(), mediaUrl, mediaType: file.type, mediaName: file.name, localOnly: true };
+    }
+    const current = await currentUser();
+    if (!current) throw new Error("Reload the menu before uploading the payment receipt.");
+    // A customer may only grant permissions for their own account. Restaurant
+    // access and permanent deletion are handled by the secure order function.
+    const customerRole = Appwrite.Role.user(current.$id);
+    const permissions = [
+      Appwrite.Permission.read(Appwrite.Role.any()),
+      Appwrite.Permission.read(customerRole),
+      Appwrite.Permission.update(customerRole),
+      Appwrite.Permission.delete(customerRole),
+    ];
+    const uploaded = await storage.createFile({ bucketId: mediaBucketId, fileId: Appwrite.ID.unique(), file, permissions });
+    return { fileId: uploaded.$id, mediaUrl: String(storage.getFileView({ bucketId: mediaBucketId, fileId: uploaded.$id })), mediaType: file.type, mediaName: file.name };
+  }
   async function removeAdMedia(fileId) {
     if (!fileId || String(fileId).startsWith("local-") || !configured || !storage) return true;
     await storage.deleteFile({ bucketId: mediaBucketId, fileId });
@@ -350,7 +370,7 @@
     configured, config, collections, client, account, databases, tables, storage, functions, mediaBucketId,
     list, get, create, update, remove, upsertSlot, permissionSet, userPermissionSet, collaborativePermissionSet, managedPermissionSet,
     register, login, logout, currentUser, ensureUser, forgotPassword, completeRecovery, createJWT, isTeamAdmin,
-    validateMediaFile, uploadAdMedia, removeAdMedia, validateMenuImage, uploadMenuMedia, removeMenuMedia, executeFunction,
+    validateMediaFile, uploadAdMedia, uploadPaymentReceipt, removeAdMedia, validateMenuImage, uploadMenuMedia, removeMenuMedia, executeFunction,
     subscribeAdvertisements, subscribeKind,
   });
 })();

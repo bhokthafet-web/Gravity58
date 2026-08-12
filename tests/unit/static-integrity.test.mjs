@@ -93,3 +93,14 @@ test("normal advertiser records do not request administrator-team permissions", 
   assert.match(source, /function permissionSet\(kind, userId, includeAdminTeam = false\)/);
   assert.match(source, /if \(includeAdminTeam && config\.adminTeamId/);
 });
+
+test("customer receipt uploads only grant roles available to that customer", () => {
+  const source = readFileSync(join(root, "js/appwrite-ads.js"), "utf8");
+  const start = source.indexOf("async function uploadPaymentReceipt");
+  const end = source.indexOf("async function removeAdMedia", start);
+  assert.ok(start >= 0 && end > start, "Dedicated payment receipt uploader is missing");
+  const receiptUploader = source.slice(start, end);
+  assert.match(receiptUploader, /Role\.user\(current\.\$id\)/);
+  assert.match(receiptUploader, /Role\.any\(\)/);
+  assert.doesNotMatch(receiptUploader, /Role\.team|adminTeamId/, "Customer receipt upload cannot grant an administrator-team role");
+});
