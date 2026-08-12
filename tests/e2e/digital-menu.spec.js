@@ -470,6 +470,10 @@ test("customer can load the latest account menu on another device", async ({ pag
   await expect(page.locator('.poster-menu-item img[src="https://cdn.example.com/cloud-meal.jpg"]')).toBeVisible();
   await expect(page.locator('.compact-hero-photo[src="https://cdn.example.com/restaurant.jpg"]')).toBeVisible();
   await expect(page.locator('.header-ad-media[src="https://cdn.example.com/stable-ad.jpg"]')).toBeVisible();
+  await expect(page.getByRole("button", { name: /Book this ad space/ })).toBeVisible();
+  await expect(page.locator(".header-active-ad").getByRole("link", { name: "Get Offer" })).toBeVisible();
+  await expect(page.locator(".header-active-ad")).not.toContainText("Stable Campaign");
+  await expect(page.locator(".header-ad-media")).toHaveCSS("object-fit", "cover");
   await expect(page.locator(".header-active-ad .ad-expiry-badge")).toHaveText("Lifetime advertisement");
   await page.locator('[data-item="cloud-meal"][data-qty-action="plus"]').click();
   await expect(page.locator("#cartCount")).toHaveText("1");
@@ -619,6 +623,12 @@ test("owner gets an automatic G58 Cloud customer menu link", async ({ page }) =>
   await expect(page.locator("#cloudMenuQr [data-testid='qr-rendered']")).toBeVisible();
   await expect(page.locator("#page")).toContainText("cloud=share-cafe");
   await expect(page.locator("#publishUrlForm")).toHaveCount(0);
+  const originalMenuLink = await page.locator(".cloud-share-card a").first().getAttribute("href");
+  await page.locator('[data-view="settings"]').click();
+  await page.locator('#settingsForm input[name="tax"]').fill("7");
+  await page.getByRole("button", { name: "Save Settings" }).click();
+  await page.locator('[data-view="publish"]').click();
+  await expect(page.locator(".cloud-share-card a").first()).toHaveAttribute("href", originalMenuLink);
   await assertNoErrors();
 });
 

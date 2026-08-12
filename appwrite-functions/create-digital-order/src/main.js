@@ -4,6 +4,7 @@ const MEDIA_BUCKET_ID = 'ad-media';
 const MENU_KIND_PREFIX = 'digital_menu_';
 const ORDER_KIND_PREFIX = 'digital_order_';
 const TOKEN_KIND_PREFIX = 'digital_token_';
+const SUBSCRIPTION_KIND_PREFIX = 'digital_subscription_';
 
 const text = (value, max = 250) => String(value ?? '').trim().slice(0, max);
 const finite = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
@@ -14,6 +15,7 @@ const safeKindId = (prefix, ownerId, maxOwnerLength) => `${prefix}${String(owner
 const orderKind = ownerId => safeKindId(ORDER_KIND_PREFIX, ownerId, 47);
 const tokenKind = ownerId => safeKindId(TOKEN_KIND_PREFIX, ownerId, 47);
 const menuKind = ownerId => safeKindId(MENU_KIND_PREFIX, ownerId, 48);
+const subscriptionKind = ownerId => safeKindId(SUBSCRIPTION_KIND_PREFIX, ownerId, 43);
 const formatToken = number => String(number).padStart(3, '0');
 const cleanRow = row => {
   let payload = {};
@@ -141,6 +143,15 @@ async function removeRow(call, rowId) {
   catch (error) { if (error.code !== 404) throw error; }
 }
 
+async function updateRow(call, rowId, payload) {
+  const clean = { ...payload };
+  ['$id', '$createdAt', '$updatedAt', '$permissions', '$databaseId', '$tableId', 'kind'].forEach(key => delete clean[key]);
+  const saved = await call(`/tablesdb/${DATABASE_ID}/tables/${TABLE_ID}/rows/${encodeURIComponent(rowId)}`, {
+    method: 'PATCH', body: JSON.stringify({ data: { payload: JSON.stringify(clean) } }),
+  });
+  return cleanRow(saved);
+}
+
 async function listRowsByKind(call, kind, limit = 500) {
   const queries = [
     JSON.stringify({ method: 'equal', attribute: 'kind', values: [kind] }),
@@ -218,7 +229,7 @@ async function createSubscription(call, input, userId, userEmail) {
   const menu = parseMenu(menuRow, ownerId, restaurantId, false);
   const plan = (menu.restaurant.subscriptionPlans || []).find(row => String(row.id) === planId && row.active !== false);
   if (!plan) throw new Error('This subscription plan is no longer available.');
-  const existing = (await listRowsByKind(call, safeKindId('digital_subscription_', ownerId, 43))).map(cleanRow)
+  const existing = (await listRowsByKind(call, subscriptionKind(ownerId))).map(cleanRow)
     .find(row => row.restaurantId === restaurantId && row.customerAccountId === userId && row.planId === planId && !['Cancelled', 'Rejected'].includes(row.status));
   if (existing) throw new Error('You already have this subscription request.');
   const createdAt = new Date().toISOString();
@@ -229,10 +240,88 @@ async function createSubscription(call, input, userId, userEmail) {
     planId, planName: text(plan.name, 120), planType: text(plan.planType || plan.name, 80),
     totalMeals: Math.max(0, Math.floor(finite(plan.meals))), mealsDelivered: 0,
     price: Math.max(0, finite(plan.price)), paymentLink: text(plan.paymentLink, 500),
-    status: plan.paymentLink ? 'Payment Pending' : 'Requested', createdAt,
+    deliveryDays: Array.isArray(plan.deliveryDays) ? plan.deliveryDays.map(day => Math.floor(finite(day, -1))).filter(day => day >= 0 && day <= 6) : [],
+    deliveryTime: /^\d{2}:\d{2}$/.test(String(plan.deliveryTime || '')) ? String(plan.deliveryTime) : '12:00',
+    status: 'Requested', createdAt,
   };
-  const created = await createRow(call, subscription.id, safeKindId('digital_subscription_', ownerId, 43), subscription, rowPermissions(userId, ownerId));
+  const created = await createRow(call, subscription.id, subscriptionKind(ownerId), subscription, rowPermissions(userId, ownerId));
   return cleanRow(created);
+}
+
+function nextDeliveryDate(deliveryDays, deliveryTime = '12:00', from = new Date()) {
+  const days = [...new Set((Array.isArray(deliveryDays) ? deliveryDays : []).map(day => Math.floor(finite(day, -1))).filter(day => day >= 0 && day <= 6))];
+  if (!days.length) return '';
+  const shifted = new Date(from.getTime() + 330 * 60000);
+  const [hour, minute] = /^\d{2}:\d{2}$/.test(deliveryTime) ? deliveryTime.split(':').map(Number) : [12, 0];
+  for (let offset = 0; offset <= 7; offset += 1) {
+    const indiaDayDate = new Date(Date.UTC(shifted.getUTCFullYear(), shifted.getUTCMonth(), shifted.getUTCDate() + offset));
+    if (!days.includes(indiaDayDate.getUTCDay())) continue;
+    const candidate = new Date(Date.UTC(indiaDayDate.getUTCFullYear(), indiaDayDate.getUTCMonth(), indiaDayDate.getUTCDate(), hour, minute) - 330 * 60000);
+    if (candidate.getTime() > from.getTime()) return candidate.toISOString();
+  }
+  return '';
+}
+
+async function subscriptionRow(call, ownerId, subscriptionId) {
+  const row = await call(`/tablesdb/${DATABASE_ID}/tables/${TABLE_ID}/rows/${encodeURIComponent(subscriptionId)}`);
+  if (row.kind !== subscriptionKind(ownerId)) throw new Error('This is not a restaurant subscription.');
+  return cleanRow(row);
+}
+
+async function sendSubscriptionLink(call, input, userId) {
+  const ownerId = text(input.ownerId, 64), subscriptionId = text(input.subscriptionId, 36);
+  const subscription = await subscriptionRow(call, ownerId, subscriptionId);
+  if (userId !== ownerId || subscription.ownerId !== ownerId) {
+    const denied = new Error('Only this restaurant owner can send the subscription payment link.'); denied.code = 403; throw denied;
+  }
+  let currentPlan = null;
+  try {
+    const menuRow = await call(`/tablesdb/${DATABASE_ID}/tables/${TABLE_ID}/rows/${encodeURIComponent(subscription.restaurantId)}`);
+    const menu = parseMenu(menuRow, ownerId, subscription.restaurantId, false);
+    currentPlan = (menu.restaurant.subscriptionPlans || []).find(plan => String(plan.id) === String(subscription.planId));
+  } catch {}
+  const paymentLink = text(currentPlan?.paymentLink || subscription.paymentLink, 500);
+  if (!paymentLink) throw new Error('Add a secure payment link to this plan before sending it.');
+  if (!['Requested', 'Payment Link Sent'].includes(subscription.status)) throw new Error(`This subscription is already ${subscription.status}.`);
+  const deliveryDays = currentPlan ? (Array.isArray(currentPlan.deliveryDays) ? currentPlan.deliveryDays : []) : subscription.deliveryDays;
+  const deliveryTime = /^\d{2}:\d{2}$/.test(String(currentPlan?.deliveryTime || '')) ? currentPlan.deliveryTime : subscription.deliveryTime;
+  return updateRow(call, subscriptionId, { ...subscription, paymentLink, deliveryDays, deliveryTime, status: 'Payment Link Sent', paymentLinkSentAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
+}
+
+async function submitSubscriptionPayment(call, input, userId) {
+  const ownerId = text(input.ownerId, 64), subscriptionId = text(input.subscriptionId, 36);
+  const subscription = await subscriptionRow(call, ownerId, subscriptionId);
+  if (subscription.customerAccountId !== userId) {
+    const denied = new Error('Only the customer who requested this plan can submit its receipt.'); denied.code = 403; throw denied;
+  }
+  if (subscription.status !== 'Payment Link Sent') throw new Error('Wait for the restaurant to send the subscription payment link.');
+  const receipt = { paymentMethod: 'online', paymentReceiptFileId: input.paymentReceiptFileId };
+  await validateReceipt(call, receipt, userId);
+  return updateRow(call, subscriptionId, {
+    ...subscription, status: 'Payment Proof Submitted', paymentSubmittedAt: new Date().toISOString(),
+    paymentReceiptFileId: receipt.paymentReceiptFileId, paymentReceiptUrl: receipt.paymentReceiptUrl,
+    paymentReceiptName: receipt.paymentReceiptName, paymentReceiptType: receipt.paymentReceiptType, updatedAt: new Date().toISOString(),
+  });
+}
+
+async function confirmSubscriptionPayment(call, input, userId) {
+  const ownerId = text(input.ownerId, 64), subscriptionId = text(input.subscriptionId, 36);
+  const subscription = await subscriptionRow(call, ownerId, subscriptionId);
+  if (userId !== ownerId || subscription.ownerId !== ownerId) {
+    const denied = new Error('Only this restaurant owner can confirm the subscription payment.'); denied.code = 403; throw denied;
+  }
+  if (subscription.status !== 'Payment Proof Submitted') throw new Error(`This subscription is already ${subscription.status}.`);
+  if (subscription.paymentReceiptFileId) {
+    try { await call(`/storage/buckets/${MEDIA_BUCKET_ID}/files/${encodeURIComponent(subscription.paymentReceiptFileId)}`, { method: 'DELETE' }); }
+    catch (storageError) { if (storageError.code !== 404) throw storageError; }
+  }
+  const activatedAt = new Date().toISOString();
+  return updateRow(call, subscriptionId, {
+    ...subscription, status: 'Active', activatedAt,
+    nextScheduledMeal: nextDeliveryDate(subscription.deliveryDays, subscription.deliveryTime, new Date(activatedAt)),
+    paymentReceiptFileId: '', paymentReceiptUrl: '', paymentReceiptName: '', paymentReceiptType: '',
+    paymentReceiptDeletedAt: activatedAt, updatedAt: activatedAt,
+  });
 }
 
 export default async ({ req, res, error }) => {
@@ -252,6 +341,18 @@ export default async ({ req, res, error }) => {
       const call = appwriteClient(req);
       const subscription = await createSubscription(call, requestBody.subscription || {}, userId, req.headers['x-appwrite-user-email']);
       return res.json({ ok: true, subscription }, 201);
+    }
+    if (requestBody?.action === 'send-subscription-link') {
+      const call = appwriteClient(req);
+      return res.json({ ok: true, subscription: await sendSubscriptionLink(call, requestBody.subscription || {}, userId) });
+    }
+    if (requestBody?.action === 'submit-subscription-payment') {
+      const call = appwriteClient(req);
+      return res.json({ ok: true, subscription: await submitSubscriptionPayment(call, requestBody.subscription || {}, userId) });
+    }
+    if (requestBody?.action === 'confirm-subscription-payment') {
+      const call = appwriteClient(req);
+      return res.json({ ok: true, subscription: await confirmSubscriptionPayment(call, requestBody.subscription || {}, userId) });
     }
     const input = requestBody?.order || requestBody || {};
     const ownerId = text(input.cloudOwnerId || input.ownerId, 64);

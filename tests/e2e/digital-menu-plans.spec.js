@@ -137,14 +137,56 @@ test("restaurant owner creates a branded 3D subscription plan with editable colo
   await page.locator('#mealPlanForm input[name="meals"]').fill("30");
   await page.locator('#mealPlanForm input[name="themeColor"]').fill("#3b1220");
   await page.locator('#mealPlanForm input[name="accentColor"]').fill("#ffb000");
+  await page.locator('#mealPlanForm input[name="deliveryTime"]').fill("13:15");
+  await page.locator('#mealPlanForm input[name="deliveryDays"]').evaluateAll((boxes) => boxes.forEach((box) => { box.checked = ["1", "3", "5"].includes(box.value); }));
+  await page.locator('#mealPlanForm input[name="paymentLink"]').fill("https://pay.example.com/high-protein");
   await page.locator('#mealPlanForm textarea[name="description"]').fill("Thirty protein-focused meals.");
   await page.locator('#mealPlanForm input[name="planImage"]').setInputFiles({ name: "plan.jpg", mimeType: "image/jpeg", buffer: Buffer.from("small-plan-cover") });
   await page.getByRole("button", { name: "Save Subscription Card" }).click();
   await expect(page.locator(".subscription-plan-3d")).toContainText("Performance");
   await expect(page.locator(".subscription-plan-3d .meal-plan-image")).toBeVisible();
   const plan = await page.evaluate(() => window.__g58Mock.store["digital_menu_owner-1"][0].restaurant.subscriptionPlans[0]);
-  expect(plan).toMatchObject({ planType: "Performance", name: "High Protein 30", themeColor: "#3b1220", accentColor: "#ffb000", meals: 30, price: 3299 });
+  expect(plan).toMatchObject({ planType: "Performance", name: "High Protein 30", themeColor: "#3b1220", accentColor: "#ffb000", meals: 30, price: 3299, deliveryDays: [1, 3, 5], deliveryTime: "13:15" });
   expect(plan.imageUrl).toContain("plan.jpg");
+  await assertNoErrors();
+});
+
+test("restaurant owner sends the payment link and confirms subscription proof", async ({ page }) => {
+  const assertNoErrors = monitorPageErrors(page);
+  const premiumMenu = menuRecord();
+  Object.assign(premiumMenu.restaurant, { premiumFeatures: true, subscriptionPlans: [{ id: "plan-flow", planType: "Protein", name: "Weekday Protein", price: 2999, meals: 20, paymentLink: "https://pay.example.com/weekday", deliveryDays: [1, 3, 5], deliveryTime: "12:30", active: true }] });
+  const request = { id: "subscription-flow", ownerId: "owner-1", restaurantId: "restaurant-one", customerAccountId: "customer-1", customerName: "Meal Customer", customerEmail: "meal@example.com", planId: "plan-flow", planType: "Protein", planName: "Weekday Protein", paymentLink: "https://pay.example.com/weekday", deliveryDays: [1, 3, 5], deliveryTime: "12:30", totalMeals: 20, mealsDelivered: 0, status: "Requested" };
+  await prepareProductionMock(page, { initialUser: { $id: "owner-1", email: "owner@example.com", name: "Owner" }, seed: { "digital_menu_owner-1": [premiumMenu], "digital_subscription_owner-1": [request], digital_menu_entitlements: [{ id: "premium-owner", ownerId: "owner-1", plan: "premium", lifetime: true }] } });
+  await page.goto("/digital-menu/");
+  await page.locator('[data-view="subscriptions"]').click();
+  await page.getByRole("button", { name: "Send payment link" }).click();
+  await expect(page.locator(".subscriber-management-card")).toContainText("Payment Link Sent");
+  await page.evaluate(() => { const row = window.__g58Mock.store["digital_subscription_owner-1"][0]; Object.assign(row, { status: "Payment Proof Submitted", paymentReceiptFileId: "receipt-proof", paymentReceiptUrl: "https://example.com/proof.png" }); window.dispatchEvent(new CustomEvent("g58-ad-data-changed", { detail: { kind: "digital_subscription_owner-1", row } })); });
+  await page.locator('[data-view="subscriptions"]').click();
+  await page.getByRole("button", { name: "Confirm payment" }).click();
+  const result = await page.evaluate(() => ({ row: window.__g58Mock.store["digital_subscription_owner-1"][0], removed: window.__g58Mock.removedMedia }));
+  expect(result.row.status).toBe("Active");
+  expect(result.row.nextScheduledMeal).toBeTruthy();
+  expect(result.row.paymentReceiptFileId).toBe("");
+  expect(result.removed).toContain("receipt-proof");
+  await assertNoErrors();
+});
+
+test("customer dashboard opens owner payment link and sends receipt proof", async ({ page }) => {
+  const assertNoErrors = monitorPageErrors(page);
+  const premiumMenu = menuRecord();
+  Object.assign(premiumMenu.restaurant, { premiumFeatures: true, subscriptionPlans: [{ id: "plan-flow", planType: "Protein", name: "Weekday Protein", price: 2999, meals: 20, paymentLink: "https://pay.example.com/weekday", deliveryDays: [1, 3, 5], deliveryTime: "12:30", active: true }] });
+  const request = { id: "subscription-flow", ownerId: "owner-1", restaurantId: "restaurant-one", customerAccountId: "customer-1", customerName: "Meal Customer", customerEmail: "meal@example.com", planId: "plan-flow", planType: "Protein", planName: "Weekday Protein", paymentLink: "https://pay.example.com/weekday", deliveryDays: [1, 3, 5], deliveryTime: "12:30", totalMeals: 20, mealsDelivered: 0, status: "Payment Link Sent" };
+  await prepareProductionMock(page, { initialUser: { $id: "customer-1", email: "meal@example.com", name: "Meal Customer" }, seed: { "digital_menu_owner-1": [premiumMenu], "digital_subscription_owner-1": [request] } });
+  await page.goto("/digital-menu/#subscriptions&cloud=restaurant-one&owner=owner-1");
+  const payment = page.getByRole("link", { name: "Open Payment Link" });
+  await expect(payment).toHaveAttribute("href", "https://pay.example.com/weekday");
+  await expect(payment).toHaveCSS("background-color", "rgb(0, 0, 0)");
+  await page.locator('[data-subscription-proof="subscription-flow"]').setInputFiles({ name: "subscription-proof.png", mimeType: "image/png", buffer: Buffer.from("subscription-proof") });
+  await page.getByRole("button", { name: "Send Receipt to Restaurant" }).click();
+  await expect(page.locator(".customer-active-plan")).toContainText("Payment Proof Submitted");
+  const updated = await page.evaluate(() => window.__g58Mock.store["digital_subscription_owner-1"][0]);
+  expect(updated.paymentReceiptFileId).toMatch(/^mock-receipt-/);
   await assertNoErrors();
 });
 

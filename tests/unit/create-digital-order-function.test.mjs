@@ -133,7 +133,7 @@ test('secure order function continues the durable restaurant token sequence', as
 test('secure subscription request validates the published plan and grants owner/customer access', async () => {
   const previousFetch = globalThis.fetch;
   const requests = [];
-  const subscriptionMenu = { ...menuRow, payload: JSON.stringify({ ...menuPayload, restaurant: { ...menuPayload.restaurant, subscriptionPlans: [{ id: 'plan_1', name: 'Protein Monthly', planType: 'Fitness', meals: 30, price: 2999, active: true }] } }) };
+  const subscriptionMenu = { ...menuRow, payload: JSON.stringify({ ...menuPayload, restaurant: { ...menuPayload.restaurant, subscriptionPlans: [{ id: 'plan_1', name: 'Protein Monthly', planType: 'Fitness', meals: 30, price: 2999, deliveryDays: [1, 3, 5], deliveryTime: '13:15', active: true }] } }) };
   globalThis.fetch = async (url, options = {}) => {
     const body = options.body ? JSON.parse(options.body) : null;
     requests.push({ url: String(url), method: options.method || 'GET', body });
@@ -151,9 +151,56 @@ test('secure subscription request validates the published plan and grants owner/
     assert.equal(response.status, 201);
     assert.equal(response.body.subscription.planType, 'Fitness');
     assert.equal(response.body.subscription.customerEmail, 'customer@example.test');
+    assert.deepEqual(response.body.subscription.deliveryDays, [1, 3, 5]);
+    assert.equal(response.body.subscription.deliveryTime, '13:15');
+    assert.equal(response.body.subscription.status, 'Requested');
     const request = requests.find(entry => entry.body?.data?.kind?.startsWith('digital_subscription_'));
     assert.ok(request.body.permissions.includes(`read(\"user:${customerId}\")`));
     assert.ok(request.body.permissions.includes(`read(\"user:${ownerId}\")`));
+  } finally {
+    globalThis.fetch = previousFetch;
+  }
+});
+
+test('subscription payment workflow requires owner link, customer proof and owner confirmation', async () => {
+  const previousFetch = globalThis.fetch;
+  const subscriptionId = 'sub_flow_1';
+  let subscription = {
+    id: subscriptionId, ownerId, restaurantId, customerAccountId: customerId,
+    customerEmail: 'customer@example.test', planId: 'plan_1', planName: 'Weekday Protein',
+    paymentLink: 'https://pay.example.test/weekday-protein', status: 'Requested', totalMeals: 20,
+    mealsDelivered: 0, deliveryDays: [1, 3, 5], deliveryTime: '12:30',
+  };
+  const requests = [];
+  globalThis.fetch = async (url, options = {}) => {
+    const method = options.method || 'GET', body = options.body ? JSON.parse(options.body) : null, target = String(url);
+    requests.push({ url: target, method, body });
+    if (method === 'GET' && target.includes('/storage/')) return new Response(JSON.stringify({ $id: 'sub_receipt_1', name: 'subscription.png', mimeType: 'image/png', $permissions: [`delete(\"user:${customerId}\")`] }), { status: 200 });
+    if (method === 'GET') return new Response(JSON.stringify({ $id: subscriptionId, kind: `digital_subscription_${ownerId}`, payload: JSON.stringify(subscription) }), { status: 200 });
+    if (method === 'PATCH') {
+      subscription = JSON.parse(body.data.payload);
+      return new Response(JSON.stringify({ $id: subscriptionId, kind: `digital_subscription_${ownerId}`, payload: body.data.payload }), { status: 200 });
+    }
+    if (method === 'DELETE') return new Response(null, { status: 204 });
+    throw new Error(`Unexpected request ${url}`);
+  };
+  process.env.APPWRITE_FUNCTION_PROJECT_ID = 'project_1';
+  const invoke = (action, userId, extra = {}) => createDigitalOrder({
+    req: { method: 'POST', headers: { 'x-appwrite-key': 'dynamic-key', 'x-appwrite-user-id': userId }, bodyJson: { action, subscription: { ownerId, subscriptionId, ...extra } } },
+    res: { json: (body, status = 200) => ({ body, status }) }, error: () => {},
+  });
+  try {
+    const sent = await invoke('send-subscription-link', ownerId);
+    assert.equal(sent.body.subscription.status, 'Payment Link Sent');
+    const submitted = await invoke('submit-subscription-payment', customerId, { paymentReceiptFileId: 'sub_receipt_1' });
+    assert.equal(submitted.body.subscription.status, 'Payment Proof Submitted');
+    assert.equal(submitted.body.subscription.paymentReceiptName, 'subscription.png');
+    const confirmed = await invoke('confirm-subscription-payment', ownerId);
+    assert.equal(confirmed.body.subscription.status, 'Active');
+    assert.ok(confirmed.body.subscription.nextScheduledMeal);
+    assert.equal(confirmed.body.subscription.paymentReceiptFileId, '');
+    assert.ok(requests.some(request => request.method === 'DELETE' && request.url.includes('sub_receipt_1')));
+    assert.ok([1, 3, 5].includes(new Date(new Date(confirmed.body.subscription.nextScheduledMeal).getTime() + 330 * 60000).getUTCDay()));
   } finally {
     globalThis.fetch = previousFetch;
   }
