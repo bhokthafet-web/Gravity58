@@ -49,7 +49,7 @@ function appwriteClient(req) {
   };
 }
 
-function parseMenu(row, ownerId, restaurantId) {
+function parseMenu(row, ownerId, restaurantId, requireAccepting = true) {
   if (row?.kind !== menuKind(ownerId)) throw new Error('This restaurant menu is not owned by the selected restaurant account.');
   let payload;
   try { payload = JSON.parse(row.payload || '{}'); } catch { throw new Error('The restaurant menu data is invalid.'); }
@@ -57,7 +57,7 @@ function parseMenu(row, ownerId, restaurantId) {
     ? payload.restaurant
     : (payload.restaurants || []).find(item => item.id === restaurantId);
   if (!restaurant) throw new Error('This restaurant is no longer available.');
-  if (restaurant.open === false || restaurant.accepting === false) throw new Error('This restaurant is not accepting orders right now.');
+  if (requireAccepting && (restaurant.open === false || restaurant.accepting === false)) throw new Error('This restaurant is not accepting orders right now.');
   return { payload, restaurant };
 }
 
@@ -141,6 +141,16 @@ async function removeRow(call, rowId) {
   catch (error) { if (error.code !== 404) throw error; }
 }
 
+async function listRowsByKind(call, kind, limit = 500) {
+  const queries = [
+    JSON.stringify({ method: 'equal', attribute: 'kind', values: [kind] }),
+    JSON.stringify({ method: 'limit', values: [limit] }),
+  ];
+  const queryString = queries.map(query => `queries[]=${encodeURIComponent(query)}`).join('&');
+  const result = await call(`/tablesdb/${DATABASE_ID}/tables/${TABLE_ID}/rows?${queryString}`);
+  return result.rows || result.documents || [];
+}
+
 async function confirmPayment(call, orderId, ownerId, userId) {
   const row = await call(`/tablesdb/${DATABASE_ID}/tables/${TABLE_ID}/rows/${encodeURIComponent(orderId)}`);
   const order = cleanRow(row);
@@ -174,7 +184,17 @@ async function confirmPayment(call, orderId, ownerId, userId) {
 async function reserveToken(call, ownerId, restaurantId, userId) {
   const day = indiaDay();
   const prefix = `tok-${String(restaurantId).replace(/[^a-zA-Z0-9._-]/g, '-').slice(0, 14)}-${day.slice(2)}-`;
-  for (let number = 1; number <= 9999; number += 1) {
+  // Existing order rows are the durable source of sequence truth. Reservation
+  // rows still protect concurrent customers from receiving the same number.
+  let startingNumber = 1;
+  try {
+    const existingOrders = (await listRowsByKind(call, orderKind(ownerId))).map(cleanRow);
+    const highest = Math.max(0, ...existingOrders
+      .filter(order => order.restaurantId === restaurantId && order.orderDay === day)
+      .map(order => Math.max(0, Math.floor(finite(order.tokenNumber)))));
+    startingNumber = highest + 1;
+  } catch {}
+  for (let number = startingNumber; number <= 9999; number += 1) {
     const id = `${prefix}${formatToken(number)}`.slice(0, 36);
     const payload = { tokenReservation: true, ownerId, restaurantId, orderDay: day, tokenNumber: number, createdAt: new Date().toISOString() };
     try {
@@ -185,6 +205,34 @@ async function reserveToken(call, ownerId, restaurantId, userId) {
     }
   }
   throw new Error('Today’s token queue is full. Please contact the restaurant.');
+}
+
+async function createSubscription(call, input, userId, userEmail) {
+  const ownerId = text(input.ownerId, 64), restaurantId = text(input.restaurantId, 64), planId = text(input.planId, 80);
+  if (!ownerId || !restaurantId || !planId) throw new Error('Subscription details are missing. Reload the restaurant menu and try again.');
+  let verifiedUser = null;
+  try { verifiedUser = await call(`/users/${encodeURIComponent(userId)}`); } catch {}
+  const email = text(verifiedUser?.email || userEmail || input.customerEmail, 250);
+  if (!email) throw new Error('Login with your customer account before requesting a subscription.');
+  const menuRow = await call(`/tablesdb/${DATABASE_ID}/tables/${TABLE_ID}/rows/${encodeURIComponent(restaurantId)}`);
+  const menu = parseMenu(menuRow, ownerId, restaurantId, false);
+  const plan = (menu.restaurant.subscriptionPlans || []).find(row => String(row.id) === planId && row.active !== false);
+  if (!plan) throw new Error('This subscription plan is no longer available.');
+  const existing = (await listRowsByKind(call, safeKindId('digital_subscription_', ownerId, 43))).map(cleanRow)
+    .find(row => row.restaurantId === restaurantId && row.customerAccountId === userId && row.planId === planId && !['Cancelled', 'Rejected'].includes(row.status));
+  if (existing) throw new Error('You already have this subscription request.');
+  const createdAt = new Date().toISOString();
+  const subscription = {
+    id: `sub-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`.slice(0, 36),
+    ownerId, restaurantId, restaurantName: text(menu.restaurant.name, 160), customerAccountId: userId,
+    customerName: text(verifiedUser?.name || input.customerName, 120) || email.split('@')[0], customerEmail: email,
+    planId, planName: text(plan.name, 120), planType: text(plan.planType || plan.name, 80),
+    totalMeals: Math.max(0, Math.floor(finite(plan.meals))), mealsDelivered: 0,
+    price: Math.max(0, finite(plan.price)), paymentLink: text(plan.paymentLink, 500),
+    status: plan.paymentLink ? 'Payment Pending' : 'Requested', createdAt,
+  };
+  const created = await createRow(call, subscription.id, safeKindId('digital_subscription_', ownerId, 43), subscription, rowPermissions(userId, ownerId));
+  return cleanRow(created);
 }
 
 export default async ({ req, res, error }) => {
@@ -199,6 +247,11 @@ export default async ({ req, res, error }) => {
       const ownerId = text(requestBody.ownerId, 64), orderId = text(requestBody.orderId, 36);
       if (!ownerId || !orderId) throw new Error('Order approval details are missing.');
       return res.json({ ok: true, order: await confirmPayment(call, orderId, ownerId, userId) });
+    }
+    if (requestBody?.action === 'create-subscription') {
+      const call = appwriteClient(req);
+      const subscription = await createSubscription(call, requestBody.subscription || {}, userId, req.headers['x-appwrite-user-email']);
+      return res.json({ ok: true, subscription }, 201);
     }
     const input = requestBody?.order || requestBody || {};
     const ownerId = text(input.cloudOwnerId || input.ownerId, 64);

@@ -117,6 +117,37 @@ test("G58 admin edits Digital Menu pricing and grants lifetime Premium access", 
   await assertNoErrors();
 });
 
+test("restaurant owner creates a branded 3D subscription plan with editable colours and cover image", async ({ page }) => {
+  const assertNoErrors = monitorPageErrors(page);
+  const premiumMenu = menuRecord();
+  premiumMenu.restaurant.premiumFeatures = true;
+  await prepareProductionMock(page, {
+    initialUser: { $id: "owner-1", email: "owner@restaurant.test", name: "Plan Owner" },
+    seed: {
+      "digital_menu_owner-1": [premiumMenu],
+      digital_menu_entitlements: [{ id: "premium-owner", ownerId: "owner-1", plan: "premium", lifetime: true, maxRestaurants: 5 }],
+    },
+  });
+  await page.goto("/digital-menu/");
+  await page.locator('[data-view="subscriptions"]').click();
+  await page.getByRole("button", { name: "Create Subscription Card" }).click();
+  await page.locator('#mealPlanForm input[name="planType"]').fill("Performance");
+  await page.locator('#mealPlanForm input[name="name"]').fill("High Protein 30");
+  await page.locator('#mealPlanForm input[name="price"]').fill("3299");
+  await page.locator('#mealPlanForm input[name="meals"]').fill("30");
+  await page.locator('#mealPlanForm input[name="themeColor"]').fill("#3b1220");
+  await page.locator('#mealPlanForm input[name="accentColor"]').fill("#ffb000");
+  await page.locator('#mealPlanForm textarea[name="description"]').fill("Thirty protein-focused meals.");
+  await page.locator('#mealPlanForm input[name="planImage"]').setInputFiles({ name: "plan.jpg", mimeType: "image/jpeg", buffer: Buffer.from("small-plan-cover") });
+  await page.getByRole("button", { name: "Save Subscription Card" }).click();
+  await expect(page.locator(".subscription-plan-3d")).toContainText("Performance");
+  await expect(page.locator(".subscription-plan-3d .meal-plan-image")).toBeVisible();
+  const plan = await page.evaluate(() => window.__g58Mock.store["digital_menu_owner-1"][0].restaurant.subscriptionPlans[0]);
+  expect(plan).toMatchObject({ planType: "Performance", name: "High Protein 30", themeColor: "#3b1220", accentColor: "#ffb000", meals: 30, price: 3299 });
+  expect(plan.imageUrl).toContain("plan.jpg");
+  await assertNoErrors();
+});
+
 test("signed-out customer places an immediate receipt-backed order without login", async ({ page }) => {
   const assertNoErrors = monitorPageErrors(page);
   const premiumMenu = menuRecord();
@@ -146,7 +177,7 @@ test("Premium customer creates a meal subscription and schedules a receipt-backe
   const premiumMenu = menuRecord();
   Object.assign(premiumMenu.restaurant, {
     ordersEnabled: true, premiumFeatures: true, paymentEnabled: true, upiId: "plantest@upi", upiPayeeName: "Plan Test Foods Private Limited", phone: "+91 98765 43210",
-    subscriptionPlans: [{ id: "meal-plan-1", name: "Healthy Monthly Meals", description: "Daily restaurant meals", price: 2499, meals: 30, periodLabel: "1 Month", paymentLink: "", active: true }],
+    subscriptionPlans: [{ id: "meal-plan-1", planType: "Fitness Meals", name: "Healthy Monthly Meals", description: "Daily restaurant meals", price: 2499, meals: 30, periodLabel: "1 Month", paymentLink: "", themeColor: "#4b1b0d", accentColor: "#ff8a25", active: true }],
   });
   await prepareProductionMock(page, { seed: { "digital_menu_owner-1": [premiumMenu] } });
   page.on("popup", (popup) => popup.close());
@@ -168,10 +199,12 @@ test("Premium customer creates a meal subscription and schedules a receipt-backe
   await page.locator('#mealCustomerRegister input[name="email"]').fill("premium.customer@example.com");
   await page.locator('#mealCustomerRegister input[name="password"]').fill("secret123");
   await page.locator("#mealCustomerRegister").getByRole("button", { name: "Create Schedule Account" }).click();
-  await expect(page.getByRole("heading", { name: /Plan Test Kitchen Premium Customer/ })).toBeVisible();
+  await expect(page).toHaveURL(/#subscriptions&cloud=restaurant-one&owner=owner-1/);
+  await expect(page.getByRole("heading", { name: "Your meal subscriptions" })).toBeVisible();
+  await expect(page.locator('.subscription-plan-3d')).toContainText("Fitness Meals");
   await page.locator('[data-customer-subscribe="meal-plan-1"]').click();
   await expect(page.locator(".customer-subscription-history")).toContainText("Healthy Monthly Meals");
-  await page.getByRole("button", { name: "Close dialog" }).click();
+  await page.locator(".subscription-dashboard-nav .menu-home-link").click();
 
   await page.locator("#openCart").click();
   await expect(page.locator('#checkoutPanel input[value="counter"]')).toHaveCount(0);
@@ -200,7 +233,7 @@ test("Premium customer creates a meal subscription and schedules a receipt-backe
   expect(result.orders[0].scheduledFor).toBeTruthy();
   await page.goto("/digital-menu/#menu&cloud=restaurant-one&owner=owner-1");
   await page.locator("#openMealSubscriptions").click();
-  await expect(page.getByRole("heading", { name: /Premium Customer Dashboard/ })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Your meal subscriptions" })).toBeVisible();
   await expect(page.locator(".customer-dashboard-stats")).toContainText("1");
   await expect(page.locator(".customer-scheduled-orders")).toContainText("Payment Verification");
   await expect(page.locator(".customer-scheduled-orders")).toContainText("Meal One");

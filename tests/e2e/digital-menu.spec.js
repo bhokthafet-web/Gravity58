@@ -71,6 +71,9 @@ test("restaurant owner imports CSV, controls availability, orders, QR, reports a
   pendingCard = page.locator("#ordersGrid .order-card", { hasText: "Pending" }).first();
   await expect(pendingCard).toContainText("Table 12");
   await pendingCard.getByRole("textbox", { name: "Message customer" }).fill("Your table is now 12");
+  await page.evaluate(() => window.dispatchEvent(new StorageEvent("storage", { key: "gravity58DigitalMenu" })));
+  await expect(pendingCard.getByRole("textbox", { name: "Message customer" })).toHaveValue("Your table is now 12");
+  await expect(pendingCard.getByRole("textbox", { name: "Message customer" })).toBeFocused();
   await pendingCard.locator("[data-order-chat]").getByRole("button", { name: "Send" }).click();
   pendingCard = page.locator("#ordersGrid .order-card", { hasText: "Pending" }).first();
   await expect(pendingCard).toContainText("Your table is now 12");
@@ -236,6 +239,9 @@ test("customer adds quantities and preparation instructions, places order and tr
   await page.locator(".customer-chat-toggle").click();
   await expect(page.locator(".customer-chat-panel")).toBeVisible();
   await page.getByRole("textbox", { name: "Message restaurant" }).fill("Please confirm my order");
+  await page.evaluate(() => window.dispatchEvent(new StorageEvent("storage", { key: "gravity58DigitalMenu" })));
+  await expect(page.getByRole("textbox", { name: "Message restaurant" })).toHaveValue("Please confirm my order");
+  await expect(page.getByRole("textbox", { name: "Message restaurant" })).toBeFocused();
   await page.locator("[data-customer-chat]").getByRole("button", { name: "Send" }).click();
   await expect(page.locator(".customer-order-chat")).toContainText("Please confirm my order");
   const order = await page.evaluate(() => JSON.parse(localStorage.getItem("gravity58DigitalMenu")).orders[0]);
@@ -450,7 +456,7 @@ test("customer can load the latest account menu on another device", async ({ pag
   await prepareMockApi(page, { state: null, seed: {
     "digital_menu_public-owner": [cloudMenu],
     advertisements: [
-      { id: "stable-ad", restaurantKey: "Public Cloud Café|Hyderabad", slotId: "right_rail", title: "Stable Campaign", description: "This image must stay fixed while ordering.", mediaUrl: "https://cdn.example.com/stable-ad.jpg", active: true, activatedAt: "2026-08-09T12:00:00.000Z", expiresAt: "2099-08-10T12:00:00.000Z" },
+      { id: "stable-ad", restaurantKey: "Public Cloud Café|hyderabad", slotId: "right_rail", title: "Stable Campaign", description: "This image must stay fixed while ordering.", mediaUrl: "https://cdn.example.com/stable-ad.jpg", active: true, lifetime: true, activatedAt: "2026-08-09T12:00:00.000Z", expiresAt: "2026-08-10T12:00:00.000Z" },
       { id: "second-ad", restaurantKey: "Public Cloud Café|Hyderabad", slotId: "right_rail", title: "Second Campaign", description: "Secondary campaign.", mediaUrl: "https://cdn.example.com/second-ad.jpg", active: true, activatedAt: "2026-08-09T11:00:00.000Z", expiresAt: "2099-08-10T12:00:00.000Z" },
     ],
   } });
@@ -464,6 +470,7 @@ test("customer can load the latest account menu on another device", async ({ pag
   await expect(page.locator('.poster-menu-item img[src="https://cdn.example.com/cloud-meal.jpg"]')).toBeVisible();
   await expect(page.locator('.compact-hero-photo[src="https://cdn.example.com/restaurant.jpg"]')).toBeVisible();
   await expect(page.locator('.header-ad-media[src="https://cdn.example.com/stable-ad.jpg"]')).toBeVisible();
+  await expect(page.locator(".header-active-ad .ad-expiry-badge")).toHaveText("Lifetime advertisement");
   await page.locator('[data-item="cloud-meal"][data-qty-action="plus"]').click();
   await expect(page.locator("#cartCount")).toHaveText("1");
   await expect(page.locator("#cartTotal")).toHaveText("₹299");

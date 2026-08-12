@@ -106,6 +106,59 @@ test('secure order function removes its token reservation when order creation fa
   }
 });
 
+test('secure order function continues the durable restaurant token sequence', async () => {
+  const previousFetch = globalThis.fetch;
+  const requests = [];
+  const previousOrder = { ...inputOrder, id: 'GR58-OLD-1001', tokenNumber: 7, orderDay: new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date()) };
+  globalThis.fetch = async (url, options = {}) => {
+    const body = options.body ? JSON.parse(options.body) : null;
+    requests.push({ url: String(url), method: options.method || 'GET', body });
+    if ((options.method || 'GET') === 'GET' && String(url).includes('/rows?')) return new Response(JSON.stringify({ rows: [{ $id: previousOrder.id, kind: `digital_order_${ownerId}`, payload: JSON.stringify(previousOrder) }] }), { status: 200 });
+    if ((options.method || 'GET') === 'GET') return new Response(JSON.stringify(menuRow), { status: 200 });
+    if (body?.data?.kind?.startsWith('digital_token_')) return new Response(JSON.stringify({ $id: body.rowId, ...body.data }), { status: 201 });
+    if (body?.data?.kind?.startsWith('digital_order_')) return new Response(JSON.stringify({ $id: body.rowId, ...body.data }), { status: 201 });
+    throw new Error(`Unexpected request ${url}`);
+  };
+  process.env.APPWRITE_FUNCTION_PROJECT_ID = 'project_1';
+  try {
+    const response = await createDigitalOrder(functionContext());
+    assert.equal(response.status, 201);
+    assert.equal(response.body.order.tokenNumber, 8);
+    assert.ok(requests.some(request => request.body?.rowId?.endsWith('-008')));
+  } finally {
+    globalThis.fetch = previousFetch;
+  }
+});
+
+test('secure subscription request validates the published plan and grants owner/customer access', async () => {
+  const previousFetch = globalThis.fetch;
+  const requests = [];
+  const subscriptionMenu = { ...menuRow, payload: JSON.stringify({ ...menuPayload, restaurant: { ...menuPayload.restaurant, subscriptionPlans: [{ id: 'plan_1', name: 'Protein Monthly', planType: 'Fitness', meals: 30, price: 2999, active: true }] } }) };
+  globalThis.fetch = async (url, options = {}) => {
+    const body = options.body ? JSON.parse(options.body) : null;
+    requests.push({ url: String(url), method: options.method || 'GET', body });
+    if ((options.method || 'GET') === 'GET' && String(url).includes('/rows?')) return new Response(JSON.stringify({ rows: [] }), { status: 200 });
+    if ((options.method || 'GET') === 'GET') return new Response(JSON.stringify(subscriptionMenu), { status: 200 });
+    if (body?.data?.kind?.startsWith('digital_subscription_')) return new Response(JSON.stringify({ $id: body.rowId, ...body.data }), { status: 201 });
+    throw new Error(`Unexpected request ${url}`);
+  };
+  process.env.APPWRITE_FUNCTION_PROJECT_ID = 'project_1';
+  try {
+    const response = await createDigitalOrder({
+      req: { method: 'POST', headers: { 'x-appwrite-key': 'dynamic-key', 'x-appwrite-user-id': customerId, 'x-appwrite-user-email': 'customer@example.test' }, bodyJson: { action: 'create-subscription', subscription: { ownerId, restaurantId, planId: 'plan_1', customerName: 'Customer' } } },
+      res: { json: (body, status = 200) => ({ body, status }) }, error: () => {},
+    });
+    assert.equal(response.status, 201);
+    assert.equal(response.body.subscription.planType, 'Fitness');
+    assert.equal(response.body.subscription.customerEmail, 'customer@example.test');
+    const request = requests.find(entry => entry.body?.data?.kind?.startsWith('digital_subscription_'));
+    assert.ok(request.body.permissions.includes(`read(\"user:${customerId}\")`));
+    assert.ok(request.body.permissions.includes(`read(\"user:${ownerId}\")`));
+  } finally {
+    globalThis.fetch = previousFetch;
+  }
+});
+
 test('restaurant payment approval permanently deletes the receipt before advancing the order', async () => {
   const previousFetch = globalThis.fetch;
   const requests = [];
