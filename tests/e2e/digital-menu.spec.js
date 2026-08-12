@@ -218,10 +218,12 @@ test("customer adds quantities and preparation instructions, places order and tr
   await page.locator("#openCart").click();
   await expect(page.getByRole("heading", { name: "Your Cart" })).toBeVisible();
   await expect(page.locator("#transactionId")).toHaveCount(0);
+  const largeReceipt = await readFile("assets/g58-whatsapp-card.png");
+  expect(largeReceipt.length).toBeGreaterThan(700 * 1024);
   await page.locator("#paymentReceipt").setInputFiles({
-    name: "payment-receipt.png",
+    name: "g58-whatsapp-card.png",
     mimeType: "image/png",
-    buffer: Buffer.from("payment-receipt-image"),
+    buffer: largeReceipt,
   });
   await page.locator("#confirmPlaceOrder").click();
   await expect(page).toHaveURL(/#track&order=/);
@@ -240,7 +242,8 @@ test("customer adds quantities and preparation instructions, places order and tr
   expect(order.customerName).toBe("Menu Customer");
   expect(order.tokenNumber).toBeGreaterThan(0);
   expect(order.transactionId).toBe("");
-  expect(order.paymentReceiptName).toBe("payment-receipt.png");
+  expect(order.paymentReceiptName).toBe("g58-whatsapp-card-receipt.jpg");
+  expect(order.paymentReceiptType).toBe("image/jpeg");
   expect(order.messages.at(-1)).toMatchObject({ senderRole: "customer", text: "Please confirm my order" });
   expect(order.items.find((item) => item.name === "Masala Dosa").qty).toBe(2);
   expect(order.items.find((item) => item.name === "Paneer Sandwich").prepareInstruction).toContain("Medium spicy");

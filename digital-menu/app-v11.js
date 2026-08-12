@@ -32,6 +32,24 @@ function localMediaSource(record,keyName,legacyName){return localMediaUrls.get(r
 function loadBrowserImage(file){return new Promise((resolve,reject)=>{if(!file?.type?.startsWith('image/'))return reject(new Error('Select a JPG, PNG or WebP image'));if(file.size>20*1024*1024)return reject(new Error('Source image must be below 20 MB'));const url=URL.createObjectURL(file),image=new Image();image.onload=()=>{URL.revokeObjectURL(url);resolve(image)};image.onerror=()=>{URL.revokeObjectURL(url);reject(new Error('This image could not be opened'))};image.src=url})}
 function canvasImageBlob(canvas,type,quality){return new Promise((resolve,reject)=>canvas.toBlob(blob=>blob?resolve(blob):reject(new Error('Image compression failed')),type,quality))}
 async function compressImageTo100Kb(file){const image=await loadBrowserImage(file);let width=Math.min(1600,image.naturalWidth||image.width),height=Math.max(1,Math.round((image.naturalHeight||image.height)*(width/(image.naturalWidth||image.width))));for(let sizePass=0;sizePass<10;sizePass++){const canvas=document.createElement('canvas');canvas.width=Math.max(1,Math.round(width));canvas.height=Math.max(1,Math.round(height));const context=canvas.getContext('2d',{alpha:false});context.fillStyle='#ffffff';context.fillRect(0,0,canvas.width,canvas.height);context.drawImage(image,0,0,canvas.width,canvas.height);for(let quality=.88;quality>=.3;quality-=.08){const blob=await canvasImageBlob(canvas,'image/jpeg',quality);if(blob.size<=100*1024)return blob}width*=.78;height*=.78}throw new Error('Could not reduce this image below 100 KB. Try a smaller source image.')}
+async function optimizePaymentReceipt(file){
+  if(!file?.size)throw new Error('Upload the payment receipt image.');
+  if(!['image/jpeg','image/png','image/webp'].includes(file.type))throw new Error('Payment receipt must be a JPG, PNG or WebP image.');
+  if(file.size>15*1024*1024)throw new Error('Payment receipt image must be below 15 MB.');
+  if(file.size<=700*1024)return file;
+  const image=await loadBrowserImage(file);
+  const originalWidth=image.naturalWidth||image.width,originalHeight=image.naturalHeight||image.height;
+  let ratio=Math.min(1,1800/Math.max(originalWidth,originalHeight)),width=Math.max(1,Math.round(originalWidth*ratio)),height=Math.max(1,Math.round(originalHeight*ratio));
+  let best=null;
+  for(let pass=0;pass<6;pass++){
+    const canvas=document.createElement('canvas');canvas.width=width;canvas.height=height;
+    const context=canvas.getContext('2d',{alpha:false});context.fillStyle='#fff';context.fillRect(0,0,width,height);context.drawImage(image,0,0,width,height);
+    for(let quality=.9;quality>=.58;quality-=.08){const blob=await canvasImageBlob(canvas,'image/jpeg',quality);best=blob;if(blob.size<=700*1024)return new File([blob],`${slugify(file.name.replace(/\.[^.]+$/,''))}-receipt.jpg`,{type:'image/jpeg'});}
+    width=Math.max(1,Math.round(width*.82));height=Math.max(1,Math.round(height*.82));
+  }
+  if(!best)throw new Error('Payment receipt image could not be prepared.');
+  return new File([best],`${slugify(file.name.replace(/\.[^.]+$/,''))}-receipt.jpg`,{type:'image/jpeg'});
+}
 function openImageCompressor(){modal('Image Compressor',`<div class="compressor-panel"><p class="muted">Choose a JPG, PNG or WebP image. Compression happens only in this browser and downloads as a standard JPG file.</p><div class="field"><label>Source image <small>(up to 20 MB)</small></label><input id="compressorFile" type="file" accept="image/jpeg,image/png,image/webp"></div><div class="compressor-result" id="compressorResult"><div class="compressor-placeholder">Choose an image to create a menu-ready JPG below 100 KB.</div></div><button class="btn full" id="downloadCompressedImage" hidden>Download Compressed JPG</button></div>`,()=>{const input=$('#compressorFile'),result=$('#compressorResult'),download=$('#downloadCompressedImage');input.onchange=async()=>{const file=input.files[0];if(!file)return;if(activeCompressorUrl)URL.revokeObjectURL(activeCompressorUrl);activeCompressorUrl='';download.hidden=true;result.innerHTML='<div class="compressor-placeholder">Compressing image…</div>';try{const blob=await compressImageTo100Kb(file);activeCompressorUrl=URL.createObjectURL(blob);const saved=Math.max(0,Math.round((1-blob.size/file.size)*100));result.innerHTML=`<img src="${activeCompressorUrl}" alt="Compressed preview"><div><strong>${Math.ceil(blob.size/1024)} KB JPG ready</strong><span>Original ${Math.ceil(file.size/1024)} KB${saved?` · ${saved}% smaller`:''}</span><small>Nothing has been uploaded. Download this JPG, then select it for your restaurant or menu item.</small></div>`;download.hidden=false;download.onclick=()=>{const link=document.createElement('a');link.href=activeCompressorUrl;link.download=`${slugify(file.name.replace(/\.[^.]+$/,''))}-g58.jpg`;document.body.appendChild(link);link.click();link.remove();toast('Compressed JPG downloaded')}}catch(error){input.value='';result.innerHTML=`<div class="compressor-error">${html(error.message||'Could not compress this image')}</div>`}}})}
 
 const seed = {
@@ -981,12 +999,14 @@ async function openCart(r){
         <p class="payment-whatsapp-note"><strong>What happens next?</strong> Upload the receipt and place the order. Restaurant staff verify it; approval permanently deletes the image and starts the order.</p>
       </div>
     </div>`:''}
-    <p id="checkoutError" class="checkout-error" hidden></p>
+    <p id="checkoutProgress" class="checkout-progress" hidden aria-live="polite"></p>
+    <p id="checkoutError" class="checkout-error" hidden aria-live="assertive"></p>
     <button class="btn full" id="confirmPlaceOrder" type="button">Place Order</button>
   </div>`,()=>{
     const panel=$('#checkoutPanel');
     const button=$('#confirmPlaceOrder');
     const errorBox=$('#checkoutError');
+    const progressBox=$('#checkoutProgress');
     let qrMade=false;
 
     const fail=message=>{
@@ -1022,7 +1042,8 @@ async function openCart(r){
 
       button.dataset.busy='1';
       button.disabled=true;
-      button.textContent='Placing Order…';
+      const progress=message=>{button.textContent=message;if(progressBox){progressBox.textContent=`${message} Please keep this window open.`;progressBox.hidden=false}};
+      progress('Preparing receipt…');
       let uploadedReceiptFileId='',orderPersisted=false;
       try{
         const status=paymentMethod==='online'?'Payment Verification':'Pending';
@@ -1031,7 +1052,7 @@ async function openCart(r){
           : customerContext.customerName;
         const orderOwnerId=remoteMenuSource.startsWith('cloud:')?remoteMenuSource.split(':')[1]:(cloudOwnerId()||r.ownerId||'');
         let receipt={};
-        if(receiptFile){Gravity58Ads.validateMediaFile(receiptFile,'payment receipt');const uploaded=await Gravity58Ads.uploadAdMedia(receiptFile);uploadedReceiptFileId=uploaded.fileId;receipt={paymentReceiptUrl:uploaded.mediaUrl,paymentReceiptFileId:uploaded.fileId,paymentReceiptName:uploaded.mediaName,paymentReceiptType:uploaded.mediaType}}
+        if(receiptFile){const optimizedReceipt=await optimizePaymentReceipt(receiptFile);progress('Uploading receipt…');Gravity58Ads.validateMediaFile(optimizedReceipt,'payment receipt');const uploaded=await Gravity58Ads.uploadAdMedia(optimizedReceipt);uploadedReceiptFileId=uploaded.fileId;receipt={paymentReceiptUrl:uploaded.mediaUrl,paymentReceiptFileId:uploaded.fileId,paymentReceiptName:uploaded.mediaName,paymentReceiptType:uploaded.mediaType}}
         const order={
           id:orderId,restaurantId:r.id,customer:identity||'Guest',
           ownerId:orderOwnerId,cloudOwnerId:orderOwnerId,
@@ -1046,6 +1067,7 @@ async function openCart(r){
           customerAccountId:scheduledValue?scheduleAccount.$id:'',customerEmail:scheduledValue?scheduleAccount.email:'',
           status,createdAt:now()
         };
+        progress('Securing order…');
         Object.assign(order,await persistCloudOrder(order));
         orderPersisted=true;
         state.orders=Array.isArray(state.orders)?state.orders:[];
@@ -1061,7 +1083,7 @@ async function openCart(r){
       }catch(err){
         if(uploadedReceiptFileId&&!orderPersisted)try{await Gravity58Ads.removeAdMedia(uploadedReceiptFileId)}catch(cleanupError){console.warn('Failed receipt cleanup',cleanupError)}
         console.error('Place order failed',err);
-        button.dataset.busy='0';button.disabled=false;button.textContent='Place Order';
+        button.dataset.busy='0';button.disabled=false;button.textContent='Place Order';if(progressBox)progressBox.hidden=true;
         fail(`Order could not be placed. ${err?.message||'Please reload this menu and try again.'}`);
       }
     });
