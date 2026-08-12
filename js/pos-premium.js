@@ -25,11 +25,13 @@
   let session = read(KEYS.session, null);
   let menu = read(KEYS.menu, []);
   let premium = read(KEYS.premium, null);
+  let linkedMenuEntitlement = read("g58DigitalMenuEntitlement", null);
   let dashboardFilter = { period: "month", from: "", to: "" };
   let workspaceRecordId = "";
   let syncTimer = null;
 
-  const isPremium = () => Boolean(premium?.active && (!premium.expiresAt || new Date(premium.expiresAt) > new Date()));
+  const entitlementPremium = () => Boolean(linkedMenuEntitlement?.ownerId === session?.id && linkedMenuEntitlement?.plan === "premium" && (linkedMenuEntitlement.lifetime || !linkedMenuEntitlement.expiresAt || new Date(linkedMenuEntitlement.expiresAt) > new Date()));
+  const isPremium = () => entitlementPremium() || Boolean(premium?.active && (!premium.expiresAt || new Date(premium.expiresAt) > new Date()));
   const inventoryEnabled = () => localStorage.getItem(KEYS.inventory) === "1";
 
   const workspaceKind = () => `pos_workspace_${String(session?.id || "account").replace(/[^a-zA-Z0-9._-]/g, "-").slice(0, 45)}`;
@@ -42,6 +44,9 @@
   });
   async function loadWorkspace() {
     if (!session || !window.Gravity58Ads?.configured) return;
+    const entitlements = await Gravity58Ads.list("digital_menu_entitlements").catch(() => []);
+    linkedMenuEntitlement = entitlements.find((row) => row.ownerId === session.id) || null;
+    write("g58DigitalMenuEntitlement", linkedMenuEntitlement);
     const records = await Gravity58Ads.list(workspaceKind());
     const record = records.find((row) => row.ownerId === session.id);
     if (!record) return;

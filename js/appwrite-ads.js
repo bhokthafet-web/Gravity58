@@ -35,7 +35,7 @@
   function permissionSet(kind, userId, includeAdminTeam = false) {
     if (!configured || !Appwrite.Permission || !Appwrite.Role) return undefined;
     const permissions = [];
-    const readAny = ["advertisements", "slots", "posts", "digital_menus"].includes(kind) || String(kind).startsWith("digital_menu_");
+    const readAny = ["advertisements", "slots", "posts", "digital_menus", "digital_menu_pricing"].includes(kind) || String(kind).startsWith("digital_menu_") && !["digital_menu_entitlements", "digital_menu_requests"].includes(kind);
     if (readAny) permissions.push(Appwrite.Permission.read(Appwrite.Role.any()));
     if (userId) {
       const role = Appwrite.Role.user(userId);
@@ -70,6 +70,15 @@
     }
     return [...new Set(permissions)];
   }
+  function managedPermissionSet() {
+    if (!configured || !Appwrite.Permission || !Appwrite.Role) return undefined;
+    const permissions = [Appwrite.Permission.read(Appwrite.Role.users())];
+    if (config.adminTeamId && !String(config.adminTeamId).includes("YOUR_")) {
+      const team = Appwrite.Role.team(config.adminTeamId);
+      permissions.push(Appwrite.Permission.read(team), Appwrite.Permission.update(team), Appwrite.Permission.delete(team));
+    }
+    return [...new Set(permissions)];
+  }
 
   let client = null;
   let account = null;
@@ -92,16 +101,21 @@
       Object.entries(filters).forEach(([key, value]) => { if (value !== undefined && value !== "") rows = rows.filter((row) => row[key] === value); });
       return rows.map(clean);
     }
-    const queries = [Appwrite.Query.limit(100), Appwrite.Query.orderDesc("$createdAt")];
-    if (sharedTableId) queries.push(Appwrite.Query.equal("kind", kind));
-    else Object.entries(filters).forEach(([key, value]) => { if (value !== undefined && value !== "") queries.push(Appwrite.Query.equal(key, value)); });
-    let rows;
-    if (tables) {
-      const response = await tables.listRows({ databaseId: config.databaseId, tableId: tableIdFor(kind), queries });
-      rows = response.rows.map(clean);
-    } else {
-      const response = await databases.listDocuments({ databaseId: config.databaseId, collectionId: tableIdFor(kind), queries });
-      rows = response.documents.map(clean);
+    let rows = [];
+    for (let offset = 0; offset < 1000; offset += 100) {
+      const queries = [Appwrite.Query.limit(100), Appwrite.Query.offset(offset), Appwrite.Query.orderDesc("$createdAt")];
+      if (sharedTableId) queries.push(Appwrite.Query.equal("kind", kind));
+      else Object.entries(filters).forEach(([key, value]) => { if (value !== undefined && value !== "") queries.push(Appwrite.Query.equal(key, value)); });
+      let pageRows;
+      if (tables) {
+        const response = await tables.listRows({ databaseId: config.databaseId, tableId: tableIdFor(kind), queries });
+        pageRows = response.rows.map(clean);
+      } else {
+        const response = await databases.listDocuments({ databaseId: config.databaseId, collectionId: tableIdFor(kind), queries });
+        pageRows = response.documents.map(clean);
+      }
+      rows.push(...pageRows);
+      if (pageRows.length < 100) break;
     }
     Object.entries(filters).forEach(([key, value]) => { if (value !== undefined && value !== "") rows = rows.filter((row) => row[key] === value); });
     return rows;
@@ -188,14 +202,27 @@
     catch (error) { if (error?.code === 409) return update("slots", slotId, payload); throw error; }
   }
 
+  async function clearAnonymousSession() {
+    if (!configured) return;
+    const current = await currentUser();
+    if (current && !current.email) {
+      try { await account.deleteSession({ sessionId: "current" }); }
+      catch {}
+    }
+  }
   async function register(email, password, name, phone = "") {
     if (!configured) throw new Error("Account services are temporarily unavailable.");
+    await clearAnonymousSession();
     const user = await account.create({ userId: Appwrite.ID.unique(), email, password, name });
     await account.createEmailPasswordSession({ email, password });
     await create("profiles", { userId: user.$id, email, name, phone, accountType: "customer", state: "", district: "", blocked: false }, undefined, permissionSet("profiles", user.$id));
     return user;
   }
-  const login = async (email, password) => configured ? account.createEmailPasswordSession({ email, password }) : Promise.reject(new Error("Account services are temporarily unavailable."));
+  const login = async (email, password) => {
+    if (!configured) throw new Error("Account services are temporarily unavailable.");
+    await clearAnonymousSession();
+    return account.createEmailPasswordSession({ email, password });
+  };
   const logout = async () => configured ? account.deleteSession({ sessionId: "current" }) : true;
   const currentUser = async () => { if (!configured) return null; try { return await account.get(); } catch { return null; } };
   async function ensureUser() {
@@ -299,7 +326,7 @@
 
   window.Gravity58Ads = Object.freeze({
     configured, config, collections, client, account, databases, tables, storage, mediaBucketId,
-    list, get, create, update, remove, upsertSlot, permissionSet, userPermissionSet, collaborativePermissionSet,
+    list, get, create, update, remove, upsertSlot, permissionSet, userPermissionSet, collaborativePermissionSet, managedPermissionSet,
     register, login, logout, currentUser, ensureUser, forgotPassword, completeRecovery, createJWT, isTeamAdmin,
     validateMediaFile, uploadAdMedia, removeAdMedia, validateMenuImage, uploadMenuMedia, removeMenuMedia,
     subscribeAdvertisements, subscribeKind,

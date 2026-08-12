@@ -83,6 +83,11 @@ let customerChatOpen = false;
 const CLOUD_MENU_KIND_PREFIX = 'digital_menu_';
 const CLOUD_ORDER_KIND_PREFIX = 'digital_order_';
 const CLOUD_TOKEN_KIND_PREFIX = 'digital_token_';
+const MENU_PRICING_KIND = 'digital_menu_pricing';
+const MENU_ENTITLEMENT_KIND = 'digital_menu_entitlements';
+const MENU_REQUEST_KIND = 'digital_menu_requests';
+const MENU_SUBSCRIPTION_KIND_PREFIX = 'digital_subscription_';
+const PLAN_UTILS = window.Gravity58DigitalPlans;
 let cloudMenuSyncing = false;
 let ownerOrderUnsubscribe = null;
 let ownerOrderSubscriptionKind = '';
@@ -95,6 +100,38 @@ const knownCloudOrderIds = new Set();
 const orderMutationIds = new Set();
 const stableAdvertisementIds = new Map();
 let customerCartRestaurantId = '';
+let menuPricing = PLAN_UTILS.normalisePricing();
+let menuEntitlement = null;
+let menuAccountRequests = [];
+let mealSubscriptions = [];
+let orderResetTimer = null;
+let orderRetentionTimer = null;
+let scheduleAlertTimer = null;
+const scheduleAlertedIds = new Set();
+
+function activeMenuEntitlement(){
+  if(CONFIG.testMode===true)return {plan:'premium',ordersEnabled:true,maxRestaurants:99,permanentOrders:true,messaging:true,reports:true,scheduling:true,customerSubscriptions:true,posPremium:true,lifetime:true};
+  const entitlement=menuEntitlement;
+  const active=entitlement&&(entitlement.lifetime||!entitlement.expiresAt||new Date(entitlement.expiresAt).getTime()>Date.now());
+  if(!active)return {plan:'free',ordersEnabled:false,maxRestaurants:1,permanentOrders:false,messaging:false,reports:false,scheduling:false,customerSubscriptions:false,posPremium:false,lifetime:true};
+  const premium=entitlement.plan==='premium';
+  return {...entitlement,plan:premium?'premium':'standard',ordersEnabled:true,maxRestaurants:Math.max(5,Number(entitlement.maxRestaurants)||Number(entitlement.restaurantPacks||1)*5),permanentOrders:premium,messaging:premium,reports:premium,scheduling:premium,customerSubscriptions:premium,posPremium:premium};
+}
+function menuFeature(name){return !!activeMenuEntitlement()[name]}
+function menuPlanLabel(){const plan=activeMenuEntitlement().plan;return plan==='premium'?'Digital Menu Premium':plan==='standard'?'Digital Menu Standard':'Free Digital Menu'}
+function ownerSubscriptionKind(ownerId=cloudOwnerId()){return `${MENU_SUBSCRIPTION_KIND_PREFIX}${String(ownerId||'public').replace(/[^a-zA-Z0-9._-]/g,'-').slice(0,43)}`}
+function orderRetentionDecision(order,at=new Date()){return PLAN_UTILS.orderRetention(order,{premium:menuFeature('permanentOrders'),at})}
+function orderResetCountdown(){return PLAN_UTILS.resetCountdown(new Date())}
+function restaurantLimit(){return Number(activeMenuEntitlement().maxRestaurants)||1}
+function pricingRows(plan){
+  const monthly=plan==='premium'?menuPricing.premiumMonthly:menuPricing.standardMonthly;
+  return menuPricing.periods.map(period=>({...period,amount:PLAN_UTILS.priceFor(monthly,period),link:menuPricing.links?.[`${plan}_${period.id}`]||''}));
+}
+function scheduleOrderRetentionReset(){
+  clearTimeout(orderRetentionTimer);
+  const delay=Math.max(1000,PLAN_UTILS.nextIndiaMidnight(new Date()).getTime()-Date.now()+1500);
+  orderRetentionTimer=setTimeout(async()=>{try{await syncCloudOrders();if(!location.hash&&state.session)renderShell()}catch(error){console.warn('Daily order reset failed',error)}finally{scheduleOrderRetentionReset()}},delay);
+}
 
 function load(){
   try{
@@ -140,7 +177,7 @@ function cloudTokenKind(ownerId=cloudOwnerId()){return `${CLOUD_TOKEN_KIND_PREFI
 function orderDay(value=now()){return new Date(value).toLocaleDateString('en-CA',{timeZone:'Asia/Kolkata'}).replaceAll('-','')}
 function formatToken(value){return String(Math.max(0,Number(value)||0)).padStart(4,'0')}
 function activeQueueStatus(status){return !['Completed','Rejected','Payment Rejected'].includes(status)}
-function restaurantCloudFields(r){const fields=['id','name','type','city','description','address','phone','email','open','accepting','tax','service','identification','restaurantKey','social','paymentEnabled','upiId','paymentLink','logoImageUrl','logoImageFileId'];return Object.fromEntries(fields.map(key=>[key,r?.[key]]))}
+function restaurantCloudFields(r){const fields=['id','name','type','city','description','address','phone','email','open','accepting','tax','service','identification','restaurantKey','social','paymentEnabled','upiId','paymentLink','logoImageUrl','logoImageFileId','subscriptionPlans','digitalMenuPlan','ordersEnabled','premiumFeatures','entitlementExpiresAt'];return Object.fromEntries(fields.map(key=>[key,r?.[key]]))}
 function itemCloudFields(item){const fields=['id','categoryId','name','description','price','type','available','prep','prepareInstructionsEnabled','imageUrl','imageFileId'];return Object.fromEntries(fields.map(key=>[key,item?.[key]]))}
 function buildCloudMenuRecord(restaurantId=state.activeRestaurantId){const restaurant=state.restaurants.find(row=>row.id===restaurantId);if(!restaurant)throw new Error('Restaurant not found');return {schemaVersion:2,ownerId:cloudOwnerId(),updatedAt:now(),restaurant:restaurantCloudFields(restaurant),categories:restaurantCategories(restaurantId).map(row=>({id:row.id,name:row.name})),items:restaurantItems(restaurantId).map(itemCloudFields)}}
 async function uploadMenuImage(blob,name){if(!blob?.size||!isCloudMenuSession())return null;const file=blob instanceof File?blob:new File([blob],`${slugify(name)}.webp`,{type:blob.type||'image/webp'});Gravity58Ads.validateMenuImage(file);return Gravity58Ads.uploadMenuMedia(file)}
@@ -199,13 +236,74 @@ async function syncCloudMenus(){
       if(!ownerRestaurants().some(row=>row.id===state.activeRestaurantId))state.activeRestaurantId=ownerRestaurants()[0]?.id||'';
       save();
     }
+    await syncDigitalMenuAccount();
     await syncCloudOrders();
   }finally{cloudMenuSyncing=false}
+}
+async function syncDigitalMenuAccount(){
+  if(!isCloudMenuSession())return;
+  const ownerId=cloudOwnerId();
+  const [pricing,entitlements,requests]=await Promise.all([
+    Gravity58Ads.list(MENU_PRICING_KIND).catch(()=>[]),
+    Gravity58Ads.list(MENU_ENTITLEMENT_KIND).catch(()=>[]),
+    Gravity58Ads.list(MENU_REQUEST_KIND).catch(()=>[]),
+  ]);
+  const pricingRecord=pricing.find(row=>(row.id||row.$id)==='plans')||pricing[0];
+  menuPricing=PLAN_UTILS.normalisePricing(pricingRecord||{});
+  menuEntitlement=entitlements.find(row=>row.ownerId===ownerId)||null;
+  menuAccountRequests=requests.filter(row=>row.ownerId===ownerId);
+  localStorage.setItem('g58DigitalMenuEntitlement',JSON.stringify(menuEntitlement||{ownerId,plan:'free'}));
+  scheduleOrderRetentionReset();
+  const features=activeMenuEntitlement();
+  for(const restaurant of ownerRestaurants()){
+    const signature=JSON.stringify([restaurant.digitalMenuPlan,restaurant.ordersEnabled,restaurant.premiumFeatures,restaurant.entitlementExpiresAt]);
+    restaurant.digitalMenuPlan=features.plan;
+    restaurant.ordersEnabled=features.ordersEnabled;
+    restaurant.premiumFeatures=features.plan==='premium';
+    restaurant.entitlementExpiresAt=features.lifetime?'':features.expiresAt||'';
+    const nextSignature=JSON.stringify([restaurant.digitalMenuPlan,restaurant.ordersEnabled,restaurant.premiumFeatures,restaurant.entitlementExpiresAt]);
+    if(signature!==nextSignature&&restaurant.cloudRecordId)await persistCloudMenu(restaurant.id).catch(error=>console.warn('Menu plan publish failed',error));
+  }
+}
+async function hardDeleteCloudOrder(kind,order,ownerId){
+  const id=order.id||order.$id;if(!id)return;
+  try{await Gravity58Ads.remove(kind,id);return}
+  catch(error){
+    const permissions=Gravity58Ads.collaborativePermissionSet?.(ownerId);
+    if(!permissions)throw error;
+    await Gravity58Ads.update(kind,id,{retentionPermissionRepairedAt:now()},permissions);
+    await Gravity58Ads.remove(kind,id);
+  }
+}
+async function applyFreeOrderRetention(records,ownerId){
+  if(menuFeature('permanentOrders'))return records;
+  const kind=cloudOrderKind(ownerId),retained=[];
+  for(const order of records){
+    const decision=orderRetentionDecision(order);
+    if(!decision.keep){
+      try{await hardDeleteCloudOrder(kind,order,ownerId)}catch(error){console.warn('Expired order deletion failed',error)}
+      continue;
+    }
+    if(decision.carry&&order.retentionCarryDay!==decision.carryDay){
+      try{Object.assign(order,await Gravity58Ads.update(kind,order.id||order.$id,{retentionCarryDay:decision.carryDay,retentionReason:'processing-at-midnight'}))}catch(error){console.warn('Order carry-over marker failed',error)}
+    }
+    retained.push(order);
+  }
+  return retained;
+}
+async function cleanupOrderTokens(ownerId){
+  const kind=cloudTokenKind(ownerId),today=orderDay();
+  try{
+    const tokens=(await Gravity58Ads.list(kind)).filter(row=>row.tokenReservation&&String(row.orderDay||'')<today);
+    for(const token of tokens)try{await hardDeleteCloudOrder(kind,token,ownerId)}catch(error){console.warn('Expired token cleanup failed',error)}
+  }catch(error){console.warn('Token retention scan failed',error)}
 }
 async function syncCloudOrders({alertNew=false}={}){
   if(!isCloudMenuSession())return;
   const ownerId=cloudOwnerId(),restaurantIds=new Set(ownerRestaurants().map(row=>row.id));
-  const records=(await Gravity58Ads.list(cloudOrderKind(ownerId))).filter(row=>row.ownerId===ownerId&&restaurantIds.has(row.restaurantId)&&!row.tokenReservation);
+  let records=(await Gravity58Ads.list(cloudOrderKind(ownerId))).filter(row=>row.ownerId===ownerId&&restaurantIds.has(row.restaurantId)&&!row.tokenReservation);
+  records=await applyFreeOrderRetention(records,ownerId);
+  await cleanupOrderTokens(ownerId);
   if(alertNew){
     records.filter(order=>!knownCloudOrderIds.has(order.id||order.$id)&&['Pending','Payment Verification'].includes(order.status)).forEach(order=>ringingOrderIds.add(order.id||order.$id));
   }
@@ -214,6 +312,7 @@ async function syncCloudOrders({alertNew=false}={}){
   state.orders.push(...records.map(row=>({...row,id:row.id||row.$id,messages:Array.isArray(row.messages)?row.messages:[]})));
   save();
   updateOrderAlertSound();
+  checkScheduledOrderAlerts();
 }
 async function persistCloudOrder(order){
   if(!order?.id||!order.cloudOwnerId)return order;
@@ -252,7 +351,7 @@ async function appendOrderMessage(order,message){
 async function reserveOrderToken(ownerId,restaurantId){
   const day=orderDay(),localOrders=(state.orders||[]).filter(order=>order.restaurantId===restaurantId&&order.orderDay===day),localNext=Math.max(0,...localOrders.map(order=>Number(order.tokenNumber)||0))+1;
   if(!Gravity58Ads?.configured||!ownerId)return localNext;
-  const current=await Gravity58Ads.ensureUser(),permissions=Gravity58Ads.userPermissionSet([current?.$id]),prefix=`tok-${String(restaurantId).replace(/[^a-zA-Z0-9._-]/g,'-').slice(0,14)}-${day.slice(2)}-`;
+  const current=await Gravity58Ads.ensureUser(),permissions=Gravity58Ads.collaborativePermissionSet(current?.$id),prefix=`tok-${String(restaurantId).replace(/[^a-zA-Z0-9._-]/g,'-').slice(0,14)}-${day.slice(2)}-`;
   for(let number=Math.max(1,localNext);number<=9999;number++){
     const reservationId=`${prefix}${formatToken(number)}`.slice(0,36);
     try{
@@ -282,7 +381,7 @@ function startOwnerOrderRealtime(){
   ownerOrderUnsubscribe?.();ownerOrderSubscriptionKind=kind;
   ownerOrderUnsubscribe=Gravity58Ads.subscribeKind(kind,async()=>{try{await syncCloudOrders({alertNew:true});if(!location.hash&&state.session){renderView()}}catch(error){console.warn('Live order update failed',error)}});
 }
-function stopOrderRealtime(){ownerOrderUnsubscribe?.();customerOrderUnsubscribe?.();ownerOrderUnsubscribe=customerOrderUnsubscribe=null;ownerOrderSubscriptionKind=customerOrderSubscriptionKind='';ringingOrderIds.clear();knownCloudOrderIds.clear();updateOrderAlertSound()}
+function stopOrderRealtime(){ownerOrderUnsubscribe?.();customerOrderUnsubscribe?.();ownerOrderUnsubscribe=customerOrderUnsubscribe=null;ownerOrderSubscriptionKind=customerOrderSubscriptionKind='';ringingOrderIds.clear();knownCloudOrderIds.clear();clearTimeout(orderRetentionTimer);orderRetentionTimer=null;updateOrderAlertSound()}
 async function removeCloudMenu(restaurant){if(!isCloudMenuSession())return;await Gravity58Ads.remove(cloudMenuKind(),restaurant.cloudRecordId||restaurant.id)}
 async function hydrateAdvertisements(){
   if(!window.Gravity58Ads)return;
@@ -307,29 +406,48 @@ function renderLogin(){const cloud=!!Gravity58Ads?.configured,available=cloud||C
 }
 function registerForm(){return `<form id="registerForm"><div class="form-grid"><div class="field"><label>Full name</label><input name="name" required></div><div class="field"><label>Email</label><input name="email" type="email" required></div><div class="field"><label>Mobile</label><input name="mobile"></div><div class="field"><label>City</label><input name="city"></div><div class="field"><label>Password</label><input name="password" type="password" required></div><div class="field"><label>Confirm password</label><input name="confirm" type="password" required></div></div><button class="btn full">Create Account</button></form>`}
 function ensureGravity58User(account,details={}){let user=state.users.find(row=>row.cloudUserId===account.$id||row.email?.toLowerCase()===account.email?.toLowerCase());if(!user){user={id:`g58_${account.$id}`,cloudUserId:account.$id,name:account.name||details.name||account.email.split('@')[0],email:account.email,mobile:details.mobile||'',city:details.city||'',provider:'gravity58'};state.users.push(user)}else Object.assign(user,{cloudUserId:account.$id,name:account.name||user.name,email:account.email,provider:'gravity58'});return user}
-function bindRegister(){$('#registerForm').onsubmit=async e=>{e.preventDefault();const d=Object.fromEntries(new FormData(e.target));if(state.users.some(x=>x.email.toLowerCase()===d.email.trim().toLowerCase()))return toast('This email already has an account on this browser');if(d.password.length<6)return toast('Use at least 6 characters');if(d.password!==d.confirm)return toast('Passwords do not match');const button=e.submitter;button.disabled=true;button.textContent='Creating…';try{let user;if(Gravity58Ads?.configured){const account=await Gravity58Ads.register(d.email.trim().toLowerCase(),d.password,d.name,d.mobile);user=ensureGravity58User(account,d)}else{user={id:uid('usr'),name:d.name,email:d.email.trim().toLowerCase(),password:d.password,mobile:d.mobile,city:d.city,provider:'local'};state.users.push(user)}state.session={userId:user.id,provider:user.provider};save();closeModal();renderOwnerOnboarding()}catch(error){button.disabled=false;button.textContent='Create Account';toast(error.message||'Could not create account')}}}
+function bindRegister(){$('#registerForm').onsubmit=async e=>{e.preventDefault();const d=Object.fromEntries(new FormData(e.target));if(state.users.some(x=>x.email.toLowerCase()===d.email.trim().toLowerCase()))return toast('This email already has an account on this browser');if(d.password.length<6)return toast('Use at least 6 characters');if(d.password!==d.confirm)return toast('Passwords do not match');const button=e.submitter;button.disabled=true;button.textContent='Creating…';try{let user;if(Gravity58Ads?.configured){const account=await Gravity58Ads.register(d.email.trim().toLowerCase(),d.password,d.name,d.mobile);user=ensureGravity58User(account,d)}else{user={id:uid('usr'),name:d.name,email:d.email.trim().toLowerCase(),password:d.password,mobile:d.mobile,city:d.city,provider:'local'};state.users.push(user)}state.session={userId:user.id,provider:user.provider};save();if(user.provider==='gravity58')await syncDigitalMenuAccount();closeModal();renderOwnerOnboarding()}catch(error){button.disabled=false;button.textContent='Create Account';toast(error.message||'Could not create account')}}}
 
 async function logoutOwner(){stopOrderRealtime();if(state.session?.provider==='gravity58')try{await Gravity58Ads?.logout()}catch{}state.session=null;save();render()}
 function renderOwnerOnboarding(){app.innerHTML=`<main class="screen auth"><section class="auth-card glass"><a class="menu-home-link" href="../">← Gravity58 Home</a><div class="premium-menu-kicker">SET UP YOUR RESTAURANT</div><div class="brand"><div class="brand-mark">G</div><div><h2>Create your first Digital Menu</h2><p class="tagline">Your restaurant and menu are securely saved to your G58 account.</p></div></div><button class="btn full" id="createFirstRestaurant">Add Restaurant</button><button class="link-btn full" id="onboardingLogout">Logout</button></section></main>`;$('#createFirstRestaurant').onclick=()=>openRestaurantForm(true);$('#onboardingLogout').onclick=logoutOwner}
 
-function renderShell(){const r=activeRestaurant();if(!r)return renderOwnerOnboarding();app.innerHTML=`<div class="shell"><aside class="sidebar"><div class="brand"><div class="brand-mark">G</div><div><strong>Gravity58 Menu</strong><small class="muted">Restaurant workspace</small></div></div><nav class="nav">${navButton('dashboard','⌂','Dashboard')}${navButton('restaurants','◫','Restaurants')}${navButton('menu','☰','Menu')}${navButton('orders','◉','Orders')}${navButton('qr','▦','QR Codes')}${navButton('reports','◒','Reports')}${navButton('publish','⇧','Share Menu')}${navButton('settings','⚙','Settings')}<a class="owner-book-ad" href="${CONFIG.adBookingPortalUrl||'../advertise/'}?restaurant=${encodeURIComponent(`${r.name}|${r.city}`)}">✦ Book Ad Space</a><button id="logout">⇥ Logout</button></nav></aside><main class="main"><header class="topbar"><div class="restaurant-switch"><span>${r.name?.[0]||'G'}</span><select id="restaurantSelect">${ownerRestaurants().map(x=>`<option value="${x.id}" ${x.id===r.id?'selected':''}>${x.name}</option>`).join('')}</select><button class="btn small secondary" id="addRestaurant">+ Add</button></div><div class="user-label"><button class="status-pill sync-menu-button" id="syncCloudMenu"><span class="dot"></span> Menu synced</button></div></header><section class="content" id="page"></section></main></div>`;
+function renderShell(){const r=activeRestaurant();if(!r)return renderOwnerOnboarding();app.innerHTML=`<div class="shell"><aside class="sidebar"><div class="brand"><div class="brand-mark">G</div><div><strong>Gravity58 Menu</strong><small class="muted">Restaurant workspace</small></div></div><nav class="nav">${navButton('dashboard','⌂','Dashboard')}${navButton('restaurants','◫','Restaurants')}${navButton('menu','☰','Menu')}${navButton('orders','◉','Orders')}${navButton('schedule','◷','Schedule')}${navButton('subscriptions','♢','Subscriptions')}${navButton('qr','▦','QR Codes')}${navButton('reports','◒','Reports')}${navButton('pricing','₹','Pricing')}${navButton('publish','⇧','Share Menu')}${navButton('settings','⚙','Settings')}<a class="owner-book-ad" href="${CONFIG.adBookingPortalUrl||'../advertise/'}?restaurant=${encodeURIComponent(`${r.name}|${r.city}`)}">✦ Book Ad Space</a><button id="logout">⇥ Logout</button></nav></aside><main class="main"><header class="topbar"><div class="restaurant-switch"><span>${r.name?.[0]||'G'}</span><select id="restaurantSelect">${ownerRestaurants().map(x=>`<option value="${x.id}" ${x.id===r.id?'selected':''}>${x.name}</option>`).join('')}</select><button class="btn small secondary" id="addRestaurant">+ Add</button></div><div class="user-label"><span class="plan-badge plan-${activeMenuEntitlement().plan}">${menuPlanLabel()}</span><button class="status-pill sync-menu-button" id="syncCloudMenu"><span class="dot"></span> Menu synced</button></div></header><section class="content" id="page"></section></main></div>`;
   $('#restaurantSelect').onchange=e=>{state.activeRestaurantId=e.target.value;save();renderShell()};
   $('#addRestaurant').onclick=()=>openRestaurantForm(false);
   $('#syncCloudMenu')?.addEventListener('click',async e=>{e.currentTarget.disabled=true;try{await syncCloudMenus();renderShell();toast('Latest account menu loaded')}catch(error){e.currentTarget.disabled=false;toast(error.message||'Could not sync menu')}});
   $('#logout').onclick=logoutOwner;
-  $$('.nav button[data-view]').forEach(b=>b.onclick=()=>{view=b.dataset.view;renderShell()});
+  $$('.nav button[data-view]').forEach(b=>b.onclick=()=>{const requested=b.dataset.view,gates={orders:'ordersEnabled',schedule:'scheduling',subscriptions:'customerSubscriptions',reports:'reports'};if(gates[requested]&&!menuFeature(gates[requested])){view='pricing';renderShell();toast(`${requested[0].toUpperCase()+requested.slice(1)} is available after activation`);return}view=requested;renderShell()});
   startOwnerOrderRealtime();
   renderView();
 }
 function navButton(v,i,t){return `<button data-view="${v}" class="${view===v?'active':''}"><span>${i}</span>${t}</button>`}
-function renderView(){({dashboard:dashboardView,restaurants:restaurantsView,menu:menuView,orders:ordersView,qr:qrView,reports:reportsView,publish:publishSetupView,settings:settingsView}[view]||dashboardView)()}
+function renderView(){({dashboard:dashboardView,restaurants:restaurantsView,menu:menuView,orders:ordersView,schedule:scheduleView,subscriptions:subscriptionsView,qr:qrView,reports:reportsView,pricing:pricingView,publish:publishSetupView,settings:settingsView}[view]||dashboardView)()}
 function dashboardView(){const r=activeRestaurant(),items=restaurantItems(),orders=restaurantOrders();$('#page').innerHTML=`<div class="hero"><div><span class="status-pill"><span class="dot"></span>${r.open?'Open':'Closed'}</span><h1 style="margin:12px 0 6px">${r.logo} ${r.name}</h1><p>${r.description||r.type+' in '+r.city}</p></div><div class="actions"><button class="btn secondary" id="previewMenu">Preview Menu</button><button class="btn secondary" id="openOrders">Open Orders</button><button class="btn" id="openCsv">Manage Menu</button></div></div><div class="grid stats">${metric('Categories',restaurantCategories().length)}${metric('Menu Items',items.length)}${metric('Pending Orders',orders.filter(x=>['Pending','Payment Verification'].includes(x.status)).length)}${metric('Today Revenue',money(orders.filter(x=>x.status==='Completed').reduce((a,b)=>a+b.total,0)))}</div>`;
-  $('#previewMenu').onclick=()=>{location.hash=`menu&restaurant=${r.id}`};$('#openCsv').onclick=()=>{view='menu';renderShell()};$('#openOrders').onclick=()=>{view='orders';renderShell()};}
+  $('#previewMenu').onclick=()=>{location.hash=`menu&restaurant=${r.id}`};$('#openCsv').onclick=()=>{view='menu';renderShell()};$('#openOrders').onclick=()=>{view=menuFeature('ordersEnabled')?'orders':'pricing';renderShell();if(view==='pricing')toast('Request Standard or Premium activation to receive orders')};}
 function metric(label,value){return `<article class="card"><span class="muted">${label}</span><div class="metric">${value}</div></article>`}
+
+function pricingView(){
+  const entitlement=activeMenuEntitlement(),expiry=entitlement.lifetime?'Lifetime':entitlement.expiresAt?new Date(entitlement.expiresAt).toLocaleDateString('en-IN'):'Not activated',pending=menuAccountRequests.filter(row=>!['Activated','Rejected'].includes(row.status));
+  const planSection=(plan,title,description)=>`<section class="pricing-plan-section"><div class="section-head"><div><span class="eyebrow">${plan==='premium'?'FULL RESTAURANT SUITE':'DIGITAL MENU + ORDERS'}</span><h2>${title}</h2><p class="muted">${description}</p></div><strong class="pricing-from">from ${money(plan==='premium'?menuPricing.premiumMonthly:menuPricing.standardMonthly)}/month</strong></div><div class="pricing-grid">${pricingRows(plan).map(period=>`<article class="card pricing-card ${plan}"><span>${period.discount?`${period.discount}% SAVING`:'MONTHLY'}</span><h3>${period.label}</h3><div class="pricing-amount">${money(period.amount)}</div><small>${plan==='standard'?'Includes one pack of up to 5 restaurants':'Premium menu, Premium POS and permanent order history'}</small><button class="btn full" data-request-plan="${plan}" data-period="${period.id}">${period.link?'Pay & Request Activation':'Request Activation'}</button></article>`).join('')}</div></section>`;
+  $('#page').innerHTML=`<div class="section-head"><div><h1>Digital Menu Pricing</h1><p class="muted">One restaurant and menu setup are free. Activate a paid plan to receive orders and add more restaurants.</p></div><span class="plan-badge plan-${entitlement.plan}">${menuPlanLabel()}</span></div><article class="card entitlement-summary"><div><strong>Current access</strong><h2>${menuPlanLabel()}</h2><p>${restaurantLimit()} restaurant slot(s) · ${entitlement.ordersEnabled?'Orders enabled':'Menu-only access'} · ${expiry}</p></div>${pending.length?`<span class="chip">${pending.length} request(s) awaiting G58</span>`:''}</article>${planSection('standard','Digital Menu Standard','₹699 is one restaurant pack for up to 5 restaurants. Orders reset daily; messaging and reports remain locked.')}${planSection('premium','Digital Menu Premium','Permanent order history, Premium POS, reports, messaging, meal subscriptions and scheduled orders.')}`;
+  $$('[data-request-plan]').forEach(button=>button.onclick=()=>requestMenuActivation(button.dataset.requestPlan,button.dataset.period));
+}
+async function requestMenuActivation(plan,periodId){
+  if(!isCloudMenuSession())return toast('Sign in with your G58 account to request activation');
+  const period=pricingRows(plan).find(row=>row.id===periodId);if(!period)return;
+  const existing=menuAccountRequests.find(row=>row.plan===plan&&row.periodId===periodId&&['Requested','Payment Pending','Proof Sent'].includes(row.status));
+  if(existing){if(period.link)window.open(period.link,'_blank','noopener');return toast('This activation request is already pending')}
+  const account=state.users.find(row=>row.id===state.session.userId),ownerId=cloudOwnerId(),request={ownerId,ownerName:account?.name||'',ownerEmail:account?.email||'',plan,periodId,periodLabel:period.label,months:period.months,amount:period.amount,restaurantPacks:1,status:period.link?'Payment Pending':'Requested',paymentLink:period.link||'',createdAt:now()};
+  const popup=period.link?window.open('about:blank','_blank'):null;
+  try{const created=await Gravity58Ads.create(MENU_REQUEST_KIND,request,undefined,Gravity58Ads.collaborativePermissionSet(ownerId));menuAccountRequests.unshift(created);if(popup)popup.location.href=period.link;pricingView();toast('Activation request sent to the G58 team')}catch(error){popup?.close();toast(error.message||'Could not send activation request')}
+}
 function restaurantVisual(r,className=''){return imageMarkup(localMediaSource(r,'logoImageKey','logoImage'),r.name?.trim()?.[0]||'G',className)}
 function restaurantsView(){$('#page').innerHTML=`<div class="section-head"><div><h1>My Restaurants</h1><p class="muted">Manage each restaurant, its menu, availability and orders.</p></div><button class="btn" id="createRestaurant">+ New Restaurant</button></div><div class="grid restaurant-grid">${ownerRestaurants().map(r=>`<article class="card restaurant-card"><div class="logo restaurant-logo">${restaurantVisual(r,'restaurant-logo-image')}</div><h3>${html(r.name)}</h3><p class="muted">${html(r.type)} · ${html(r.city)}</p><div class="chips"><span class="chip">${restaurantItems(r.id).length} items</span><span class="chip">${restaurantOrders(r.id).length} orders</span><span class="chip">${r.open?'Open':'Closed'}</span></div><div class="actions"><button class="btn small" data-open="${r.id}">Open Dashboard</button><button class="btn small secondary" data-edit="${r.id}">Edit</button><button class="btn small red" data-delete-restaurant="${r.id}">Delete</button></div></article>`).join('')}</div>`;$('#createRestaurant').onclick=()=>openRestaurantForm(false);$$('[data-open]').forEach(b=>b.onclick=()=>{state.activeRestaurantId=b.dataset.open;view='dashboard';save();renderShell()});$$('[data-edit]').forEach(b=>b.onclick=()=>openRestaurantForm(false,b.dataset.edit));$$('[data-delete-restaurant]').forEach(b=>b.onclick=()=>deleteRestaurant(b.dataset.deleteRestaurant))}
 function restaurantForm(r={}){return `<form id="restaurantForm"><div class="form-grid"><div class="field"><label>Restaurant name</label><input name="name" value="${html(r.name||'')}" required></div><div class="field"><label>Type</label><select name="type">${['Restaurant','Café','Bakery','Cloud Kitchen','Fast Food','Other'].map(x=>`<option ${r.type===x?'selected':''}>${x}</option>`).join('')}</select></div><div class="field"><label>City / Location</label><input name="city" value="${html(r.city||'')}" required></div><div class="field local-image-field"><label>Restaurant image <small>(maximum 100 KB)</small></label><input name="logoFile" type="file" accept="image/jpeg,image/png,image/webp"><div class="image-preview restaurant-image-preview">${restaurantVisual(r,'restaurant-preview-image')}</div></div><div class="field"><label>Identification mode</label><select name="identification">${['Customer Name','Table Number','Counter Number','Token Number'].map(x=>`<option ${r.identification===x?'selected':''}>${x}</option>`).join('')}</select></div><div class="field"><label>Tax %</label><input name="tax" type="number" value="${r.tax??5}"></div></div><div class="form-grid"><div class="field"><label>Address</label><input name="address" value="${html(r.address||'')}"></div><div class="field"><label>Phone</label><input name="phone" value="${html(r.phone||'')}"></div><div class="field"><label>Email</label><input name="email" type="email" value="${html(r.email||'')}"></div></div><div class="field"><label>Description</label><textarea name="description">${html(r.description||'')}</textarea></div><button class="btn full">Save Restaurant</button></form>`}
 function openRestaurantForm(first=false,id=null){
+  if(!id&&!first&&ownerRestaurants().length>=restaurantLimit()){
+    view='pricing';renderShell();toast(`Your current plan supports ${restaurantLimit()} restaurant${restaurantLimit()===1?'':'s'}. Choose a plan to add more.`);return;
+  }
   const r=id?state.restaurants.find(x=>x.id===id):{};
   modal(id?'Edit Restaurant':first?'Create Your First Restaurant':'Add Restaurant',restaurantForm(r),()=>{
     const form=$('#restaurantForm'),file=form.logoFile,preview=$('.restaurant-image-preview');
@@ -340,7 +458,7 @@ function openRestaurantForm(first=false,id=null){
       try{
         let saved;
         if(id){Object.assign(r,d,{tax:+d.tax,restaurantKey:`${d.name}|${d.city}`});saved=r}
-        else{saved={id:uid('res'),ownerId:state.session.userId,...d,logo:'G',restaurantKey:`${d.name}|${d.city}`,tax:+d.tax,service:0,open:true,accepting:true,social:{}};state.restaurants.push(saved);state.activeRestaurantId=saved.id}
+        else{const features=activeMenuEntitlement();saved={id:uid('res'),ownerId:state.session.userId,...d,logo:'G',restaurantKey:`${d.name}|${d.city}`,tax:+d.tax,service:0,open:true,accepting:true,social:{},subscriptionPlans:[],digitalMenuPlan:features.plan,ordersEnabled:features.ordersEnabled,premiumFeatures:features.plan==='premium',entitlementExpiresAt:features.lifetime?'':features.expiresAt||''};state.restaurants.push(saved);state.activeRestaurantId=saved.id}
         if(selectedFile?.size){const oldFile=saved.logoImageFileId,upload=await uploadMenuImage(selectedFile,saved.name);saved.logoImageUrl=upload.mediaUrl;saved.logoImageFileId=upload.fileId;if(oldFile&&oldFile!==upload.fileId)Gravity58Ads.removeMenuMedia(oldFile).catch(()=>{})}
         await persistCloudMenu(saved.id);Gravity58Ads?.upsertSlot({id:saved.id,restaurantKey:saved.restaurantKey,name:saved.name,city:saved.city,active:true}).catch(()=>{});if(previewUrl)URL.revokeObjectURL(previewUrl);closeModal();renderShell();toast('Restaurant saved')
       }catch(error){button.disabled=false;button.textContent='Save Restaurant';toast(error.message||'Could not save restaurant')}
@@ -457,21 +575,24 @@ async function importMenuCsvFile(file,imageFiles=[],mode='merge'){
 function bindMenuActions(){$$('[data-stock]').forEach(b=>b.onclick=async()=>{const i=state.items.find(x=>x.id===b.dataset.stock);i.available=!i.available;try{await persistCloudMenu();menuView()}catch(error){i.available=!i.available;toast(error.message||'Could not update availability')}});$$('[data-item-edit]').forEach(b=>b.onclick=()=>openMenuItemForm(b.dataset.itemEdit));$$('[data-item-delete]').forEach(b=>b.onclick=async()=>{const i=state.items.find(x=>x.id===b.dataset.itemDelete);if(!i||!confirm(`Delete ${i.name} from this menu?`))return;state.items=state.items.filter(x=>x.id!==i.id);try{await persistCloudMenu();deleteLocalMedia(i.imageKey);if(isCloudMenuSession()&&i.imageFileId)Gravity58Ads.removeMenuMedia(i.imageFileId).catch(()=>{});menuView();toast('Menu item deleted')}catch(error){state.items.push(i);toast(error.message||'Could not delete menu item')}})}
 function sortedRestaurantOrders(){return restaurantOrders().slice().sort((a,b)=>{const active=Number(activeQueueStatus(b.status))-Number(activeQueueStatus(a.status));if(active)return active;const day=String(a.orderDay||'').localeCompare(String(b.orderDay||''));if(day)return day;return (Number(a.tokenNumber)||99999)-(Number(b.tokenNumber)||99999)||new Date(a.createdAt)-new Date(b.createdAt)})}
 function ordersView(){
+  if(!menuFeature('ordersEnabled')){view='pricing';return pricingView()}
   const statuses=['All','Payment Verification','Pending','Accepted','Preparing','Ready','Completed','Rejected'],orders=sortedRestaurantOrders(),active=orders.filter(order=>activeQueueStatus(order.status));
-  $('#page').innerHTML=`<div class="section-head"><div><h1>Live Orders</h1><p class="muted">Instant order board · ${active.length} token(s) in the active queue</p></div><span class="status-pill live-sync-pill"><span class="dot"></span> Live sync & sound alerts</span></div><div class="tabs">${statuses.map((s,i)=>`<button class="btn small ${i?'secondary':''}" data-tab="${s}">${s}</button>`).join('')}</div><div class="grid order-grid" id="ordersGrid" style="margin-top:16px">${orders.map(orderCard).join('')||empty('No orders yet')}</div>`;
+  $('#page').innerHTML=`<div class="section-head"><div><h1>Live Orders <small class="order-reset-copy">(${menuFeature('permanentOrders')?'Premium: order history is permanent':`You're using freeware — orders reset in <span id="orderResetCountdown">${orderResetCountdown()}</span>`})</small></h1><p class="muted">Instant order board · ${active.length} token(s) in the active queue</p></div><span class="status-pill live-sync-pill"><span class="dot"></span> Live sync & sound alerts</span></div><div class="tabs">${statuses.map((s,i)=>`<button class="btn small ${i?'secondary':''}" data-tab="${s}">${s}</button>`).join('')}</div><div class="grid order-grid" id="ordersGrid" style="margin-top:16px">${orders.map(orderCard).join('')||empty('No orders yet')}</div>`;
+  clearInterval(orderResetTimer);if(!menuFeature('permanentOrders'))orderResetTimer=setInterval(()=>{const target=$('#orderResetCountdown');if(target)target.textContent=orderResetCountdown()},1000);
   $$('[data-tab]').forEach(b=>b.onclick=()=>{$$('[data-tab]').forEach(x=>x.className='btn small secondary');b.className='btn small';const s=b.dataset.tab;$('#ordersGrid').innerHTML=orders.filter(o=>s==='All'||o.status===s).map(orderCard).join('')||empty(`No ${s.toLowerCase()} orders`);bindOrderActions()});
   bindOrderActions();
 }
 function orderMessagesMarkup(o,role='owner'){
+  if(!menuFeature('messaging'))return '<div class="premium-inline-lock">Customer messaging is available in Digital Menu Premium.</div>';
   const messages=(o.messages||[]).slice(-6);
   return `<div class="order-chat"><div class="order-chat-log">${messages.map(message=>`<div class="order-message ${message.senderRole===role?'mine':''}"><strong>${html(message.senderRole==='owner'?'Restaurant':message.senderName||'Customer')}</strong><span>${html(message.text)}</span><small>${new Date(message.createdAt).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'})}</small></div>`).join('')||'<p class="muted no-messages">No messages yet.</p>'}</div><form class="order-chat-form" data-order-chat="${html(o.id)}"><input name="message" maxlength="240" placeholder="Message the customer" aria-label="Message customer"><button class="btn small" type="submit">Send</button></form></div>`
 }
 function orderCard(o){
   const identity=o.serviceMode==='table'?`Table ${o.tableNumber||'-'}`:'Single Counter',pay=o.paymentMethod==='online'?`Online · ${o.transactionId||'No ID'}`:'Pay at counter',token=formatToken(o.tokenNumber);
   const incoming=['Pending','Payment Verification'].includes(o.status);
-  return `<article class="card order-card ${incoming?'incoming-order':''}" data-status="${html(o.status)}" data-order-card="${html(o.id)}">${incoming?'<span class="incoming-order-beacon" aria-label="New incoming order" title="New incoming order"></span>':''}<div class="order-card-head"><div><span class="order-token">TOKEN ${token}</span><strong class="order-id">${html(o.id)}</strong><div class="muted">${html(o.customerName||o.customer||'Guest')} · ${html(identity)}</div>${o.phone?`<small class="muted">☎ ${html(o.phone)}</small>`:''}</div><span class="chip order-status">${html(o.status)}</span></div><div class="chips"><span class="chip">${html(pay)}</span>${o.paymentStatus?`<span class="chip">${html(o.paymentStatus)}</span>`:''}<span class="chip">${new Date(o.createdAt).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'})}</span></div><div class="order-items">${o.items.map(i=>`<div class="staff-order-item"><strong>${Number(i.qty)||1} × ${html(i.name)}</strong>${i.prepareInstruction?`<div class="staff-prep-note"><span>Preparation:</span> ${html(i.prepareInstruction)}</div>`:''}</div>`).join('')}</div><h3 style="margin:12px 0">${money(o.total)}</h3><div class="actions order-primary-actions">${orderActions(o)}${o.serviceMode==='table'?`<button class="btn small secondary" data-edit-table="${html(o.id)}">Correct table</button>`:''}<button class="btn small secondary" data-print-order="${html(o.id)}">Print</button></div>${orderMessagesMarkup(o)}</article>`
+  return `<article class="card order-card ${incoming?'incoming-order':''}" data-status="${html(o.status)}" data-order-card="${html(o.id)}">${incoming?'<span class="incoming-order-beacon" aria-label="New incoming order" title="New incoming order"></span>':''}<div class="order-card-head"><div><span class="order-token">TOKEN ${token}</span><strong class="order-id">${html(o.id)}</strong><div class="muted">${html(o.customerName||o.customer||'Guest')} · ${html(identity)}</div>${o.phone?`<small class="muted">☎ ${html(o.phone)}</small>`:''}</div><span class="chip order-status">${html(o.status)}</span></div><div class="chips"><span class="chip">${html(pay)}</span>${o.paymentStatus?`<span class="chip">${html(o.paymentStatus)}</span>`:''}<span class="chip">${new Date(o.createdAt).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'})}</span>${o.scheduledFor?`<span class="chip schedule-chip">Scheduled ${new Date(o.scheduledFor).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'})}</span>`:''}</div>${o.paymentReceiptUrl?`<a class="payment-receipt-link" href="${html(o.paymentReceiptUrl)}" target="_blank" rel="noopener">View payment receipt ↗</a>`:''}<div class="order-items">${o.items.map(i=>`<div class="staff-order-item"><strong>${Number(i.qty)||1} × ${html(i.name)}</strong>${i.prepareInstruction?`<div class="staff-prep-note"><span>Preparation:</span> ${html(i.prepareInstruction)}</div>`:''}</div>`).join('')}</div><h3 style="margin:12px 0">${money(o.total)}</h3><div class="actions order-primary-actions">${orderActions(o)}${o.serviceMode==='table'?`<button class="btn small secondary" data-edit-table="${html(o.id)}">Correct table</button>`:''}<button class="btn small secondary" data-print-order="${html(o.id)}">Print</button></div>${orderMessagesMarkup(o)}</article>`
 }
-function orderActions(o){const map={'Payment Verification':['Confirm Payment','Reject Payment'],Pending:['Accept','Reject'],Accepted:['Start Preparing'],Preparing:['Mark Ready'],Ready:['Complete']};return (map[o.status]||[]).map(a=>`<button class="btn small ${['Reject','Reject Payment'].includes(a)?'red':['Start Preparing','Mark Ready','Complete'].includes(a)?'green':''}" data-order="${html(o.id)}" data-action="${a}">${a}</button>`).join('')}
+function orderActions(o){const map={'Payment Verification':['Confirm Payment','Reject Payment'],Scheduled:['Start Scheduled Order','Reject'],Pending:['Accept','Reject'],Accepted:['Start Preparing'],Preparing:['Mark Ready'],Ready:['Complete']};return (map[o.status]||[]).map(a=>`<button class="btn small ${['Reject','Reject Payment'].includes(a)?'red':['Start Scheduled Order','Start Preparing','Mark Ready','Complete'].includes(a)?'green':''}" data-order="${html(o.id)}" data-action="${a}">${a}</button>`).join('')}
 function bindOrderActions(){
   $$('[data-order]').forEach(b=>b.onclick=async()=>{if(orderMutationIds.has(b.dataset.order))return;b.disabled=true;await updateOrder(b.dataset.order,b.dataset.action)});
   $$('[data-edit-table]').forEach(b=>b.onclick=()=>editOrderTable(b.dataset.editTable));
@@ -480,14 +601,14 @@ function bindOrderActions(){
 }
 async function updateOrder(id,action){
   if(orderMutationIds.has(id))return;
-  const o=state.orders.find(x=>x.id===id),next={Accept:'Accepted',Reject:'Rejected','Confirm Payment':'Pending','Reject Payment':'Payment Rejected','Start Preparing':'Preparing','Mark Ready':'Ready',Complete:'Completed'}[action];if(!o||!next)return;
+  const o=state.orders.find(x=>x.id===id),confirmedNext=o?.scheduledFor&&new Date(o.scheduledFor).getTime()>Date.now()+5*60000?'Scheduled':'Pending',next={Accept:'Accepted',Reject:'Rejected','Confirm Payment':confirmedNext,'Reject Payment':'Payment Rejected','Start Scheduled Order':'Pending','Start Preparing':'Preparing','Mark Ready':'Ready',Complete:'Completed'}[action];if(!o||!next)return;
   orderMutationIds.add(id);const previous=structuredClone(o);
   try{
     if(o.cloudOwnerId&&Gravity58Ads?.configured)try{Object.assign(o,await Gravity58Ads.get(cloudOrderKind(o.cloudOwnerId),id))}catch{}
-    const allowed={PaymentVerification:['Confirm Payment','Reject Payment'],Pending:['Accept','Reject'],Accepted:['Start Preparing'],Preparing:['Mark Ready'],Ready:['Complete']}[String(o.status).replace(/\s/g,'')]||[];
+    const allowed={PaymentVerification:['Confirm Payment','Reject Payment'],Scheduled:['Start Scheduled Order','Reject'],Pending:['Accept','Reject'],Accepted:['Start Preparing'],Preparing:['Mark Ready'],Ready:['Complete']}[String(o.status).replace(/\s/g,'')]||[];
     if(!allowed.includes(action))throw new Error(`This order is already ${o.status}. Reloading the latest status.`);
     const changes={status:next,updatedAt:now()};
-    if(action==='Confirm Payment')changes.paymentStatus='Confirmed';if(action==='Reject Payment')changes.paymentStatus='Rejected';if(action==='Accept')changes.acceptedAt=now();if(action==='Mark Ready')changes.readyAt=now();if(action==='Complete')changes.completedAt=now();
+    if(action==='Confirm Payment')changes.paymentStatus='Confirmed';if(action==='Reject Payment'){changes.paymentStatus='Rejected';changes.paymentRejectedAt=now()}if(action==='Reject')changes.rejectedAt=now();if(action==='Accept')changes.acceptedAt=now();if(action==='Start Scheduled Order')changes.scheduledStartedAt=now();if(action==='Mark Ready')changes.readyAt=now();if(action==='Complete')changes.completedAt=now();
     await patchCloudOrder(o,changes);
     if(!['Pending','Payment Verification'].includes(next))ringingOrderIds.delete(id);updateOrderAlertSound();
     toast(action==='Mark Ready'?`Token ${formatToken(o.tokenNumber)} is ready`:`Order ${o.id}: ${next}`);view==='orders'?ordersView():dashboardView();
@@ -521,7 +642,43 @@ function publishSetupView(){
   const r=activeRestaurant(),url=cloudCustomerMenuUrl(r);$('#page').innerHTML=`<div class="section-head"><div><h1>Share Menu</h1><p class="muted">This customer link always opens your latest published menu.</p></div></div><article class="card cloud-share-card"><div><span class="publish-step">LIVE</span><h2>${html(r.name)} customer menu</h2><p>Restaurant details, menu items, images and availability update automatically.</p><a href="${html(url)}" target="_blank" rel="noopener">${html(url)}</a><div class="actions"><button class="btn" id="copyCloudMenuLink">Copy Customer Link</button><a class="btn secondary" href="${html(url)}" target="_blank" rel="noopener">Open Customer Menu</a></div></div><div class="qr-wrap"><div id="cloudMenuQr"></div></div></article><article class="card"><h2>Manage your menu</h2><p class="muted">Add items manually or import up to 100 dishes at a time from CSV.</p><button class="btn secondary" id="openMenuSetup">Open Menu Management</button></article>`;try{new QRCode($('#cloudMenuQr'),{text:url,width:220,height:220})}catch{$('#cloudMenuQr').textContent='QR unavailable'}$('#copyCloudMenuLink').onclick=()=>navigator.clipboard?.writeText(url).then(()=>toast('Customer link copied'));$('#openMenuSetup').onclick=()=>{view='menu';renderShell()}
 }
 function qrView(){const r=activeRestaurant(),url=cloudCustomerMenuUrl(r);$('#page').innerHTML=`<div class="section-head"><div><h1>QR Codes</h1><p class="muted">Share your live customer menu</p></div><button class="btn secondary" id="previewQr">Preview Menu</button></div><article class="card qr-card"><h2>${html(r.name)}</h2><p>Scan to View Menu</p><div class="qr-wrap"><div id="qrcode"></div></div><div class="actions" style="margin-top:18px"><button class="btn" id="copyQr">Copy Menu Link</button><button class="btn secondary" onclick="window.print()">Print</button></div><small class="muted" style="margin-top:16px">Powered by Gravity58 Digital Menu</small></article>`;try{new QRCode($('#qrcode'),{text:url,width:220,height:220})}catch{$('#qrcode').innerHTML='<div style="color:#111;padding:70px 25px">QR unavailable</div>'}$('#copyQr').onclick=()=>navigator.clipboard?.writeText(url).then(()=>toast('Menu link copied'));$('#previewQr').onclick=()=>window.open(url,'_blank')}
-function reportsView(){const orders=restaurantOrders(),sales=orders.filter(x=>x.status==='Completed').reduce((a,b)=>a+b.total,0);$('#page').innerHTML=`<div class="section-head"><div><h1>Reports</h1><p class="muted">Data for ${activeRestaurant().name} only</p></div></div><div class="grid stats">${metric('Total Orders',orders.length)}${metric('Completed',orders.filter(x=>x.status==='Completed').length)}${metric('Total Sales',money(sales))}${metric('Average Order',money(orders.length?orders.reduce((a,b)=>a+b.total,0)/orders.length:0))}</div><div class="section-head"><h2>All Restaurants Overview</h2></div><div class="grid restaurant-grid">${ownerRestaurants().map(r=>{const os=restaurantOrders(r.id);return `<article class="card"><h3>${r.logo} ${r.name}</h3><p class="muted">${os.length} orders · ${money(os.filter(x=>x.status==='Completed').reduce((a,b)=>a+b.total,0))} sales</p></article>`}).join('')}</div>`}
+function reportsView(){if(!menuFeature('reports')){view='pricing';return pricingView()}const orders=restaurantOrders(),sales=orders.filter(x=>x.status==='Completed').reduce((a,b)=>a+b.total,0);$('#page').innerHTML=`<div class="section-head"><div><h1>Reports</h1><p class="muted">Permanent Premium data for ${activeRestaurant().name}</p></div></div><div class="grid stats">${metric('Total Orders',orders.length)}${metric('Completed',orders.filter(x=>x.status==='Completed').length)}${metric('Total Sales',money(sales))}${metric('Average Order',money(orders.length?orders.reduce((a,b)=>a+b.total,0)/orders.length:0))}</div><div class="section-head"><h2>All Restaurants Overview</h2></div><div class="grid restaurant-grid">${ownerRestaurants().map(r=>{const os=restaurantOrders(r.id);return `<article class="card"><h3>${r.logo} ${r.name}</h3><p class="muted">${os.length} orders · ${money(os.filter(x=>x.status==='Completed').reduce((a,b)=>a+b.total,0))} sales</p></article>`}).join('')}</div>`}
+
+function scheduleView(){
+  if(!menuFeature('scheduling')){view='pricing';return pricingView()}
+  const scheduled=restaurantOrders().filter(order=>order.scheduledFor&&!['Completed','Rejected','Payment Rejected'].includes(order.status)).sort((a,b)=>new Date(a.scheduledFor)-new Date(b.scheduledFor));
+  $('#page').innerHTML=`<div class="section-head"><div><h1>Scheduled Orders</h1><p class="muted">A sound alert plays when a confirmed scheduled order reaches its five-minute preparation window.</p></div><span class="status-pill"><span class="dot"></span> Premium scheduling</span></div><div class="grid order-grid">${scheduled.map(order=>`<article class="card schedule-card"><span class="eyebrow">TOKEN ${formatToken(order.tokenNumber)}</span><h2>${new Date(order.scheduledFor).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'})}</h2><p><strong>${html(order.customerName||order.customer)}</strong> · ${order.items.map(item=>`${item.qty} × ${html(item.name)}`).join(', ')}</p><div class="chips"><span class="chip">${html(order.status)}</span><span class="chip">${money(order.total)}</span></div><div class="actions">${orderActions(order)}<button class="btn small secondary" data-print-order="${html(order.id)}">Print</button></div></article>`).join('')||empty('No scheduled orders')}</div>`;
+  bindOrderActions();checkScheduledOrderAlerts();
+}
+function checkScheduledOrderAlerts(){
+  if(!menuFeature('scheduling'))return;
+  const current=Date.now();
+  restaurantOrders().filter(order=>order.status==='Scheduled'&&order.scheduledFor).forEach(order=>{const remaining=new Date(order.scheduledFor).getTime()-current;if(remaining<=5*60000&&remaining>=-15*60000&&!scheduleAlertedIds.has(order.id)){scheduleAlertedIds.add(order.id);orderAlertBeep(.45,1120);toast(`Scheduled token ${formatToken(order.tokenNumber)} starts within 5 minutes`)}});
+}
+
+async function loadMealSubscriptions(){
+  if(!menuFeature('customerSubscriptions'))return [];
+  if(isCloudMenuSession())mealSubscriptions=(await Gravity58Ads.list(ownerSubscriptionKind())).filter(row=>row.ownerId===cloudOwnerId());
+  else mealSubscriptions=state.mealSubscriptions||[];
+  return mealSubscriptions;
+}
+function subscriptionsView(){
+  if(!menuFeature('customerSubscriptions')){view='pricing';return pricingView()}
+  $('#page').innerHTML='<div class="remote-menu-loading"><span></span><h2>Loading subscriptions</h2></div>';
+  loadMealSubscriptions().then(drawSubscriptionsView).catch(error=>{$('#page').innerHTML=empty(error.message||'Could not load subscriptions')});
+}
+function drawSubscriptionsView(){
+  const r=activeRestaurant(),plans=r.subscriptionPlans||[],subscribers=mealSubscriptions.filter(row=>row.restaurantId===r.id);
+  $('#page').innerHTML=`<div class="section-head"><div><h1>Meal Subscriptions</h1><p class="muted">Create your own meal plans, payment links and delivery schedule. Customers manage these plans from your live menu.</p></div><button class="btn" id="addMealPlan">+ Create Subscription Card</button></div><div class="grid stats">${metric('Active Plans',plans.filter(row=>row.active!==false).length)}${metric('Subscribers',subscribers.length)}${metric('Active Subscribers',subscribers.filter(row=>row.status==='Active').length)}${metric('Meals Delivered',subscribers.reduce((sum,row)=>sum+Number(row.mealsDelivered||0),0))}</div><div class="section-head"><h2>Customer-facing plans</h2></div><div class="pricing-grid">${plans.map(plan=>`<article class="card meal-plan-card"><span>${plan.active!==false?'PUBLISHED':'PAUSED'}</span><h3>${html(plan.name)}</h3><div class="pricing-amount">${money(plan.price)}</div><p>${html(plan.description||'')}</p><div class="chips"><span class="chip">${Number(plan.meals)||0} meals</span><span class="chip">${html(plan.periodLabel||'Monthly')}</span></div><div class="actions"><button class="btn small secondary" data-edit-plan="${plan.id}">Edit</button><button class="btn small red" data-delete-plan="${plan.id}">Delete</button></div></article>`).join('')||empty('Create your first customer subscription card')}</div><div class="section-head"><h2>Subscribed customers</h2></div><div class="card table-wrap"><table><thead><tr><th>Customer</th><th>Plan</th><th>Meals</th><th>Next meal</th><th>Status</th><th>Actions</th></tr></thead><tbody>${subscribers.map(row=>`<tr><td><strong>${html(row.customerName||'Customer')}</strong><br><small>${html(row.customerEmail||'')}</small></td><td>${html(row.planName)}</td><td>${Number(row.mealsDelivered||0)} / ${Number(row.totalMeals||0)||'∞'}</td><td>${row.nextScheduledMeal?new Date(row.nextScheduledMeal).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'}):'Not set'}</td><td>${html(row.status||'Requested')}</td><td><div class="actions"><button class="btn small green" data-deliver-meal="${row.id}">Meal Delivered</button><button class="btn small secondary" data-manage-sub="${row.id}">Manage</button></div></td></tr>`).join('')||'<tr><td colspan="6">No customer subscriptions yet.</td></tr>'}</tbody></table></div>`;
+  $('#addMealPlan').onclick=()=>openMealPlanForm();$$('[data-edit-plan]').forEach(button=>button.onclick=()=>openMealPlanForm(button.dataset.editPlan));$$('[data-delete-plan]').forEach(button=>button.onclick=()=>deleteMealPlan(button.dataset.deletePlan));$$('[data-deliver-meal]').forEach(button=>button.onclick=()=>markMealDelivered(button.dataset.deliverMeal));$$('[data-manage-sub]').forEach(button=>button.onclick=()=>manageMealSubscription(button.dataset.manageSub));
+}
+function openMealPlanForm(id=''){
+  const r=activeRestaurant(),plan=(r.subscriptionPlans||[]).find(row=>row.id===id)||{};
+  modal(id?'Edit Subscription Card':'Create Subscription Card',`<form id="mealPlanForm"><div class="form-grid"><div class="field"><label>Plan name</label><input name="name" value="${html(plan.name||'')}" required></div><div class="field"><label>Price (₹)</label><input name="price" type="number" min="1" value="${Number(plan.price)||''}" required></div><div class="field"><label>Total meals</label><input name="meals" type="number" min="1" value="${Number(plan.meals)||30}" required></div><div class="field"><label>Period label</label><input name="periodLabel" value="${html(plan.periodLabel||'1 Month')}" required></div></div><div class="field"><label>Description</label><textarea name="description" required>${html(plan.description||'')}</textarea></div><div class="field"><label>Secure subscription payment link</label><input name="paymentLink" type="url" value="${html(plan.paymentLink||'')}" placeholder="https://..."></div><label class="menu-checkbox"><input name="active" type="checkbox" ${plan.active!==false?'checked':''}> Show this plan to customers</label><button class="btn full">Save Subscription Card</button></form>`,()=>{$('#mealPlanForm').onsubmit=async event=>{event.preventDefault();const fd=new FormData(event.target),values=Object.fromEntries(fd),entry=plan.id?plan:{id:uid('mealplan')};Object.assign(entry,values,{price:Number(values.price),meals:Number(values.meals),active:fd.has('active')});r.subscriptionPlans||=[];if(!plan.id)r.subscriptionPlans.push(entry);try{await persistCloudMenu(r.id);closeModal();drawSubscriptionsView();toast('Subscription card published')}catch(error){toast(error.message||'Could not save subscription card')}}});
+}
+async function deleteMealPlan(id){const r=activeRestaurant(),plan=(r.subscriptionPlans||[]).find(row=>row.id===id);if(!plan||!confirm(`Delete ${plan.name}? Existing subscriber records will remain.`))return;r.subscriptionPlans=r.subscriptionPlans.filter(row=>row.id!==id);try{await persistCloudMenu(r.id);drawSubscriptionsView();toast('Subscription card deleted')}catch(error){r.subscriptionPlans.push(plan);toast(error.message||'Could not delete subscription card')}}
+async function markMealDelivered(id){const row=mealSubscriptions.find(item=>(item.id||item.$id)===id);if(!row)return;const changes={mealsDelivered:Number(row.mealsDelivered||0)+1,lastMealDeliveredAt:now(),updatedAt:now()};try{if(isCloudMenuSession())Object.assign(row,await Gravity58Ads.update(ownerSubscriptionKind(),id,changes));else Object.assign(row,changes);drawSubscriptionsView();toast('Meal delivery recorded')}catch(error){toast(error.message||'Could not update meal delivery')}}
+function manageMealSubscription(id){const row=mealSubscriptions.find(item=>(item.id||item.$id)===id);if(!row)return;modal('Manage Customer Subscription',`<form id="manageMealSubscription"><div class="field"><label>Status</label><select name="status">${['Requested','Payment Pending','Active','Paused','Cancelled'].map(status=>`<option ${row.status===status?'selected':''}>${status}</option>`).join('')}</select></div><div class="field"><label>Next scheduled meal</label><input name="nextScheduledMeal" type="datetime-local" value="${row.nextScheduledMeal?new Date(new Date(row.nextScheduledMeal).getTime()-new Date(row.nextScheduledMeal).getTimezoneOffset()*60000).toISOString().slice(0,16):''}"></div><div class="field"><label>Owner note</label><textarea name="ownerNote">${html(row.ownerNote||'')}</textarea></div><button class="btn full">Save Subscriber</button></form>`,()=>{$('#manageMealSubscription').onsubmit=async event=>{event.preventDefault();const values=Object.fromEntries(new FormData(event.target));values.nextScheduledMeal=values.nextScheduledMeal?new Date(values.nextScheduledMeal).toISOString():'';try{if(isCloudMenuSession())Object.assign(row,await Gravity58Ads.update(ownerSubscriptionKind(),id,{...values,updatedAt:now()}));else Object.assign(row,values);closeModal();drawSubscriptionsView();toast('Subscriber updated')}catch(error){toast(error.message||'Could not update subscriber')}}})}
 function adsView(){const key=`${activeRestaurant().name}|${activeRestaurant().city}`;const ads=(state.advertisements||[]).filter(a=>a.restaurantKey===key);const requests=state.adRequests||[];$('#page').innerHTML=`<div class="section-head"><div><h1>Gravity58 Advertisement Control</h1><p class="muted">Central ad control using unique restaurant key: <strong>${key}</strong></p></div><button class="btn" id="createAd">+ Create Advertisement</button></div><div class="grid stats">${metric('Active Ads',ads.filter(a=>a.active).length)}${metric('Restaurant Ads',ads.length)}${metric('Ad Enquiries',requests.length)}${metric('Pending Enquiries',requests.filter(x=>x.status!=='Contacted').length)}</div><div class="section-head"><h2>Advertisements for this restaurant</h2></div><div class="grid restaurant-grid">${ads.map(a=>`<article class="card"><div class="ad-icon">${a.image||'📣'}</div><h3>${a.title}</h3><p class="muted">${a.description}</p><div class="chips"><span class="chip">${a.active?'Enabled':'Disabled'}</span><span class="chip">${a.restaurantKey}</span></div><div class="actions"><button class="btn small" data-toggle-ad="${a.id}">${a.active?'Disable':'Enable'}</button><button class="btn small red" data-delete-ad="${a.id}">Delete</button></div></article>`).join('')||empty('No advertisement enabled. Customers will see the Ad Space placeholder.')}</div><div class="section-head"><h2>Ad-space enquiries</h2></div><div class="card table-wrap"><table><thead><tr><th>Name</th><th>Phone</th><th>Email</th><th>Restaurant</th><th>Status</th><th></th></tr></thead><tbody>${requests.map(q=>`<tr><td>${q.name}</td><td>${q.phone}</td><td>${q.email}</td><td>${q.restaurantKey}</td><td>${q.status||'New'}</td><td><button class="btn small secondary" data-contacted="${q.id}">Mark Contacted</button></td></tr>`).join('')||'<tr><td colspan="6" class="muted">No enquiries yet.</td></tr>'}</tbody></table></div>`;$('#createAd').onclick=()=>modal('Create G58 Advertisement',`<form id="adForm"><div class="field"><label>Restaurant key</label><input value="${key}" disabled></div><div class="field"><label>Title</label><input name="title" required></div><div class="field"><label>Description</label><textarea name="description" required></textarea></div><div class="form-grid"><div class="field"><label>Button label</label><input name="buttonLabel" value="View Offer"></div><div class="field"><label>Destination URL</label><input name="destinationUrl" value="#"></div><div class="field"><label>Icon / Emoji</label><input name="image" value="📣"></div><div class="field"><label>Status</label><select name="active"><option value="true">Enabled</option><option value="false">Disabled</option></select></div></div><button class="btn full">Save Advertisement</button></form>`,()=>{$('#adForm').onsubmit=e=>{e.preventDefault();const d=Object.fromEntries(new FormData(e.target));state.advertisements.push({id:uid('ad'),restaurantKey:key,...d,active:d.active==='true'});save();closeModal();adsView();toast('Advertisement saved')}});$$('[data-toggle-ad]').forEach(b=>b.onclick=()=>{const a=state.advertisements.find(x=>x.id===b.dataset.toggleAd);a.active=!a.active;save();adsView()});$$('[data-delete-ad]').forEach(b=>b.onclick=()=>{state.advertisements=state.advertisements.filter(x=>x.id!==b.dataset.deleteAd);save();adsView()});$$('[data-contacted]').forEach(b=>b.onclick=()=>{const q=state.adRequests.find(x=>x.id===b.dataset.contacted);q.status='Contacted';save();adsView()})}
 function currentAdvertisement(r,slotId='right_rail'){
   const restaurantKey=`${r.name}|${r.city}`,cacheKey=`${restaurantKey}|${slotId}`,ts=Date.now();
@@ -602,7 +759,7 @@ function renderPublicMenu(){
   if(!published&&!customerContext){
     modal('Welcome to '+r.name,`<form id="identityForm" class="customer-entry-form"><div class="field centered-field"><label>Customer name <small id="nameRequirement">(required for counter orders)</small></label><input name="customerName" required placeholder="Enter your name"></div><div class="service-choice"><label class="choice-card"><input type="radio" name="serviceMode" value="counter" checked><span><strong>Single Counter</strong><small>Collect from the service counter</small></span></label><label class="choice-card"><input type="radio" name="serviceMode" value="table"><span><strong>Enter Table Number</strong><small>Order for your table</small></span></label></div><div class="field" id="tableNumberField" hidden><label>Table number</label><input name="tableNumber" placeholder="Example: 12"></div><div class="field"><label>Phone number <small>(optional)</small></label><input name="phone" type="tel" placeholder="Optional contact number"></div><button class="btn full">Continue to Menu</button></form>`,()=>{const form=$('#identityForm'),tableField=$('#tableNumberField'),nameNote=$('#nameRequirement');const syncIdentity=()=>{const table=form.serviceMode.value==='table';tableField.hidden=!table;form.tableNumber.required=table;form.customerName.required=!table;nameNote.textContent=table?'(optional for table orders)':'(required for counter orders)';form.customerName.placeholder=table?'Optional customer name':'Enter your name'};$$('input[name="serviceMode"]',form).forEach(x=>x.onchange=syncIdentity);syncIdentity();form.onsubmit=e=>{e.preventDefault();const d=Object.fromEntries(new FormData(e.target));const customerName=(d.customerName||'').trim();const tableNumber=(d.tableNumber||'').trim();if(d.serviceMode==='counter'&&!customerName)return toast('Enter customer name for counter order');if(d.serviceMode==='table'&&!tableNumber)return toast('Enter table number');customerContext={restaurantId:rid,customerName,serviceMode:d.serviceMode,tableNumber:d.serviceMode==='table'?tableNumber:'',phone:(d.phone||'').trim(),customer:d.serviceMode==='table'?`${customerName?customerName+' · ':''}Table ${tableNumber}`:customerName};sessionStorage.setItem(`gravity58Customer_${rid}`,JSON.stringify(customerContext));closeModal();renderPublicMenu()}},{dismissible:false})
   }
-  const cats=sharedMenu?remoteMenuConfig.categories:restaurantCategories(rid),items=sharedMenu?remoteMenuConfig.items:restaurantItems(rid),restaurantHero=localMediaSource(r,'logoImageKey','logoImage');
+  const cats=sharedMenu?remoteMenuConfig.categories:restaurantCategories(rid),items=sharedMenu?remoteMenuConfig.items:restaurantItems(rid),restaurantHero=localMediaSource(r,'logoImageKey','logoImage'),orderingEnabled=r.ordersEnabled!==false;
   if(customerCartRestaurantId!==rid){customerCartRestaurantId=rid;try{customerCart=JSON.parse(sessionStorage.getItem(`gravity58Cart_${rid}`)||'[]').filter(entry=>items.some(item=>item.id===entry.id))}catch{customerCart=[]}}
   const filterKey=`gravity58MenuFilters_${rid}`;
   const filters={category:'all',diet:'all',search:'',available:false,...JSON.parse(sessionStorage.getItem(filterKey)||'{}')};
@@ -611,7 +768,7 @@ function renderPublicMenu(){
   app.innerHTML=`<main class="public-menu compact-public-menu">
     <section class="menu-sticky-header">
     <section class="compact-menu-hero">
-      <nav class="menu-nav compact-nav"><div>${published?'<span class="published-menu-badge">Published customer menu</span>':cloudMenu?'<span class="published-menu-badge">Live account menu</span>':''}</div><a class="sponsor-mini" href="https://www.g58.in" target="_blank" rel="noopener">Sponsored by <strong>Gravity58</strong></a></nav>
+      <nav class="menu-nav compact-nav"><div>${published?'<span class="published-menu-badge">Published customer menu</span>':cloudMenu?'<span class="published-menu-badge">Live account menu</span>':''}${r.premiumFeatures&&Array.isArray(r.subscriptionPlans)&&r.subscriptionPlans.some(plan=>plan.active!==false)?'<button class="meal-subscription-entry" id="openMealSubscriptions" type="button">Meal Subscriptions</button>':''}</div><a class="sponsor-mini" href="https://www.g58.in" target="_blank" rel="noopener">Sponsored by <strong>Gravity58</strong></a></nav>
       <div class="compact-hero-layout"><div><p class="eyebrow">PREMIUM DIGITAL MENU</p><h1>${html(r.name)}</h1><p>${html(r.description)}</p><div class="compact-details"><span>📍 ${html(r.address||r.city)}</span><span>☎ ${html(r.phone||'Contact restaurant')}</span><span class="open-tag">${r.open?'Open now':'Closed'}</span></div></div><div class="compact-hero-dish">${imageMarkup(restaurantHero,r.name?.[0]||'G','compact-hero-photo')}</div></div>
     </section>
     <aside class="header-ad-panel">
@@ -632,11 +789,11 @@ function renderPublicMenu(){
           </div>
         </div>
         <header class="focused-menu-heading"><div><p class="eyebrow">CURATED MENU</p><h2 id="publicMenuHeading">${html(activeCategory?.name||'All dishes')}</h2></div><span id="publicMenuCount">${items.length} items</span></header>
-        <div class="poster-menu-list swiggy-menu-list" id="publicMenuItems">${items.map((item,index)=>publicItem(item,{categories:cats,index,readOnly:published})).join('')}</div>
+        <div class="poster-menu-list swiggy-menu-list" id="publicMenuItems">${items.map((item,index)=>publicItem(item,{categories:cats,index,readOnly:published||!orderingEnabled})).join('')}</div>
         <div class="empty menu-filter-empty hidden" id="menuFilterEmpty">No dishes match these filters.</div>
       </section>
     </section>
-    ${published?`<div class="published-menu-footer"><span><strong>View-only published menu</strong><small>Contact the restaurant to place your order.</small></span>${r.phone?`<a class="btn" href="tel:${html(r.phone)}">Call Restaurant</a>`:''}</div>`:`<div class="cart-bar compact-cart"><span><span id="cartCount">${customerCart.reduce((a,b)=>a+b.qty,0)}</span> items · <span id="cartTotal">${money(customerCart.reduce((a,b)=>a+b.qty*b.price,0))}</span></span><button class="btn" id="openCart">View Cart</button></div>`}
+    ${published?`<div class="published-menu-footer"><span><strong>View-only published menu</strong><small>Contact the restaurant to place your order.</small></span>${r.phone?`<a class="btn" href="tel:${html(r.phone)}">Call Restaurant</a>`:''}</div>`:!orderingEnabled?`<div class="published-menu-footer menu-only-footer"><span><strong>Digital menu viewing is active</strong><small>Online ordering will be available after this restaurant activates an order plan.</small></span>${r.phone?`<a class="btn" href="tel:${html(r.phone)}">Call Restaurant</a>`:''}</div>`:`<div class="cart-bar compact-cart"><span><span id="cartCount">${customerCart.reduce((a,b)=>a+b.qty,0)}</span> items · <span id="cartTotal">${money(customerCart.reduce((a,b)=>a+b.qty*b.price,0))}</span></span><button class="btn" id="openCart">View Cart</button></div>`}
   </main>`;
   const persistFilters=()=>sessionStorage.setItem(filterKey,JSON.stringify(filters));
   const applyFilters=()=>{
@@ -652,8 +809,27 @@ function renderPublicMenu(){
   $$('[data-diet]').forEach(b=>b.onclick=()=>{filters.diet=b.dataset.diet;applyFilters()});
   $('#availableOnlyFilter').onchange=e=>{filters.available=e.target.checked;applyFilters()};
   $('#publicMenuSearch').oninput=e=>{filters.search=e.target.value;applyFilters()};
-  if(!published){$$('[data-qty-action]').forEach(b=>b.onclick=()=>changeCartQuantity(b.dataset.item,b.dataset.qtyAction));$$('[data-prepare-item]').forEach(c=>c.onchange=()=>{if(c.checked)openPreparationInstructions(c.dataset.prepareItem);else{const ci=customerCart.find(x=>x.id===c.dataset.prepareItem);if(ci){ci.prepareInstruction='';ci.prepareOptions=[];ci.customPrepareNote=''}persistCustomerCart();renderPublicMenu()}});$('#openCart').onclick=()=>openCart(r)}
+  if(!published&&orderingEnabled){$$('[data-qty-action]').forEach(b=>b.onclick=()=>changeCartQuantity(b.dataset.item,b.dataset.qtyAction));$$('[data-prepare-item]').forEach(c=>c.onchange=()=>{if(c.checked)openPreparationInstructions(c.dataset.prepareItem);else{const ci=customerCart.find(x=>x.id===c.dataset.prepareItem);if(ci){ci.prepareInstruction='';ci.prepareOptions=[];ci.customPrepareNote=''}persistCustomerCart();renderPublicMenu()}});$('#openCart').onclick=()=>openCart(r)}
+  $('#openMealSubscriptions')?.addEventListener('click',()=>openCustomerSubscriptionPortal(r,ownerId||remoteMenuSource.split(':')[1]||cloudOwnerId()));
   bindPublicAdContact(r);applyFilters()
+}
+async function openCustomerSubscriptionPortal(restaurant,ownerId){
+  if(!Gravity58Ads?.configured)return toast('Customer subscription accounts are temporarily unavailable');
+  const account=await Gravity58Ads.currentUser().catch(()=>null);
+  if(account?.email)return renderCustomerSubscriptions(restaurant,ownerId,account);
+  modal('Restaurant Meal Subscriptions',`<div class="customer-subscription-auth"><p class="muted">Sign in to view your plan, delivered meals and next scheduled meal.</p><form id="mealCustomerLogin"><div class="field"><label>Email</label><input name="email" type="email" required></div><div class="field"><label>Password</label><input name="password" type="password" minlength="6" required></div><button class="btn full">Login</button></form><div class="subscription-auth-divider">New customer?</div><form id="mealCustomerRegister"><div class="field"><label>Name</label><input name="name" required></div><div class="field"><label>Email</label><input name="email" type="email" required></div><div class="field"><label>Password</label><input name="password" type="password" minlength="6" required></div><button class="btn secondary full">Create Customer Account</button></form><button class="link-btn full" id="mealCustomerForgot">Forgot Password</button></div>`,()=>{
+    $('#mealCustomerLogin').onsubmit=async event=>{event.preventDefault();const values=Object.fromEntries(new FormData(event.target)),button=event.submitter;button.disabled=true;try{await Gravity58Ads.login(values.email.trim(),values.password);const user=await Gravity58Ads.currentUser();closeModal();renderCustomerSubscriptions(restaurant,ownerId,user)}catch(error){button.disabled=false;toast(error.message||'Could not sign in')}};
+    $('#mealCustomerRegister').onsubmit=async event=>{event.preventDefault();const values=Object.fromEntries(new FormData(event.target)),button=event.submitter;button.disabled=true;try{const user=await Gravity58Ads.register(values.email.trim(),values.password,values.name);closeModal();renderCustomerSubscriptions(restaurant,ownerId,user)}catch(error){button.disabled=false;toast(error.message||'Could not create customer account')}};
+    $('#mealCustomerForgot').onclick=()=>{const email=$('#mealCustomerLogin [name="email"]').value.trim()||$('#mealCustomerRegister [name="email"]').value.trim();if(!email)return toast('Enter your email first');Gravity58Ads.forgotPassword(email,location.origin+'/reset-password/').then(()=>toast('Password reset email sent')).catch(error=>toast(error.message||'Could not send reset email'))};
+  });
+}
+async function renderCustomerSubscriptions(restaurant,ownerId,account){
+  const plans=(restaurant.subscriptionPlans||[]).filter(plan=>plan.active!==false);
+  let records=[];try{records=(await Gravity58Ads.list(ownerSubscriptionKind(ownerId))).filter(row=>row.restaurantId===restaurant.id&&row.customerAccountId===account.$id)}catch(error){console.warn('Customer subscriptions could not be loaded',error)}
+  modal(`${restaurant.name} Meal Plans`,`<div class="customer-subscription-portal"><div class="subscription-customer-head"><div><span class="eyebrow">SIGNED IN CUSTOMER</span><h3>${html(account.name||account.email)}</h3><small>${html(account.email)}</small></div><button class="btn small secondary" id="mealCustomerLogout">Sign out</button></div>${records.length?`<section class="customer-subscription-history"><h3>Your subscriptions</h3>${records.map(row=>`<article><strong>${html(row.planName)}</strong><span class="chip">${html(row.status||'Requested')}</span><p>${Number(row.mealsDelivered||0)} meal(s) delivered${row.nextScheduledMeal?` · Next: ${new Date(row.nextScheduledMeal).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'})}`:''}</p>${row.ownerNote?`<small>${html(row.ownerNote)}</small>`:''}</article>`).join('')}</section>`:''}<div class="pricing-grid customer-meal-plans">${plans.map(plan=>`<article class="card meal-plan-card"><span>${html(plan.periodLabel||'MEAL PLAN')}</span><h3>${html(plan.name)}</h3><div class="pricing-amount">${money(plan.price)}</div><p>${html(plan.description||'')}</p><div class="chips"><span class="chip">${Number(plan.meals)||0} meals</span></div><button class="btn full" data-customer-subscribe="${plan.id}">${plan.paymentLink?'Pay & Subscribe':'Request Subscription'}</button></article>`).join('')||empty('No meal subscription plans are currently available.')}</div></div>`,()=>{
+    $('#mealCustomerLogout').onclick=async()=>{await Gravity58Ads.logout();closeModal();toast('Customer signed out')};
+    $$('[data-customer-subscribe]').forEach(button=>button.onclick=async()=>{const plan=plans.find(row=>row.id===button.dataset.customerSubscribe);if(!plan)return;const existing=records.find(row=>row.planId===plan.id&&!['Cancelled','Rejected'].includes(row.status));if(existing)return toast('You already have this subscription request');button.disabled=true;const request={ownerId,restaurantId:restaurant.id,restaurantName:restaurant.name,customerAccountId:account.$id,customerName:account.name||account.email.split('@')[0],customerEmail:account.email,planId:plan.id,planName:plan.name,totalMeals:Number(plan.meals)||0,mealsDelivered:0,price:Number(plan.price)||0,paymentLink:plan.paymentLink||'',status:plan.paymentLink?'Payment Pending':'Requested',createdAt:now()};const popup=plan.paymentLink?window.open('about:blank','_blank'):null;try{const created=await Gravity58Ads.create(ownerSubscriptionKind(ownerId),request,undefined,Gravity58Ads.collaborativePermissionSet(account.$id));if(popup)popup.location.href=plan.paymentLink;closeModal();toast('Subscription request sent to the restaurant');renderCustomerSubscriptions(restaurant,ownerId,account)}catch(error){popup?.close();button.disabled=false;toast(error.message||'Could not create subscription request')}});
+  });
 }
 function selectPublicCategory(rid,catId){const key=`gravity58MenuFilters_${rid}`,filters={category:'all',diet:'all',search:'',available:false,...JSON.parse(sessionStorage.getItem(key)||'{}'),category:catId};sessionStorage.setItem(key,JSON.stringify(filters));renderPublicMenu()}
 function bindCategoryWheel(rid,cats,activeId){
@@ -717,6 +893,10 @@ function openCart(r){
   const total=Math.round(sub+tax+service);
   const orderId=`GR58-${Date.now().toString().slice(-7)}-${Math.floor(10+Math.random()*89)}`;
   const upiUri=r.upiId ? `upi://pay?pa=${encodeURIComponent(r.upiId)}&pn=${encodeURIComponent(r.name)}&am=${total.toFixed(2)}&cu=INR&tn=${encodeURIComponent('Order '+orderId)}` : '';
+  const appQuery=upiUri.replace(/^upi:\/\//,'');
+  const paymentRequired=r.paymentEnabled&&CONFIG.testMode!==true;
+  const schedulingEnabled=r.premiumFeatures===true&&r.paymentEnabled;
+  const scheduleMin=new Date(Date.now()+5*60000-new Date().getTimezoneOffset()*60000).toISOString().slice(0,16);
 
   modal('Your Cart',`<div id="checkoutPanel">
     <div>${customerCart.map(i=>`<div class="section-head"><span>${i.qty} × ${i.name}</span><strong>${money(i.qty*i.price)}</strong></div>`).join('')}</div>
@@ -725,13 +905,17 @@ function openCart(r){
     <div class="section-head"><span>Tax</span><strong>${money(tax)}</strong></div>
     <div class="section-head"><span>Service charge</span><strong>${money(service)}</strong></div>
     <div class="section-head"><h3>Grand Total</h3><h3>${money(total)}</h3></div>
-    ${r.paymentEnabled?`<div class="payment-panel"><h3>Payment option</h3>
-      <label class="choice-card"><input type="radio" name="paymentMethod" value="counter" checked><span><strong>Pay at Counter</strong><small>Pay when your order is served</small></span></label>
-      <label class="choice-card"><input type="radio" name="paymentMethod" value="online"><span><strong>Pay Online</strong><small>${r.upiId?`Pay ${money(total)} to ${r.upiId}`:'Restaurant UPI ID is not configured'}</small></span></label>
-      <div id="onlinePaymentFields" hidden>
+    ${r.paymentEnabled?`<div class="payment-panel"><h3>Secure payment required</h3>
+      ${!paymentRequired?'<label class="choice-card"><input type="radio" name="paymentMethod" value="counter" checked><span><strong>Pay at Counter</strong><small>Local test checkout</small></span></label>':''}
+      <label class="choice-card"><input type="radio" name="paymentMethod" value="online" ${paymentRequired?'checked':''}><span><strong>Pay Online</strong><small>${r.upiId?`Pay ${money(total)} to ${r.upiId}`:'Restaurant UPI ID is not configured'}</small></span></label>
+      <div id="onlinePaymentFields" ${paymentRequired?'':'hidden'}>
         <div class="upi-payment-box"><div id="amountQr"></div><div><strong>Scan to pay ${money(total)}</strong><p class="muted">UPI ID: ${r.upiId||'Not configured'}</p>${upiUri?`<a class="btn secondary small" href="${upiUri}">Open UPI App</a>`:''}</div></div>
+        ${upiUri?`<div class="payment-app-grid"><a href="phonepe://${appQuery}" class="payment-app phonepe">PhonePe</a><a href="paytmmp://${appQuery}" class="payment-app paytm">Paytm</a><a href="${upiUri}" class="payment-app upi">Any UPI App</a></div>`:''}
+        ${r.paymentLink?`<a class="btn full secure-payment-link" href="${html(r.paymentLink)}" target="_blank" rel="noopener">Open Restaurant Payment Page</a>`:''}
         <div class="field"><label>Transaction ID</label><input id="transactionId" autocomplete="off" placeholder="Enter UPI transaction ID after payment"></div>
-        <p class="muted">Restaurant staff must confirm payment before accepting the order.</p>
+        <div class="field"><label>Payment receipt image</label><input id="paymentReceipt" type="file" accept="image/jpeg,image/png,image/webp"><small>Required for verification. The receipt is stored securely with this order.</small></div>
+        ${schedulingEnabled?`<div class="field"><label>Schedule meal preparation <small>(optional)</small></label><input id="scheduledFor" type="datetime-local" min="${scheduleMin}"><small>Choose when the restaurant should prepare this order. The restaurant is alerted five minutes before this time.</small></div>`:''}
+        <p class="muted">After placing the order, share the receipt link with the restaurant on WhatsApp. Staff confirm payment before processing.</p>
       </div>
     </div>`:''}
     <p id="checkoutError" class="checkout-error" hidden></p>
@@ -747,7 +931,7 @@ function openCart(r){
       if(errorBox){ errorBox.textContent=message; errorBox.hidden=false; }
       toast(message);
     };
-    const selectedPayment=()=> $('input[name="paymentMethod"]:checked',panel)?.value || 'counter';
+    const selectedPayment=()=> $('input[name="paymentMethod"]:checked',panel)?.value || (paymentRequired?'online':'counter');
     const showPayment=()=>{
       const isOnline=selectedPayment()==='online';
       if(online) online.hidden=!isOnline;
@@ -766,8 +950,12 @@ function openCart(r){
       if(errorBox) errorBox.hidden=true;
       const paymentMethod=r.paymentEnabled?selectedPayment():'counter';
       const transactionId=($('#transactionId',panel)?.value||'').trim();
+      const receiptFile=$('#paymentReceipt',panel)?.files?.[0]||null;
+      const scheduledValue=$('#scheduledFor',panel)?.value||'';
       if(paymentMethod==='online'&&!r.upiId) return fail('Restaurant UPI ID is not configured.');
       if(paymentMethod==='online'&&!transactionId) return fail('Enter the transaction ID after payment.');
+      if(paymentMethod==='online'&&!receiptFile) return fail('Upload the payment receipt image.');
+      if(scheduledValue&&new Date(scheduledValue).getTime()<Date.now()+4*60000)return fail('Choose a schedule time at least 5 minutes from now.');
       if(!customerCart.length) return fail('Your cart is empty.');
 
       button.dataset.busy='1';
@@ -780,6 +968,8 @@ function openCart(r){
           : customerContext.customerName;
         const orderOwnerId=remoteMenuSource.startsWith('cloud:')?remoteMenuSource.split(':')[1]:cloudOwnerId();
         const tokenNumber=await reserveOrderToken(orderOwnerId,r.id);
+        let receipt={};
+        if(receiptFile){Gravity58Ads.validateMediaFile(receiptFile,'payment receipt');const uploaded=await Gravity58Ads.uploadAdMedia(receiptFile);receipt={paymentReceiptUrl:uploaded.mediaUrl,paymentReceiptFileId:uploaded.fileId,paymentReceiptName:uploaded.mediaName,paymentReceiptType:uploaded.mediaType}}
         const order={
           id:orderId,restaurantId:r.id,customer:identity||'Guest',
           ownerId:orderOwnerId,cloudOwnerId:orderOwnerId,
@@ -789,7 +979,8 @@ function openCart(r){
           items:customerCart.map(i=>({id:i.id,name:i.name,qty:i.qty,price:i.price,prepareInstruction:i.prepareInstruction||'',prepareOptions:i.prepareOptions||[],customPrepareNote:i.customPrepareNote||''})),
           subtotal:sub,tax,serviceCharge:service,total,paymentMethod,
           upiId:paymentMethod==='online'?r.upiId:'',upiUri:paymentMethod==='online'?upiUri:'',
-          transactionId,paymentStatus:paymentMethod==='online'?'Awaiting confirmation':'Not required',
+          transactionId,paymentStatus:paymentMethod==='online'?'Awaiting confirmation':'Not required',...receipt,
+          scheduledFor:scheduledValue?new Date(scheduledValue).toISOString():'',
           status,createdAt:now()
         };
         state.orders=Array.isArray(state.orders)?state.orders:[];
@@ -803,6 +994,7 @@ function openCart(r){
         closeModal();
         location.hash=`track&order=${encodeURIComponent(order.id)}`;
         renderTrack();
+        if(paymentMethod==='online')openOrderReceiptWhatsApp(r,order);
       }catch(err){
         console.error('Place order failed',err);
         button.dataset.busy='0';button.disabled=false;button.textContent='Place Order';
@@ -810,6 +1002,13 @@ function openCart(r){
       }
     });
   });
+}
+
+function openOrderReceiptWhatsApp(restaurant,order){
+  const configured=restaurant.social?.WhatsApp||'',digits=String(configured||restaurant.phone||'').replace(/\D/g,'').slice(-12);if(!digits)return toast('Order placed. Restaurant WhatsApp number is not configured.');
+  const phone=digits.length===10?`91${digits}`:digits;
+  const text=[`Payment receipt for ${restaurant.name}`,`Order: ${order.id}`,`Token: ${formatToken(order.tokenNumber)}`,`Amount: ${money(order.total)}`,`Transaction: ${order.transactionId}`,order.scheduledFor?`Scheduled: ${new Date(order.scheduledFor).toLocaleString('en-IN')}`:'',order.paymentReceiptUrl?`Receipt: ${order.paymentReceiptUrl}`:''].filter(Boolean).join('\n');
+  window.open(`https://wa.me/${phone}?text=${encodeURIComponent(text)}`,'_blank','noopener');
 }
 
 function renderTrack(){const params=new URLSearchParams(location.hash.replace('#track&',''));const id=params.get('order'),o=state.orders.find(x=>x.id===id);if(!o){app.innerHTML=`<main class="public-menu"><div class="empty">Order not found</div></main>`;return}const r=state.restaurants.find(x=>x.id===o.restaurantId),stage={'Payment Verification':5,'Payment Rejected':100,Pending:8,Accepted:25,Preparing:55,Ready:85,Delivered:94,Completed:100,Rejected:100}[o.status]||8;let content;if(o.status==='Completed')content=`<section class="card thankyou"><h1>Thank You!</h1><h2>${r.logo} ${r.name}</h2><p class="muted">We hope you enjoyed your experience.</p><div class="chips" style="justify-content:center"><span class="chip">Order ${o.id}</span><span class="chip">${o.customer}</span></div><div class="grid restaurant-grid" style="margin-top:24px"><article class="card"><h3>Restaurant</h3><p class="muted">Follow ${r.name} and leave your feedback.</p></article><article class="card"><h3>Discover More with Gravity58</h3><p class="muted">Explore local businesses and useful digital tools.</p><a class="btn" href="${CONFIG.gravity58Url}" target="_blank">Explore Gravity58</a></article><article class="card"><h3>Featured</h3><p class="muted">Advertisement space for restaurant or Gravity58 promotions.</p></article></div></section>`;else content=`<section class="card" style="text-align:center"><span class="status-pill"><span class="dot"></span>${o.status}</span><h1 style="margin:18px 0 6px">${o.status==='Ready'?'Your Food Is Ready!':o.status==='Payment Verification'?'Verifying Your Payment':o.status==='Payment Rejected'?'Payment Could Not Be Confirmed':o.status==='Rejected'?'Order Rejected':'Your Food Is Being Prepared'}</h1><div class="track-message ${o.status==='Ready'?'ready-message':''}">${o.status==='Ready'?'<strong>Your order will be served soon</strong><span>Please stay at your table or near the service counter. Our team will bring your food shortly.</span>':o.status==='Payment Verification'?'Restaurant staff are checking transaction '+(o.transactionId||''):'Order '+o.id+' · '+o.customer}</div>${['Accepted','Preparing'].includes(o.status)?`<div class="pot-scene"><div><div class="steam"><span></span><span></span><span></span></div><div class="pot"></div></div></div>`:''}<div class="progress"><span style="width:${stage}%"></span></div><div class="chips" style="justify-content:center;margin-top:18px">${o.items.map(i=>`<span class="chip">${i.qty} × ${i.name}${i.prepareInstruction?' · '+i.prepareInstruction:''}</span>`).join('')}</div><div class="section-head"><span>Total</span><strong>${money(o.total)}</strong></div><section class="social-discovery"><div class="social-discovery-copy"><span class="eyebrow">Restaurant profile</span><h2>Take a look at how we specialise</h2><p>Explore ${r.name} beyond today’s order. See our food creations, kitchen moments, new dishes and restaurant updates.</p></div><div class="social-profile-grid">${Object.entries(r.social||{}).filter(([,u])=>u).map(([p,u])=>{const key=p.toLowerCase();const icon=key==='instagram'?'◎':key==='youtube'?'▶':key==='facebook'?'f':key==='whatsapp'?'◉':'↗';const desc=key==='instagram'?'View our restaurant profile, food photos, reels and latest specials.':key==='youtube'?'Watch our kitchen stories, signature dishes and restaurant videos.':key==='facebook'?'Visit our restaurant page for updates, offers and community posts.':key==='whatsapp'?'Connect with the restaurant team on WhatsApp.':'Open our restaurant profile and discover more.';return `<a class="social-profile-card ${key}" href="${u}" target="_blank" rel="noopener"><span class="social-profile-icon">${icon}</span><span class="social-profile-text"><strong>${p}</strong><small>${desc}</small><b>View restaurant profile →</b></span></a>`}).join('')||'<div class="social-empty">Restaurant social profiles will appear here.</div>'}</div></section>${publicAdSection(r)}</section>`;app.innerHTML=`<main class="public-menu">${content}<div class="actions" style="justify-content:center;margin-top:18px"><button class="btn secondary" id="refreshTrack">Refresh Status</button><button class="btn" id="backMenu">View Menu</button></div></main>`;$('#refreshTrack').onclick=renderTrack;$('#backMenu').onclick=()=>location.hash=`menu&restaurant=${r.id}`;bindPublicAdContact(r)}
@@ -833,7 +1032,8 @@ function applyOrderTrackingCopy(){
   if(status!=='Preparing') $('.pot-scene',app)?.remove();
   const card=$('.public-menu > .card',app),restaurant=state.restaurants.find(row=>row.id===order.restaurantId);
   if(card&&!$('.customer-token-panel',card))card.insertAdjacentHTML('afterbegin',`<section class="customer-token-panel"><span>YOUR QUEUE TOKEN</span><strong>${formatToken(order.tokenNumber)}</strong><small>${html(order.serviceMode==='table'?`Table ${order.tableNumber||'-'}`:'Single Counter')} · ${html(order.status)}</small></section>`);
-  if(card&&!$('.customer-order-chat',card)){
+  const publicMessaging=restaurant?.premiumFeatures===true||menuFeature('messaging');
+  if(card&&publicMessaging&&!$('.customer-order-chat',card)){
     const ad=$('.public-ad',card);
     const chat=`<section class="customer-order-chat ${customerChatOpen?'open':''}"><button class="customer-chat-toggle" type="button" aria-expanded="${customerChatOpen?'true':'false'}"><span class="customer-chat-dot"></span><strong>Chat</strong></button><div class="customer-chat-panel"><header><div><span class="eyebrow">LIVE RESTAURANT CHAT</span><h2>Need help?</h2></div><button class="customer-chat-close" type="button" aria-label="Close customer chat">✕</button></header><p class="muted">Messages and corrected table details update live.</p><div class="order-chat-log">${(order.messages||[]).slice(-8).map(item=>`<div class="order-message ${item.senderRole==='customer'?'mine':''}"><strong>${html(item.senderRole==='owner'?'Restaurant':item.senderName||'You')}</strong><span>${html(item.text)}</span><small>${new Date(item.createdAt).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'})}</small></div>`).join('')||'<p class="muted no-messages">No messages yet.</p>'}</div><form class="order-chat-form" data-customer-chat="${html(order.id)}"><input name="message" maxlength="240" placeholder="Message the restaurant" aria-label="Message restaurant"><button class="btn" type="submit">Send</button></form></div></section>`;
     if(ad)ad.insertAdjacentHTML('beforebegin',chat);else card.insertAdjacentHTML('beforeend',chat);
@@ -879,9 +1079,10 @@ document.addEventListener('pointerdown',()=>{if(ringingOrderIds.size)orderAlertB
 function empty(t){return `<div class="empty">${t}</div>`}
 window.addEventListener('hashchange',render);
 window.addEventListener('storage',()=>{state=load();render();hydrateLocalMedia()});
-async function refreshTrackedCloudOrder(){if(!location.hash.startsWith('#track'))return;state=load();const params=new URLSearchParams(location.hash.replace('#track&','')),id=params.get('order'),local=state.orders.find(row=>row.id===id);if(local?.cloudOwnerId)try{const latest=await Gravity58Ads.get(cloudOrderKind(local.cloudOwnerId),id);Object.assign(local,latest);save()}catch(error){console.warn('Order status refresh failed',error)}renderTrack()}
+async function refreshTrackedCloudOrder(){if(!location.hash.startsWith('#track'))return;state=load();const params=new URLSearchParams(location.hash.replace('#track&','')),id=params.get('order'),local=state.orders.find(row=>row.id===id);if(local?.cloudOwnerId)try{const latest=await Gravity58Ads.get(cloudOrderKind(local.cloudOwnerId),id),restaurant=state.restaurants.find(row=>row.id===latest.restaurantId),decision=PLAN_UTILS.orderRetention(latest,{premium:restaurant?.premiumFeatures===true});if(!decision.keep){await Gravity58Ads.remove(cloudOrderKind(local.cloudOwnerId),id);state.orders=state.orders.filter(row=>row.id!==id);save()}else{if(decision.carry&&latest.retentionCarryDay!==decision.carryDay)Object.assign(latest,await Gravity58Ads.update(cloudOrderKind(local.cloudOwnerId),id,{retentionCarryDay:decision.carryDay,retentionReason:'processing-at-midnight'}));Object.assign(local,latest);save()}}catch(error){console.warn('Order status refresh failed',error)}renderTrack()}
 setInterval(refreshTrackedCloudOrder,2500);
-setInterval(async()=>{if(state.session?.provider==='gravity58'&&view==='orders'&&!location.hash){try{await syncCloudOrders();ordersView()}catch(error){console.warn('Order board refresh failed',error)}}},10000);
+setInterval(async()=>{if(state.session?.provider==='gravity58'&&['orders','schedule'].includes(view)&&!location.hash){try{await syncCloudOrders();view==='orders'?ordersView():scheduleView()}catch(error){console.warn('Order board refresh failed',error)}}},10000);
+scheduleAlertTimer=setInterval(()=>{if(state.session&&!location.hash)checkScheduledOrderAlerts()},30000);
 function refreshExpiryLabels(){let expiredVisibleAd=false;$$('[data-ad-expiry]').forEach(label=>{const expiresAt=label.dataset.adExpiry;if(!expiresAt){label.textContent='Contact G58 for slot duration';return}label.textContent=adTimeLeft({expiresAt});if(new Date(expiresAt).getTime()<=Date.now())expiredVisibleAd=true});if(expiredVisibleAd&&location.hash.startsWith('#menu'))renderPublicMenu()}
 setInterval(refreshExpiryLabels,15000);
 async function resumeGravity58Account(){if(location.hash.startsWith('#menu')||!Gravity58Ads?.configured)return;try{const account=await Gravity58Ads.currentUser();if(!account?.email)return;const user=ensureGravity58User(account);state.session={userId:user.id,provider:'gravity58'};save();await syncCloudMenus();render()}catch(error){console.warn('Gravity58 account resume failed',error)}}
