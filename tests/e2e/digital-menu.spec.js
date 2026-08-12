@@ -470,11 +470,12 @@ test("customer can load the latest account menu on another device", async ({ pag
   await expect(page.locator('.poster-menu-item img[src="https://cdn.example.com/cloud-meal.jpg"]')).toBeVisible();
   await expect(page.locator('.compact-hero-photo[src="https://cdn.example.com/restaurant.jpg"]')).toBeVisible();
   await expect(page.locator('.header-ad-media[src="https://cdn.example.com/stable-ad.jpg"]')).toBeVisible();
-  await expect(page.getByRole("button", { name: /Book this ad space/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Book Ad Space" })).toBeVisible();
   await expect(page.locator(".header-active-ad").getByRole("link", { name: "Get Offer" })).toBeVisible();
   await expect(page.locator(".header-active-ad")).not.toContainText("Stable Campaign");
   await expect(page.locator(".header-ad-media")).toHaveCSS("object-fit", "cover");
-  await expect(page.locator(".header-active-ad .ad-expiry-badge")).toHaveText("Lifetime advertisement");
+  await expect(page.locator(".header-active-ad .ad-expiry-badge")).toHaveCount(0);
+  await expect(page.locator(".header-active-ad")).not.toContainText(/1080|Lifetime advertisement/);
   await page.locator('[data-item="cloud-meal"][data-qty-action="plus"]').click();
   await expect(page.locator("#cartCount")).toHaveText("1");
   await expect(page.locator("#cartTotal")).toHaveText("₹299");

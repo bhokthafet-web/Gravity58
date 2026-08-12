@@ -190,8 +190,9 @@ test('subscription payment workflow requires owner link, customer proof and owne
     res: { json: (body, status = 200) => ({ body, status }) }, error: () => {},
   });
   try {
-    const sent = await invoke('send-subscription-link', ownerId);
+    const sent = await invoke('send-subscription-link', ownerId, { paymentLink: 'https://payments.example.test/customer-activation' });
     assert.equal(sent.body.subscription.status, 'Payment Link Sent');
+    assert.equal(sent.body.subscription.paymentLink, 'https://payments.example.test/customer-activation');
     const submitted = await invoke('submit-subscription-payment', customerId, { paymentReceiptFileId: 'sub_receipt_1' });
     assert.equal(submitted.body.subscription.status, 'Payment Proof Submitted');
     assert.equal(submitted.body.subscription.paymentReceiptName, 'subscription.png');

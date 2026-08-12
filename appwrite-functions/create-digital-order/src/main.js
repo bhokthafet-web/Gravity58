@@ -280,8 +280,14 @@ async function sendSubscriptionLink(call, input, userId) {
     const menu = parseMenu(menuRow, ownerId, subscription.restaurantId, false);
     currentPlan = (menu.restaurant.subscriptionPlans || []).find(plan => String(plan.id) === String(subscription.planId));
   } catch {}
-  const paymentLink = text(currentPlan?.paymentLink || subscription.paymentLink, 500);
-  if (!paymentLink) throw new Error('Add a secure payment link to this plan before sending it.');
+  const paymentLink = text(input.paymentLink || currentPlan?.paymentLink || subscription.paymentLink, 500);
+  if (!paymentLink) throw new Error('Enter the customer subscription payment link before sending it.');
+  try {
+    const parsed = new URL(paymentLink);
+    if (parsed.protocol !== 'https:') throw new Error('not secure');
+  } catch {
+    throw new Error('Enter a valid secure HTTPS subscription payment link.');
+  }
   if (!['Requested', 'Payment Link Sent'].includes(subscription.status)) throw new Error(`This subscription is already ${subscription.status}.`);
   const deliveryDays = currentPlan ? (Array.isArray(currentPlan.deliveryDays) ? currentPlan.deliveryDays : []) : subscription.deliveryDays;
   const deliveryTime = /^\d{2}:\d{2}$/.test(String(currentPlan?.deliveryTime || '')) ? currentPlan.deliveryTime : subscription.deliveryTime;
