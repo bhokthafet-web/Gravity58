@@ -100,9 +100,10 @@ test("restaurant owner imports CSV, controls availability, orders, QR, reports a
   await page.locator('[data-view="settings"]').click();
   await page.locator('#settingsForm select[name="open"]').selectOption("false");
   await page.locator('#settingsForm input[name="upiId"]').fill("updated@upi");
+  await page.locator('#settingsForm input[name="upiPayeeName"]').fill("Updated Restaurant Private Limited");
   await page.locator("#settingsForm").getByRole("button", { name: "Save Settings" }).click();
   const persisted = await page.evaluate(() => JSON.parse(localStorage.getItem("gravity58DigitalMenu")).restaurants.find((row) => row.id === "res_cafe"));
-  expect(persisted).toMatchObject({ open: false, upiId: "updated@upi" });
+  expect(persisted).toMatchObject({ open: false, upiId: "updated@upi", upiPayeeName: "Updated Restaurant Private Limited" });
 
   await page.locator('[data-view="menu"]').click();
   const removable = page.locator("#menuGrid .menu-item", { hasText: "Regression Platter" });

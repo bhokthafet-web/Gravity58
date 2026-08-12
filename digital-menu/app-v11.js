@@ -139,7 +139,7 @@ function load(){
     const stored=JSON.parse(localStorage.getItem('gravity58DigitalMenu'))||structuredClone(seed);
     stored.advertisements=[];
     stored.adRequests=[];
-    stored.restaurants=(stored.restaurants||[]).map(r=>({...r,logoImageKey:r.logoImageKey||(isWebImage(r.logoImage)&&String(r.logoImage).startsWith('data:')?`restaurant:${r.id}`:''),address:r.address||'',phone:r.phone||'',email:r.email||'',paymentEnabled:!!r.paymentEnabled,upiId:r.upiId||'',paymentLink:r.paymentLink||'',restaurantKey:`${r.name}|${r.city}`}));
+    stored.restaurants=(stored.restaurants||[]).map(r=>({...r,logoImageKey:r.logoImageKey||(isWebImage(r.logoImage)&&String(r.logoImage).startsWith('data:')?`restaurant:${r.id}`:''),address:r.address||'',phone:r.phone||'',email:r.email||'',paymentEnabled:!!r.paymentEnabled,upiId:r.upiId||'',upiPayeeName:r.upiPayeeName||r.name||'',paymentLink:r.paymentLink||'',restaurantKey:`${r.name}|${r.city}`}));
     stored.items=(stored.items||[]).map(i=>({...i,imageKey:i.imageKey||(isWebImage(i.imageData)&&String(i.imageData).startsWith('data:')?`menu-item:${i.id}`:''),prepareInstructionsEnabled:!!i.prepareInstructionsEnabled}));
     stored.orders=(stored.orders||[]).map((order,index)=>({...order,tokenNumber:Number(order.tokenNumber)||index+1,orderDay:order.orderDay||orderDay(order.createdAt),messages:Array.isArray(order.messages)?order.messages:[]}));
     return stored;
@@ -178,12 +178,18 @@ function cloudTokenKind(ownerId=cloudOwnerId()){return `${CLOUD_TOKEN_KIND_PREFI
 function orderDay(value=now()){return new Date(value).toLocaleDateString('en-CA',{timeZone:'Asia/Kolkata'}).replaceAll('-','')}
 function formatToken(value){return String(Math.max(0,Number(value)||0)).padStart(4,'0')}
 function activeQueueStatus(status){return !['Completed','Rejected','Payment Rejected'].includes(status)}
-function restaurantCloudFields(r){const fields=['id','name','type','city','description','address','phone','email','open','accepting','tax','service','identification','restaurantKey','social','paymentEnabled','upiId','paymentLink','logoImageUrl','logoImageFileId','subscriptionPlans','digitalMenuPlan','ordersEnabled','premiumFeatures','entitlementExpiresAt'];return Object.fromEntries(fields.map(key=>[key,r?.[key]]))}
+function restaurantCloudFields(r){const fields=['id','name','type','city','description','address','phone','email','open','accepting','tax','service','identification','restaurantKey','social','paymentEnabled','upiId','upiPayeeName','paymentLink','logoImageUrl','logoImageFileId','subscriptionPlans','digitalMenuPlan','ordersEnabled','premiumFeatures','entitlementExpiresAt'];return Object.fromEntries(fields.map(key=>[key,r?.[key]]))}
 function restaurantPaymentSettings(restaurant={}){
-  const upiId=String(restaurant.upiId||'').trim(),paymentLink=String(restaurant.paymentLink||'').trim();
+  const upiId=String(restaurant.upiId||'').trim(),payeeName=String(restaurant.upiPayeeName||restaurant.name||'').trim(),paymentLink=String(restaurant.paymentLink||'').trim();
   const hasExplicitSetting=restaurant.paymentEnabled!==undefined&&restaurant.paymentEnabled!==null;
   const explicitlyEnabled=restaurant.paymentEnabled===true||restaurant.paymentEnabled==='true';
-  return {enabled:hasExplicitSetting?explicitlyEnabled:!!(upiId||paymentLink),configured:!!(upiId||paymentLink),upiId,paymentLink};
+  return {enabled:hasExplicitSetting?explicitlyEnabled:!!(upiId||paymentLink),configured:!!(upiId||paymentLink),upiId,payeeName,paymentLink};
+}
+function buildUpiPaymentUri({upiId,payeeName,amount,orderId}){
+  if(!upiId)return '';
+  const reference=`58${String(orderId||Date.now()).replace(/\D/g,'').slice(-30)}`.slice(0,35);
+  const params=new URLSearchParams({pa:upiId,pn:payeeName||upiId,tr:reference,tn:`G58 order ${orderId}`,am:Number(amount||0).toFixed(2),cu:'INR'});
+  return `upi://pay?${params.toString()}`;
 }
 function itemCloudFields(item){const fields=['id','categoryId','name','description','price','type','available','prep','prepareInstructionsEnabled','imageUrl','imageFileId'];return Object.fromEntries(fields.map(key=>[key,item?.[key]]))}
 function buildCloudMenuRecord(restaurantId=state.activeRestaurantId){const restaurant=state.restaurants.find(row=>row.id===restaurantId);if(!restaurant)throw new Error('Restaurant not found');return {schemaVersion:2,ownerId:cloudOwnerId(),updatedAt:now(),restaurant:restaurantCloudFields(restaurant),categories:restaurantCategories(restaurantId).map(row=>({id:row.id,name:row.name})),items:restaurantItems(restaurantId).map(itemCloudFields)}}
@@ -712,15 +718,16 @@ function publicAdSection(r){
 function bindPublicAdContact(r){const b=$('#contactG58Ads');if(!b)return;b.onclick=()=>{const base=CONFIG.adBookingPortalUrl||'../advertise/';location.href=`${base}?restaurant=${encodeURIComponent(`${r.name}|${r.city}`)}`}}
 function settingsView(){
   const r=activeRestaurant(),payment=restaurantPaymentSettings(r);
-  $('#page').innerHTML=`<div class="section-head"><div><h1>Restaurant Settings</h1><p class="muted">Settings apply only to ${html(r.name)}</p></div></div><article class="card"><form id="settingsForm"><div class="form-grid"><div class="field"><label>Restaurant status</label><select name="open"><option value="true" ${r.open?'selected':''}>Open</option><option value="false" ${!r.open?'selected':''}>Closed</option></select></div><div class="field"><label>Accept orders</label><select name="accepting"><option value="true" ${r.accepting?'selected':''}>Yes</option><option value="false" ${!r.accepting?'selected':''}>No</option></select></div><div class="field"><label>Tax %</label><input name="tax" type="number" value="${r.tax||0}"></div><div class="field"><label>Service charge %</label><input name="service" type="number" value="${r.service||0}"></div><div class="field"><label>Enable customer payment</label><select name="paymentEnabled"><option value="true" ${payment.enabled?'selected':''}>Enabled</option><option value="false" ${!payment.enabled?'selected':''}>Disabled</option></select></div><div class="field"><label>UPI ID</label><input name="upiId" value="${html(payment.upiId)}" placeholder="restaurant@upi"></div><div class="field"><label>Payment link (optional)</label><input name="paymentLink" type="url" value="${html(payment.paymentLink)}" placeholder="https://..."></div><div class="field"><label>Instagram URL</label><input name="instagram" value="${html(r.social?.Instagram||'')}"></div><div class="field"><label>WhatsApp number or URL</label><input name="whatsapp" value="${html(r.social?.WhatsApp||'')}" placeholder="9876543210 or https://wa.me/..."></div></div><p class="muted">Enable payments with either a UPI ID or a secure payment link. Customers upload a receipt, share it to your WhatsApp, and the order remains under Payment Verification until you confirm it.</p><button class="btn">Save Settings</button></form></article>`;
+  $('#page').innerHTML=`<div class="section-head"><div><h1>Restaurant Settings</h1><p class="muted">Settings apply only to ${html(r.name)}</p></div></div><article class="card"><form id="settingsForm"><div class="form-grid"><div class="field"><label>Restaurant status</label><select name="open"><option value="true" ${r.open?'selected':''}>Open</option><option value="false" ${!r.open?'selected':''}>Closed</option></select></div><div class="field"><label>Accept orders</label><select name="accepting"><option value="true" ${r.accepting?'selected':''}>Yes</option><option value="false" ${!r.accepting?'selected':''}>No</option></select></div><div class="field"><label>Tax %</label><input name="tax" type="number" value="${r.tax||0}"></div><div class="field"><label>Service charge %</label><input name="service" type="number" value="${r.service||0}"></div><div class="field"><label>Enable customer payment</label><select name="paymentEnabled"><option value="true" ${payment.enabled?'selected':''}>Enabled</option><option value="false" ${!payment.enabled?'selected':''}>Disabled</option></select></div><div class="field"><label>UPI ID</label><input name="upiId" value="${html(payment.upiId)}" placeholder="restaurant@upi"></div><div class="field"><label>UPI payee name</label><input name="upiPayeeName" value="${html(payment.payeeName)}" placeholder="Exact bank-registered receiver name"><small>Enter the exact receiver or merchant name shown by the bank for this UPI ID.</small></div><div class="field"><label>Secure merchant payment link (recommended)</label><input name="paymentLink" type="url" value="${html(payment.paymentLink)}" placeholder="https://..."></div><div class="field"><label>Instagram URL</label><input name="instagram" value="${html(r.social?.Instagram||'')}"></div><div class="field"><label>WhatsApp number or URL</label><input name="whatsapp" value="${html(r.social?.WhatsApp||'')}" placeholder="9876543210 or https://wa.me/..."></div></div><p class="muted">For production payments, use a verified merchant UPI ID or a secure payment-gateway link. Personal UPI IDs and payments sent from the receiver's own bank account may be declined by the UPI app. Customers upload a receipt and the order remains under Payment Verification until you confirm it.</p><button class="btn">Save Settings</button></form></article>`;
   $('#settingsForm').onsubmit=async event=>{
     event.preventDefault();
     const values=Object.fromEntries(new FormData(event.target)),button=event.submitter;
-    const paymentEnabled=values.paymentEnabled==='true',upiId=values.upiId.trim(),paymentLink=values.paymentLink.trim(),whatsapp=values.whatsapp.trim();
+    const paymentEnabled=values.paymentEnabled==='true',upiId=values.upiId.trim(),upiPayeeName=values.upiPayeeName.trim(),paymentLink=values.paymentLink.trim(),whatsapp=values.whatsapp.trim();
     if(paymentEnabled&&!upiId&&!paymentLink)return toast('Add a UPI ID or payment link before enabling customer payment');
+    if(paymentEnabled&&upiId&&!upiPayeeName)return toast('Add the exact bank-registered UPI payee name');
     if(paymentEnabled&&!String(whatsapp||r.phone||'').replace(/\D/g,''))return toast('Add the restaurant phone or WhatsApp number for receipt sharing');
     button.disabled=true;
-    Object.assign(r,{open:values.open==='true',accepting:values.accepting==='true',tax:+values.tax,service:+values.service,paymentEnabled,upiId,paymentLink,social:{...r.social,Instagram:values.instagram.trim(),WhatsApp:whatsapp}});
+    Object.assign(r,{open:values.open==='true',accepting:values.accepting==='true',tax:+values.tax,service:+values.service,paymentEnabled,upiId,upiPayeeName,paymentLink,social:{...r.social,Instagram:values.instagram.trim(),WhatsApp:whatsapp}});
     try{await persistCloudMenu(r.id);toast('Settings saved and published to the customer menu');renderShell()}catch(error){button.disabled=false;toast(error.message||'Could not save settings')}
   };
 }
@@ -938,8 +945,7 @@ async function openCart(r){
   const service=sub*(Number(r.service)||0)/100;
   const total=Math.round(sub+tax+service);
   const orderId=`GR58-${Date.now().toString().slice(-7)}-${Math.floor(10+Math.random()*89)}`;
-  const upiUri=payment.upiId ? `upi://pay?pa=${encodeURIComponent(payment.upiId)}&pn=${encodeURIComponent(r.name)}&am=${total.toFixed(2)}&cu=INR&tn=${encodeURIComponent('Order '+orderId)}` : '';
-  const appQuery=upiUri.replace(/^upi:\/\//,'');
+  const upiUri=buildUpiPaymentUri({upiId:payment.upiId,payeeName:payment.payeeName,amount:total,orderId});
   const paymentRequired=payment.enabled&&CONFIG.testMode!==true;
   const scheduleMin=new Date(Date.now()+5*60000-new Date().getTimezoneOffset()*60000).toISOString().slice(0,16);
 
@@ -955,8 +961,8 @@ async function openCart(r){
       ${!paymentRequired?'<label class="choice-card"><input type="radio" name="paymentMethod" value="counter" checked><span><strong>Pay at Counter</strong><small>Local test checkout</small></span></label>':''}
       <label class="choice-card"><input type="radio" name="paymentMethod" value="online" ${paymentRequired?'checked':''}><span><strong>Pay Online</strong><small>${payment.upiId?`Pay ${money(total)} to ${html(payment.upiId)}`:payment.paymentLink?'Open the restaurant payment page, then upload your receipt':'Payment method is not configured'}</small></span></label>
       <div id="onlinePaymentFields" ${paymentRequired?'':'hidden'}>
-        ${upiUri?`<div class="upi-payment-box"><div id="amountQr"></div><div><strong>Scan to pay ${money(total)}</strong><p class="muted">UPI ID: ${html(payment.upiId)}</p><a class="btn secondary small" href="${upiUri}">Open UPI App</a></div></div>`:''}
-        ${upiUri?`<div class="payment-app-grid"><a href="phonepe://${appQuery}" class="payment-app phonepe">PhonePe</a><a href="paytmmp://${appQuery}" class="payment-app paytm">Paytm</a><a href="${upiUri}" class="payment-app upi">Any UPI App</a></div>`:''}
+        ${upiUri?`<div class="upi-payment-box"><div id="amountQr"></div><div><strong>Scan to pay ${money(total)}</strong><p class="muted">Payee: ${html(payment.payeeName)}</p><p class="muted">UPI ID: ${html(payment.upiId)}</p><a class="btn secondary small" href="${upiUri}">Open UPI App</a></div></div>`:''}
+        ${upiUri?`<div class="payment-app-grid safe-upi-actions"><a href="${upiUri}" class="payment-app upi">Pay with PhonePe / GPay / Paytm</a><button class="payment-app copy-upi" id="copyUpiId" type="button">Copy UPI ID</button></div><p class="upi-security-note">Your UPI app or bank approves the payment. If it declines, verify the displayed receiver name, avoid paying from the receiver's own account, or pay manually to the copied UPI ID.</p>`:''}
         ${payment.paymentLink?`<a class="btn full secure-payment-link" href="${html(payment.paymentLink)}" target="_blank" rel="noopener">Open Restaurant Payment Page</a>`:''}
         <div class="field"><label>Transaction ID</label><input id="transactionId" autocomplete="off" placeholder="Enter UPI transaction ID after payment"></div>
         <div class="field"><label>Payment receipt image</label><input id="paymentReceipt" type="file" accept="image/jpeg,image/png,image/webp"><small>Required for verification. The receipt is stored securely with this order.</small></div>
@@ -989,6 +995,7 @@ async function openCart(r){
       }
     };
     $$('input[name="paymentMethod"]',panel).forEach(input=>input.addEventListener('change',showPayment));
+    $('#copyUpiId',panel)?.addEventListener('click',async()=>{try{await navigator.clipboard.writeText(payment.upiId);toast('UPI ID copied')}catch{toast(`UPI ID: ${payment.upiId}`)}});
     $('#checkoutPremiumLogin',panel)?.addEventListener('click',()=>{closeModal();setTimeout(()=>openCustomerSubscriptionPortal(r,remoteMenuSource.startsWith('cloud:')?remoteMenuSource.split(':')[1]:cloudOwnerId()),0)});
     showPayment();
 

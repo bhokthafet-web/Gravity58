@@ -121,7 +121,7 @@ test("Premium customer creates a meal subscription and schedules a receipt-backe
   const assertNoErrors = monitorPageErrors(page);
   const premiumMenu = menuRecord();
   Object.assign(premiumMenu.restaurant, {
-    ordersEnabled: true, premiumFeatures: true, paymentEnabled: true, upiId: "plantest@upi", phone: "+91 98765 43210",
+    ordersEnabled: true, premiumFeatures: true, paymentEnabled: true, upiId: "plantest@upi", upiPayeeName: "Plan Test Foods Private Limited", phone: "+91 98765 43210",
     subscriptionPlans: [{ id: "meal-plan-1", name: "Healthy Monthly Meals", description: "Daily restaurant meals", price: 2499, meals: 30, periodLabel: "1 Month", paymentLink: "", active: true }],
   });
   await prepareProductionMock(page, { seed: { "digital_menu_owner-1": [premiumMenu] } });
@@ -151,6 +151,15 @@ test("Premium customer creates a meal subscription and schedules a receipt-backe
   await page.locator("#openCart").click();
   await expect(page.locator('#checkoutPanel input[value="counter"]')).toHaveCount(0);
   await expect(page.locator(".payment-app-grid")).toContainText("PhonePe");
+  const upiHref = await page.getByRole("link", { name: "Pay with PhonePe / GPay / Paytm" }).getAttribute("href");
+  expect(upiHref).toMatch(/^upi:\/\/pay\?/);
+  const upiParams = new URL(upiHref).searchParams;
+  expect(upiParams.get("pa")).toBe("plantest@upi");
+  expect(upiParams.get("pn")).toBe("Plan Test Foods Private Limited");
+  expect(upiParams.get("tr")).toMatch(/^\d{3,35}$/);
+  expect(upiParams.get("am")).toBe("199.00");
+  await expect(page.locator('a[href^="phonepe://"], a[href^="paytmmp://"]')).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Copy UPI ID" })).toBeVisible();
   await page.locator("#transactionId").fill("UPI-TEST-12345");
   await page.locator("#paymentReceipt").setInputFiles({ name: "receipt.png", mimeType: "image/png", buffer: Buffer.from("receipt-image") });
   const scheduledFor = await page.evaluate(() => { const date = new Date(Date.now() + 10 * 60000); date.setMinutes(date.getMinutes() - date.getTimezoneOffset()); return date.toISOString().slice(0, 16); });
