@@ -115,6 +115,53 @@ test("restaurant owner imports CSV, controls availability, orders, QR, reports a
   await assertNoErrors();
 });
 
+test("Premium order history uses three cards, compact rows and shared date filters", async ({ page }) => {
+  await prepareOffline(page, { state: null });
+  const assertNoErrors = monitorPageErrors(page);
+  await loginDemoOwner(page);
+  await page.evaluate(() => {
+    const saved = JSON.parse(localStorage.getItem("gravity58DigitalMenu"));
+    const current = new Date().toISOString();
+    saved.orders = [1, 2, 3, 4, 5].map((token) => ({
+      id: `today-${token}`, restaurantId: "res_cafe", customerName: `Guest ${token}`,
+      customer: `Guest ${token}`, serviceMode: "counter", items: [{ name: "Masala Dosa", qty: 1, price: 120 }],
+      total: 120, status: "Pending", tokenNumber: token, createdAt: current, messages: [],
+    }));
+    saved.orders.push({
+      id: "historic-order", restaurantId: "res_cafe", customerName: "History Guest", customer: "History Guest",
+      serviceMode: "counter", items: [{ name: "Cold Coffee", qty: 2, price: 140 }], total: 280,
+      status: "Completed", tokenNumber: 44, createdAt: "2025-04-10T08:30:00.000Z", messages: [],
+    });
+    localStorage.setItem("gravity58DigitalMenu", JSON.stringify(saved));
+  });
+  await page.reload();
+  await page.locator('[data-view="orders"]').click();
+  await expect(page.locator("#ordersGrid .featured-order-grid .order-card")).toHaveCount(3);
+  await expect(page.locator("#ordersGrid .compact-order-row")).toHaveCount(2);
+  await page.locator("#ordersGrid .compact-order-row").first().getByRole("button", { name: "Details" }).click();
+  await expect(page.locator("#modal .order-card")).toBeVisible();
+  await page.getByRole("button", { name: "Close dialog" }).click();
+
+  await page.locator('[data-view="dashboard"]').click();
+  await expect(page.locator(".order-list-table tbody tr")).toHaveCount(5);
+  await page.locator("#ownerPeriodValue").fill("2025-04-10");
+  await page.locator("#ownerPeriodValue").press("Tab");
+  await expect(page.locator("#page")).toContainText("historic-order");
+  await expect(page.locator("#page")).not.toContainText("today-1");
+
+  await page.locator("#ownerPeriodMode").selectOption("month");
+  await page.locator("#ownerPeriodValue").fill("2025-04");
+  await page.locator("#ownerPeriodValue").press("Tab");
+  await expect(page.locator("#page")).toContainText("April 2025 overview");
+  await expect(page.locator("#page")).toContainText("historic-order");
+
+  await page.locator("#ownerPeriodMode").selectOption("year");
+  await page.locator("#ownerPeriodValue").fill("2025");
+  await page.locator("#ownerPeriodValue").press("Tab");
+  await expect(page.locator("#page")).toContainText("2025 overview");
+  await assertNoErrors();
+});
+
 test("customer QR entry requires a customer name or table number", async ({ page }) => {
   await prepareOffline(page, { state: null });
   const assertNoErrors = monitorPageErrors(page);
@@ -456,7 +503,7 @@ test("customer can load the latest account menu on another device", async ({ pag
   await prepareMockApi(page, { state: null, seed: {
     "digital_menu_public-owner": [cloudMenu],
     advertisements: [
-      { id: "stable-ad", restaurantKey: "Public Cloud Café|hyderabad", slotId: "right_rail", title: "Stable Campaign", description: "This image must stay fixed while ordering.", mediaUrl: "https://cdn.example.com/stable-ad.jpg", active: true, lifetime: true, activatedAt: "2026-08-09T12:00:00.000Z", expiresAt: "2026-08-10T12:00:00.000Z" },
+      { id: "stable-ad", restaurantKey: "Public Cloud Café|hyderabad", slotId: "right_rail", title: "Stable Campaign", description: "This image must stay fixed while ordering.", mediaUrl: "https://cdn.example.com/stable-ad.jpg", destinationUrl: "https://example.com/stable-campaign", active: true, lifetime: true, activatedAt: "2026-08-09T12:00:00.000Z", expiresAt: "2026-08-10T12:00:00.000Z" },
       { id: "second-ad", restaurantKey: "Public Cloud Café|Hyderabad", slotId: "right_rail", title: "Second Campaign", description: "Secondary campaign.", mediaUrl: "https://cdn.example.com/second-ad.jpg", active: true, activatedAt: "2026-08-09T11:00:00.000Z", expiresAt: "2099-08-10T12:00:00.000Z" },
     ],
   } });
@@ -470,8 +517,13 @@ test("customer can load the latest account menu on another device", async ({ pag
   await expect(page.locator('.poster-menu-item img[src="https://cdn.example.com/cloud-meal.jpg"]')).toBeVisible();
   await expect(page.locator('.compact-hero-photo[src="https://cdn.example.com/restaurant.jpg"]')).toBeVisible();
   await expect(page.locator('.header-ad-media[src="https://cdn.example.com/stable-ad.jpg"]')).toBeVisible();
-  await expect(page.getByRole("button", { name: "Book Ad Space" })).toBeVisible();
-  await expect(page.locator(".header-active-ad").getByRole("link", { name: "Get Offer" })).toBeVisible();
+  const bookAd = page.getByRole("button", { name: "Book Ad Space" });
+  const adCreative = page.locator(".header-active-ad").getByRole("link", { name: "Open Stable Campaign" });
+  await expect(bookAd).toBeVisible();
+  await expect(adCreative).toHaveAttribute("href", "https://example.com/stable-campaign");
+  await expect(page.getByRole("link", { name: "Get Offer" })).toHaveCount(0);
+  const [bookBox, creativeBox] = await Promise.all([bookAd.boundingBox(), adCreative.boundingBox()]);
+  expect(bookBox.y + bookBox.height).toBeLessThanOrEqual(creativeBox.y);
   await expect(page.locator(".header-active-ad")).not.toContainText("Stable Campaign");
   await expect(page.locator(".header-ad-media")).toHaveCSS("object-fit", "cover");
   await expect(page.locator(".header-active-ad .ad-expiry-badge")).toHaveCount(0);
