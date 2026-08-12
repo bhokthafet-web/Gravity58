@@ -22,40 +22,131 @@
     style: "currency", currency: "INR", maximumFractionDigits: 2,
   }).format(Number(value || 0));
   const id = () => `MENU-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+  const integrationParams = new URLSearchParams(location.search);
+  const linkedOwnerId = integrationParams.get("owner") || "";
+  const linkedRestaurantId = integrationParams.get("restaurant") || "";
+  const restaurantIntegrationRequested = integrationParams.get("source") === "digital-menu" && Boolean(linkedOwnerId && linkedRestaurantId);
   let session = read(KEYS.session, null);
   let menu = read(KEYS.menu, []);
   let premium = read(KEYS.premium, null);
   let linkedMenuEntitlement = read("g58DigitalMenuEntitlement", null);
+  let linkedMenuRecord = null;
+  let linkedRestaurant = null;
+  let linkedDigitalOrders = [];
   let dashboardFilter = { period: "month", from: "", to: "" };
   let workspaceRecordId = "";
   let syncTimer = null;
+  let digitalMenuSyncTimer = null;
+  let digitalOrderUnsubscribe = null;
+  let digitalMenuUnsubscribe = null;
+  let activePremiumTab = "account";
 
   const entitlementPremium = () => Boolean(linkedMenuEntitlement?.ownerId === session?.id && linkedMenuEntitlement?.plan === "premium" && (linkedMenuEntitlement.lifetime || !linkedMenuEntitlement.expiresAt || new Date(linkedMenuEntitlement.expiresAt) > new Date()));
   const isPremium = () => entitlementPremium() || Boolean(premium?.active && (!premium.expiresAt || new Date(premium.expiresAt) > new Date()));
   const inventoryEnabled = () => localStorage.getItem(KEYS.inventory) === "1";
 
-  const workspaceKind = () => `pos_workspace_${String(session?.id || "account").replace(/[^a-zA-Z0-9._-]/g, "-").slice(0, 45)}`;
-  const workspaceId = () => `pos-${String(session?.id || "account").replace(/[^a-zA-Z0-9._-]/g, "-").slice(0, 30)}`;
+  const safeId = (value, length) => String(value || "account").replace(/[^a-zA-Z0-9._-]/g, "-").slice(0, length);
+  const workspaceKind = () => `pos_workspace_${safeId(session?.id, 45)}`;
+  const workspaceId = () => restaurantIntegrationRequested ? `pos-${safeId(session?.id, 13)}-${safeId(linkedRestaurantId, 16)}` : `pos-${safeId(session?.id, 30)}`;
+  const digitalMenuKind = () => `digital_menu_${safeId(session?.id, 48)}`;
+  const digitalOrderKind = () => `digital_order_${safeId(session?.id, 47)}`;
   const workspacePayload = () => ({
     ownerId: session?.id, updatedAt: new Date().toISOString(),
+    restaurantId: linkedRestaurant?.id || linkedRestaurantId || "",
+    restaurantName: linkedRestaurant?.name || "",
     settings: read("g58Settings", {}), bills: read("g58Bills", []), cancelledBills: read("g58CancelledBills", []),
     billCounter: Number(localStorage.getItem("g58BillCounter") || 0), menu, premium,
-    inventoryEnabled: inventoryEnabled(), subscription: read(KEYS.subscription, null),
+    inventoryEnabled: inventoryEnabled(), subscription: read(KEYS.subscription, null), digitalMenuLinked: Boolean(linkedRestaurant),
   });
   async function loadWorkspace() {
     if (!session || !window.Gravity58Ads?.configured) return;
     const entitlements = await Gravity58Ads.list("digital_menu_entitlements").catch(() => []);
     linkedMenuEntitlement = entitlements.find((row) => row.ownerId === session.id) || null;
     write("g58DigitalMenuEntitlement", linkedMenuEntitlement);
+    if (restaurantIntegrationRequested && session.id !== linkedOwnerId) throw new Error("Sign in with the restaurant owner account that opened this POS link.");
     const records = await Gravity58Ads.list(workspaceKind());
-    const record = records.find((row) => row.ownerId === session.id);
-    if (!record) return;
-    workspaceRecordId = record.id || record.$id;
-    write("g58Settings", record.settings || {}); write("g58Bills", record.bills || []); write("g58CancelledBills", record.cancelledBills || []);
-    localStorage.setItem("g58BillCounter", String(record.billCounter || 0));
-    menu = Array.isArray(record.menu) ? record.menu : []; premium = record.premium || null;
-    write(KEYS.menu, menu); write(KEYS.premium, premium); write(KEYS.subscription, record.subscription || null);
-    localStorage.setItem(KEYS.inventory, record.inventoryEnabled ? "1" : "0");
+    const record = records.find((row) => row.ownerId === session.id && (restaurantIntegrationRequested ? row.restaurantId === linkedRestaurantId : !row.restaurantId))
+      || (!restaurantIntegrationRequested ? records.find((row) => row.ownerId === session.id) : null);
+    if (record) {
+      workspaceRecordId = record.id || record.$id;
+      write("g58Settings", record.settings || {}); write("g58Bills", record.bills || []); write("g58CancelledBills", record.cancelledBills || []);
+      localStorage.setItem("g58BillCounter", String(record.billCounter || 0));
+      menu = Array.isArray(record.menu) ? record.menu : []; premium = record.premium || null;
+      write(KEYS.menu, menu); write(KEYS.premium, premium); write(KEYS.subscription, record.subscription || null);
+      localStorage.setItem(KEYS.inventory, record.inventoryEnabled ? "1" : "0");
+    } else if (restaurantIntegrationRequested) {
+      workspaceRecordId = "";
+      write("g58Settings", {}); write("g58Bills", []); write("g58CancelledBills", []);
+      localStorage.setItem("g58BillCounter", "0");
+      menu = []; premium = null;
+      write(KEYS.menu, []); write(KEYS.premium, null); write(KEYS.subscription, null);
+      localStorage.setItem(KEYS.inventory, "0");
+    }
+    await loadDigitalRestaurant();
+  }
+
+  function mapDigitalMenuItems(record, currentMenu = menu) {
+    const categories = new Map((record?.categories || []).map((row) => [row.id, row.name || "General"]));
+    return (record?.items || []).map((item) => {
+      const existing = currentMenu.find((row) => row.digitalMenuItemId === item.id || row.id === item.id || (row.name || "").toLowerCase() === (item.name || "").toLowerCase());
+      return {
+        id: existing?.id || item.id || id(), digitalMenuItemId: item.id || existing?.digitalMenuItemId || "",
+        name: item.name || "Menu item", category: categories.get(item.categoryId) || "General",
+        price: Number(item.price || 0), gst: Number(existing?.gst ?? record?.restaurant?.tax ?? 0),
+        available: item.available !== false, stock: Number(existing?.stock || 0),
+      };
+    });
+  }
+
+  function seedRestaurantSettings() {
+    if (!linkedRestaurant) return;
+    const current = read("g58Settings", {});
+    if (Object.keys(current).length) return;
+    write("g58Settings", {
+      upiId: linkedRestaurant.upiId || "", gstEnabled: Number(linkedRestaurant.tax || 0) > 0,
+      gstPercent: Number(linkedRestaurant.tax || 0), notesEnabled: true, posEnabled: true,
+      brandName: linkedRestaurant.name || "GRAVITY58", contactNumber: linkedRestaurant.phone || "",
+      cashierName: "", customerName: "",
+    });
+  }
+
+  async function loadDigitalRestaurant() {
+    linkedMenuRecord = null; linkedRestaurant = null; linkedDigitalOrders = [];
+    if (!restaurantIntegrationRequested) return;
+    if (!entitlementPremium()) throw new Error("Premium Digital Menu access is required for restaurant-synced POS.");
+    const records = await Gravity58Ads.list(digitalMenuKind());
+    const record = records.find((row) => (row.id || row.$id || row.restaurant?.id) === linkedRestaurantId && row.ownerId === session.id);
+    if (!record?.restaurant) throw new Error("This restaurant could not be found in your Digital Menu account.");
+    linkedMenuRecord = record; linkedRestaurant = record.restaurant;
+    menu = mapDigitalMenuItems(record, menu);
+    write(KEYS.menu, menu);
+    seedRestaurantSettings();
+    await syncDigitalOrders();
+    startDigitalOrderSync();
+  }
+
+  async function syncDigitalOrders() {
+    if (!linkedRestaurant || !session) return;
+    linkedDigitalOrders = (await Gravity58Ads.list(digitalOrderKind()).catch(() => []))
+      .filter((row) => row.ownerId === session.id && row.restaurantId === linkedRestaurant.id && !row.tokenReservation)
+      .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+  }
+
+  function startDigitalOrderSync() {
+    digitalOrderUnsubscribe?.(); digitalMenuUnsubscribe?.();
+    digitalOrderUnsubscribe = digitalMenuUnsubscribe = null;
+    if (!linkedRestaurant || !Gravity58Ads.subscribeKind) return;
+    digitalOrderUnsubscribe = Gravity58Ads.subscribeKind(digitalOrderKind(), async () => {
+      await syncDigitalOrders();
+      if (activePremiumTab === "dashboard") renderDashboardPanel();
+      if (activePremiumTab === "orders") renderDigitalOrdersPanel();
+    });
+    digitalMenuUnsubscribe = Gravity58Ads.subscribeKind(digitalMenuKind(), (row) => {
+      if (!row?.restaurant || (row.id || row.$id || row.restaurant.id) !== linkedRestaurant.id) return;
+      linkedMenuRecord = row; linkedRestaurant = row.restaurant; menu = mapDigitalMenuItems(row, menu);
+      write(KEYS.menu, menu); window.G58Premium.menu = menu; refreshMenuPicker();
+      if (activePremiumTab === "menu") renderTab("menu");
+    });
   }
   async function syncWorkspace() {
     if (!session || !window.Gravity58Ads?.configured) return;
@@ -74,6 +165,41 @@
   }
   function scheduleWorkspaceSync() { clearTimeout(syncTimer); syncTimer = setTimeout(() => syncWorkspace().catch((error) => toast(error.message || "Cloud sync failed")), 250); }
 
+  async function syncDigitalMenuFromPos() {
+    if (!linkedMenuRecord || !linkedRestaurant || !entitlementPremium()) return;
+    const previousItems = new Map((linkedMenuRecord.items || []).map((item) => [item.id, item]));
+    const previousCategories = new Map((linkedMenuRecord.categories || []).map((category) => [String(category.name || "").trim().toLowerCase(), category]));
+    const categories = [];
+    const categoryByName = new Map();
+    menu.forEach((item) => {
+      const name = String(item.category || "General").trim() || "General";
+      const key = name.toLowerCase();
+      if (categoryByName.has(key)) return;
+      const previous = previousCategories.get(key);
+      const category = previous || { id: `poscat-${safeId(name.toLowerCase(), 25)}-${categories.length + 1}`, name };
+      categories.push({ id: category.id, name }); categoryByName.set(key, category.id);
+    });
+    const items = menu.map((item) => {
+      const previous = previousItems.get(item.digitalMenuItemId || item.id) || {};
+      const itemId = previous.id || item.digitalMenuItemId || item.id;
+      item.digitalMenuItemId = itemId;
+      return {
+        ...previous, id: itemId, categoryId: categoryByName.get(String(item.category || "General").trim().toLowerCase()),
+        name: item.name, description: previous.description || "", price: Number(item.price || 0),
+        type: previous.type || "Veg", available: item.available !== false, prep: Number(previous.prep || 0),
+        prepareInstructionsEnabled: Boolean(previous.prepareInstructionsEnabled),
+      };
+    });
+    const recordId = linkedMenuRecord.id || linkedMenuRecord.$id || linkedRestaurant.id;
+    linkedMenuRecord = await Gravity58Ads.update(digitalMenuKind(), recordId, { categories, items, updatedAt: new Date().toISOString() });
+  }
+
+  function scheduleDigitalMenuSync() {
+    clearTimeout(digitalMenuSyncTimer);
+    if (!linkedMenuRecord) return;
+    digitalMenuSyncTimer = setTimeout(() => syncDigitalMenuFromPos().catch((error) => toast(error.message || "Digital Menu sync failed")), 350);
+  }
+
   function toast(message) {
     const target = $("toast");
     if (!target) return alert(message);
@@ -91,16 +217,16 @@
     gate.id = "posAccountGate";
     gate.className = "local-account-gate";
     gate.innerHTML = `<section class="card local-account-card">
-      <div class="local-account-brand"><span class="logo">G</span><div><h2>Restaurant workspace</h2><p>Sign in to open your account-synced G58 POS workspace.</p></div></div>
+      <div class="local-account-brand"><span class="logo">G</span><div><h2>${restaurantIntegrationRequested ? "Premium Restaurant POS" : "Restaurant workspace"}</h2><p>${restaurantIntegrationRequested ? "Sign in with the same restaurant-owner account used for Digital Menu." : "Sign in to open your account-synced G58 POS workspace."}</p></div></div>
       <div class="field"><label>Email</label><input id="gateEmail" type="email" autocomplete="email" placeholder="owner@restaurant.com"></div>
       <div class="field"><label>Password</label><input id="gatePassword" type="password" autocomplete="current-password" placeholder="Minimum 6 characters"></div>
-      <div class="gate-actions"><button class="btn btn-primary" id="gateLogin">Login</button><button class="btn btn-outline" id="gateSignup">Create account</button><button class="btn btn-dark" id="gateForgot">Forgot password</button></div>
+      <div class="gate-actions"><button class="btn btn-primary" id="gateLogin">Login</button>${restaurantIntegrationRequested ? "" : '<button class="btn btn-outline" id="gateSignup">Create account</button>'}<button class="btn btn-dark" id="gateForgot">Forgot password</button></div>
       <p class="local-account-message" id="gateMessage"></p>
       <small class="local-storage-note">Your settings, bills, menu and inventory are stored in your G58 account.</small>
     </section>`;
     document.body.appendChild(gate);
     $("gateLogin").onclick = login;
-    $("gateSignup").onclick = signup;
+    if ($("gateSignup")) $("gateSignup").onclick = signup;
     $("gateForgot").onclick = resetPassword;
   }
 
@@ -112,7 +238,7 @@
       await Gravity58Ads.login(email, password); const account = await Gravity58Ads.currentUser();
       session = { id: account.$id, email: account.email, name: account.name || account.email.split("@")[0] };
       write(KEYS.session, session); await loadWorkspace(); window.G58ApplyCloudWorkspace?.(); renderGate(); renderShell(); toast("Restaurant workspace opened");
-    } catch (error) { $("gateMessage").textContent = error.message || "Email or password is incorrect."; }
+    } catch (error) { session = null; localStorage.removeItem(KEYS.session); $("gateMessage").textContent = error.message || "Email or password is incorrect."; }
   }
 
   async function signup() {
@@ -139,40 +265,52 @@
   function renderShell() {
     const shell = $("premiumShell");
     if (!shell) return;
+    const restaurantName = linkedRestaurant?.name || "G58 Restaurant";
+    const linkedOrderTab = linkedRestaurant ? '<button class="premium-tab" data-p="orders">Digital Menu Orders</button>' : '';
     shell.style.setProperty("display", "block", "important");
     shell.innerHTML = `<div class="premium-bar">
-      <div class="premium-title"><span class="logo">G</span><div><strong>G58 Restaurant POS</strong><small>${esc(session?.email || "G58 account")} · cloud workspace</small></div></div>
+      <div class="premium-title"><span class="logo">G</span><div><strong>${esc(linkedRestaurant ? `${restaurantName} POS` : "G58 Restaurant POS")}</strong><small>${esc(session?.email || "G58 account")} · ${linkedRestaurant ? "restaurant-synced workspace" : "cloud workspace"}</small></div></div>
       <span class="premium-badge ${isPremium() ? "active" : ""}">${isPremium() ? "PREMIUM ACTIVE" : "FREE POS"}</span>
     </div>
+    ${linkedRestaurant ? `<div class="restaurant-sync-banner"><div><span class="restaurant-sync-dot"></span><strong>Live sync: ${esc(restaurantName)}</strong><small>Menu, availability, counter bills and online orders use this restaurant workspace only.</small></div><a href="/digital-menu/">Back to Restaurant Dashboard</a></div>` : ""}
     <div class="premium-tabs">
       <button class="premium-tab active" data-p="account">Account</button>
       <button class="premium-tab" data-p="license">Premium</button>
       <button class="premium-tab" data-p="menu">Menu & Inventory</button>
       <button class="premium-tab" data-p="dashboard">Dashboard</button>
+      ${linkedOrderTab}
       <a class="premium-tab digital-menu-tab" href="/digital-menu/">Digital Menu ↗</a>
     </div><div id="pp"></div>`;
     shell.querySelectorAll("[data-p]").forEach((button) => {
       button.onclick = () => {
         shell.querySelectorAll("[data-p]").forEach((item) => item.classList.remove("active"));
         button.classList.add("active");
+        activePremiumTab = button.dataset.p;
         renderTab(button.dataset.p);
       };
     });
+    activePremiumTab = "account";
     renderTab("account");
     refreshMenuPicker();
   }
 
   const box = (html) => { $("pp").innerHTML = `<div class="premium-panel active">${html}</div>`; };
+  const premiumExpiryLabel = () => {
+    if (linkedMenuEntitlement?.lifetime) return "Lifetime Premium access";
+    const expiry = linkedMenuEntitlement?.expiresAt || premium?.expiresAt;
+    return expiry ? `Active until ${new Date(expiry).toLocaleDateString("en-IN")}` : isPremium() ? "Premium active" : "Premium is not active.";
+  };
 
   function renderTab(tab) {
     if (tab === "account") {
       const request = read(KEYS.subscription, null);
-      box(`<div class="premium-grid"><article class="premium-box"><h3>Signed in securely</h3><p><strong>${esc(session?.email)}</strong></p><p style="margin-top:10px">Your POS settings, received bills, cancelled bills, menu and inventory sync to this account.</p><button class="btn btn-outline" id="localLogout" style="margin-top:14px">Sign out</button></article><article class="premium-box"><h3>Account status</h3><p>Changes sync automatically. Restaurant and menu images have a 100 KB file limit.</p>${request ? `<div class="locked-note" style="margin-top:12px">Premium request: ${esc(request.plan)} · ${esc(request.status)}</div>` : ""}</article></div>`);
-      $("localLogout").onclick = async () => { try { await syncWorkspace(); await Gravity58Ads.logout(); } catch {} localStorage.removeItem(KEYS.session); session = null; renderShell(); renderGate(); };
+      box(`<div class="premium-grid"><article class="premium-box"><h3>Signed in securely</h3><p><strong>${esc(session?.email)}</strong></p><p style="margin-top:10px">${linkedRestaurant ? `${esc(linkedRestaurant.name)} has its own POS settings, received bills, cancelled bills and inventory. Digital Menu items and orders are synced live.` : "Your POS settings, received bills, cancelled bills, menu and inventory sync to this account."}</p><button class="btn btn-outline" id="localLogout" style="margin-top:14px">Sign out</button></article><article class="premium-box"><h3>${linkedRestaurant ? "Restaurant sync" : "Account status"}</h3><p>${linkedRestaurant ? `Connected to ${esc(linkedRestaurant.name)} · ${esc(linkedRestaurant.city || "")}. Switching restaurants in Digital Menu opens a different POS workspace.` : "Changes sync automatically. Restaurant and menu images have a 100 KB file limit."}</p>${request ? `<div class="locked-note" style="margin-top:12px">Premium request: ${esc(request.plan)} · ${esc(request.status)}</div>` : ""}</article></div>`);
+      $("localLogout").onclick = async () => { try { await syncWorkspace(); await Gravity58Ads.logout(); } catch {} digitalOrderUnsubscribe?.(); digitalMenuUnsubscribe?.(); localStorage.removeItem(KEYS.session); session = null; renderShell(); renderGate(); };
     }
 
     if (tab === "license") {
-      box(`<div class="premium-grid"><article class="premium-box"><h3>Activate Premium</h3><p>Enter the activation key supplied by the G58 team.</p><div class="field" style="margin-top:14px"><label>Activation key</label><input id="localPremiumKey" placeholder="G58-POS-XXXX-XXXX"></div><button class="btn btn-primary" id="activateLocalPremium">Activate for this account</button><p id="premiumMessage" style="margin-top:12px">${isPremium() ? `Active until ${new Date(premium.expiresAt).toLocaleDateString("en-IN")}` : "Premium is not active."}</p></article><article class="premium-box"><h3>Premium includes</h3><p>Reusable menu, CSV import, item removal, availability control, optional inventory, item performance and an account-synced restaurant dashboard.</p></article></div>`);
+      box(`<div class="premium-grid"><article class="premium-box"><h3>${entitlementPremium() ? "Digital Menu Premium" : "Activate Premium"}</h3><p>${entitlementPremium() ? "Premium POS is included with this restaurant owner's Digital Menu Premium plan." : "Enter the activation key supplied by the G58 team."}</p>${entitlementPremium() ? "" : '<div class="field" style="margin-top:14px"><label>Activation key</label><input id="localPremiumKey" placeholder="G58-POS-XXXX-XXXX"></div><button class="btn btn-primary" id="activateLocalPremium">Activate for this account</button>'}<p id="premiumMessage" style="margin-top:12px">${premiumExpiryLabel()}</p></article><article class="premium-box"><h3>Premium includes</h3><p>Reusable menu, CSV import, item removal, availability control, optional inventory, item performance and an account-synced restaurant dashboard.</p></article></div>`);
+      if (entitlementPremium()) return;
       $("activateLocalPremium").onclick = () => {
         const key = $("localPremiumKey").value.trim().toUpperCase();
         if (!/^G58-POS-[A-Z0-9-]{4,}$/.test(key)) return void ($("premiumMessage").textContent = "Enter a valid G58-POS activation key.");
@@ -188,11 +326,11 @@
     if (tab === "menu") {
       if (!isPremium()) return box('<div class="locked-note">Activate Premium to use menu import and optional inventory.</div>');
       box(`<div class="premium-grid"><article class="premium-box"><h3>Import menu CSV</h3>
-        <p>CSV is the only menu-item input. Required columns: <b>name, category, price</b>. Optional columns: <b>gst, available, stock</b>.</p>
+        <p>${linkedRestaurant ? `Items and availability sync in both directions with <b>${esc(linkedRestaurant.name)}</b>. ` : ""}CSV is the only menu-item input. Required columns: <b>name, category, price</b>. Optional columns: <b>gst, available, stock</b>.</p>
         <div class="field" style="margin-top:14px"><label>Import method</label><select id="posMenuImportMode"><option value="merge">Add or update existing menu</option><option value="replace">Overwrite entire menu</option></select></div>
         <input id="menuImportFile" type="file" accept=".csv,text/csv"><div class="gate-actions"><button class="btn btn-outline" id="importMenu">Import CSV</button><button class="btn btn-dark" id="sampleMenu">Download sample</button></div><p id="importStatus">Add/update keeps current items. Overwrite replaces the complete Premium POS menu after confirmation.</p>
         <label class="option-card" style="margin-top:18px"><input id="inventoryToggle" type="checkbox" ${inventoryEnabled() ? "checked" : ""}><span><strong>Enable inventory</strong><small>Optional. Stock is reduced only after a bill is marked Payment Received.</small></span></label>
-      </article><article class="premium-box"><h3>Configured menu</h3><div class="menu-list" id="localMenuList"></div></article></div>`);
+      </article><article class="premium-box"><h3>${linkedRestaurant ? "Synced restaurant menu" : "Configured menu"}</h3>${linkedRestaurant ? '<div class="menu-sync-state"><span></span> Digital Menu + POS</div>' : ""}<div class="menu-list" id="localMenuList"></div></article></div>`);
       $("sampleMenu").onclick = downloadMenuSample;
       $("importMenu").onclick = importMenuFile;
       $("inventoryToggle").onchange = () => { localStorage.setItem(KEYS.inventory, $("inventoryToggle").checked ? "1" : "0"); scheduleWorkspaceSync(); renderTab("menu"); };
@@ -202,6 +340,11 @@
     if (tab === "dashboard") {
       if (!isPremium()) return box('<div class="locked-note">The sales dashboard is a Premium feature. Free POS billing remains available.</div>');
       renderDashboardPanel();
+    }
+
+    if (tab === "orders") {
+      if (!linkedRestaurant || !isPremium()) return box('<div class="locked-note">Open POS from a Premium Digital Menu restaurant to view synced orders.</div>');
+      renderDigitalOrdersPanel();
     }
   }
 
@@ -233,17 +376,30 @@
 
   function dashboardSummary(rows) {
     const sales = rows.reduce((sum, bill) => sum + Number(bill.total || 0), 0);
-    const quantity = rows.reduce((sum, bill) => sum + (bill.items || []).reduce((count, item) => count + Number(item.quantity || 1), 0), 0);
+    const quantity = rows.reduce((sum, bill) => sum + (bill.items || []).reduce((count, item) => count + Number(item.quantity || item.qty || 1), 0), 0);
     return { sales, bills: rows.length, quantity, average: rows.length ? sales / rows.length : 0 };
+  }
+
+  function digitalOrderAsBill(order) {
+    return {
+      ...order, billNumber: order.id || order.$id, source: "Digital Menu",
+      date: order.completedAt || order.updatedAt || order.createdAt,
+      settledAt: order.completedAt || order.updatedAt || order.createdAt,
+      items: (order.items || []).map((item) => ({ ...item, note: item.name, quantity: Number(item.qty || item.quantity || 1) })),
+    };
   }
 
   function renderDashboardPanel() {
     const range = dashboardRanges();
-    const allBills = read("g58Bills", []);
-    const allCancelled = read("g58CancelledBills", []);
+    const counterBills = read("g58Bills", []).map((bill) => ({ ...bill, source: "Counter POS" }));
+    const onlineBills = linkedDigitalOrders.filter((order) => ["Completed", "Delivered"].includes(order.status)).map(digitalOrderAsBill);
+    const allBills = [...counterBills, ...onlineBills];
+    const allCancelled = [...read("g58CancelledBills", []), ...linkedDigitalOrders.filter((order) => ["Rejected", "Payment Rejected", "Cancelled"].includes(order.status)).map(digitalOrderAsBill)];
     const currentBills = allBills.filter((bill) => billTime(bill) >= range.start && billTime(bill) < range.end);
     const previousBills = allBills.filter((bill) => billTime(bill) >= range.previousStart && billTime(bill) < range.previousEnd);
     const cancelled = allCancelled.filter((bill) => billTime(bill) >= range.start && billTime(bill) < range.end);
+    const currentCounter = currentBills.filter((bill) => bill.source === "Counter POS");
+    const currentOnline = currentBills.filter((bill) => bill.source === "Digital Menu");
     const current = dashboardSummary(currentBills); const previous = dashboardSummary(previousBills);
     const change = previous.sales ? ((current.sales - previous.sales) / previous.sales) * 100 : current.sales ? 100 : 0;
     const ranked = {};
@@ -254,12 +410,17 @@
       trend.push({ label: day.toLocaleDateString("en-IN", { weekday: "short" }), value: allBills.filter((bill) => billTime(bill) >= day.getTime() && billTime(bill) < next.getTime()).reduce((sum, bill) => sum + Number(bill.total || 0), 0) });
     }
     const maxTrend = Math.max(1, ...trend.map((row) => row.value));
-    box(`<article class="premium-box dashboard-filter"><div><h3>Business dashboard</h3><p>Compare received sales with the immediately previous period. Cancelled bills stay separate.</p></div><div class="dashboard-filter-controls"><select id="dashboardPeriod"><option value="today" ${dashboardFilter.period === "today" ? "selected" : ""}>Today vs yesterday</option><option value="week" ${dashboardFilter.period === "week" ? "selected" : ""}>This week vs last week</option><option value="month" ${dashboardFilter.period === "month" ? "selected" : ""}>This month vs last month</option><option value="custom" ${dashboardFilter.period === "custom" ? "selected" : ""}>Custom dates</option></select><input id="dashboardFrom" type="date" value="${dashboardFilter.from}" ${dashboardFilter.period === "custom" ? "" : "disabled"}><input id="dashboardTo" type="date" value="${dashboardFilter.to}" ${dashboardFilter.period === "custom" ? "" : "disabled"}></div></article>
-    <div class="premium-grid three dashboard-metrics"><div class="insight-card"><small>Received sales</small><strong>${money(current.sales)}</strong><em class="${change >= 0 ? "positive" : "negative"}">${change >= 0 ? "+" : ""}${change.toFixed(1)}% vs previous</em></div><div class="insight-card"><small>Previous-period sales</small><strong>${money(previous.sales)}</strong></div><div class="insight-card"><small>Received bills</small><strong>${current.bills}</strong></div><div class="insight-card"><small>Cancelled bills</small><strong>${cancelled.length}</strong></div><div class="insight-card"><small>Items sold</small><strong>${current.quantity}</strong></div><div class="insight-card"><small>Average bill</small><strong>${money(current.average)}</strong></div></div>
+    box(`<article class="premium-box dashboard-filter"><div><h3>${linkedRestaurant ? `${esc(linkedRestaurant.name)} business dashboard` : "Business dashboard"}</h3><p>${linkedRestaurant ? "Counter POS bills and completed Digital Menu orders are combined for this restaurant." : "Compare received sales with the immediately previous period."} Cancelled bills stay separate.</p></div><div class="dashboard-filter-controls"><select id="dashboardPeriod"><option value="today" ${dashboardFilter.period === "today" ? "selected" : ""}>Today vs yesterday</option><option value="week" ${dashboardFilter.period === "week" ? "selected" : ""}>This week vs last week</option><option value="month" ${dashboardFilter.period === "month" ? "selected" : ""}>This month vs last month</option><option value="custom" ${dashboardFilter.period === "custom" ? "selected" : ""}>Custom dates</option></select><input id="dashboardFrom" type="date" value="${dashboardFilter.from}" ${dashboardFilter.period === "custom" ? "" : "disabled"}><input id="dashboardTo" type="date" value="${dashboardFilter.to}" ${dashboardFilter.period === "custom" ? "" : "disabled"}></div></article>
+    <div class="premium-grid three dashboard-metrics"><div class="insight-card"><small>Total received sales</small><strong>${money(current.sales)}</strong><em class="${change >= 0 ? "positive" : "negative"}">${change >= 0 ? "+" : ""}${change.toFixed(1)}% vs previous</em></div><div class="insight-card"><small>Counter POS sales</small><strong>${money(dashboardSummary(currentCounter).sales)}</strong></div><div class="insight-card"><small>Digital Menu sales</small><strong>${money(dashboardSummary(currentOnline).sales)}</strong></div><div class="insight-card"><small>Previous-period sales</small><strong>${money(previous.sales)}</strong></div><div class="insight-card"><small>Received bills / orders</small><strong>${current.bills}</strong></div><div class="insight-card"><small>Cancelled bills / orders</small><strong>${cancelled.length}</strong></div><div class="insight-card"><small>Items sold</small><strong>${current.quantity}</strong></div><div class="insight-card"><small>Average bill</small><strong>${money(current.average)}</strong></div></div>
     <div class="premium-grid dashboard-detail-grid"><article class="premium-box"><h3>Last 7 days</h3><div class="dashboard-bars">${trend.map((row) => `<div class="dashboard-bar"><strong>${row.value ? money(row.value) : "₹0"}</strong><span style="height:${Math.max(5, Math.round((row.value / maxTrend) * 100))}%"></span><small>${row.label}</small></div>`).join("")}</div></article><article class="premium-box"><h3>Item performance</h3>${Object.entries(ranked).sort((a,b)=>b[1]-a[1]).slice(0, 8).map(([name, qty]) => `<div class="menu-row"><span><strong>${esc(name)}</strong><small>Quantity sold</small></span><strong>${qty}</strong></div>`).join("") || "<p>No received bills in this period.</p>"}</article></div>`);
     $("dashboardPeriod").onchange = () => { dashboardFilter.period = $("dashboardPeriod").value; renderDashboardPanel(); };
     $("dashboardFrom").onchange = () => { dashboardFilter.from = $("dashboardFrom").value; if (dashboardFilter.to) renderDashboardPanel(); };
     $("dashboardTo").onchange = () => { dashboardFilter.to = $("dashboardTo").value; if (dashboardFilter.from) renderDashboardPanel(); };
+  }
+
+  function renderDigitalOrdersPanel() {
+    const rows = linkedDigitalOrders;
+    box(`<article class="premium-box digital-orders-head"><div><span class="restaurant-sync-dot"></span><h3>${esc(linkedRestaurant?.name || "Restaurant")} Digital Menu Orders</h3><p>Live restaurant orders appear here automatically. Accept, reject, prepare and message customers from the Digital Menu order board.</p></div><a class="btn btn-outline" href="/digital-menu/">Manage Orders in Digital Menu →</a></article><div class="digital-order-table-wrap"><table class="digital-order-table"><thead><tr><th>Token / Order</th><th>Customer</th><th>Items</th><th>Total</th><th>Status</th><th>Received</th></tr></thead><tbody>${rows.map((order) => `<tr><td><strong>${order.tokenNumber ? `#${String(order.tokenNumber).padStart(4, "0")}` : esc(order.id || order.$id)}</strong><small>${esc(order.id || order.$id)}</small></td><td>${esc(order.customer || order.customerName || "Guest")}</td><td>${(order.items || []).map((item) => `${Number(item.qty || item.quantity || 1)} × ${esc(item.name || "Item")}`).join("<br>")}</td><td><strong>${money(order.total)}</strong></td><td><span class="order-status-chip status-${safeId(String(order.status || "Pending").toLowerCase(), 24)}">${esc(order.status || "Pending")}</span></td><td>${new Date(order.createdAt || Date.now()).toLocaleString("en-IN")}</td></tr>`).join("") || '<tr><td colspan="6" class="report-empty">No Digital Menu orders for this restaurant yet.</td></tr>'}</tbody></table></div>`);
   }
 
   function saveMenuItem() {
@@ -283,13 +444,13 @@
     });
     target.querySelectorAll("[data-remove-menu]").forEach((button) => button.onclick = () => {
       const item = menu.find((row) => row.id === button.dataset.removeMenu);
-      if (!item || !confirm(`Remove ${item.name} from this menu?`)) return;
+      if (!item || !confirm(`Remove ${item.name}${linkedRestaurant ? " from POS and Digital Menu" : " from this menu"}?`)) return;
       menu = menu.filter((row) => row.id !== item.id);
       persistMenu(); renderMenuList();
     });
   }
 
-  function persistMenu() { write(KEYS.menu, menu); window.G58Premium.menu = menu; refreshMenuPicker(); scheduleWorkspaceSync(); }
+  function persistMenu() { write(KEYS.menu, menu); window.G58Premium.menu = menu; refreshMenuPicker(); scheduleWorkspaceSync(); scheduleDigitalMenuSync(); }
 
   function downloadMenuSample() {
     const csv = "name,category,price,gst,available,stock\nChicken Biryani,Rice,249,5,true,30\nFish Marination,Marinations,299,5,true,12\nPrawns Marination,Marinations,349,5,false,0\n";
@@ -376,8 +537,20 @@
       return true;
     },
     syncSettings: async () => { scheduleWorkspaceSync(); return true; },
-    syncBill: async (bill) => { deductInventory(bill); await syncWorkspace(); return true; },
-    syncCancelledBill: async () => { await syncWorkspace(); return true; },
+    syncBill: async (bill) => {
+      if (linkedRestaurant) Object.assign(bill, { restaurantId: linkedRestaurant.id, restaurantName: linkedRestaurant.name, source: "Counter POS" });
+      const bills = read("g58Bills", []), stored = bills.find((row) => row.billNumber === bill.billNumber);
+      if (stored) Object.assign(stored, bill);
+      write("g58Bills", bills);
+      deductInventory(bill); await syncWorkspace(); return true;
+    },
+    syncCancelledBill: async (bill) => {
+      if (linkedRestaurant) Object.assign(bill, { restaurantId: linkedRestaurant.id, restaurantName: linkedRestaurant.name, source: "Counter POS" });
+      const bills = read("g58CancelledBills", []), stored = bills.find((row) => row.billNumber === bill.billNumber);
+      if (stored) Object.assign(stored, bill);
+      write("g58CancelledBills", bills);
+      await syncWorkspace(); return true;
+    },
   };
 
   const openPlans = () => { const modal = $("premiumPlansModal"); if (modal) { modal.classList.add("open"); modal.setAttribute("aria-hidden", "false"); document.body.style.overflow = "hidden"; } };
@@ -404,7 +577,9 @@
     const account = await Gravity58Ads.currentUser();
     if (!account) { session = null; localStorage.removeItem(KEYS.session); renderGate(); return; }
     session = { id: account.$id, email: account.email, name: account.name || account.email.split("@")[0] };
-    write(KEYS.session, session); await loadWorkspace(); window.G58ApplyCloudWorkspace?.(); renderGate(); renderShell();
+    write(KEYS.session, session);
+    try { await loadWorkspace(); window.G58ApplyCloudWorkspace?.(); renderGate(); renderShell(); }
+    catch (error) { digitalOrderUnsubscribe?.(); digitalMenuUnsubscribe?.(); session = null; localStorage.removeItem(KEYS.session); renderGate(); throw error; }
   }
 
   renderGate();

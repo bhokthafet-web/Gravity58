@@ -42,6 +42,29 @@ test("free restaurant account receives orders and pricing shows every discounted
   await assertNoErrors();
 });
 
+test("Premium owner gets readable history filters and a restaurant-scoped POS link", async ({ page }) => {
+  const assertNoErrors = monitorPageErrors(page);
+  await prepareProductionMock(page, {
+    initialUser: { $id: "owner-1", email: "premium@restaurant.test", name: "Premium Owner" },
+    seed: {
+      "digital_menu_owner-1": [menuRecord()],
+      digital_menu_entitlements: [{ id: "ent-premium", ownerId: "owner-1", plan: "premium", lifetime: true, maxRestaurants: 5 }],
+    },
+  });
+  await page.goto("/digital-menu/");
+  const posLink = page.getByRole("link", { name: /Premium POS/ }).first();
+  await expect(posLink).toBeVisible();
+  await expect(posLink).toHaveAttribute("href", /\/pos\/\?source=digital-menu&restaurant=restaurant-one&owner=owner-1/);
+  await expect(page.locator(".premium-pos-sync-card")).toContainText("Plan Test Kitchen");
+  const mode = page.locator("#ownerPeriodMode");
+  await expect(mode).toBeVisible();
+  await expect(mode).toHaveCSS("background-color", "rgb(255, 250, 243)");
+  await expect(mode).toHaveCSS("color", "rgb(45, 22, 10)");
+  await mode.selectOption("month");
+  await expect(page.locator('#ownerPeriodValue[type="month"]')).toBeVisible();
+  await assertNoErrors();
+});
+
 test("creating the first free restaurant submits its onboarding request", async ({ page }) => {
   const assertNoErrors = monitorPageErrors(page);
   await prepareProductionMock(page, { initialUser: { $id: "new-owner", email: "new@restaurant.test", name: "New Owner" } });

@@ -156,3 +156,46 @@ test("premium purchase request is stored without opening WhatsApp", async ({ pag
   expect(request).toMatchObject({ plan: "monthly", amount: 299, status: "requested", email: "owner@example.com" });
   await assertNoErrors();
 });
+
+test("Digital Menu Premium opens a restaurant-scoped POS with synced menu and orders", async ({ page }) => {
+  const assertNoErrors = monitorPageErrors(page);
+  await prepareMockApi(page, {
+    initialUser: { $id: "owner-sync", email: "sync@restaurant.test", name: "Sync Owner" },
+    seed: {
+      "digital_menu_owner-sync": [{
+        id: "restaurant-sync", ownerId: "owner-sync",
+        restaurant: { id: "restaurant-sync", name: "Sync Kitchen", city: "Hyderabad", phone: "9876543210", tax: 5, upiId: "synckitchen@upi" },
+        categories: [{ id: "cat-meals", name: "Meals" }],
+        items: [{ id: "meal-sync", categoryId: "cat-meals", name: "Sync Meal", price: 249, type: "Veg", available: true }],
+      }],
+      digital_menu_entitlements: [{ id: "ent-sync", ownerId: "owner-sync", plan: "premium", lifetime: true }],
+      "digital_order_owner-sync": [{
+        id: "ORDER-SYNC-1", ownerId: "owner-sync", restaurantId: "restaurant-sync", tokenNumber: 7,
+        customer: "Table 4", items: [{ name: "Sync Meal", qty: 2, price: 249 }], total: 498,
+        status: "Completed", createdAt: new Date().toISOString(), completedAt: new Date().toISOString(),
+      }],
+    },
+  });
+  await page.goto("/pos/?source=digital-menu&restaurant=restaurant-sync&owner=owner-sync");
+  await expect(page.locator("#posAccountGate")).toHaveCount(0);
+  if (await page.locator("#posGuideModal.show").count()) await page.locator("#startUsingPosBtn").click();
+  await expect(page.locator(".restaurant-sync-banner")).toContainText("Sync Kitchen");
+  await expect(page.locator("#premiumShell")).toContainText("PREMIUM ACTIVE");
+
+  await page.locator('#premiumShell [data-p="menu"]').click();
+  await expect(page.locator("#localMenuList")).toContainText("Sync Meal");
+  await page.locator('[data-toggle-menu="meal-sync"]').click();
+  await expect.poll(() => page.evaluate(() => window.__g58Mock.store["digital_menu_owner-sync"][0].items[0].available)).toBe(false);
+
+  await page.locator('#premiumShell [data-p="orders"]').click();
+  await expect(page.locator(".digital-order-table")).toContainText("ORDER-SYNC-1");
+  await expect(page.locator(".digital-order-table")).toContainText("#0007");
+  await expect(page.locator(".digital-order-table")).toContainText("₹498");
+
+  await page.locator('#premiumShell [data-p="dashboard"]').click();
+  await expect(page.locator("#pp")).toContainText("Sync Kitchen business dashboard");
+  await expect(page.locator("#pp")).toContainText("Digital Menu sales");
+  await expect(page.locator("#pp")).toContainText("₹498");
+  await expect.poll(() => page.evaluate(() => Object.values(window.__g58Mock.store).flat().find((row) => row.restaurantId === "restaurant-sync" && row.digitalMenuLinked) || null)).toMatchObject({ ownerId: "owner-sync", restaurantId: "restaurant-sync", restaurantName: "Sync Kitchen" });
+  await assertNoErrors();
+});
