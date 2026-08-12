@@ -129,17 +129,25 @@ test("Premium customer creates a meal subscription and schedules a receipt-backe
   await page.goto("/digital-menu/#menu&cloud=restaurant-one&owner=owner-1");
   await page.getByRole("textbox", { name: "Enter your name" }).fill("Premium Customer");
   await page.getByRole("button", { name: "Continue to Menu" }).click();
+  await expect(page.locator(".premium-customer-access-card")).toContainText("Schedule orders & manage meal subscriptions");
+  await expect(page.locator(".premium-customer-access-card")).toContainText("Regular immediate orders do not require a customer account");
+  await page.locator('.poster-menu-item[data-search*="meal one"] [data-qty-action="plus"]').click();
+  await page.locator("#openCart").click();
+  await expect(page.getByText("Pay & send receipt for approval")).toBeVisible();
+  await expect(page.locator("#checkoutPremiumLogin")).toBeVisible();
+  await expect(page.locator("#scheduledFor")).toHaveCount(0);
+  await page.getByRole("button", { name: "Close dialog" }).click();
   await page.locator("#openMealSubscriptions").click();
+  await expect(page.getByText("For scheduled orders and meal subscriptions only")).toBeVisible();
   await page.locator('#mealCustomerRegister input[name="name"]').fill("Premium Customer");
   await page.locator('#mealCustomerRegister input[name="email"]').fill("premium.customer@example.com");
   await page.locator('#mealCustomerRegister input[name="password"]').fill("secret123");
-  await page.locator("#mealCustomerRegister").getByRole("button", { name: "Create Customer Account" }).click();
-  await expect(page.getByRole("heading", { name: /Plan Test Kitchen Meal Plans/ })).toBeVisible();
+  await page.locator("#mealCustomerRegister").getByRole("button", { name: "Create Schedule Account" }).click();
+  await expect(page.getByRole("heading", { name: /Plan Test Kitchen Premium Customer/ })).toBeVisible();
   await page.locator('[data-customer-subscribe="meal-plan-1"]').click();
   await expect(page.locator(".customer-subscription-history")).toContainText("Healthy Monthly Meals");
   await page.getByRole("button", { name: "Close dialog" }).click();
 
-  await page.locator('.poster-menu-item[data-search*="meal one"] [data-qty-action="plus"]').click();
   await page.locator("#openCart").click();
   await expect(page.locator('#checkoutPanel input[value="counter"]')).toHaveCount(0);
   await expect(page.locator(".payment-app-grid")).toContainText("PhonePe");
@@ -156,5 +164,31 @@ test("Premium customer creates a meal subscription and schedules a receipt-backe
   expect(result.orders[0].transactionId).toBe("UPI-TEST-12345");
   expect(result.orders[0].paymentReceiptUrl).toContain("receipt.png");
   expect(result.orders[0].scheduledFor).toBeTruthy();
+  await assertNoErrors();
+});
+
+test("payment-link checkout remains available without a UPI ID and waits for owner verification", async ({ page }) => {
+  const assertNoErrors = monitorPageErrors(page);
+  const linkMenu = menuRecord();
+  Object.assign(linkMenu.restaurant, {
+    paymentEnabled: true, upiId: "", paymentLink: "https://pay.example.com/restaurant", phone: "+91 98765 43210",
+  });
+  await prepareProductionMock(page, { seed: { "digital_menu_owner-1": [linkMenu] } });
+  page.on("popup", (popup) => popup.close());
+  await page.goto("/digital-menu/#menu&cloud=restaurant-one&owner=owner-1");
+  await page.getByRole("textbox", { name: "Enter your name" }).fill("Pay Link Customer");
+  await page.getByRole("button", { name: "Continue to Menu" }).click();
+  await page.locator('.poster-menu-item[data-search*="meal one"] [data-qty-action="plus"]').click();
+  await page.locator("#openCart").click();
+  await expect(page.getByRole("link", { name: "Open Restaurant Payment Page" })).toHaveAttribute("href", "https://pay.example.com/restaurant");
+  await expect(page.locator(".payment-app-grid")).toHaveCount(0);
+  await page.locator("#transactionId").fill("PAY-LINK-123");
+  await page.locator("#paymentReceipt").setInputFiles({ name: "receipt.png", mimeType: "image/png", buffer: Buffer.from("receipt-image") });
+  await page.locator("#confirmPlaceOrder").click();
+  await expect(page).toHaveURL(/#track&order=/);
+  await expect(page.getByRole("heading", { name: "Verifying Your Payment" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Share Receipt on WhatsApp" })).toBeVisible();
+  const order = await page.evaluate(() => window.__g58Mock.store["digital_order_owner-1"][0]);
+  expect(order).toMatchObject({ paymentMethod: "online", paymentLink: "https://pay.example.com/restaurant", upiId: "", transactionId: "PAY-LINK-123", status: "Payment Verification" });
   await assertNoErrors();
 });
