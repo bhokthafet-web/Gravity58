@@ -452,6 +452,9 @@ test("customer can load the latest account menu on another device", async ({ pag
   await expect(page.locator('.poster-menu-item img[src="https://cdn.example.com/cloud-meal.jpg"]')).toBeVisible();
   await expect(page.locator('.compact-hero-photo[src="https://cdn.example.com/restaurant.jpg"]')).toBeVisible();
   await expect(page.locator('.header-ad-media[src="https://cdn.example.com/stable-ad.jpg"]')).toBeVisible();
+  await page.locator('[data-item="cloud-meal"][data-qty-action="plus"]').click();
+  await expect(page.locator("#cartCount")).toHaveText("1");
+  await expect(page.locator("#cartTotal")).toHaveText("₹299");
   await page.evaluate(() => {
     window.__g58Mock.store.advertisements.reverse();
     window.dispatchEvent(new CustomEvent("g58-ad-data-changed", { detail: { kind: "advertisements" } }));
@@ -500,7 +503,7 @@ test("simultaneous cloud orders receive unique serial tokens and remain independ
   }));
   expect(result.tokens).toEqual([1, 2]);
   expect(result.reservations).toEqual([1, 2]);
-  expect(result.orderPermissions.every((permissions) => permissions.includes("read:users") && permissions.includes("update:users"))).toBe(true);
+  expect(result.orderPermissions.every((permissions) => permissions.includes("read:user:queue-owner") && permissions.includes("update:user:queue-owner"))).toBe(true);
   expect(result.tokenPermissions.every((permissions) => !permissions.some((permission) => permission.includes("queue-owner")))).toBe(true);
   const storedOrders = await page.evaluate(() => window.__g58Mock.store["digital_order_queue-owner"]);
   expect(storedOrders.find((row) => row.tokenNumber === 1).messages.at(-1)).toMatchObject({ senderRole: "customer", text: "First order message" });

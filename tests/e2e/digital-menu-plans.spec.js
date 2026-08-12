@@ -164,6 +164,45 @@ test("Premium customer creates a meal subscription and schedules a receipt-backe
   expect(result.orders[0].transactionId).toBe("UPI-TEST-12345");
   expect(result.orders[0].paymentReceiptUrl).toContain("receipt.png");
   expect(result.orders[0].scheduledFor).toBeTruthy();
+  await page.goto("/digital-menu/#menu&cloud=restaurant-one&owner=owner-1");
+  await page.locator("#openMealSubscriptions").click();
+  await expect(page.getByRole("heading", { name: /Premium Customer Dashboard/ })).toBeVisible();
+  await expect(page.locator(".customer-dashboard-stats")).toContainText("1");
+  await expect(page.locator(".customer-scheduled-orders")).toContainText("Payment Verification");
+  await expect(page.locator(".customer-scheduled-orders")).toContainText("Meal One");
+  await expect(page.locator('[data-track-customer-order]')).toBeVisible();
+  await assertNoErrors();
+});
+
+test("restaurant owner sees a customer's paid scheduled order in the Schedule board", async ({ page }) => {
+  const assertNoErrors = monitorPageErrors(page);
+  const premiumMenu = menuRecord();
+  Object.assign(premiumMenu.restaurant, { premiumFeatures: true, paymentEnabled: true, upiId: "plantest@upi" });
+  const scheduledFor = new Date(Date.now() + 30 * 60000).toISOString();
+  await prepareProductionMock(page, {
+    initialUser: { $id: "owner-1", email: "owner@restaurant.test", name: "Restaurant Owner" },
+    seed: {
+      "digital_menu_owner-1": [premiumMenu],
+      digital_menu_entitlements: [{ id: "ent-premium", ownerId: "owner-1", plan: "premium", lifetime: true, maxRestaurants: 5 }],
+      "digital_order_owner-1": [{
+        id: "SCHEDULED-PAID-1", ownerId: "owner-1", cloudOwnerId: "owner-1", restaurantId: "restaurant-one",
+        customerAccountId: "customer-1", customerName: "Scheduled Customer", customer: "Scheduled Customer",
+        tokenNumber: 21, items: [{ id: "item-one", name: "Meal One", qty: 2, price: 199 }], total: 398,
+        paymentMethod: "online", paymentStatus: "Submitted", status: "Payment Verification",
+        transactionId: "UPI-SCHEDULED-21", paymentReceiptUrl: "https://cdn.example.com/receipt.png",
+        scheduledFor, createdAt: new Date().toISOString(),
+      }],
+    },
+  });
+  await page.goto("/digital-menu/");
+  await expect(page.locator(".plan-badge")).toContainText("Digital Menu Premium");
+  await page.locator('[data-view="schedule"]').click();
+  await expect(page.getByRole("heading", { name: "Scheduled Orders" })).toBeVisible();
+  await expect(page.locator(".schedule-card")).toContainText("Scheduled Customer");
+  await expect(page.locator(".schedule-card")).toContainText("2 × Meal One");
+  await expect(page.locator(".schedule-card")).toContainText("Payment Verification");
+  await expect(page.locator(".schedule-card")).toContainText("₹398");
+  await expect(page.locator(".schedule-card").getByRole("button", { name: "Confirm Payment" })).toBeVisible();
   await assertNoErrors();
 });
 
