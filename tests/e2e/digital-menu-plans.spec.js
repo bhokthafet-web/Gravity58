@@ -117,6 +117,30 @@ test("G58 admin edits Digital Menu pricing and grants lifetime Premium access", 
   await assertNoErrors();
 });
 
+test("signed-out customer places an immediate receipt-backed order without login", async ({ page }) => {
+  const assertNoErrors = monitorPageErrors(page);
+  const premiumMenu = menuRecord();
+  Object.assign(premiumMenu.restaurant, {
+    premiumFeatures: true, paymentEnabled: true, upiId: "guestorder@upi", upiPayeeName: "Guest Order Kitchen",
+  });
+  await prepareProductionMock(page, { seed: { "digital_menu_owner-1": [premiumMenu] } });
+  await page.goto("/digital-menu/#menu&cloud=restaurant-one&owner=owner-1");
+  await page.getByRole("textbox", { name: "Enter your name" }).fill("Walk-in Guest");
+  await page.getByRole("button", { name: "Continue to Menu" }).click();
+  await page.locator('.poster-menu-item [data-qty-action="plus"]').click();
+  await page.locator("#openCart").click();
+  await expect(page.locator("#checkoutPanel").getByText("Login / Create Account", { exact: true })).toHaveCount(0);
+  await page.locator("#paymentReceipt").setInputFiles({ name: "guest-receipt.png", mimeType: "image/png", buffer: Buffer.from("guest-receipt-image") });
+  await page.locator("#confirmPlaceOrder").click();
+  await expect(page).toHaveURL(/#track&order=/);
+  const result = await page.evaluate(() => ({ user: window.__g58Mock.user, orders: window.__g58Mock.store["digital_order_owner-1"] || [] }));
+  expect(result.user.$id).toMatch(/^anon-/);
+  expect(result.user.email).toBe("");
+  expect(result.orders).toHaveLength(1);
+  expect(result.orders[0]).toMatchObject({ customerName: "Walk-in Guest", status: "Payment Verification" });
+  await assertNoErrors();
+});
+
 test("Premium customer creates a meal subscription and schedules a receipt-backed UPI order", async ({ page }) => {
   const assertNoErrors = monitorPageErrors(page);
   const premiumMenu = menuRecord();
@@ -134,7 +158,8 @@ test("Premium customer creates a meal subscription and schedules a receipt-backe
   await page.locator('.poster-menu-item[data-search*="meal one"] [data-qty-action="plus"]').click();
   await page.locator("#openCart").click();
   await expect(page.getByText("Pay & send receipt for approval")).toBeVisible();
-  await expect(page.locator("#checkoutPremiumLogin")).toBeVisible();
+  await expect(page.locator("#checkoutPremiumLogin")).toHaveCount(0);
+  await expect(page.locator("#checkoutPanel").getByText("Login / Create Account", { exact: true })).toHaveCount(0);
   await expect(page.locator("#scheduledFor")).toHaveCount(0);
   await page.getByRole("button", { name: "Close dialog" }).click();
   await page.locator("#openMealSubscriptions").click();

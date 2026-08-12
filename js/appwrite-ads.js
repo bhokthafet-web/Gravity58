@@ -283,8 +283,11 @@
       const mediaUrl = URL.createObjectURL(file);
       return { fileId: "local-" + Date.now(), mediaUrl, mediaType: file.type, mediaName: file.name, localOnly: true };
     }
-    const current = await currentUser();
-    if (!current) throw new Error("Reload the menu before uploading the payment receipt.");
+    // Normal menu customers never need to create or log in to an account.
+    // Appwrite's anonymous session supplies the private customer role required
+    // for receipt ownership and secure order tracking.
+    const current = await ensureUser();
+    if (!current) throw new Error("A secure guest ordering session could not be started. Reload the menu and try again.");
     // A customer may only grant permissions for their own account. Restaurant
     // access and permanent deletion are handled by the secure order function.
     const customerRole = Appwrite.Role.user(current.$id);

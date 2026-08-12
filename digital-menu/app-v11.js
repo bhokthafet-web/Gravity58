@@ -995,7 +995,7 @@ async function openCart(r){
       <div id="onlinePaymentFields">
         ${upiUri?`<div class="upi-payment-box"><div id="amountQr"></div><div><strong>Scan this QR to pay ${money(total)}</strong><p class="muted">Payee: ${html(payment.payeeName)}</p><p class="muted">UPI ID: ${html(payment.upiId)}</p></div></div>`:'<p class="checkout-error">A UPI QR is not configured. Ask the restaurant owner to add a UPI ID.</p>'}
         <div class="field"><label>Payment receipt image</label><input id="paymentReceipt" type="file" accept="image/jpeg,image/png,image/webp"><small>Required for verification. After restaurant approval, this image is deleted permanently.</small></div>
-        ${premiumSchedulingAvailable?(scheduleAccountReady?`<div class="premium-schedule-field"><label class="schedule-order-toggle"><input id="scheduleOrderToggle" type="checkbox"><span><strong>Schedule this order</strong><small>Signed in as ${html(scheduleAccount.email)}</small></span></label><div id="scheduleDateTimeFields" class="schedule-date-time-fields" hidden><div class="field"><label>Preparation date</label><input id="scheduledDate" type="date" min="${scheduleDateMin}"></div><div class="field"><label>Preparation time</label><input id="scheduledTime" type="time"></div><small>The restaurant is alerted five minutes before the selected time.</small></div></div>`:`<div class="premium-schedule-login"><div><strong>Want to schedule this order?</strong><p>Premium scheduling requires a customer account. The account is used only for scheduled orders and meal subscriptions.</p></div><button class="btn small secondary" id="checkoutPremiumLogin" type="button">Login / Create Account</button></div>`):''}
+        ${premiumSchedulingAvailable&&scheduleAccountReady?`<div class="premium-schedule-field"><label class="schedule-order-toggle"><input id="scheduleOrderToggle" type="checkbox"><span><strong>Schedule this order</strong><small>Signed in as ${html(scheduleAccount.email)}</small></span></label><div id="scheduleDateTimeFields" class="schedule-date-time-fields" hidden><div class="field"><label>Preparation date</label><input id="scheduledDate" type="date" min="${scheduleDateMin}"></div><div class="field"><label>Preparation time</label><input id="scheduledTime" type="time"></div><small>The restaurant is alerted five minutes before the selected time.</small></div></div>`:''}
         <p class="payment-whatsapp-note"><strong>What happens next?</strong> Upload the receipt and place the order. Restaurant staff verify it; approval permanently deletes the image and starts the order.</p>
       </div>
     </div>`:''}
@@ -1022,7 +1022,6 @@ async function openCart(r){
       }
     };
     $('#scheduleOrderToggle',panel)?.addEventListener('change',event=>{$('#scheduleDateTimeFields',panel).hidden=!event.currentTarget.checked});
-    $('#checkoutPremiumLogin',panel)?.addEventListener('click',()=>{closeModal();setTimeout(()=>openCustomerSubscriptionPortal(r,remoteMenuSource.startsWith('cloud:')?remoteMenuSource.split(':')[1]:cloudOwnerId()),0)});
     showPayment();
 
     button.addEventListener('click',async()=>{

@@ -100,6 +100,7 @@ test("customer receipt uploads only grant roles available to that customer", () 
   const end = source.indexOf("async function removeAdMedia", start);
   assert.ok(start >= 0 && end > start, "Dedicated payment receipt uploader is missing");
   const receiptUploader = source.slice(start, end);
+  assert.match(receiptUploader, /await ensureUser\(\)/, "Receipt upload must start an invisible anonymous customer session");
   assert.match(receiptUploader, /Role\.user\(current\.\$id\)/);
   assert.match(receiptUploader, /Role\.any\(\)/);
   assert.doesNotMatch(receiptUploader, /Role\.team|adminTeamId/, "Customer receipt upload cannot grant an administrator-team role");
