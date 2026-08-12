@@ -839,7 +839,7 @@ function renderPublicMenu(){
   $('#publicMenuSearch').oninput=e=>{filters.search=e.target.value;applyFilters()};
   if(!published&&orderingEnabled){
     const itemMap=new Map(items.map(item=>[String(item.id),item]));
-    $('#publicMenuItems').onclick=event=>{const button=event.target.closest('[data-qty-action]');if(!button)return;event.preventDefault();changeCartQuantity(button.dataset.item,button.dataset.qtyAction,itemMap.get(String(button.dataset.item)))};
+    $$('[data-qty-action]').forEach(button=>button.onclick=event=>{event.preventDefault();changeCartQuantity(button.dataset.item,button.dataset.qtyAction,itemMap.get(String(button.dataset.item)))});
     $$('[data-prepare-item]').forEach(control=>control.onchange=()=>{if(control.checked)openPreparationInstructions(control.dataset.prepareItem,itemMap.get(String(control.dataset.prepareItem)));else{const ci=customerCart.find(x=>x.id===control.dataset.prepareItem);if(ci){ci.prepareInstruction='';ci.prepareOptions=[];ci.customPrepareNote=''}persistCustomerCart();renderPublicMenu()}});
     $('#openCart').onclick=()=>openCart(r);
   }
