@@ -217,9 +217,15 @@ test("customer adds quantities and preparation instructions, places order and tr
 
   await page.locator("#openCart").click();
   await expect(page.getByRole("heading", { name: "Your Cart" })).toBeVisible();
+  await expect(page.locator("#transactionId")).toHaveCount(0);
+  await page.locator("#paymentReceipt").setInputFiles({
+    name: "payment-receipt.png",
+    mimeType: "image/png",
+    buffer: Buffer.from("payment-receipt-image"),
+  });
   await page.locator("#confirmPlaceOrder").click();
   await expect(page).toHaveURL(/#track&order=/);
-  await expect(page.getByRole("heading", { name: "Order Received" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Verifying Your Payment" })).toBeVisible();
   await expect(page.getByText("Your Food Is Being Prepared", { exact: true })).toHaveCount(0);
   await expect(page.locator(".customer-token-panel strong")).toHaveText(/\d{4}/);
   await expect(page.locator("#refreshTrack")).toHaveCount(0);
@@ -233,6 +239,8 @@ test("customer adds quantities and preparation instructions, places order and tr
   const order = await page.evaluate(() => JSON.parse(localStorage.getItem("gravity58DigitalMenu")).orders[0]);
   expect(order.customerName).toBe("Menu Customer");
   expect(order.tokenNumber).toBeGreaterThan(0);
+  expect(order.transactionId).toBe("");
+  expect(order.paymentReceiptName).toBe("payment-receipt.png");
   expect(order.messages.at(-1)).toMatchObject({ senderRole: "customer", text: "Please confirm my order" });
   expect(order.items.find((item) => item.name === "Masala Dosa").qty).toBe(2);
   expect(order.items.find((item) => item.name === "Paneer Sandwich").prepareInstruction).toContain("Medium spicy");

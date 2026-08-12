@@ -86,6 +86,7 @@
   let tables = null;
   let teams = null;
   let storage = null;
+  let functions = null;
   if (configured) {
     client = new Appwrite.Client().setEndpoint(config.endpoint).setProject(config.projectId);
     account = new Appwrite.Account(client);
@@ -93,6 +94,7 @@
     if (Appwrite.Databases) databases = new Appwrite.Databases(client);
     teams = new Appwrite.Teams(client);
     if (Appwrite.Storage) storage = new Appwrite.Storage(client);
+    if (Appwrite.Functions) functions = new Appwrite.Functions(client);
   }
 
   async function list(kind, filters = {}) {
@@ -294,6 +296,26 @@
     return { fileId: uploaded.$id, path: uploaded.$id, mediaUrl: String(storage.getFileView({ bucketId: mediaBucketId, fileId: uploaded.$id })), mediaType: file.type, mediaName: file.name };
   }
   const removeMenuMedia = removeAdMedia;
+  async function executeFunction(functionId, data) {
+    if (!configured || !functions) throw new Error("Secure order service is temporarily unavailable.");
+    const execution = await functions.createExecution({
+      functionId,
+      body: JSON.stringify(data || {}),
+      async: false,
+      xpath: "/",
+      method: "POST",
+      headers: { "content-type": "application/json" },
+    });
+    let response = {};
+    try { response = JSON.parse(execution.responseBody || "{}"); }
+    catch { response = { error: execution.responseBody || "Secure order service returned an invalid response." }; }
+    if (execution.status === "failed" || Number(execution.responseStatusCode) >= 400 || response.ok === false) {
+      const error = new Error(response.error || execution.errors || "Secure order service failed.");
+      error.code = Number(execution.responseStatusCode) || 500;
+      throw error;
+    }
+    return response;
+  }
   async function isTeamAdmin() {
     if (!configured || !config.adminTeamId) return false;
     try { await teams.get({ teamId: config.adminTeamId }); return true; }
@@ -325,10 +347,10 @@
   }
 
   window.Gravity58Ads = Object.freeze({
-    configured, config, collections, client, account, databases, tables, storage, mediaBucketId,
+    configured, config, collections, client, account, databases, tables, storage, functions, mediaBucketId,
     list, get, create, update, remove, upsertSlot, permissionSet, userPermissionSet, collaborativePermissionSet, managedPermissionSet,
     register, login, logout, currentUser, ensureUser, forgotPassword, completeRecovery, createJWT, isTeamAdmin,
-    validateMediaFile, uploadAdMedia, removeAdMedia, validateMenuImage, uploadMenuMedia, removeMenuMedia,
+    validateMediaFile, uploadAdMedia, removeAdMedia, validateMenuImage, uploadMenuMedia, removeMenuMedia, executeFunction,
     subscribeAdvertisements, subscribeKind,
   });
 })();

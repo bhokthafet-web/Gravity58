@@ -150,27 +150,27 @@ test("Premium customer creates a meal subscription and schedules a receipt-backe
 
   await page.locator("#openCart").click();
   await expect(page.locator('#checkoutPanel input[value="counter"]')).toHaveCount(0);
-  await expect(page.locator(".payment-app-grid")).toContainText("PhonePe");
-  const upiHref = await page.getByRole("link", { name: "Pay with PhonePe / GPay / Paytm" }).getAttribute("href");
-  expect(upiHref).toMatch(/^upi:\/\/pay\?/);
-  const upiParams = new URL(upiHref).searchParams;
+  const upiUri = await page.locator("#amountQr").getAttribute("data-qr-text");
+  expect(upiUri).toMatch(/^upi:\/\/pay\?/);
+  const upiParams = new URL(upiUri).searchParams;
   expect(upiParams.get("pa")).toBe("plantest@upi");
   expect(upiParams.get("pn")).toBe("Plan Test Foods Private Limited");
   expect(upiParams.get("tr")).toMatch(/^\d{3,35}$/);
   expect(upiParams.get("am")).toBe("199.00");
   await expect(page.locator('a[href^="phonepe://"], a[href^="paytmmp://"]')).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Copy UPI ID" })).toBeVisible();
-  await page.locator("#transactionId").fill("UPI-TEST-12345");
+  await expect(page.locator("#transactionId")).toHaveCount(0);
   await page.locator("#paymentReceipt").setInputFiles({ name: "receipt.png", mimeType: "image/png", buffer: Buffer.from("receipt-image") });
-  const scheduledFor = await page.evaluate(() => { const date = new Date(Date.now() + 10 * 60000); date.setMinutes(date.getMinutes() - date.getTimezoneOffset()); return date.toISOString().slice(0, 16); });
-  await page.locator("#scheduledFor").fill(scheduledFor);
+  await page.locator("#scheduleOrderToggle").check();
+  const schedule = await page.evaluate(() => { const date = new Date(Date.now() + 10 * 60000); const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString(); return { date: local.slice(0, 10), time: local.slice(11, 16) }; });
+  await page.locator("#scheduledDate").fill(schedule.date);
+  await page.locator("#scheduledTime").fill(schedule.time);
   await page.locator("#confirmPlaceOrder").click();
   await expect(page).toHaveURL(/#track&order=/);
   await expect(page.getByRole("heading", { name: "Verifying Your Payment" })).toBeVisible();
   await expect(page.locator(".customer-chat-toggle")).toBeVisible();
   const result = await page.evaluate(() => ({ subscriptions: window.__g58Mock.store["digital_subscription_owner-1"], orders: window.__g58Mock.store["digital_order_owner-1"] }));
   expect(result.subscriptions[0]).toMatchObject({ planId: "meal-plan-1", customerEmail: "premium.customer@example.com", status: "Requested" });
-  expect(result.orders[0].transactionId).toBe("UPI-TEST-12345");
+  expect(result.orders[0].transactionId).toBe("");
   expect(result.orders[0].paymentReceiptUrl).toContain("receipt.png");
   expect(result.orders[0].scheduledFor).toBeTruthy();
   await page.goto("/digital-menu/#menu&cloud=restaurant-one&owner=owner-1");
@@ -197,8 +197,8 @@ test("restaurant owner sees a customer's paid scheduled order in the Schedule bo
         id: "SCHEDULED-PAID-1", ownerId: "owner-1", cloudOwnerId: "owner-1", restaurantId: "restaurant-one",
         customerAccountId: "customer-1", customerName: "Scheduled Customer", customer: "Scheduled Customer",
         tokenNumber: 21, items: [{ id: "item-one", name: "Meal One", qty: 2, price: 199 }], total: 398,
-        paymentMethod: "online", paymentStatus: "Submitted", status: "Payment Verification",
-        transactionId: "UPI-SCHEDULED-21", paymentReceiptUrl: "https://cdn.example.com/receipt.png",
+        paymentMethod: "online", paymentStatus: "Awaiting confirmation", status: "Payment Verification",
+        transactionId: "", paymentReceiptUrl: "https://cdn.example.com/receipt.png", paymentReceiptFileId: "receipt-file-21",
         scheduledFor, createdAt: new Date().toISOString(),
       }],
     },
@@ -211,11 +211,19 @@ test("restaurant owner sees a customer's paid scheduled order in the Schedule bo
   await expect(page.locator(".schedule-card")).toContainText("2 × Meal One");
   await expect(page.locator(".schedule-card")).toContainText("Payment Verification");
   await expect(page.locator(".schedule-card")).toContainText("₹398");
-  await expect(page.locator(".schedule-card").getByRole("button", { name: "Confirm Payment" })).toBeVisible();
+  await page.locator(".schedule-card").getByRole("button", { name: "Confirm Payment" }).click();
+  await expect(page.locator(".schedule-card")).toContainText("Scheduled");
+  await expect(page.locator(".schedule-card .payment-receipt-link")).toHaveCount(0);
+  const approval = await page.evaluate(() => ({
+    order: window.__g58Mock.store["digital_order_owner-1"][0],
+    removedMedia: window.__g58Mock.removedMedia,
+  }));
+  expect(approval.order).toMatchObject({ status: "Scheduled", paymentStatus: "Confirmed", paymentReceiptUrl: "", paymentReceiptFileId: "" });
+  expect(approval.removedMedia).toContain("receipt-file-21");
   await assertNoErrors();
 });
 
-test("payment-link checkout remains available without a UPI ID and waits for owner verification", async ({ page }) => {
+test("checkout requires a restaurant UPI QR and does not offer payment-link redirects", async ({ page }) => {
   const assertNoErrors = monitorPageErrors(page);
   const linkMenu = menuRecord();
   Object.assign(linkMenu.restaurant, {
@@ -228,15 +236,13 @@ test("payment-link checkout remains available without a UPI ID and waits for own
   await page.getByRole("button", { name: "Continue to Menu" }).click();
   await page.locator('.poster-menu-item[data-search*="meal one"] [data-qty-action="plus"]').click();
   await page.locator("#openCart").click();
-  await expect(page.getByRole("link", { name: "Open Restaurant Payment Page" })).toHaveAttribute("href", "https://pay.example.com/restaurant");
+  await expect(page.getByRole("link", { name: "Open Restaurant Payment Page" })).toHaveCount(0);
   await expect(page.locator(".payment-app-grid")).toHaveCount(0);
-  await page.locator("#transactionId").fill("PAY-LINK-123");
+  await expect(page.locator("#amountQr")).toHaveCount(0);
+  await expect(page.locator("#checkoutPanel")).toContainText("UPI QR is not configured");
   await page.locator("#paymentReceipt").setInputFiles({ name: "receipt.png", mimeType: "image/png", buffer: Buffer.from("receipt-image") });
   await page.locator("#confirmPlaceOrder").click();
-  await expect(page).toHaveURL(/#track&order=/);
-  await expect(page.getByRole("heading", { name: "Verifying Your Payment" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Share Receipt on WhatsApp" })).toBeVisible();
-  const order = await page.evaluate(() => window.__g58Mock.store["digital_order_owner-1"][0]);
-  expect(order).toMatchObject({ paymentMethod: "online", paymentLink: "https://pay.example.com/restaurant", upiId: "", transactionId: "PAY-LINK-123", status: "Payment Verification" });
+  await expect(page.locator("#checkoutError")).toContainText("not configured");
+  await expect(page).not.toHaveURL(/#track&order=/);
   await assertNoErrors();
 });

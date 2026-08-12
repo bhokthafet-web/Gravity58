@@ -178,12 +178,12 @@ function cloudTokenKind(ownerId=cloudOwnerId()){return `${CLOUD_TOKEN_KIND_PREFI
 function orderDay(value=now()){return new Date(value).toLocaleDateString('en-CA',{timeZone:'Asia/Kolkata'}).replaceAll('-','')}
 function formatToken(value){return String(Math.max(0,Number(value)||0)).padStart(4,'0')}
 function activeQueueStatus(status){return !['Completed','Rejected','Payment Rejected'].includes(status)}
-function restaurantCloudFields(r){const fields=['id','name','type','city','description','address','phone','email','open','accepting','tax','service','identification','restaurantKey','social','paymentEnabled','upiId','upiPayeeName','paymentLink','logoImageUrl','logoImageFileId','subscriptionPlans','digitalMenuPlan','ordersEnabled','premiumFeatures','entitlementExpiresAt'];return Object.fromEntries(fields.map(key=>[key,r?.[key]]))}
+function restaurantCloudFields(r){const fields=['id','name','type','city','description','address','phone','email','open','accepting','tax','service','identification','restaurantKey','social','paymentEnabled','upiId','upiPayeeName','logoImageUrl','logoImageFileId','subscriptionPlans','digitalMenuPlan','ordersEnabled','premiumFeatures','entitlementExpiresAt'];return Object.fromEntries(fields.map(key=>[key,r?.[key]]))}
 function restaurantPaymentSettings(restaurant={}){
-  const upiId=String(restaurant.upiId||'').trim(),payeeName=String(restaurant.upiPayeeName||restaurant.name||'').trim(),paymentLink=String(restaurant.paymentLink||'').trim();
+  const upiId=String(restaurant.upiId||'').trim(),payeeName=String(restaurant.upiPayeeName||restaurant.name||'').trim();
   const hasExplicitSetting=restaurant.paymentEnabled!==undefined&&restaurant.paymentEnabled!==null;
   const explicitlyEnabled=restaurant.paymentEnabled===true||restaurant.paymentEnabled==='true';
-  return {enabled:hasExplicitSetting?explicitlyEnabled:!!(upiId||paymentLink),configured:!!(upiId||paymentLink),upiId,payeeName,paymentLink};
+  return {enabled:hasExplicitSetting?explicitlyEnabled:!!upiId,configured:!!upiId,upiId,payeeName};
 }
 function buildUpiPaymentUri({upiId,payeeName,amount,orderId}){
   if(!upiId)return '';
@@ -330,10 +330,16 @@ async function syncCloudOrders({alertNew=false}={}){
 async function persistCloudOrder(order){
   if(!order?.id||!order.cloudOwnerId)return order;
   const kind=cloudOrderKind(order.cloudOwnerId);
-  // This function is only used for a brand-new checkout. Existing orders use
-  // patchCloudOrder so staff never recreate a customer's permission set.
   const current=await Gravity58Ads.ensureUser();
   order.customerAccountId||=current?.$id||'';
+  const functionId=Gravity58Ads.config?.digitalOrderFunctionId;
+  if(functionId&&Gravity58Ads.executeFunction){
+    const result=await Gravity58Ads.executeFunction(functionId,{order});
+    if(!result?.order)throw new Error('Secure order service did not return the order.');
+    return result.order;
+  }
+  // Local and automated-test adapters do not run Appwrite Functions.
+  order.tokenNumber||=await reserveOrderToken(order.cloudOwnerId,order.restaurantId);
   const permissions=Gravity58Ads.userPermissionSet?.([order.customerAccountId,order.cloudOwnerId])||Gravity58Ads.collaborativePermissionSet?.(order.customerAccountId);
   return Gravity58Ads.create(kind,order,order.id,permissions);
 }
@@ -608,7 +614,7 @@ function orderMessagesMarkup(o,role='owner'){
   return `<div class="order-chat"><div class="order-chat-log">${messages.map(message=>`<div class="order-message ${message.senderRole===role?'mine':''}"><strong>${html(message.senderRole==='owner'?'Restaurant':message.senderName||'Customer')}</strong><span>${html(message.text)}</span><small>${new Date(message.createdAt).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'})}</small></div>`).join('')||'<p class="muted no-messages">No messages yet.</p>'}</div><form class="order-chat-form" data-order-chat="${html(o.id)}"><input name="message" maxlength="240" placeholder="Message the customer" aria-label="Message customer"><button class="btn small" type="submit">Send</button></form></div>`
 }
 function orderCard(o){
-  const identity=o.serviceMode==='table'?`Table ${o.tableNumber||'-'}`:'Single Counter',pay=o.paymentMethod==='online'?`Online · ${o.transactionId||'No ID'}`:'Pay at counter',token=formatToken(o.tokenNumber);
+  const identity=o.serviceMode==='table'?`Table ${o.tableNumber||'-'}`:'Single Counter',pay=o.paymentMethod==='online'?'Receipt verification':'Pay at counter',token=formatToken(o.tokenNumber);
   const incoming=['Pending','Payment Verification'].includes(o.status);
   return `<article class="card order-card ${incoming?'incoming-order':''}" data-status="${html(o.status)}" data-order-card="${html(o.id)}">${incoming?'<span class="incoming-order-beacon" aria-label="New incoming order" title="New incoming order"></span>':''}<div class="order-card-head"><div><span class="order-token">TOKEN ${token}</span><strong class="order-id">${html(o.id)}</strong><div class="muted">${html(o.customerName||o.customer||'Guest')} · ${html(identity)}</div>${o.phone?`<small class="muted">☎ ${html(o.phone)}</small>`:''}</div><span class="chip order-status">${html(o.status)}</span></div><div class="chips"><span class="chip">${html(pay)}</span>${o.paymentStatus?`<span class="chip">${html(o.paymentStatus)}</span>`:''}<span class="chip">${new Date(o.createdAt).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'})}</span>${o.scheduledFor?`<span class="chip schedule-chip">Scheduled ${new Date(o.scheduledFor).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'})}</span>`:''}</div>${o.paymentReceiptUrl?`<a class="payment-receipt-link" href="${html(o.paymentReceiptUrl)}" target="_blank" rel="noopener">View payment receipt ↗</a>`:''}<div class="order-items">${o.items.map(i=>`<div class="staff-order-item"><strong>${Number(i.qty)||1} × ${html(i.name)}</strong>${i.prepareInstruction?`<div class="staff-prep-note"><span>Preparation:</span> ${html(i.prepareInstruction)}</div>`:''}</div>`).join('')}</div><h3 style="margin:12px 0">${money(o.total)}</h3><div class="actions order-primary-actions">${orderActions(o)}${o.serviceMode==='table'?`<button class="btn small secondary" data-edit-table="${html(o.id)}">Correct table</button>`:''}<button class="btn small secondary" data-print-order="${html(o.id)}">Print</button></div>${orderMessagesMarkup(o)}</article>`
 }
@@ -627,11 +633,22 @@ async function updateOrder(id,action){
     if(o.cloudOwnerId&&Gravity58Ads?.configured)try{Object.assign(o,await Gravity58Ads.get(cloudOrderKind(o.cloudOwnerId),id))}catch{}
     const allowed={PaymentVerification:['Confirm Payment','Reject Payment'],Scheduled:['Start Scheduled Order','Reject'],Pending:['Accept','Reject'],Accepted:['Start Preparing'],Preparing:['Mark Ready'],Ready:['Complete']}[String(o.status).replace(/\s/g,'')]||[];
     if(!allowed.includes(action))throw new Error(`This order is already ${o.status}. Reloading the latest status.`);
+    if(action==='Confirm Payment'&&o.cloudOwnerId&&Gravity58Ads?.configured&&Gravity58Ads.config?.digitalOrderFunctionId){
+      const result=await Gravity58Ads.executeFunction(Gravity58Ads.config.digitalOrderFunctionId,{action:'confirm-payment',ownerId:o.cloudOwnerId,orderId:o.id});
+      if(!result?.order)throw new Error('Secure payment approval did not return the order.');
+      Object.assign(o,result.order);ringingOrderIds.delete(id);updateOrderAlertSound();save();
+      toast(`Payment approved. Receipt deleted permanently. Token ${formatToken(o.tokenNumber)} is now ${o.status}.`);
+      view==='orders'?ordersView():view==='schedule'?scheduleView():dashboardView();return;
+    }
     const changes={status:next,updatedAt:now()};
-    if(action==='Confirm Payment')changes.paymentStatus='Confirmed';if(action==='Reject Payment'){changes.paymentStatus='Rejected';changes.paymentRejectedAt=now()}if(action==='Reject')changes.rejectedAt=now();if(action==='Accept')changes.acceptedAt=now();if(action==='Start Scheduled Order')changes.scheduledStartedAt=now();if(action==='Mark Ready')changes.readyAt=now();if(action==='Complete')changes.completedAt=now();
+    if(action==='Confirm Payment'){
+      if(o.paymentReceiptFileId)await Gravity58Ads?.removeAdMedia?.(o.paymentReceiptFileId);
+      Object.assign(changes,{paymentStatus:'Confirmed',paymentReceiptUrl:'',paymentReceiptFileId:'',paymentReceiptName:'',paymentReceiptType:'',paymentReceiptDeletedAt:now()});
+    }
+    if(action==='Reject Payment'){changes.paymentStatus='Rejected';changes.paymentRejectedAt=now()}if(action==='Reject')changes.rejectedAt=now();if(action==='Accept')changes.acceptedAt=now();if(action==='Start Scheduled Order')changes.scheduledStartedAt=now();if(action==='Mark Ready')changes.readyAt=now();if(action==='Complete')changes.completedAt=now();
     await patchCloudOrder(o,changes);
     if(!['Pending','Payment Verification'].includes(next))ringingOrderIds.delete(id);updateOrderAlertSound();
-    toast(action==='Mark Ready'?`Token ${formatToken(o.tokenNumber)} is ready`:`Order ${o.id}: ${next}`);view==='orders'?ordersView():dashboardView();
+    toast(action==='Mark Ready'?`Token ${formatToken(o.tokenNumber)} is ready`:`Order ${o.id}: ${next}`);view==='orders'?ordersView():view==='schedule'?scheduleView():dashboardView();
   }catch(error){Object.assign(o,previous);save();toast(error.message||'Could not update order')}
   finally{orderMutationIds.delete(id)}
 }
@@ -718,16 +735,15 @@ function publicAdSection(r){
 function bindPublicAdContact(r){const b=$('#contactG58Ads');if(!b)return;b.onclick=()=>{const base=CONFIG.adBookingPortalUrl||'../advertise/';location.href=`${base}?restaurant=${encodeURIComponent(`${r.name}|${r.city}`)}`}}
 function settingsView(){
   const r=activeRestaurant(),payment=restaurantPaymentSettings(r);
-  $('#page').innerHTML=`<div class="section-head"><div><h1>Restaurant Settings</h1><p class="muted">Settings apply only to ${html(r.name)}</p></div></div><article class="card"><form id="settingsForm"><div class="form-grid"><div class="field"><label>Restaurant status</label><select name="open"><option value="true" ${r.open?'selected':''}>Open</option><option value="false" ${!r.open?'selected':''}>Closed</option></select></div><div class="field"><label>Accept orders</label><select name="accepting"><option value="true" ${r.accepting?'selected':''}>Yes</option><option value="false" ${!r.accepting?'selected':''}>No</option></select></div><div class="field"><label>Tax %</label><input name="tax" type="number" value="${r.tax||0}"></div><div class="field"><label>Service charge %</label><input name="service" type="number" value="${r.service||0}"></div><div class="field"><label>Enable customer payment</label><select name="paymentEnabled"><option value="true" ${payment.enabled?'selected':''}>Enabled</option><option value="false" ${!payment.enabled?'selected':''}>Disabled</option></select></div><div class="field"><label>UPI ID</label><input name="upiId" value="${html(payment.upiId)}" placeholder="restaurant@upi"></div><div class="field"><label>UPI payee name</label><input name="upiPayeeName" value="${html(payment.payeeName)}" placeholder="Exact bank-registered receiver name"><small>Enter the exact receiver or merchant name shown by the bank for this UPI ID.</small></div><div class="field"><label>Secure merchant payment link (recommended)</label><input name="paymentLink" type="url" value="${html(payment.paymentLink)}" placeholder="https://..."></div><div class="field"><label>Instagram URL</label><input name="instagram" value="${html(r.social?.Instagram||'')}"></div><div class="field"><label>WhatsApp number or URL</label><input name="whatsapp" value="${html(r.social?.WhatsApp||'')}" placeholder="9876543210 or https://wa.me/..."></div></div><p class="muted">For production payments, use a verified merchant UPI ID or a secure payment-gateway link. Personal UPI IDs and payments sent from the receiver's own bank account may be declined by the UPI app. Customers upload a receipt and the order remains under Payment Verification until you confirm it.</p><button class="btn">Save Settings</button></form></article>`;
+  $('#page').innerHTML=`<div class="section-head"><div><h1>Restaurant Settings</h1><p class="muted">Settings apply only to ${html(r.name)}</p></div></div><article class="card"><form id="settingsForm"><div class="form-grid"><div class="field"><label>Restaurant status</label><select name="open"><option value="true" ${r.open?'selected':''}>Open</option><option value="false" ${!r.open?'selected':''}>Closed</option></select></div><div class="field"><label>Accept orders</label><select name="accepting"><option value="true" ${r.accepting?'selected':''}>Yes</option><option value="false" ${!r.accepting?'selected':''}>No</option></select></div><div class="field"><label>Tax %</label><input name="tax" type="number" value="${r.tax||0}"></div><div class="field"><label>Service charge %</label><input name="service" type="number" value="${r.service||0}"></div><div class="field"><label>Enable customer payment</label><select name="paymentEnabled"><option value="true" ${payment.enabled?'selected':''}>Enabled</option><option value="false" ${!payment.enabled?'selected':''}>Disabled</option></select></div><div class="field"><label>UPI ID</label><input name="upiId" value="${html(payment.upiId)}" placeholder="restaurant@upi"></div><div class="field"><label>UPI payee name</label><input name="upiPayeeName" value="${html(payment.payeeName)}" placeholder="Exact bank-registered receiver name"><small>Enter the exact receiver or merchant name shown by the bank for this UPI ID.</small></div><div class="field"><label>Instagram URL</label><input name="instagram" value="${html(r.social?.Instagram||'')}"></div><div class="field"><label>WhatsApp number or URL</label><input name="whatsapp" value="${html(r.social?.WhatsApp||'')}" placeholder="9876543210 or https://wa.me/..."></div></div><p class="muted">Customers scan the restaurant UPI QR, upload the payment receipt image, and the order remains under Payment Verification until you confirm it. Confirmation permanently deletes the receipt image.</p><button class="btn">Save Settings</button></form></article>`;
   $('#settingsForm').onsubmit=async event=>{
     event.preventDefault();
     const values=Object.fromEntries(new FormData(event.target)),button=event.submitter;
-    const paymentEnabled=values.paymentEnabled==='true',upiId=values.upiId.trim(),upiPayeeName=values.upiPayeeName.trim(),paymentLink=values.paymentLink.trim(),whatsapp=values.whatsapp.trim();
-    if(paymentEnabled&&!upiId&&!paymentLink)return toast('Add a UPI ID or payment link before enabling customer payment');
+    const paymentEnabled=values.paymentEnabled==='true',upiId=values.upiId.trim(),upiPayeeName=values.upiPayeeName.trim(),whatsapp=values.whatsapp.trim();
+    if(paymentEnabled&&!upiId)return toast('Add a UPI ID before enabling the customer payment QR');
     if(paymentEnabled&&upiId&&!upiPayeeName)return toast('Add the exact bank-registered UPI payee name');
-    if(paymentEnabled&&!String(whatsapp||r.phone||'').replace(/\D/g,''))return toast('Add the restaurant phone or WhatsApp number for receipt sharing');
     button.disabled=true;
-    Object.assign(r,{open:values.open==='true',accepting:values.accepting==='true',tax:+values.tax,service:+values.service,paymentEnabled,upiId,upiPayeeName,paymentLink,social:{...r.social,Instagram:values.instagram.trim(),WhatsApp:whatsapp}});
+    Object.assign(r,{open:values.open==='true',accepting:values.accepting==='true',tax:+values.tax,service:+values.service,paymentEnabled,upiId,upiPayeeName,social:{...r.social,Instagram:values.instagram.trim(),WhatsApp:whatsapp}});
     try{await persistCloudMenu(r.id);toast('Settings saved and published to the customer menu');renderShell()}catch(error){button.disabled=false;toast(error.message||'Could not save settings')}
   };
 }
@@ -946,8 +962,8 @@ async function openCart(r){
   const total=Math.round(sub+tax+service);
   const orderId=`GR58-${Date.now().toString().slice(-7)}-${Math.floor(10+Math.random()*89)}`;
   const upiUri=buildUpiPaymentUri({upiId:payment.upiId,payeeName:payment.payeeName,amount:total,orderId});
-  const paymentRequired=payment.enabled&&CONFIG.testMode!==true;
-  const scheduleMin=new Date(Date.now()+5*60000-new Date().getTimezoneOffset()*60000).toISOString().slice(0,16);
+  const scheduleMinimum=new Date(Date.now()+5*60000);
+  const scheduleDateMin=new Date(scheduleMinimum.getTime()-scheduleMinimum.getTimezoneOffset()*60000).toISOString().slice(0,10);
 
   modal('Your Cart',`<div id="checkoutPanel">
     <div>${customerCart.map(i=>`<div class="section-head"><span>${i.qty} × ${i.name}</span><strong>${money(i.qty*i.price)}</strong></div>`).join('')}</div>
@@ -957,17 +973,12 @@ async function openCart(r){
     <div class="section-head"><span>Service charge</span><strong>${money(service)}</strong></div>
     <div class="section-head"><h3>Grand Total</h3><h3>${money(total)}</h3></div>
     ${payment.enabled?`<div class="payment-panel"><h3>Pay & send receipt for approval</h3>
-      ${!payment.configured?'<p class="checkout-error">Payment is enabled, but the restaurant has not added a UPI ID or payment link. Ask the owner to update Restaurant Settings.</p>':''}
-      ${!paymentRequired?'<label class="choice-card"><input type="radio" name="paymentMethod" value="counter" checked><span><strong>Pay at Counter</strong><small>Local test checkout</small></span></label>':''}
-      <label class="choice-card"><input type="radio" name="paymentMethod" value="online" ${paymentRequired?'checked':''}><span><strong>Pay Online</strong><small>${payment.upiId?`Pay ${money(total)} to ${html(payment.upiId)}`:payment.paymentLink?'Open the restaurant payment page, then upload your receipt':'Payment method is not configured'}</small></span></label>
-      <div id="onlinePaymentFields" ${paymentRequired?'':'hidden'}>
-        ${upiUri?`<div class="upi-payment-box"><div id="amountQr"></div><div><strong>Scan to pay ${money(total)}</strong><p class="muted">Payee: ${html(payment.payeeName)}</p><p class="muted">UPI ID: ${html(payment.upiId)}</p><a class="btn secondary small" href="${upiUri}">Open UPI App</a></div></div>`:''}
-        ${upiUri?`<div class="payment-app-grid safe-upi-actions"><a href="${upiUri}" class="payment-app upi">Pay with PhonePe / GPay / Paytm</a><button class="payment-app copy-upi" id="copyUpiId" type="button">Copy UPI ID</button></div><p class="upi-security-note">Your UPI app or bank approves the payment. If it declines, verify the displayed receiver name, avoid paying from the receiver's own account, or pay manually to the copied UPI ID.</p>`:''}
-        ${payment.paymentLink?`<a class="btn full secure-payment-link" href="${html(payment.paymentLink)}" target="_blank" rel="noopener">Open Restaurant Payment Page</a>`:''}
-        <div class="field"><label>Transaction ID</label><input id="transactionId" autocomplete="off" placeholder="Enter UPI transaction ID after payment"></div>
-        <div class="field"><label>Payment receipt image</label><input id="paymentReceipt" type="file" accept="image/jpeg,image/png,image/webp"><small>Required for verification. The receipt is stored securely with this order.</small></div>
-        ${premiumSchedulingAvailable?(scheduleAccountReady?`<div class="field premium-schedule-field"><label>Schedule meal preparation <small>(optional · signed in as ${html(scheduleAccount.email)})</small></label><input id="scheduledFor" type="datetime-local" min="${scheduleMin}"><small>Choose when the restaurant should prepare this order. The restaurant is alerted five minutes before this time.</small></div>`:`<div class="premium-schedule-login"><div><strong>Want to schedule this order?</strong><p>Premium scheduling requires a customer account. The account is used only for scheduled orders and meal subscriptions.</p></div><button class="btn small secondary" id="checkoutPremiumLogin" type="button">Login / Create Account</button></div>`):''}
-        <p class="payment-whatsapp-note"><strong>What happens next?</strong> After you place the order, WhatsApp opens with your receipt. Send it to the restaurant. The owner verifies payment and accepts the order.</p>
+      ${!payment.configured?'<p class="checkout-error">Payment is enabled, but the restaurant has not added a UPI ID. Ask the owner to update Restaurant Settings.</p>':''}
+      <div id="onlinePaymentFields">
+        ${upiUri?`<div class="upi-payment-box"><div id="amountQr"></div><div><strong>Scan this QR to pay ${money(total)}</strong><p class="muted">Payee: ${html(payment.payeeName)}</p><p class="muted">UPI ID: ${html(payment.upiId)}</p></div></div>`:'<p class="checkout-error">A UPI QR is not configured. Ask the restaurant owner to add a UPI ID.</p>'}
+        <div class="field"><label>Payment receipt image</label><input id="paymentReceipt" type="file" accept="image/jpeg,image/png,image/webp"><small>Required for verification. After restaurant approval, this image is deleted permanently.</small></div>
+        ${premiumSchedulingAvailable?(scheduleAccountReady?`<div class="premium-schedule-field"><label class="schedule-order-toggle"><input id="scheduleOrderToggle" type="checkbox"><span><strong>Schedule this order</strong><small>Signed in as ${html(scheduleAccount.email)}</small></span></label><div id="scheduleDateTimeFields" class="schedule-date-time-fields" hidden><div class="field"><label>Preparation date</label><input id="scheduledDate" type="date" min="${scheduleDateMin}"></div><div class="field"><label>Preparation time</label><input id="scheduledTime" type="time"></div><small>The restaurant is alerted five minutes before the selected time.</small></div></div>`:`<div class="premium-schedule-login"><div><strong>Want to schedule this order?</strong><p>Premium scheduling requires a customer account. The account is used only for scheduled orders and meal subscriptions.</p></div><button class="btn small secondary" id="checkoutPremiumLogin" type="button">Login / Create Account</button></div>`):''}
+        <p class="payment-whatsapp-note"><strong>What happens next?</strong> Upload the receipt and place the order. Restaurant staff verify it; approval permanently deletes the image and starts the order.</p>
       </div>
     </div>`:''}
     <p id="checkoutError" class="checkout-error" hidden></p>
@@ -976,39 +987,35 @@ async function openCart(r){
     const panel=$('#checkoutPanel');
     const button=$('#confirmPlaceOrder');
     const errorBox=$('#checkoutError');
-    const online=$('#onlinePaymentFields');
     let qrMade=false;
 
     const fail=message=>{
       if(errorBox){ errorBox.textContent=message; errorBox.hidden=false; }
       toast(message);
     };
-    const selectedPayment=()=> $('input[name="paymentMethod"]:checked',panel)?.value || (paymentRequired?'online':'counter');
     const showPayment=()=>{
-      const isOnline=selectedPayment()==='online';
-      if(online) online.hidden=!isOnline;
-      if(isOnline&&!qrMade&&upiUri&&window.QRCode&&$('#amountQr')){
+      if(!qrMade&&upiUri&&window.QRCode&&$('#amountQr')){
         try{
           new QRCode($('#amountQr'),{text:upiUri,width:170,height:170,colorDark:'#24170f',colorLight:'#fffaf0'});
           qrMade=true;
         }catch(err){ console.warn('QR generation unavailable',err); }
       }
     };
-    $$('input[name="paymentMethod"]',panel).forEach(input=>input.addEventListener('change',showPayment));
-    $('#copyUpiId',panel)?.addEventListener('click',async()=>{try{await navigator.clipboard.writeText(payment.upiId);toast('UPI ID copied')}catch{toast(`UPI ID: ${payment.upiId}`)}});
+    $('#scheduleOrderToggle',panel)?.addEventListener('change',event=>{$('#scheduleDateTimeFields',panel).hidden=!event.currentTarget.checked});
     $('#checkoutPremiumLogin',panel)?.addEventListener('click',()=>{closeModal();setTimeout(()=>openCustomerSubscriptionPortal(r,remoteMenuSource.startsWith('cloud:')?remoteMenuSource.split(':')[1]:cloudOwnerId()),0)});
     showPayment();
 
     button.addEventListener('click',async()=>{
       if(button.dataset.busy==='1') return;
       if(errorBox) errorBox.hidden=true;
-      const paymentMethod=payment.enabled?selectedPayment():'counter';
-      const transactionId=($('#transactionId',panel)?.value||'').trim();
+      const paymentMethod=payment.enabled?'online':'counter';
       const receiptFile=$('#paymentReceipt',panel)?.files?.[0]||null;
-      const scheduledValue=$('#scheduledFor',panel)?.value||'';
+      const scheduleSelected=!!$('#scheduleOrderToggle',panel)?.checked;
+      const scheduledDate=$('#scheduledDate',panel)?.value||'',scheduledTime=$('#scheduledTime',panel)?.value||'';
+      const scheduledValue=scheduleSelected&&scheduledDate&&scheduledTime?`${scheduledDate}T${scheduledTime}`:'';
       if(paymentMethod==='online'&&!payment.configured) return fail('Restaurant payment method is not configured.');
-      if(paymentMethod==='online'&&!transactionId) return fail('Enter the transaction ID after payment.');
       if(paymentMethod==='online'&&!receiptFile) return fail('Upload the payment receipt image.');
+      if(scheduleSelected&&(!scheduledDate||!scheduledTime))return fail('Select both a schedule date and time.');
       if(scheduledValue&&!scheduleAccountReady)return fail('Login with a Premium customer account before scheduling an order.');
       if(scheduledValue&&new Date(scheduledValue).getTime()<Date.now()+4*60000)return fail('Choose a schedule time at least 5 minutes from now.');
       if(!customerCart.length) return fail('Your cart is empty.');
@@ -1016,33 +1023,33 @@ async function openCart(r){
       button.dataset.busy='1';
       button.disabled=true;
       button.textContent='Placing Order…';
-      const whatsappWindow=paymentMethod==='online'?window.open('about:blank','g58-payment-receipt'):null;
+      let uploadedReceiptFileId='',orderPersisted=false;
       try{
         const status=paymentMethod==='online'?'Payment Verification':'Pending';
         const identity=customerContext.serviceMode==='table'
           ? `${customerContext.customerName?customerContext.customerName+' · ':''}Table ${customerContext.tableNumber}`
           : customerContext.customerName;
-        const orderOwnerId=remoteMenuSource.startsWith('cloud:')?remoteMenuSource.split(':')[1]:cloudOwnerId();
-        const tokenNumber=await reserveOrderToken(orderOwnerId,r.id);
+        const orderOwnerId=remoteMenuSource.startsWith('cloud:')?remoteMenuSource.split(':')[1]:(cloudOwnerId()||r.ownerId||'');
         let receipt={};
-        if(receiptFile){Gravity58Ads.validateMediaFile(receiptFile,'payment receipt');const uploaded=await Gravity58Ads.uploadAdMedia(receiptFile);receipt={paymentReceiptUrl:uploaded.mediaUrl,paymentReceiptFileId:uploaded.fileId,paymentReceiptName:uploaded.mediaName,paymentReceiptType:uploaded.mediaType}}
+        if(receiptFile){Gravity58Ads.validateMediaFile(receiptFile,'payment receipt');const uploaded=await Gravity58Ads.uploadAdMedia(receiptFile);uploadedReceiptFileId=uploaded.fileId;receipt={paymentReceiptUrl:uploaded.mediaUrl,paymentReceiptFileId:uploaded.fileId,paymentReceiptName:uploaded.mediaName,paymentReceiptType:uploaded.mediaType}}
         const order={
           id:orderId,restaurantId:r.id,customer:identity||'Guest',
           ownerId:orderOwnerId,cloudOwnerId:orderOwnerId,
-          tokenNumber,orderDay:orderDay(),messages:[],
+          tokenNumber:0,orderDay:orderDay(),messages:[],
           customerName:customerContext.customerName||'',serviceMode:customerContext.serviceMode,
           tableNumber:customerContext.tableNumber||'',phone:customerContext.phone||'',
           items:customerCart.map(i=>({id:i.id,name:i.name,qty:i.qty,price:i.price,prepareInstruction:i.prepareInstruction||'',prepareOptions:i.prepareOptions||[],customPrepareNote:i.customPrepareNote||''})),
           subtotal:sub,tax,serviceCharge:service,total,paymentMethod,
-          upiId:paymentMethod==='online'?payment.upiId:'',paymentLink:paymentMethod==='online'?payment.paymentLink:'',upiUri:paymentMethod==='online'?upiUri:'',
-          transactionId,paymentStatus:paymentMethod==='online'?'Awaiting confirmation':'Not required',...receipt,
+          upiId:paymentMethod==='online'?payment.upiId:'',upiUri:paymentMethod==='online'?upiUri:'',
+          transactionId:'',paymentStatus:paymentMethod==='online'?'Awaiting confirmation':'Not required',...receipt,
           scheduledFor:scheduledValue?new Date(scheduledValue).toISOString():'',
           customerAccountId:scheduledValue?scheduleAccount.$id:'',customerEmail:scheduledValue?scheduleAccount.email:'',
           status,createdAt:now()
         };
+        Object.assign(order,await persistCloudOrder(order));
+        orderPersisted=true;
         state.orders=Array.isArray(state.orders)?state.orders:[];
         state.orders.unshift(order);
-        Object.assign(order,await persistCloudOrder(order));
         save();
         const verify=JSON.parse(localStorage.getItem('gravity58DigitalMenu')||'{}');
         if(!verify.orders?.some(x=>x.id===order.id)) throw new Error('Order was not saved');
@@ -1051,9 +1058,8 @@ async function openCart(r){
         closeModal();
         location.hash=`track&order=${encodeURIComponent(order.id)}`;
         renderTrack();
-        if(paymentMethod==='online')openOrderReceiptWhatsApp(r,order,whatsappWindow);
       }catch(err){
-        whatsappWindow?.close();
+        if(uploadedReceiptFileId&&!orderPersisted)try{await Gravity58Ads.removeAdMedia(uploadedReceiptFileId)}catch(cleanupError){console.warn('Failed receipt cleanup',cleanupError)}
         console.error('Place order failed',err);
         button.dataset.busy='0';button.disabled=false;button.textContent='Place Order';
         fail(`Order could not be placed. ${err?.message||'Please reload this menu and try again.'}`);
@@ -1062,16 +1068,7 @@ async function openCart(r){
   });
 }
 
-function openOrderReceiptWhatsApp(restaurant,order,popup=null){
-  const configured=restaurant.social?.WhatsApp||'',digits=String(configured||restaurant.phone||'').replace(/\D/g,'').slice(-12);if(!digits){popup?.close();toast('Order placed. Restaurant WhatsApp number is not configured.');return false}
-  const phone=digits.length===10?`91${digits}`:digits;
-  const text=[`Payment receipt for ${restaurant.name}`,`Order: ${order.id}`,`Token: ${formatToken(order.tokenNumber)}`,`Amount: ${money(order.total)}`,`Transaction: ${order.transactionId}`,order.scheduledFor?`Scheduled: ${new Date(order.scheduledFor).toLocaleString('en-IN')}`:'',order.paymentReceiptUrl?`Receipt: ${order.paymentReceiptUrl}`:''].filter(Boolean).join('\n');
-  const url=`https://wa.me/${phone}?text=${encodeURIComponent(text)}`;
-  if(popup&&!popup.closed)popup.location.href=url;else window.open(url,'_blank','noopener');
-  return true;
-}
-
-function renderTrack(){const params=new URLSearchParams(location.hash.replace('#track&',''));const id=params.get('order'),o=state.orders.find(x=>x.id===id);if(!o){app.innerHTML=`<main class="public-menu"><div class="empty">Order not found</div></main>`;return}const r=state.restaurants.find(x=>x.id===o.restaurantId),stage={'Payment Verification':5,'Payment Rejected':100,Pending:8,Accepted:25,Preparing:55,Ready:85,Delivered:94,Completed:100,Rejected:100}[o.status]||8;let content;if(o.status==='Completed')content=`<section class="card thankyou"><h1>Thank You!</h1><h2>${r.logo} ${r.name}</h2><p class="muted">We hope you enjoyed your experience.</p><div class="chips" style="justify-content:center"><span class="chip">Order ${o.id}</span><span class="chip">${o.customer}</span></div><div class="grid restaurant-grid" style="margin-top:24px"><article class="card"><h3>Restaurant</h3><p class="muted">Follow ${r.name} and leave your feedback.</p></article><article class="card"><h3>Discover More with Gravity58</h3><p class="muted">Explore local businesses and useful digital tools.</p><a class="btn" href="${CONFIG.gravity58Url}" target="_blank">Explore Gravity58</a></article><article class="card"><h3>Featured</h3><p class="muted">Advertisement space for restaurant or Gravity58 promotions.</p></article></div></section>`;else content=`<section class="card" style="text-align:center"><span class="status-pill"><span class="dot"></span>${o.status}</span><h1 style="margin:18px 0 6px">${o.status==='Ready'?'Your Food Is Ready!':o.status==='Payment Verification'?'Verifying Your Payment':o.status==='Payment Rejected'?'Payment Could Not Be Confirmed':o.status==='Rejected'?'Order Rejected':'Your Food Is Being Prepared'}</h1><div class="track-message ${o.status==='Ready'?'ready-message':''}">${o.status==='Ready'?'<strong>Your order will be served soon</strong><span>Please stay at your table or near the service counter. Our team will bring your food shortly.</span>':o.status==='Payment Verification'?'Restaurant staff are checking transaction '+(o.transactionId||''):'Order '+o.id+' · '+o.customer}</div>${['Accepted','Preparing'].includes(o.status)?`<div class="pot-scene"><div><div class="steam"><span></span><span></span><span></span></div><div class="pot"></div></div></div>`:''}<div class="progress"><span style="width:${stage}%"></span></div><div class="chips" style="justify-content:center;margin-top:18px">${o.items.map(i=>`<span class="chip">${i.qty} × ${i.name}${i.prepareInstruction?' · '+i.prepareInstruction:''}</span>`).join('')}</div><div class="section-head"><span>Total</span><strong>${money(o.total)}</strong></div><section class="social-discovery"><div class="social-discovery-copy"><span class="eyebrow">Restaurant profile</span><h2>Take a look at how we specialise</h2><p>Explore ${r.name} beyond today’s order. See our food creations, kitchen moments, new dishes and restaurant updates.</p></div><div class="social-profile-grid">${Object.entries(r.social||{}).filter(([,u])=>u).map(([p,u])=>{const key=p.toLowerCase();const icon=key==='instagram'?'◎':key==='youtube'?'▶':key==='facebook'?'f':key==='whatsapp'?'◉':'↗';const desc=key==='instagram'?'View our restaurant profile, food photos, reels and latest specials.':key==='youtube'?'Watch our kitchen stories, signature dishes and restaurant videos.':key==='facebook'?'Visit our restaurant page for updates, offers and community posts.':key==='whatsapp'?'Connect with the restaurant team on WhatsApp.':'Open our restaurant profile and discover more.';return `<a class="social-profile-card ${key}" href="${u}" target="_blank" rel="noopener"><span class="social-profile-icon">${icon}</span><span class="social-profile-text"><strong>${p}</strong><small>${desc}</small><b>View restaurant profile →</b></span></a>`}).join('')||'<div class="social-empty">Restaurant social profiles will appear here.</div>'}</div></section>${publicAdSection(r)}</section>`;app.innerHTML=`<main class="public-menu">${content}<div class="actions" style="justify-content:center;margin-top:18px">${o.paymentMethod==='online'&&o.paymentReceiptUrl?'<button class="btn" id="sharePaymentReceipt">Share Receipt on WhatsApp</button>':''}<button class="btn secondary" id="refreshTrack">Refresh Status</button><button class="btn" id="backMenu">View Menu</button></div></main>`;$('#sharePaymentReceipt')?.addEventListener('click',()=>openOrderReceiptWhatsApp(r,o));$('#refreshTrack').onclick=renderTrack;$('#backMenu').onclick=()=>{location.href=cloudCustomerMenuUrl(r)};bindPublicAdContact(r)}
+function renderTrack(){const params=new URLSearchParams(location.hash.replace('#track&',''));const id=params.get('order'),o=state.orders.find(x=>x.id===id);if(!o){app.innerHTML=`<main class="public-menu"><div class="empty">Order not found</div></main>`;return}const r=state.restaurants.find(x=>x.id===o.restaurantId),stage={'Payment Verification':5,'Payment Rejected':100,Pending:8,Accepted:25,Preparing:55,Ready:85,Delivered:94,Completed:100,Rejected:100}[o.status]||8;let content;if(o.status==='Completed')content=`<section class="card thankyou"><h1>Thank You!</h1><h2>${r.logo} ${r.name}</h2><p class="muted">We hope you enjoyed your experience.</p><div class="chips" style="justify-content:center"><span class="chip">Order ${o.id}</span><span class="chip">${o.customer}</span></div><div class="grid restaurant-grid" style="margin-top:24px"><article class="card"><h3>Restaurant</h3><p class="muted">Follow ${r.name} and leave your feedback.</p></article><article class="card"><h3>Discover More with Gravity58</h3><p class="muted">Explore local businesses and useful digital tools.</p><a class="btn" href="${CONFIG.gravity58Url}" target="_blank">Explore Gravity58</a></article><article class="card"><h3>Featured</h3><p class="muted">Advertisement space for restaurant or Gravity58 promotions.</p></article></div></section>`;else content=`<section class="card" style="text-align:center"><span class="status-pill"><span class="dot"></span>${o.status}</span><h1 style="margin:18px 0 6px">${o.status==='Ready'?'Your Food Is Ready!':o.status==='Payment Verification'?'Verifying Your Payment':o.status==='Payment Rejected'?'Payment Could Not Be Confirmed':o.status==='Rejected'?'Order Rejected':'Your Food Is Being Prepared'}</h1><div class="track-message ${o.status==='Ready'?'ready-message':''}">${o.status==='Ready'?'<strong>Your order will be served soon</strong><span>Please stay at your table or near the service counter. Our team will bring your food shortly.</span>':o.status==='Payment Verification'?'Restaurant staff are checking your uploaded payment receipt.':'Order '+o.id+' · '+o.customer}</div>${['Accepted','Preparing'].includes(o.status)?`<div class="pot-scene"><div><div class="steam"><span></span><span></span><span></span></div><div class="pot"></div></div></div>`:''}<div class="progress"><span style="width:${stage}%"></span></div><div class="chips" style="justify-content:center;margin-top:18px">${o.items.map(i=>`<span class="chip">${i.qty} × ${i.name}${i.prepareInstruction?' · '+i.prepareInstruction:''}</span>`).join('')}</div><div class="section-head"><span>Total</span><strong>${money(o.total)}</strong></div><section class="social-discovery"><div class="social-discovery-copy"><span class="eyebrow">Restaurant profile</span><h2>Take a look at how we specialise</h2><p>Explore ${r.name} beyond today’s order. See our food creations, kitchen moments, new dishes and restaurant updates.</p></div><div class="social-profile-grid">${Object.entries(r.social||{}).filter(([,u])=>u).map(([p,u])=>{const key=p.toLowerCase();const icon=key==='instagram'?'◎':key==='youtube'?'▶':key==='facebook'?'f':key==='whatsapp'?'◉':'↗';const desc=key==='instagram'?'View our restaurant profile, food photos, reels and latest specials.':key==='youtube'?'Watch our kitchen stories, signature dishes and restaurant videos.':key==='facebook'?'Visit our restaurant page for updates, offers and community posts.':key==='whatsapp'?'Connect with the restaurant team on WhatsApp.':'Open our restaurant profile and discover more.';return `<a class="social-profile-card ${key}" href="${u}" target="_blank" rel="noopener"><span class="social-profile-icon">${icon}</span><span class="social-profile-text"><strong>${p}</strong><small>${desc}</small><b>View restaurant profile →</b></span></a>`}).join('')||'<div class="social-empty">Restaurant social profiles will appear here.</div>'}</div></section>${publicAdSection(r)}</section>`;app.innerHTML=`<main class="public-menu">${content}<div class="actions" style="justify-content:center;margin-top:18px"><button class="btn secondary" id="refreshTrack">Refresh Status</button><button class="btn" id="backMenu">View Menu</button></div></main>`;$('#refreshTrack').onclick=renderTrack;$('#backMenu').onclick=()=>{location.href=cloudCustomerMenuUrl(r)};bindPublicAdContact(r)}
 
 function applyOrderTrackingCopy(){
   if(!location.hash.startsWith('#track')) return;
