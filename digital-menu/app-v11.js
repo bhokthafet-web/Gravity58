@@ -978,7 +978,7 @@ function renderPublicMenu(){
   app.innerHTML=`<main class="public-menu compact-public-menu">
     <section class="menu-sticky-header">
     <section class="compact-menu-hero">
-      <nav class="menu-nav compact-nav"><div>${published?'<span class="published-menu-badge">Published customer menu</span>':cloudMenu?'<span class="published-menu-badge">Live account menu</span>':''}${!published?'<button class="meal-subscription-entry" id="openCustomerOrders" type="button" hidden>My Orders</button><button class="meal-subscription-entry new-customer-button" id="startNewCustomer" type="button">Start New Customer</button>':''}${r.premiumFeatures?'<button class="meal-subscription-entry" id="openMealSubscriptions" type="button" hidden>My Meal Dashboard</button>':''}</div><a class="sponsor-mini" href="https://www.g58.in" target="_blank" rel="noopener">Sponsored by <strong>Gravity58</strong></a></nav>
+      <nav class="menu-nav compact-nav"><div>${published?'<span class="published-menu-badge">Published customer menu</span>':''}${!published?'<button class="meal-subscription-entry" id="openCustomerOrders" type="button" hidden>My Orders</button>':''}${r.premiumFeatures?'<button class="meal-subscription-entry" id="openMealSubscriptions" type="button" hidden>My Meal Dashboard</button>':''}</div><a class="sponsor-mini" href="https://www.g58.in" target="_blank" rel="noopener">Sponsored by <strong>Gravity58</strong></a></nav>
       <div class="compact-hero-layout"><div><p class="eyebrow">PREMIUM DIGITAL MENU</p><h1>${html(r.name)}</h1><p>${html(r.description)}</p><div class="compact-details"><span>📍 ${html(r.address||r.city)}</span><span>☎ ${html(r.phone||'Contact restaurant')}</span><span class="open-tag">${r.open?'Open now':'Closed'}</span></div></div><div class="compact-hero-dish">${imageMarkup(restaurantHero,r.name?.[0]||'G','compact-hero-photo')}</div></div>
     </section>
     <aside class="header-ad-panel">
@@ -1029,7 +1029,6 @@ function renderPublicMenu(){
   const dashboardButton=$('#openMealSubscriptions');
   const ordersButton=$('#openCustomerOrders'),menuOwnerId=ownerId||remoteMenuSource.split(':')[1]||cloudOwnerId();
   if(Gravity58Ads?.configured)Gravity58Ads.currentUser().then(account=>{if(account?.email){if(dashboardButton){dashboardButton.hidden=false;dashboardButton.addEventListener('click',premiumPortal)}if(ordersButton){ordersButton.hidden=false;ordersButton.onclick=()=>openCustomerOrderHistory(r,menuOwnerId,account)}}}).catch(()=>{});
-  $('#startNewCustomer')?.addEventListener('click',()=>{sessionStorage.removeItem(`gravity58Customer_${rid}`);sessionStorage.removeItem(`gravity58Cart_${rid}`);sessionStorage.removeItem(customerOpenOrderKey(rid));customerContext=null;customerCart=[];customerCartRestaurantId='';renderPublicMenu()});
   bindPublicAdContact(r);applyFilters()
 }
 async function openCustomerSubscriptionPortal(restaurant,ownerId,{afterAuth='dashboard'}={}){
