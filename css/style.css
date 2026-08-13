@@ -821,6 +821,7 @@ body.qr-modal-open{overflow:hidden}
   background:linear-gradient(145deg,rgba(139,92,246,.18),rgba(15,28,45,.88))!important;
   box-shadow:0 20px 46px rgba(139,92,246,.12)!important;
 }
+.digit58-promo-card:before{content:"PREMIUM"!important;background:#8b5cf6!important;color:#fff!important}
 .digit58-promo-card .promo-mini-icon{
   background:linear-gradient(145deg,#8b5cf6,#111827)!important;
   box-shadow:inset 3px 3px 8px rgba(255,255,255,.18),inset -6px -6px 12px rgba(0,0,0,.42),0 14px 28px rgba(139,92,246,.22)!important;

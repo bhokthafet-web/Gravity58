@@ -2004,15 +2004,12 @@ function whatsappBusiness(id) {
 }
 
 const DIGIT58_TAGLINES = [
-  "Something new is brewing.",
-  "Coming soon to Gravity58.",
-  "Stay tuned for more.",
+  "Turn your store digital.",
+  "Let customers order online.",
+  "Never miss a refill reminder.",
 ];
 let digit58TaglineIndex = 0;
 let digit58TaglineTimer = null;
-function openDigit58Placeholder() {
-  alert("Digit58 is coming soon!");
-}
 function startDigit58TaglineRotation() {
   const el = document.getElementById("digit58Tagline");
   if (!el || digit58TaglineTimer) return;

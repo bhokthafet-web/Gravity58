@@ -84,7 +84,6 @@
       <aside class="landing-side left-side">
         <div class="side-title recent-side-title">
           <span>Recent Jobs</span>
-          <a class="digital-menu-launch recent-menu-launch" href="/digital-menu/"><span>●</span> Digital Menu</a>
         </div>
         <div class="recent-location-row"><span>Showing</span><small id="recentCityLabel">Nearby</small></div>
         <div class="recent-jobs" id="recentJobsPanel"></div>
@@ -103,9 +102,9 @@
             <a class="catalogue-btn digital-menu-ribbon" href="/digital-menu/">
               <strong>Digital Menu</strong><small>Manage orders and menus online</small>
             </a>
-            <button class="catalogue-btn digit58-ribbon" type="button" onclick="openDigit58Placeholder()">
-              <strong>Digit58</strong><small>Coming soon</small>
-            </button>
+            <a class="catalogue-btn digit58-ribbon" href="/digit58/">
+              <strong>Digit58</strong><small>Take any store online</small>
+            </a>
           </div>
 
           <div class="promo-split">
@@ -118,14 +117,14 @@
     </div>
   </button>
 
-  <button class="free-ad-pop promo-split-card digit58-promo-card" type="button" onclick="openDigit58Placeholder()">
+  <a class="free-ad-pop promo-split-card digit58-promo-card" href="/digit58/">
     <div class="promo-mini-icon">D58</div>
     <div class="promo-split-copy">
       <strong>Digit58</strong>
-      <p class="promo-white-text" id="digit58Tagline">Something new is brewing.</p>
-      <span class="ad-cta">Coming Soon →</span>
+      <p class="promo-white-text" id="digit58Tagline">Turn your store digital.</p>
+      <span class="ad-cta">Premium →</span>
     </div>
-  </button>
+  </a>
 
   <button class="free-ad-pop promo-split-card business-promo-card" type="button" onclick="openBusinessCardCreator()">
     <div class="promo-mini-icon">CARD</div>
@@ -467,13 +466,10 @@
   </svg>
 </button>
 
-<div class="g58-donate-float" aria-label="Open GRAVITY58 Digital Menu">
-  <a class="g58-donate-button digital-menu-launch" href="/digital-menu/">Digital Menu</a>
-</div>
 
 <script src="https://cdn.jsdelivr.net/npm/appwrite@26.2.0"></script>
 <script src="/js/config.js"></script>
-<script src="/js/appwrite-ads.js?v=12"></script>
+<script src="/js/appwrite-ads.js?v=13"></script>
 <script src="/js/database.js"></script>
 <script src="/js/app.js"></script>
 <script src="/js/site-auth.js?v=2"></script>
