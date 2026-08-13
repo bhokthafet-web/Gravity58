@@ -128,16 +128,26 @@ function combineOrderItems(existingItems = [], incomingItems = []) {
   return merged.map(row => row.item).slice(0, 50);
 }
 
-function mergeCounterOrder(existing, incoming, restaurant) {
+function mergeOrder(existing, incoming, restaurant) {
   const items = combineOrderItems(existing.items, incoming.items);
   const subtotal = items.reduce((sum, item) => sum + finite(item.price) * finite(item.qty, 1), 0);
   const tax = Math.round(subtotal * Math.max(0, finite(restaurant.tax)) / 100 * 100) / 100;
   const serviceCharge = Math.round(subtotal * Math.max(0, finite(restaurant.service)) / 100 * 100) / 100;
+  const onlineTopUp = incoming.paymentMethod === 'online';
   return {
     ...existing, items, subtotal, tax, serviceCharge,
     total: Math.round((subtotal + tax + serviceCharge) * 100) / 100,
     customer: incoming.customer, customerName: incoming.customerName, serviceMode: incoming.serviceMode,
-    tableNumber: incoming.tableNumber, phone: incoming.phone, status: 'Pending',
+    tableNumber: incoming.tableNumber, phone: incoming.phone, paymentMethod: incoming.paymentMethod,
+    status: onlineTopUp ? 'Payment Verification' : 'Pending',
+    paymentStatus: onlineTopUp ? 'Awaiting confirmation' : 'Not required',
+    transactionId: onlineTopUp ? incoming.transactionId : existing.transactionId,
+    upiId: onlineTopUp ? incoming.upiId : existing.upiId,
+    paymentLink: onlineTopUp ? incoming.paymentLink : existing.paymentLink,
+    paymentReceiptUrl: onlineTopUp ? incoming.paymentReceiptUrl : existing.paymentReceiptUrl,
+    paymentReceiptFileId: onlineTopUp ? incoming.paymentReceiptFileId : existing.paymentReceiptFileId,
+    paymentReceiptName: onlineTopUp ? incoming.paymentReceiptName : existing.paymentReceiptName,
+    paymentReceiptType: onlineTopUp ? incoming.paymentReceiptType : existing.paymentReceiptType,
     menuHash: incoming.menuHash || existing.menuHash || '', menuRecordId: incoming.menuRecordId || existing.menuRecordId || incoming.restaurantId,
     lastItemsAddedAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
   };
@@ -398,16 +408,19 @@ export default async ({ req, res, error }) => {
     const menuRow = await call(`/tablesdb/${DATABASE_ID}/tables/${TABLE_ID}/rows/${encodeURIComponent(restaurantId)}`);
     const menu = parseMenu(menuRow, ownerId, restaurantId);
     await validateReceipt(call, input, userId);
-    if (input.paymentMethod !== 'online') {
+    {
       const phone = normalisePhone(input.phone);
       if (phone.length < 10 || phone.length > 15) throw new Error('Enter a valid customer phone number with 10 to 15 digits.');
+      const serviceMode = input.serviceMode === 'table' ? 'table' : 'takeaway';
+      const tableNumber = text(input.tableNumber, 50);
       const existing = (await listRowsByKind(call, orderKind(ownerId))).map(cleanRow).find(order =>
-        !order.tokenReservation && order.restaurantId === restaurantId && order.customerAccountId === userId &&
-        normalisePhone(order.phone) === phone && order.paymentMethod === 'counter' && order.orderDay === indiaDay() &&
+        !order.tokenReservation && order.restaurantId === restaurantId &&
+        normalisePhone(order.phone) === phone && order.serviceMode === serviceMode &&
+        (serviceMode !== 'table' || order.tableNumber === tableNumber) && order.orderDay === indiaDay() &&
         ['Pending', 'Accepted', 'Preparing', 'Ready'].includes(order.status));
       if (existing) {
         const incoming = buildOrder({ ...input, phone }, menu, userId, existing.tokenNumber, existing.tokenReservationId);
-        const merged = await updateRow(call, existing.id || existing.$id, mergeCounterOrder(existing, incoming, menu.restaurant));
+        const merged = await updateRow(call, existing.id || existing.$id, mergeOrder(existing, incoming, menu.restaurant));
         return res.json({ ok: true, order: merged, accumulated: true });
       }
     }

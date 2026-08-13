@@ -164,6 +164,42 @@ test('secure order function accumulates active counter items for the same custom
   }
 });
 
+test('secure order function accumulates active table+phone orders across different anonymous customer sessions', async () => {
+  const previousFetch = globalThis.fetch;
+  const requests = [];
+  const firstSessionId = 'customer_first_session';
+  const secondSessionId = 'customer_second_session';
+  const existing = {
+    ...inputOrder, id: 'GR58-OPEN-2001', tokenNumber: 5, tokenReservationId: 'tok-005',
+    customerAccountId: firstSessionId, paymentMethod: 'counter', status: 'Accepted', orderDay: indiaTestDay(),
+    serviceMode: 'table', tableNumber: '1', phone: '9999999999',
+    items: [{ id: 'item_1', name: 'Chicken Fry', qty: 1, price: 120 }],
+    subtotal: 120, tax: 6, serviceCharge: 2.4, total: 128.4,
+  };
+  globalThis.fetch = async (url, options = {}) => {
+    const method = options.method || 'GET', body = options.body ? JSON.parse(options.body) : null, target = String(url);
+    requests.push({ url: target, method, body });
+    if (method === 'GET' && target.includes('/rows?')) return new Response(JSON.stringify({ rows: [{ $id: existing.id, kind: `digital_order_${ownerId}`, payload: JSON.stringify(existing) }] }), { status: 200 });
+    if (method === 'GET') return new Response(JSON.stringify(menuRow), { status: 200 });
+    if (method === 'PATCH') return new Response(JSON.stringify({ $id: existing.id, kind: `digital_order_${ownerId}`, payload: body.data.payload }), { status: 200 });
+    throw new Error(`Unexpected request ${url}`);
+  };
+  process.env.APPWRITE_FUNCTION_PROJECT_ID = 'project_1';
+  try {
+    const response = await createDigitalOrder(functionContext(inputOrder, { 'x-appwrite-key': 'dynamic-key', 'x-appwrite-user-id': secondSessionId }));
+    assert.equal(response.status, 200);
+    assert.equal(response.body.accumulated, true);
+    assert.equal(response.body.order.id, existing.id);
+    assert.equal(response.body.order.tokenNumber, 5);
+    assert.equal(response.body.order.status, 'Pending');
+    assert.equal(response.body.order.items[0].qty, 3);
+    assert.equal(response.body.order.total, 385.2);
+    assert.ok(!requests.some(request => request.body?.data?.kind?.startsWith('digital_token_')));
+  } finally {
+    globalThis.fetch = previousFetch;
+  }
+});
+
 test('secure subscription request validates the published plan and grants owner/customer access', async () => {
   const previousFetch = globalThis.fetch;
   const requests = [];
