@@ -185,8 +185,8 @@
       item.digitalMenuItemId = itemId;
       return {
         ...previous, id: itemId, categoryId: categoryByName.get(String(item.category || "General").trim().toLowerCase()),
-        name: item.name, description: previous.description || "", price: Number(item.price || 0),
-        type: previous.type || "Veg", available: item.available !== false, prep: Number(previous.prep || 0),
+        name: item.name, description: item.description || previous.description || "", price: Number(item.price || 0),
+        type: item.type || previous.type || "Veg", available: item.available !== false, prep: Number(item.prep ?? previous.prep ?? 0),
         prepareInstructionsEnabled: Boolean(previous.prepareInstructionsEnabled),
       };
     });
@@ -330,10 +330,11 @@
         <div class="field" style="margin-top:14px"><label>Import method</label><select id="posMenuImportMode"><option value="merge">Add or update existing menu</option><option value="replace">Overwrite entire menu</option></select></div>
         <input id="menuImportFile" type="file" accept=".csv,text/csv"><div class="gate-actions"><button class="btn btn-outline" id="importMenu">Import CSV</button><button class="btn btn-dark" id="sampleMenu">Download sample</button></div><p id="importStatus">Add/update keeps current items. Overwrite replaces the complete Premium POS menu after confirmation.</p>
         <label class="option-card" style="margin-top:18px"><input id="inventoryToggle" type="checkbox" ${inventoryEnabled() ? "checked" : ""}><span><strong>Enable inventory</strong><small>Optional. Stock is reduced only after a bill is marked Payment Received.</small></span></label>
-      </article><article class="premium-box"><h3>${linkedRestaurant ? "Synced restaurant menu" : "Configured menu"}</h3>${linkedRestaurant ? '<div class="menu-sync-state"><span></span> Digital Menu + POS</div>' : ""}<div class="menu-list" id="localMenuList"></div></article></div>`);
+      </article><article class="premium-box"><div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap"><h3>${linkedRestaurant ? "Synced restaurant menu" : "Configured menu"}</h3><button class="btn btn-outline" id="openAddMenuItem" type="button">+ Add item</button></div>${linkedRestaurant ? '<div class="menu-sync-state"><span></span> Digital Menu + POS</div>' : ""}<div class="menu-list" id="localMenuList"></div></article></div>`);
       $("sampleMenu").onclick = downloadMenuSample;
       $("importMenu").onclick = importMenuFile;
       $("inventoryToggle").onchange = () => { localStorage.setItem(KEYS.inventory, $("inventoryToggle").checked ? "1" : "0"); scheduleWorkspaceSync(); renderTab("menu"); };
+      $("openAddMenuItem").onclick = openAddMenuItemModal;
       renderMenuList();
     }
 
@@ -451,6 +452,53 @@
   }
 
   function persistMenu() { write(KEYS.menu, menu); window.G58Premium.menu = menu; refreshMenuPicker(); scheduleWorkspaceSync(); scheduleDigitalMenuSync(); }
+
+  function ensureAddMenuItemModal() {
+    if ($("addMenuItemModal")) return;
+    document.body.insertAdjacentHTML("beforeend", `
+      <div class="modal" id="addMenuItemModal" role="dialog" aria-modal="true" aria-labelledby="addMenuItemTitle">
+        <div class="modal-card" style="text-align:left">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
+            <h2 class="modal-title" id="addMenuItemTitle" style="margin:0">Add Menu Item</h2>
+            <button type="button" class="mini-btn" id="closeAddMenuItem" aria-label="Close">✕</button>
+          </div>
+          <form id="addMenuItemForm" style="margin-top:14px">
+            <div class="field"><label>Item name</label><input id="newItemName" required></div>
+            <div class="field"><label>Category</label><input id="newItemCategory" placeholder="Example: Starters"></div>
+            <div class="field"><label>Price (₹)</label><input id="newItemPrice" type="number" min="0" step="0.01" required></div>
+            <div class="field"><label>Food type</label><select id="newItemType"><option value="Veg">Veg</option><option value="Non-Veg">Non-Veg</option></select></div>
+            <div class="field"><label>Preparation time (minutes)</label><input id="newItemPrep" type="number" min="0" step="1" value="0"></div>
+            <div class="field"><label>Description</label><textarea id="newItemDescription" placeholder="Describe the dish"></textarea></div>
+            <button class="btn btn-primary" type="submit" style="width:100%">Add item</button>
+          </form>
+        </div>
+      </div>`);
+    $("closeAddMenuItem").onclick = () => $("addMenuItemModal").classList.remove("show");
+    $("addMenuItemForm").onsubmit = (event) => {
+      event.preventDefault();
+      const name = $("newItemName").value.trim();
+      const price = Number($("newItemPrice").value);
+      if (!name) return void toast("Enter an item name");
+      if (!Number.isFinite(price) || price <= 0) return void toast("Enter a valid price");
+      menu.push({
+        id: id(), digitalMenuItemId: "", name, category: $("newItemCategory").value.trim() || "General",
+        price, gst: Number(linkedRestaurant?.tax || 0), available: true, stock: 0,
+        type: $("newItemType").value === "Non-Veg" ? "Non-Veg" : "Veg",
+        prep: Math.max(0, Number($("newItemPrep").value) || 0),
+        description: $("newItemDescription").value.trim(),
+      });
+      persistMenu();
+      renderMenuList();
+      $("addMenuItemModal").classList.remove("show");
+      toast(`${name} added to the menu`);
+    };
+  }
+
+  function openAddMenuItemModal() {
+    ensureAddMenuItemModal();
+    $("addMenuItemForm").reset();
+    $("addMenuItemModal").classList.add("show");
+  }
 
   function downloadMenuSample() {
     const csv = "name,category,price,gst,available,stock\nChicken Biryani,Rice,249,5,true,30\nFish Marination,Marinations,299,5,true,12\nPrawns Marination,Marinations,349,5,false,0\n";
