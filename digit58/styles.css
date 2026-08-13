@@ -37,7 +37,10 @@ h1,h2,h3,p{margin-top:0}
 .dot{width:8px;height:8px;border-radius:50%;background:currentColor;box-shadow:0 0 12px currentColor}
 .grid{display:grid;gap:16px}
 .stats{grid-template-columns:repeat(4,minmax(0,1fr));margin-top:18px}
-.card{padding:18px;border-radius:20px;background:var(--panel);border:1px solid var(--line);box-shadow:0 16px 44px rgba(0,0,0,.28)}
+.card{position:relative;padding:18px;border-radius:20px;background:var(--panel);border:1px solid var(--line);box-shadow:0 16px 44px rgba(0,0,0,.28)}
+.incoming-order{border-color:#ff7a1a;box-shadow:0 16px 45px rgba(255,100,0,.22)}
+.incoming-order-beacon{position:absolute;top:-7px;right:-7px;z-index:5;width:16px;height:16px;border:3px solid #fff6ea;border-radius:50%;background:#ff521d;box-shadow:0 0 0 0 rgba(255,82,29,.7);animation:incomingOrderPulse 1.15s ease-out infinite}
+@keyframes incomingOrderPulse{0%{box-shadow:0 0 0 0 rgba(255,82,29,.75);filter:brightness(1.2)}75%,100%{box-shadow:0 0 0 14px rgba(255,82,29,0);filter:brightness(1)}}
 .metric{display:grid;gap:6px}
 .metric span{color:var(--muted);font-size:12px;font-weight:800;letter-spacing:.05em;text-transform:uppercase}
 .metric strong{font-size:28px}

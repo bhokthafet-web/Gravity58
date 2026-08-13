@@ -34,6 +34,57 @@ function save(){try{localStorage.setItem('gravity58Digit58',JSON.stringify(state
 function load(){try{return {...state,...JSON.parse(localStorage.getItem('gravity58Digit58')||'{}')}}catch{return state}}
 state=load();
 
+let orderAlertTimer=null,orderAlertContext=null;
+const ringingIds=new Set();
+let knownOrderIds=new Set(),knownBuyRequestIds=new Set();
+let ownerOrdersUnsubscribe=null,ownerCardsUnsubscribe=null;
+function orderAlertBeep(duration=.18,frequency=880){
+  try{
+    orderAlertContext||=new (window.AudioContext||window.webkitAudioContext)();
+    if(orderAlertContext.state==='suspended')orderAlertContext.resume();
+    const oscillator=orderAlertContext.createOscillator(),gain=orderAlertContext.createGain(),start=orderAlertContext.currentTime;
+    oscillator.frequency.value=frequency;gain.gain.setValueAtTime(.0001,start);gain.gain.exponentialRampToValueAtTime(.16,start+.015);gain.gain.exponentialRampToValueAtTime(.0001,start+duration);
+    oscillator.connect(gain);gain.connect(orderAlertContext.destination);oscillator.start(start);oscillator.stop(start+duration+.02);
+  }catch(error){console.warn('Audio alert unavailable',error)}
+}
+function updateOrderAlertSound(){
+  [...ringingIds].forEach(id=>{
+    const stillRinging=state.orders.some(row=>row.id===id&&row.status==='Requested')||state.cards.some(row=>row.id===id&&row.status==='Buy Requested');
+    if(!stillRinging)ringingIds.delete(id);
+  });
+  if(!ringingIds.size){if(orderAlertTimer)clearInterval(orderAlertTimer);orderAlertTimer=null;return}
+  if(!orderAlertTimer){orderAlertBeep();orderAlertTimer=setInterval(()=>orderAlertBeep(),2200)}
+}
+document.addEventListener('pointerdown',()=>{if(ringingIds.size)orderAlertBeep()},{passive:true});
+function startOwnerRealtime(){
+  const ownerId=cloudOwnerId();if(!ownerId||!api?.subscribeKind)return;
+  knownOrderIds=new Set(state.orders.map(row=>row.id));
+  knownBuyRequestIds=new Set(state.cards.filter(row=>row.status==='Buy Requested').map(row=>row.id));
+  ownerOrdersUnsubscribe?.();
+  ownerOrdersUnsubscribe=api.subscribeKind(orderKind(ownerId),()=>refreshOwnerOrdersRealtime());
+  ownerCardsUnsubscribe?.();
+  ownerCardsUnsubscribe=api.subscribeKind(cardKind(ownerId),()=>refreshOwnerCardsRealtime());
+}
+function stopOwnerRealtime(){ownerOrdersUnsubscribe?.();ownerCardsUnsubscribe?.();ownerOrdersUnsubscribe=ownerCardsUnsubscribe=null;ringingIds.clear();knownOrderIds.clear();knownBuyRequestIds.clear();updateOrderAlertSound()}
+async function refreshOwnerOrdersRealtime(){
+  const ownerId=cloudOwnerId();if(!ownerId)return;
+  const orders=await api.list(orderKind(ownerId)).catch(()=>null);
+  if(!orders)return;
+  orders.forEach(order=>{if(order.status==='Requested'&&!knownOrderIds.has(order.id))ringingIds.add(order.id);knownOrderIds.add(order.id)});
+  state.orders=orders;save();
+  updateOrderAlertSound();
+  if(!$('.modal-backdrop'))refreshView();
+}
+async function refreshOwnerCardsRealtime(){
+  const ownerId=cloudOwnerId();if(!ownerId)return;
+  const cards=await api.list(cardKind(ownerId)).catch(()=>null);
+  if(!cards)return;
+  cards.forEach(card=>{if(card.status==='Buy Requested'&&!knownBuyRequestIds.has(card.id))ringingIds.add(card.id);knownBuyRequestIds.add(card.id)});
+  state.cards=cards;save();
+  updateOrderAlertSound();
+  if(!$('.modal-backdrop'))refreshView();
+}
+
 function cloudOwnerId(){return session?.$id||''}
 function activeStore(){return state.stores.find(row=>row.id===state.activeStoreId)||state.stores[0]||null}
 function ownerCustomers(storeId=state.activeStoreId){return state.customers.filter(row=>row.storeId===storeId)}
@@ -54,6 +105,7 @@ async function boot(){
   await loadEntitlement();
   if(!hasActiveEntitlement())return renderAccessGate();
   await loadOwnerData();
+  startOwnerRealtime();
   renderShell();
 }
 async function loadEntitlement(){
@@ -88,7 +140,7 @@ function renderAccessGate(){
   }
   app.innerHTML=`<main class="screen"><section class="auth-card"><div class="brand"><div class="brand-mark">D</div><div><h2>Digit58</h2><p class="tagline">Store portal access is ${money(SUBSCRIPTION_AMOUNT)}/month.</p></div></div>${body}<div class="actions" style="margin-top:16px"><button class="btn secondary full" id="gateLogout">Sign out</button></div></section></main>`;
   $('#requestAccessBtn')?.addEventListener('click',requestStoreAccess);
-  $('#gateLogout').onclick=async()=>{await api.logout();session=null;renderOwnerAuth()};
+  $('#gateLogout').onclick=async()=>{stopOwnerRealtime();await api.logout();session=null;renderOwnerAuth()};
 }
 function accessRequestBlock(status){
   return `<div class="card"><p class="muted">Request store access for ${money(SUBSCRIPTION_AMOUNT)}/month. The G58 team will review your request and send a secure payment link.</p><button class="btn full" id="requestAccessBtn" style="margin-top:12px">${status==='Rejected'?'Send New Request':'Request Store Access'}</button></div>`;
@@ -132,6 +184,7 @@ function renderOwnerAuth(){
       await loadEntitlement();
       if(!hasActiveEntitlement())return renderAccessGate();
       await loadOwnerData();
+      startOwnerRealtime();
       renderShell();
     }catch(error){button.disabled=false;toast(error.message||'Could not sign in')}
   };
@@ -152,14 +205,20 @@ async function loadOwnerData(){
 
 function renderShell(){
   const store=activeStore();
-  app.innerHTML=`<div class="shell"><aside class="sidebar"><div class="brand"><div class="brand-mark">D</div><div><strong>Digit58</strong><small class="muted">Store workspace</small></div></div><nav class="nav">${navButton('dashboard','◉','Dashboard')}${navButton('stores','◫','My Stores')}${navButton('wall','☰','Customer Wall')}${navButton('orderHistory','🕘','Order History')}${navButton('settings','⚙','Settings')}<button id="logout">⇥ Logout</button></nav></aside><main class="main"><header class="topbar"><div>${state.stores.length?`<select id="storeSwitch">${state.stores.map(row=>`<option value="${html(row.id)}" ${row.id===state.activeStoreId?'selected':''}>${html(row.name)}</option>`).join('')}</select>`:'<strong>No store yet</strong>'}</div><span class="status-pill"><span class="dot"></span>${html(session?.email||'')}</span></header><section class="content" id="page"></section></main></div>`;
+  app.innerHTML=`<div class="shell"><aside class="sidebar"><div class="brand"><div class="brand-mark">D</div><div><strong>Digit58</strong><small class="muted">Store workspace</small></div></div><nav class="nav">${navButton('dashboard','◉','Dashboard')}${navButton('stores','◫','My Stores')}${navButton('wall','☰','Customer Wall')}${navButton('orderHistory','🕘','Order History')}${navButton('subscription','♢','Subscription')}${navButton('settings','⚙','Settings')}<button id="logout">⇥ Logout</button></nav></aside><main class="main"><header class="topbar"><div>${state.stores.length?`<select id="storeSwitch">${state.stores.map(row=>`<option value="${html(row.id)}" ${row.id===state.activeStoreId?'selected':''}>${html(row.name)}</option>`).join('')}</select>`:'<strong>No store yet</strong>'}</div><span class="status-pill"><span class="dot"></span>${html(session?.email||'')}</span></header><section class="content" id="page"></section></main></div>`;
   $$('[data-view]').forEach(button=>button.onclick=()=>{view=button.dataset.view;renderShell()});
-  $('#logout').onclick=async()=>{await api.logout();session=null;renderOwnerAuth()};
+  $('#logout').onclick=async()=>{stopOwnerRealtime();await api.logout();session=null;renderOwnerAuth()};
   $('#storeSwitch')?.addEventListener('change',event=>{state.activeStoreId=event.target.value;save();renderShell()});
   renderView();
 }
 function navButton(key,icon,label){return `<button data-view="${key}" class="${view===key?'active':''}"><span>${icon}</span>${label}</button>`}
-function renderView(){if(!activeStore()&&view!=='stores'&&view!=='settings'){view='stores';return renderShell()}({dashboard:dashboardView,stores:storesView,wall:customerWallView,orderHistory:orderHistoryView,settings:settingsView}[view]||dashboardView)()}
+function renderView(){if(!activeStore()&&view!=='stores'&&view!=='settings'&&view!=='subscription'){view='stores';return renderShell()}({dashboard:dashboardView,stores:storesView,wall:customerWallView,orderHistory:orderHistoryView,subscription:subscriptionView,settings:settingsView}[view]||dashboardView)()}
+function subscriptionView(){
+  refreshView=subscriptionView;
+  const expiry=entitlement?.lifetime?'Lifetime access':entitlement?.expiresAt?new Date(entitlement.expiresAt).toLocaleDateString('en-IN',{dateStyle:'medium'}):'—';
+  const status=entitlement?.paused?'Paused':hasActiveEntitlement()?'Active':'Inactive';
+  $('#page').innerHTML=`<div class="section-head"><div><h1>Subscription</h1><p class="muted">Your Digit58 store portal access.</p></div></div><div class="card" style="max-width:420px"><span class="chip">Digit58 Store Access</span><h2 style="margin:10px 0">${money(SUBSCRIPTION_AMOUNT)}<small class="muted" style="font-size:14px"> /month</small></h2><div class="chips"><span class="chip ${status==='Active'?'delivered':status==='Paused'?'due':''}">${status}</span></div><p class="muted" style="margin-top:12px">${entitlement?.lifetime?'Your subscription never expires.':`Renews / expires: ${expiry}`}</p>${status==='Paused'?'<p class="muted">Contact the G58 team to resume access.</p>':''}</div>`;
+}
 
 function metric(title,value){return `<article class="card metric"><span>${html(title)}</span><strong>${value}</strong></article>`}
 function dashboardView(){
@@ -304,7 +363,8 @@ function bindOrderChatForms(orders,role,onSent){
   });
 }
 function ownerOrderMarkup(order){
-  return `<article class="card order-item-card"><div class="section-head"><h3>Order #${html(order.id.slice(-6).toUpperCase())}</h3><span class="chip ${['Requested','Priced'].includes(order.status)?'due':''}">${html(order.status)}</span></div>${orderStepperMarkup(order.status)}<div class="order-items-list">${order.items.map(item=>`<div class="order-line-item"><span>${item.qty} ×</span><span>${html(item.name)}</span></div>`).join('')}</div>${order.prescriptionUrl?`<a class="link-btn" href="${html(order.prescriptionUrl)}" target="_blank" rel="noopener">📄 View prescription</a>`:''}${order.amount?`<h3 style="margin:10px 0">${money(order.amount)}</h3>`:'<p class="muted">Amount not set yet.</p>'}<div class="actions">${orderOwnerActions(order)}</div>${orderChatMarkup(order,'owner')}</article>`;
+  const ringing=ringingIds.has(order.id);
+  return `<article class="card order-item-card ${ringing?'incoming-order':''}">${ringing?'<span class="incoming-order-beacon" aria-label="New order" title="New order"></span>':''}<div class="section-head"><h3>Order #${html(order.id.slice(-6).toUpperCase())}</h3><span class="chip ${['Requested','Priced'].includes(order.status)?'due':''}">${html(order.status)}</span></div>${orderStepperMarkup(order.status)}<div class="order-items-list">${order.items.map(item=>`<div class="order-line-item"><span>${item.qty} ×</span><span>${html(item.name)}</span></div>`).join('')}</div>${order.prescriptionUrl?`<a class="link-btn" href="${html(order.prescriptionUrl)}" target="_blank" rel="noopener">📄 View prescription</a>`:''}${order.amount?`<h3 style="margin:10px 0">${money(order.amount)}</h3>`:'<p class="muted">Amount not set yet.</p>'}<div class="actions">${orderOwnerActions(order)}</div>${orderChatMarkup(order,'owner')}</article>`;
 }
 function orderOwnerActions(order){
   const map={
@@ -350,6 +410,7 @@ function setOrderAmount(orderId){
       try{
         await api.update(orderKind(order.ownerId),order.id,{amount,upiId,upiUri,status:'Priced',pricedAt:now()});
         Object.assign(order,{amount,upiId,upiUri,status:'Priced',pricedAt:now()});
+        updateOrderAlertSound();
         closeModal();refreshView();toast('Amount set — customer can now pay');
       }catch(error){button.disabled=false;toast(error.message||'Could not set amount')}
     };
@@ -363,6 +424,7 @@ async function advanceOrder(orderId,next){
   try{
     await api.update(orderKind(order.ownerId),orderId,changes);
     Object.assign(order,changes);
+    ringingIds.delete(orderId);updateOrderAlertSound();
     refreshView();
     toast(next==='Delivered'?'Order delivered':`Order status: ${next}`);
   }catch(error){toast(error.message||'Could not update order')}
@@ -372,6 +434,7 @@ async function rejectOrder(orderId){
   try{
     await api.update(orderKind(order.ownerId),orderId,{status:'Rejected',rejectedAt:now()});
     Object.assign(order,{status:'Rejected',rejectedAt:now()});
+    ringingIds.delete(orderId);updateOrderAlertSound();
     refreshView();toast('Order rejected');
   }catch(error){toast(error.message||'Could not reject order')}
 }
@@ -394,8 +457,8 @@ function orderHistoryRow(order){
   return `<tr><td>${html(customer?.customerName||order.customerName||'Customer')}</td><td>${order.items.map(i=>`${i.qty}×${html(i.name)}`).join(', ')}</td><td>${money(order.amount)}</td><td>${html(order.status)}</td><td>${new Date(order.deliveredAt||order.updatedAt||order.createdAt).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'})}</td></tr>`;
 }
 function ownerCardMarkup(card){
-  const due=isCardDue(card),remaining=daysRemaining(card),pct=Math.min(100,Math.round((1-remaining/Math.max(1,Number(card.reminderDays)||1))*100));
-  return `<article class="card reminder-card ${due||card.status==='Buy Requested'?'due':''}"><h3>${html(card.productName)}</h3><p class="muted">${money(card.price)} · every ${Number(card.reminderDays)} day(s)</p><div class="reminder-progress ${due?'due':''}"><span style="width:${pct}%"></span></div><div class="chips"><span class="chip ${due?'due':''}">${due?'Due now':`${remaining} day(s) left`}</span>${card.status==='Buy Requested'?'<span class="chip due">Buy requested</span>':''}${Number(card.timesDelivered)?`<span class="chip delivered">${Number(card.timesDelivered)} delivered</span>`:''}</div><div class="actions">${card.status==='Buy Requested'?`<button class="btn small green" data-deliver="${html(card.id)}">Mark Delivered</button>`:''}<button class="btn small secondary" data-edit-card="${html(card.id)}">Edit</button><button class="btn small red" data-remove-card="${html(card.id)}">Remove</button></div></article>`;
+  const due=isCardDue(card),remaining=daysRemaining(card),pct=Math.min(100,Math.round((1-remaining/Math.max(1,Number(card.reminderDays)||1))*100)),ringing=ringingIds.has(card.id);
+  return `<article class="card reminder-card ${due||card.status==='Buy Requested'?'due':''} ${ringing?'incoming-order':''}">${ringing?'<span class="incoming-order-beacon" aria-label="Buy again request" title="Buy again request"></span>':''}<h3>${html(card.productName)}</h3><p class="muted">${money(card.price)} · every ${Number(card.reminderDays)} day(s)</p><div class="reminder-progress ${due?'due':''}"><span style="width:${pct}%"></span></div><div class="chips"><span class="chip ${due?'due':''}">${due?'Due now':`${remaining} day(s) left`}</span>${card.status==='Buy Requested'?'<span class="chip due">Buy requested</span>':''}${Number(card.timesDelivered)?`<span class="chip delivered">${Number(card.timesDelivered)} delivered</span>`:''}</div><div class="actions">${card.status==='Buy Requested'?`<button class="btn small green" data-deliver="${html(card.id)}">Mark Delivered</button>`:''}<button class="btn small secondary" data-edit-card="${html(card.id)}">Edit</button><button class="btn small red" data-remove-card="${html(card.id)}">Remove</button></div></article>`;
 }
 function bindOwnerCardActions(){
   $$('[data-deliver]').forEach(button=>button.onclick=()=>deliverCard(button.dataset.deliver));
@@ -434,6 +497,7 @@ async function deliverCard(cardId){
   try{
     await api.update(cardKind(card.ownerId),card.id,changes);
     Object.assign(card,changes);save();
+    ringingIds.delete(cardId);updateOrderAlertSound();
     refreshView();
     toast('Marked delivered — reminder reset for next cycle');
   }catch(error){toast(error.message||'Could not update card')}
@@ -443,6 +507,7 @@ async function removeCard(cardId){
   try{
     await api.remove(cardKind(card.ownerId),cardId);
     state.cards=state.cards.filter(row=>row.id!==cardId);save();
+    ringingIds.delete(cardId);updateOrderAlertSound();
     refreshView();toast('Card removed');
   }catch(error){toast(error.message||'Could not remove card')}
 }
@@ -463,6 +528,7 @@ async function renderPublicStore(hashParams){
   if(!account)return renderCustomerAuth(store,ownerId,storeId);
   const customer=await ensureCustomerLink(ownerId,storeId,account);
   await loadAndRenderCustomerView(store,customer);
+  startCustomerRealtime(store,customer);
 }
 async function loadAndRenderCustomerView(store,customer){
   const [cards,orders]=await Promise.all([
@@ -473,6 +539,15 @@ async function loadAndRenderCustomerView(store,customer){
     cards.filter(row=>row.storeId===store.id&&row.customerAccountId===customer.customerAccountId),
     orders.filter(row=>row.storeId===store.id&&row.customerAccountId===customer.customerAccountId));
 }
+let customerOrdersUnsubscribe=null,customerCardsUnsubscribe=null;
+function startCustomerRealtime(store,customer){
+  if(!api?.subscribeKind)return;
+  customerOrdersUnsubscribe?.();
+  customerOrdersUnsubscribe=api.subscribeKind(orderKind(store.ownerId),()=>{if(!$('.modal-backdrop'))loadAndRenderCustomerView(store,customer)});
+  customerCardsUnsubscribe?.();
+  customerCardsUnsubscribe=api.subscribeKind(cardKind(store.ownerId),()=>{if(!$('.modal-backdrop'))loadAndRenderCustomerView(store,customer)});
+}
+function stopCustomerRealtime(){customerOrdersUnsubscribe?.();customerCardsUnsubscribe?.();customerOrdersUnsubscribe=customerCardsUnsubscribe=null}
 function renderCustomerAuth(store,ownerId,storeId){
   app.innerHTML=`<main class="public-store"><section class="store-hero"><span class="chip">${html(store.category||'Store')}</span><h1>${html(store.name)}</h1><p class="muted">${html(store.description||'')}${store.city?' · '+html(store.city):''}</p></section><div class="card"><div class="actions" style="margin-bottom:14px"><button class="btn small" id="custTabLogin">Sign in</button><button class="btn small secondary" id="custTabSignup">Sign up</button></div><form id="customerAuthForm"><div class="field full-name-field hidden"><label>Your name</label><input name="name"></div><div class="field"><label>Email</label><input name="email" type="email" required></div><div class="field"><label>Password</label><input name="password" type="password" minlength="8" required></div><button class="btn full" id="custAuthSubmit" type="submit">Sign In</button></form></div></main>`;
   let mode='login';
@@ -508,18 +583,25 @@ function renderCustomerCards(store,customer,cards,orders=[]){
     const target=document.getElementById(`qr-${order.id}`);
     if(target&&window.QRCode)new QRCode(target,{text:order.upiUri,width:180,height:180});
   });
-  cards.filter(card=>isCardDue(card)&&card.status!=='Buy Requested'&&card.upiUri).forEach(card=>{
+  cards.filter(card=>card.status!=='Buy Requested'&&card.upiUri).forEach(card=>{
     const target=document.getElementById(`card-qr-${card.id}`);
     if(target&&window.QRCode)new QRCode(target,{text:card.upiUri,width:160,height:160});
   });
   $('#placeOrderBtn').onclick=()=>openPlaceOrderModal(store,customer);
   $$('[data-buy-again]').forEach(button=>button.onclick=()=>requestBuyAgain(button.dataset.buyAgain,store,customer));
   bindOrderChatForms(active,'customer',()=>loadAndRenderCustomerView(store,customer));
-  $('#custLogout').onclick=async()=>{await api.logout();location.hash=`store&owner=${encodeURIComponent(store.ownerId)}&store=${encodeURIComponent(store.id)}`;boot()};
+  $('#custLogout').onclick=async()=>{stopCustomerRealtime();await api.logout();location.hash=`store&owner=${encodeURIComponent(store.ownerId)}&store=${encodeURIComponent(store.id)}`;boot()};
 }
 function customerCardCardMarkup(card){
   const due=isCardDue(card),remaining=daysRemaining(card),pct=Math.min(100,Math.round((1-remaining/Math.max(1,Number(card.reminderDays)||1))*100));
-  const payBlock=due&&card.status!=='Buy Requested'?`${card.upiUri?`<div class="qr-wrap" id="card-qr-${html(card.id)}"></div>`:''}<button class="btn full green" data-buy-again="${html(card.id)}">Buy Again</button>`:card.status==='Buy Requested'?'<p class="muted">Waiting for the store to confirm and deliver.</p>':'';
+  let payBlock='';
+  if(card.status==='Buy Requested'){
+    payBlock='<p class="muted">Waiting for the store to confirm and deliver.</p>';
+  }else if(card.upiUri){
+    payBlock=`<div class="qr-wrap" id="card-qr-${html(card.id)}"></div><p class="muted" style="text-align:center;margin:8px 0">${due?'Scan to pay for your refill.':'Scan anytime to pay for this item.'}</p>${due?`<button class="btn full green" data-buy-again="${html(card.id)}">Buy Again</button>`:''}`;
+  }else if(due){
+    payBlock=`<button class="btn full green" data-buy-again="${html(card.id)}">Buy Again</button>`;
+  }
   return `<article class="card reminder-card ${due?'due':''}"><h3>${html(card.productName)}</h3><p class="muted">${money(card.price)} · every ${Number(card.reminderDays)} day(s)</p><div class="reminder-progress ${due?'due':''}"><span style="width:${pct}%"></span></div><div class="chips"><span class="chip ${due?'due':''}">${due?'Due now':`${remaining} day(s) left`}</span>${card.status==='Buy Requested'?'<span class="chip due">Request sent</span>':''}</div>${payBlock}</article>`;
 }
 async function requestBuyAgain(cardId,store,customer){
