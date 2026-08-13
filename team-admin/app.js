@@ -3,7 +3,7 @@ const app=$('#app'),api=window.Gravity58Ads,now=()=>new Date().toISOString(),mon
 const esc=value=>String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
 const AD_PLACEMENT_SPECS={right_rail:{label:'Right menu rail',size:'1080 × 1350 px',ratio:'4:5'},preparing:{label:'Preparing screen',size:'1200 × 628 px',ratio:'1.91:1'},thankyou:{label:'Thank-you screen',size:'1080 × 1080 px',ratio:'1:1'}};
 const placementSpec=slotId=>AD_PLACEMENT_SPECS[slotId]||{label:slotId||'Advertisement',size:'Confirm with G58',ratio:''};
-let user=null,view='overview',data={bookings:[],advertisements:[],profiles:[],slots:[],customers:[],businesses:[],postRows:[],legacyPostDocument:null,menuPricing:[],menuEntitlements:[],menuRequests:[],dinerOrders:[],dinerOrdersLoaded:false,digit58Stores:[]};
+let user=null,view='overview',data={bookings:[],advertisements:[],profiles:[],slots:[],customers:[],businesses:[],postRows:[],legacyPostDocument:null,menuPricing:[],menuEntitlements:[],menuRequests:[],dinerOrders:[],dinerOrdersLoaded:false,digit58Stores:[],digit58Requests:[],digit58Entitlements:[],digit58Customers:[],digit58CustomersLoaded:false};
 function toast(message){const target=$('#toast');target.textContent=message;target.classList.add('show');setTimeout(()=>target.classList.remove('show'),2200)}
 function timeLeft(expiresAt,lifetime=false){if(lifetime)return'Lifetime';if(!expiresAt)return'No expiry';const ms=new Date(expiresAt)-new Date();if(ms<=0)return'Expired';const days=Math.floor(ms/864e5),hours=Math.floor(ms%864e5/36e5),minutes=Math.floor(ms%36e5/6e4);return`${days?days+'d ':''}${hours}h ${minutes}m remaining`}
 async function boot(){if(!api.configured)return configurationRequired();user=await api.currentUser();if(!user)return login();if(!await api.isTeamAdmin())return accessDenied();await loadData();shell()}
@@ -19,11 +19,11 @@ const renderAdminLogin=login;
 login=function(){renderAdminLogin();installAdminPasswordRecovery()};
 function accessDenied(){app.innerHTML=`<main class="screen auth"><section class="auth-card glass"><h2>Access denied</h2><p>This signed-in account is not a G58 team member.</p><button class="btn full" id="leave">Sign out</button></section></main>`;$('#leave').onclick=async()=>{await api.logout();user=null;login()}}
 async function loadData(){
-  const [bookings,advertisements,profiles,slots,posts,menuPricing,menuEntitlements,menuRequests,digit58Stores]=await Promise.all([api.list('bookings'),api.list('advertisements'),api.list('profiles'),api.list('slots'),api.list('posts'),api.list('digital_menu_pricing').catch(()=>[]),api.list('digital_menu_entitlements').catch(()=>[]),api.list('digital_menu_requests').catch(()=>[]),api.list('digit58_owners').catch(()=>[])]);
+  const [bookings,advertisements,profiles,slots,posts,menuPricing,menuEntitlements,menuRequests,digit58Stores,digit58Requests,digit58Entitlements]=await Promise.all([api.list('bookings'),api.list('advertisements'),api.list('profiles'),api.list('slots'),api.list('posts'),api.list('digital_menu_pricing').catch(()=>[]),api.list('digital_menu_entitlements').catch(()=>[]),api.list('digital_menu_requests').catch(()=>[]),api.list('digit58_owners').catch(()=>[]),api.list('digit58_requests').catch(()=>[]),api.list('digit58_entitlements').catch(()=>[])]);
   const legacy=posts.find(row=>row.recordKey==='global'&&(row.customers||row.businesses));
   const postRows=posts.filter(row=>row.recordKey!=='global'),customers=[],businesses=[];
   postRows.forEach(row=>{const post=parsePost(row.payload);if(!post)return;post.userId||=row.userId||'';(row.postType==='business'?businesses:customers).push(post)});
-  data={bookings,advertisements,profiles,slots,postRows,legacyPostDocument:legacy||null,customers:legacy?parse(legacy.customers):customers,businesses:legacy?parse(legacy.businesses):businesses,menuPricing,menuEntitlements,menuRequests,digit58Stores};
+  data={bookings,advertisements,profiles,slots,postRows,legacyPostDocument:legacy||null,customers:legacy?parse(legacy.customers):customers,businesses:legacy?parse(legacy.businesses):businesses,menuPricing,menuEntitlements,menuRequests,digit58Stores,digit58Requests,digit58Entitlements,digit58Customers:data.digit58Customers||[],digit58CustomersLoaded:false};
   await reconcileExpiredCampaigns();
 }
 async function reconcileExpiredCampaigns(){
@@ -229,11 +229,81 @@ function drawDiners(){
 function digit58(){
   const stores=[...data.digit58Stores].sort((a,b)=>new Date(b.createdAt||b.$createdAt)-new Date(a.createdAt||a.$createdAt));
   const owners=new Set(stores.map(row=>row.ownerId)).size;
-  $('#page').innerHTML=`<div class="section-head"><div><h1>Digit58</h1><p class="muted">Stores that have gone digital on Digit58 — store profiles, categories and owners.</p></div></div><div class="grid stats">${metric('Stores',stores.length)}${metric('Store Owners',owners)}${metric('Categories',new Set(stores.map(row=>row.category||'General store')).size)}${metric('Newest Store',stores[0]?new Date(stores[0].createdAt||stores[0].$createdAt).toLocaleDateString('en-IN',{dateStyle:'medium'}):'—')}</div><div class="admin-filter-bar"><input id="digit58Search" placeholder="Search store, category or owner email"><select id="digit58Category"><option value="All">All categories</option>${[...new Set(stores.map(row=>row.category||'General store'))].map(category=>`<option>${esc(category)}</option>`).join('')}</select></div><div class="card table-wrap"><table><thead><tr><th>Store</th><th>Category</th><th>City</th><th>Owner</th><th>Created</th></tr></thead><tbody id="digit58Rows">${stores.map(digit58Row).join('')||'<tr><td colspan="5">No Digit58 stores yet.</td></tr>'}</tbody></table></div>`;
+  const requests=[...data.digit58Requests].filter(row=>!['Activated','Rejected'].includes(row.status)).sort((a,b)=>new Date(b.createdAt||b.$createdAt)-new Date(a.createdAt||a.$createdAt));
+  const entitlements=[...data.digit58Entitlements].sort((a,b)=>String(a.ownerEmail||a.ownerId).localeCompare(String(b.ownerEmail||b.ownerId)));
+  $('#page').innerHTML=`<div class="section-head"><div><h1>Digit58</h1><p class="muted">Store subscriptions, activation requests, stores and customers across every Digit58 owner.</p></div></div><div class="grid stats">${metric('Stores',stores.length)}${metric('Store Owners',owners)}${metric('Pending Requests',requests.length)}${metric('Active Subscriptions',entitlements.filter(row=>row.active&&!row.paused).length)}</div>
+  <div class="section-head"><h2>Store owner requests</h2></div>
+  <div class="card table-wrap"><table><thead><tr><th>Owner</th><th>Amount</th><th>Status</th><th>Actions</th></tr></thead><tbody>${requests.map(digit58RequestRow).join('')||'<tr><td colspan="4">No pending Digit58 requests.</td></tr>'}</tbody></table></div>
+  <div class="section-head"><h2>Store owner subscriptions</h2></div>
+  <div class="card table-wrap"><table><thead><tr><th>Owner</th><th>Status</th><th>Expiry</th><th>Actions</th></tr></thead><tbody>${entitlements.map(digit58EntitlementRow).join('')||'<tr><td colspan="4">No activated Digit58 subscriptions.</td></tr>'}</tbody></table></div>
+  <div class="section-head"><h2>Digit58 stores</h2></div>
+  <div class="admin-filter-bar"><input id="digit58Search" placeholder="Search store, category or owner email"><select id="digit58Category"><option value="All">All categories</option>${[...new Set(stores.map(row=>row.category||'General store'))].map(category=>`<option>${esc(category)}</option>`).join('')}</select></div><div class="card table-wrap"><table><thead><tr><th>Store</th><th>Category</th><th>City</th><th>Owner</th><th>Created</th></tr></thead><tbody id="digit58Rows">${stores.map(digit58Row).join('')||'<tr><td colspan="5">No Digit58 stores yet.</td></tr>'}</tbody></table></div>
+  <div class="section-head"><div><h2>Store customers</h2><p class="muted">Customers signed up across all Digit58 stores, with their last visit.</p></div><button class="btn" id="loadDigit58Customers">${data.digit58CustomersLoaded?'Refresh':'Load Customers'}</button></div>
+  <div class="card table-wrap" id="digit58CustomerTable">${data.digit58CustomersLoaded?digit58CustomersTable():'<div class="empty">Click "Load Customers" to fetch customer details across all stores.</div>'}</div>`;
   const draw=()=>{const q=$('#digit58Search').value.toLowerCase(),category=$('#digit58Category').value,rows=stores.filter(row=>(category==='All'||row.category===category)&&`${row.storeName} ${row.category} ${row.ownerEmail}`.toLowerCase().includes(q));$('#digit58Rows').innerHTML=rows.map(digit58Row).join('')||'<tr><td colspan="5">No matching stores.</td></tr>'};
   $('#digit58Search').oninput=draw;$('#digit58Category').onchange=draw;
+  $$('[data-send-digit58-link]').forEach(button=>button.onclick=()=>sendDigit58PaymentLink(button.dataset.sendDigit58Link));
+  $$('[data-activate-digit58]').forEach(button=>button.onclick=()=>activateDigit58Request(button.dataset.activateDigit58));
+  $$('[data-reject-digit58]').forEach(button=>button.onclick=()=>rejectDigit58Request(button.dataset.rejectDigit58));
+  $$('[data-edit-digit58-entitlement]').forEach(button=>button.onclick=()=>editDigit58Entitlement(button.dataset.editDigit58Entitlement));
+  $$('[data-extend-digit58]').forEach(button=>button.onclick=()=>extendDigit58Entitlement(button.dataset.extendDigit58));
+  $$('[data-pause-digit58]').forEach(button=>button.onclick=()=>toggleDigit58Pause(button.dataset.pauseDigit58));
+  $('#loadDigit58Customers').onclick=async()=>{$('#loadDigit58Customers').disabled=true;await loadDigit58Customers(true);digit58()};
 }
 function digit58Row(row){return `<tr><td><strong>${esc(row.storeName||'Store')}</strong></td><td>${esc(row.category||'General store')}</td><td>${esc(row.city||'')}</td><td>${esc(row.ownerEmail||row.ownerId||'')}</td><td>${row.createdAt?new Date(row.createdAt).toLocaleDateString('en-IN',{dateStyle:'medium'}):''}</td></tr>`}
+function digit58RequestRow(row){
+  const actions=row.status==='Requested'?`<button class="btn small" data-send-digit58-link="${esc(row.id)}">Send Payment Link</button><button class="btn small red" data-reject-digit58="${esc(row.id)}">Reject</button>`
+    :row.status==='Payment Link Sent'?`<button class="btn small green" data-activate-digit58="${esc(row.id)}">Activate</button><button class="btn small red" data-reject-digit58="${esc(row.id)}">Reject</button>`
+    :`<button class="btn small green" data-activate-digit58="${esc(row.id)}">Activate</button>`;
+  return `<tr><td><strong>${esc(row.ownerName||'Store Owner')}</strong><br><small>${esc(row.ownerEmail||row.ownerId)}</small></td><td>${money(row.amount||399)}</td><td>${esc(row.status||'Requested')}</td><td><div class="actions">${actions}</div></td></tr>`;
+}
+function digit58EntitlementRow(row){
+  return `<tr><td>${esc(row.ownerEmail||row.ownerId)}</td><td>${row.paused?'Paused':row.active?'Active':'Inactive'}</td><td>${timeLeft(row.expiresAt,row.lifetime)}</td><td><div class="actions"><button class="btn small" data-edit-digit58-entitlement="${esc(row.id)}">Edit</button><button class="btn small green" data-extend-digit58="${esc(row.id)}">+30 days</button><button class="btn small ${row.paused?'green':'secondary'}" data-pause-digit58="${esc(row.id)}">${row.paused?'Resume':'Pause'}</button></div></td></tr>`;
+}
+function sendDigit58PaymentLink(id){
+  const row=data.digit58Requests.find(item=>item.id===id);if(!row)return;
+  modal('Send Digit58 Payment Link',`<form id="sendDigit58LinkForm"><p><strong>${esc(row.ownerEmail||row.ownerId)}</strong> requested Digit58 store access for ${money(row.amount||399)}.</p><div class="field"><label>Payment link</label><input name="paymentLink" type="url" required placeholder="Razorpay payment link"></div><button class="btn full">Send to store owner</button></form>`,()=>{
+    $('#sendDigit58LinkForm').onsubmit=async event=>{event.preventDefault();const values=Object.fromEntries(new FormData(event.target));try{await api.update('digit58_requests',id,{...values,status:'Payment Link Sent',paymentLinkSentAt:now()});closeModal();await refresh();toast('Payment link sent to store owner')}catch(error){toast(error.message||'Could not send payment link')}};
+  });
+}
+function activateDigit58Request(id){
+  const request=data.digit58Requests.find(row=>row.id===id),existing=data.digit58Entitlements.find(row=>row.ownerId===request?.ownerId);if(!request)return;
+  modal('Activate Digit58 Store Access',`<form id="activateDigit58Form"><p><strong>${esc(request.ownerEmail||request.ownerId)}</strong> — ${money(request.amount||399)}/month.</p><div class="form-grid"><div class="field"><label>Activation months</label><input name="months" type="number" min="1" max="120" value="1" required></div></div><label class="notice"><input name="lifetime" type="checkbox" ${existing?.lifetime?'checked':''}> Lifetime access — subscription never expires</label><button class="btn green full">Activate Store Access</button></form>`,()=>{
+    $('#activateDigit58Form').onsubmit=async event=>{
+      event.preventDefault();
+      const fd=new FormData(event.target),months=Number(fd.get('months')),lifetime=fd.has('lifetime'),base=Math.max(Date.now(),new Date(existing?.expiresAt||0).getTime()),expiry=new Date(base);expiry.setMonth(expiry.getMonth()+months);
+      const payload={ownerId:request.ownerId,ownerEmail:request.ownerEmail||'',active:true,paused:false,lifetime,expiresAt:lifetime?'':expiry.toISOString(),activatedAt:existing?.activatedAt||now(),updatedAt:now()};
+      try{
+        if(existing)await api.update('digit58_entitlements',existing.id,payload);
+        else await api.create('digit58_entitlements',payload,`d58-${String(request.ownerId).slice(0,30)}`,api.managedPermissionSet?.()||api.collaborativePermissionSet(request.ownerId));
+        await api.update('digit58_requests',id,{status:'Activated',activatedAt:now()});
+        closeModal();await refresh();toast('Digit58 store access activated');
+      }catch(error){toast(error.message||'Could not activate store access')}
+    };
+  });
+}
+async function rejectDigit58Request(id){if(!confirm('Reject this Digit58 activation request?'))return;try{await api.update('digit58_requests',id,{status:'Rejected',rejectedAt:now()});await refresh();toast('Request rejected')}catch(error){toast(error.message||'Could not reject request')}}
+function editDigit58Entitlement(id){
+  const row=data.digit58Entitlements.find(item=>item.id===id);if(!row)return;
+  modal('Edit Digit58 Subscription',`<form id="editDigit58Entitlement"><div class="form-grid"><div class="field"><label>Expiry</label><input name="expiresAt" type="date" value="${row.expiresAt?row.expiresAt.slice(0,10):''}"></div></div><label class="notice"><input name="lifetime" type="checkbox" ${row.lifetime?'checked':''}> Lifetime — never expires</label><button class="btn full">Save Subscription</button></form>`,()=>{
+    $('#editDigit58Entitlement').onsubmit=async event=>{event.preventDefault();const fd=new FormData(event.target),lifetime=fd.has('lifetime');try{await api.update('digit58_entitlements',id,{lifetime,expiresAt:lifetime?'':fd.get('expiresAt')?new Date(`${fd.get('expiresAt')}T23:59:59+05:30`).toISOString():'',updatedAt:now()});closeModal();await refresh();toast('Subscription updated')}catch(error){toast(error.message||'Could not update subscription')}};
+  });
+}
+async function extendDigit58Entitlement(id){const row=data.digit58Entitlements.find(item=>item.id===id);if(!row||row.lifetime)return toast('Lifetime access does not need an extension');const base=Math.max(Date.now(),new Date(row.expiresAt||0).getTime()),expiresAt=new Date(base+30*86400000).toISOString();try{await api.update('digit58_entitlements',id,{expiresAt,updatedAt:now()});await refresh();toast('Subscription extended by 30 days')}catch(error){toast(error.message||'Could not extend subscription')}}
+async function toggleDigit58Pause(id){const row=data.digit58Entitlements.find(item=>item.id===id);if(!row)return;try{await api.update('digit58_entitlements',id,{paused:!row.paused,updatedAt:now()});await refresh();toast(row.paused?'Subscription resumed':'Subscription paused')}catch(error){toast(error.message||'Could not update subscription')}}
+function digit58CustomerKind(ownerId){return `digit58_customer_${String(ownerId).replace(/[^a-zA-Z0-9._-]/g,'-').slice(0,36)}`}
+async function loadDigit58Customers(force=false){
+  if(data.digit58CustomersLoaded&&!force)return;
+  const ownerIds=[...new Set([...data.digit58Entitlements.map(row=>row.ownerId),...data.digit58Requests.map(row=>row.ownerId)].filter(Boolean))];
+  const perOwner=await Promise.all(ownerIds.map(ownerId=>api.list(digit58CustomerKind(ownerId)).catch(()=>[])));
+  data.digit58Customers=perOwner.flat();
+  data.digit58CustomersLoaded=true;
+}
+function digit58CustomersTable(){
+  const rows=[...data.digit58Customers].sort((a,b)=>new Date(b.lastLoginAt||b.createdAt||0)-new Date(a.lastLoginAt||a.createdAt||0));
+  const storeName=storeId=>data.digit58Stores.find(row=>row.storeId===storeId)?.storeName||storeId;
+  return `<table><thead><tr><th>Customer</th><th>Store</th><th>Last login</th><th>Signed up</th></tr></thead><tbody>${rows.map(row=>`<tr><td><strong>${esc(row.customerName||'Customer')}</strong><br><small>${esc(row.customerEmail||'')}</small></td><td>${esc(storeName(row.storeId))}</td><td>${row.lastLoginAt?new Date(row.lastLoginAt).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'}):'—'}</td><td>${row.createdAt?new Date(row.createdAt).toLocaleDateString('en-IN',{dateStyle:'medium'}):''}</td></tr>`).join('')||'<tr><td colspan="4">No Digit58 customers found.</td></tr>'}</tbody></table>`;
+}
 function marketplace(){$('#page').innerHTML=`<div class="section-head"><div><h1>Public Posts & Business Cards</h1><p class="muted">Edit records or select multiple entries for permanent deletion.</p></div><button class="btn red" id="deleteSelected">Delete selected</button></div><div class="tabs"><button class="btn small" data-market="customer">Customer posts (${data.customers.length})</button><button class="btn small secondary" data-market="business">Business cards (${data.businesses.length})</button></div><div class="card table-wrap" id="marketTable" style="margin-top:14px"></div>`;let type='customer';const draw=()=>{const rows=type==='customer'?data.customers:data.businesses;$('#marketTable').innerHTML=`<table><thead><tr><th></th><th>Title</th><th>Location</th><th>Account</th><th>Status</th><th>Action</th></tr></thead><tbody>${rows.map(row=>`<tr><td><input type="checkbox" data-post-id="${esc(row.id)}"></td><td>${esc(row.title)}</td><td>${esc(row.district||row.city||'')}</td><td>${esc(row.accountEmail||row.email||'')}</td><td>${row.blocked?'Blocked':'Active'}</td><td><button class="btn small" data-edit-post="${esc(row.id)}">Edit</button></td></tr>`).join('')||'<tr><td colspan="6">No records.</td></tr>'}</tbody></table>`;$$('[data-edit-post]').forEach(button=>button.onclick=()=>editPost(type,button.dataset.editPost))};draw();$$('[data-market]').forEach(button=>button.onclick=()=>{type=button.dataset.market;$$('[data-market]').forEach(item=>item.className='btn small secondary');button.className='btn small';draw()});$('#deleteSelected').onclick=async()=>{const ids=$$('[data-post-id]:checked').map(input=>input.dataset.postId);if(!ids.length||!confirm(`Delete ${ids.length} selected record(s)?`))return;if(type==='customer')data.customers=data.customers.filter(row=>!ids.includes(row.id));else data.businesses=data.businesses.filter(row=>!ids.includes(row.id));await savePosts();marketplace()}}
 function editPost(type,id){const post=(type==='customer'?data.customers:data.businesses).find(row=>String(row.id)===String(id));if(!post)return;modal('Edit Public Record',`<form id="editPostForm"><div class="field"><label>Title</label><input name="title" value="${esc(post.title||'')}" required></div><div class="field"><label>Description</label><textarea name="description" required>${esc(post.description||'')}</textarea></div><div class="form-grid"><div class="field"><label>State</label><input name="state" value="${esc(post.state||'')}"></div><div class="field"><label>District / City</label><input name="district" value="${esc(post.district||post.city||'')}"></div></div><button class="btn full">Save Changes</button></form>`,()=>{$('#editPostForm').onsubmit=async event=>{event.preventDefault();const values=Object.fromEntries(new FormData(event.target));Object.assign(post,values,{city:values.district});await savePost(post,type);closeModal();marketplace();toast('Public record updated')}})}
 async function savePost(post,type){if(data.legacyPostDocument)return savePosts();const row=data.postRows.find(item=>String(item.recordKey)===String(post.id));if(!row)throw new Error('Post record not found');const updated=await api.update('posts',row.id,{postType:type,userId:row.userId||post.userId||'',payload:JSON.stringify(post),updatedAt:now()});Object.assign(row,updated)}

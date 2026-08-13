@@ -8,10 +8,12 @@ const safeId=(prefix,ownerId,max)=>`${prefix}${String(ownerId||'public').replace
 const storeKind=(ownerId)=>safeId('digit58_store_',ownerId,40);
 const customerKind=(ownerId)=>safeId('digit58_customer_',ownerId,36);
 const cardKind=(ownerId)=>safeId('digit58_card_',ownerId,40);
+const REQUEST_KIND='digit58_requests',ENTITLEMENT_KIND='digit58_entitlements',SUBSCRIPTION_AMOUNT=399;
 function toast(message){const target=$('#toast');if(!target)return alert(message);target.textContent=message;target.classList.add('show');setTimeout(()=>target.classList.remove('show'),2400)}
 
 let session=null,view='dashboard';
 let refreshView=()=>renderShell();
+let entitlement=null,myRequest=null;
 let state={activeStoreId:'',stores:[],customers:[],cards:[]};
 function save(){try{localStorage.setItem('gravity58Digit58',JSON.stringify(state))}catch{}}
 function load(){try{return {...state,...JSON.parse(localStorage.getItem('gravity58Digit58')||'{}')}}catch{return state}}
@@ -30,8 +32,57 @@ async function boot(){
   if(location.hash.startsWith('#store&'))return renderPublicStore(hash);
   session=await api.currentUser().catch(()=>null);
   if(!session)return renderOwnerAuth();
+  await loadEntitlement();
+  if(!hasActiveEntitlement())return renderAccessGate();
   await loadOwnerData();
   renderShell();
+}
+async function loadEntitlement(){
+  const ownerId=cloudOwnerId();if(!ownerId)return;
+  const [entitlements,requests]=await Promise.all([
+    api.list(ENTITLEMENT_KIND).catch(()=>[]),
+    api.list(REQUEST_KIND).catch(()=>[]),
+  ]);
+  entitlement=entitlements.find(row=>row.ownerId===ownerId)||null;
+  myRequest=requests.filter(row=>row.ownerId===ownerId).sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt))[0]||null;
+}
+function hasActiveEntitlement(){
+  if(!entitlement||!entitlement.active||entitlement.paused)return false;
+  if(entitlement.expiresAt&&new Date(entitlement.expiresAt).getTime()<Date.now())return false;
+  return true;
+}
+function renderAccessGate(){
+  const status=myRequest?.status||'';
+  let body='';
+  if(entitlement?.paused){
+    body=`<div class="card"><p class="muted">Your store subscription is currently paused by the G58 team. Contact G58 support to resume access.</p></div>`;
+  }else if(entitlement&&entitlement.expiresAt&&new Date(entitlement.expiresAt).getTime()<Date.now()){
+    body=`<div class="card"><p class="muted">Your store subscription has expired. Request a new activation below to continue.</p></div>${accessRequestBlock(status)}`;
+  }else if(status==='Requested'){
+    body=`<div class="card"><p class="muted">Your activation request has been sent to the G58 team. You'll see a payment link here once they review it.</p></div>`;
+  }else if(status==='Payment Link Sent'){
+    body=`<div class="card"><p class="muted">Pay ${money(myRequest.amount||SUBSCRIPTION_AMOUNT)} using the secure link below, then wait for G58 to confirm and activate your store portal.</p><a class="btn full" href="${html(myRequest.paymentLink)}" target="_blank" rel="noopener" style="margin-top:12px;display:block;text-align:center;text-decoration:none">Pay ${money(myRequest.amount||SUBSCRIPTION_AMOUNT)}</a></div>`;
+  }else if(status==='Rejected'){
+    body=`<div class="card"><p class="muted">Your last activation request was not approved. You can send a new request below.</p></div>${accessRequestBlock(status)}`;
+  }else{
+    body=accessRequestBlock(status);
+  }
+  app.innerHTML=`<main class="screen"><section class="auth-card"><div class="brand"><div class="brand-mark">D</div><div><h2>Digit58</h2><p class="tagline">Store portal access is ${money(SUBSCRIPTION_AMOUNT)}/month.</p></div></div>${body}<div class="actions" style="margin-top:16px"><button class="btn secondary full" id="gateLogout">Sign out</button></div></section></main>`;
+  $('#requestAccessBtn')?.addEventListener('click',requestStoreAccess);
+  $('#gateLogout').onclick=async()=>{await api.logout();session=null;renderOwnerAuth()};
+}
+function accessRequestBlock(status){
+  return `<div class="card"><p class="muted">Request store access for ${money(SUBSCRIPTION_AMOUNT)}/month. The G58 team will review your request and send a secure payment link.</p><button class="btn full" id="requestAccessBtn" style="margin-top:12px">${status==='Rejected'?'Send New Request':'Request Store Access'}</button></div>`;
+}
+async function requestStoreAccess(){
+  const button=$('#requestAccessBtn');button.disabled=true;
+  try{
+    const record={id:id('req'),ownerId:cloudOwnerId(),ownerEmail:session.email,ownerName:session.name||session.email.split('@')[0],amount:SUBSCRIPTION_AMOUNT,status:'Requested',paymentLink:'',createdAt:now()};
+    const created=await api.create(REQUEST_KIND,record,record.id,api.collaborativePermissionSet?.(record.ownerId));
+    myRequest=created;
+    renderAccessGate();
+    toast('Activation request sent to the G58 team');
+  }catch(error){button.disabled=false;toast(error.message||'Could not send activation request')}
 }
 function renderConfigError(){app.innerHTML=`<main class="screen"><section class="auth-card"><div class="brand"><div class="brand-mark">D</div><div><h2>Digit58</h2><p class="tagline">Take any store online</p></div></div><p>Digit58 is temporarily unavailable. Please try again shortly.</p></section></main>`}
 
@@ -156,11 +207,27 @@ function customerWallView(){
   const customers=ownerCustomers(store?.id);
   $('#page').innerHTML=`<div class="section-head"><div><h1>Customer Wall</h1><p class="muted">Customers who signed up under ${html(store?.name||'this store')}.</p></div></div><div class="grid customer-grid">${customers.map(customerCardMarkup).join('')||'<div class="empty">No customers yet. Share your store link to get started.</div>'}</div>`;
   $$('[data-open-customer]').forEach(button=>button.onclick=()=>customerDetailView(button.dataset.openCustomer));
+  $$('[data-remove-customer]').forEach(button=>button.onclick=()=>removeCustomer(button.dataset.removeCustomer));
 }
 function customerCardMarkup(customer){
   const cards=customerCards(customer.customerAccountId,customer.storeId);
   const due=cards.filter(isCardDue).length;
-  return `<article class="card"><h3>${html(customer.customerName||'Customer')}</h3><p class="muted">${html(customer.customerEmail||'')}${customer.phone?' · '+html(customer.phone):''}</p><div class="chips"><span class="chip">${cards.length} card(s)</span>${due?`<span class="chip due">${due} due</span>`:''}</div><button class="btn small full" data-open-customer="${html(customer.id)}">Open Customer Wall →</button></article>`;
+  return `<article class="card"><h3>${html(customer.customerName||'Customer')}</h3><p class="muted">${html(customer.customerEmail||'')}${customer.phone?' · '+html(customer.phone):''}</p>${customer.lastLoginAt?`<p class="muted">Last seen ${new Date(customer.lastLoginAt).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'})}</p>`:''}<div class="chips"><span class="chip">${cards.length} card(s)</span>${due?`<span class="chip due">${due} due</span>`:''}</div><div class="actions"><button class="btn small" data-open-customer="${html(customer.id)}">Open Customer Wall →</button><button class="btn small red" data-remove-customer="${html(customer.id)}">Remove</button></div></article>`;
+}
+async function removeCustomer(customerId){
+  const customer=state.customers.find(row=>row.id===customerId);if(!customer)return;
+  if(!confirm(`Remove ${customer.customerName||'this customer'}'s access and all their reminder cards? This cannot be undone.`))return;
+  const ownerId=cloudOwnerId();
+  try{
+    const cards=customerCards(customer.customerAccountId,customer.storeId);
+    for(const card of cards)await api.remove(cardKind(ownerId),card.id).catch(()=>{});
+    await api.remove(customerKind(ownerId),customerId);
+    state.customers=state.customers.filter(row=>row.id!==customerId);
+    state.cards=state.cards.filter(row=>!(row.storeId===customer.storeId&&row.customerAccountId===customer.customerAccountId));
+    save();
+    view='wall';renderShell();
+    toast('Customer removed');
+  }catch(error){toast(error.message||'Could not remove customer')}
 }
 function customerDetailView(customerId){
   refreshView=()=>customerDetailView(customerId);

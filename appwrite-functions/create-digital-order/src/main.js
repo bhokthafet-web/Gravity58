@@ -389,11 +389,12 @@ async function linkDigit58Customer(call, input, userId) {
   const kind = digit58CustomerKind(ownerId);
   const existing = (await listRowsByKind(call, kind)).map(cleanRow)
     .find(row => row.storeId === storeId && row.customerAccountId === userId);
-  if (existing) return existing;
+  if (existing) return updateRow(call, existing.id || existing.$id, { ...existing, lastLoginAt: new Date().toISOString() });
+  const createdAt = new Date().toISOString();
   const record = {
     id: digit58Id('cust'), ownerId, storeId, customerAccountId: userId,
     customerName: text(input.customerName, 120), customerEmail: text(input.customerEmail, 250),
-    phone: '', createdAt: new Date().toISOString(),
+    phone: '', createdAt, lastLoginAt: createdAt,
   };
   const created = await createRow(call, record.id, kind, record, rowPermissionsFor([ownerId, userId]));
   return cleanRow(created);

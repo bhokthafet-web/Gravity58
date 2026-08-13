@@ -321,6 +321,7 @@ test('digit58: linking a customer to a store grants owner+customer permissions a
     requests.push({ url: target, method, body });
     if (method === 'GET' && target.includes('/rows?')) return new Response(JSON.stringify({ rows: existingRows }), { status: 200 });
     if (method === 'POST') { existingRows = [{ $id: body.rowId, kind: body.data.kind, payload: body.data.payload }]; return new Response(JSON.stringify({ $id: body.rowId, ...body.data }), { status: 201 }); }
+    if (method === 'PATCH') { const row = existingRows.find(item => target.includes(encodeURIComponent(item.$id)) || target.includes(item.$id)); return new Response(JSON.stringify({ $id: row.$id, kind: row.kind, payload: body.data.payload }), { status: 200 }); }
     throw new Error(`Unexpected request ${url}`);
   };
   process.env.APPWRITE_FUNCTION_PROJECT_ID = 'project_1';
