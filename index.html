@@ -100,11 +100,11 @@
             <button class="catalogue-btn business" onclick="selectMode('business')">
               <strong>Browse Business</strong><small>Professional digital cards</small>
             </button>
-            <button class="catalogue-btn whatsapp" onclick="openShortTool('whatsapp')">
-              <strong>WhatsApp Link Maker</strong><small>Create and copy a chat link</small>
-            </button>
-            <button class="catalogue-btn instagram" onclick="openShortTool('instagram')">
-              <strong>Instagram Link Maker</strong><small>Create and copy a profile link</small>
+            <a class="catalogue-btn digital-menu-ribbon" href="/digital-menu/">
+              <strong>Digital Menu</strong><small>Manage orders and menus online</small>
+            </a>
+            <button class="catalogue-btn digit58-ribbon" type="button" onclick="openDigit58Placeholder()">
+              <strong>Digit58</strong><small>Coming soon</small>
             </button>
           </div>
 
@@ -118,6 +118,15 @@
     </div>
   </button>
 
+  <button class="free-ad-pop promo-split-card digit58-promo-card" type="button" onclick="openDigit58Placeholder()">
+    <div class="promo-mini-icon">D58</div>
+    <div class="promo-split-copy">
+      <strong>Digit58</strong>
+      <p class="promo-white-text" id="digit58Tagline">Something new is brewing.</p>
+      <span class="ad-cta">Coming Soon →</span>
+    </div>
+  </button>
+
   <button class="free-ad-pop promo-split-card business-promo-card" type="button" onclick="openBusinessCardCreator()">
     <div class="promo-mini-icon">CARD</div>
     <div class="promo-split-copy">
@@ -126,6 +135,15 @@
       <span class="ad-cta">Create Business Card →</span>
     </div>
   </button>
+
+  <a class="free-ad-pop promo-split-card digital-menu-promo-card" href="/digital-menu/">
+    <div class="promo-mini-icon">MENU</div>
+    <div class="promo-split-copy">
+      <strong>Digital Menu</strong>
+      <p class="promo-white-text">Take orders, manage tables and grow your restaurant business online.</p>
+      <span class="ad-cta">Open Digital Menu →</span>
+    </div>
+  </a>
 
   <a class="free-ad-pop promo-split-card pos-promo-card" href="/pos/" aria-label="Use Free GRAVITY58 POS">
     <div class="promo-mini-icon">POS</div>
@@ -336,22 +354,6 @@
   </div>
 </div>
 
-
-<div class="modal" id="shortToolModal" onclick="closeOnBackdrop(event,'shortToolModal')">
-  <div class="modal-card" style="max-width:620px">
-    <div class="modal-head"><h3 id="shortToolTitle">Create Short Link</h3><button class="close" onclick="closeModal('shortToolModal')">×</button></div>
-    <div class="form-grid">
-      <input type="hidden" id="shortToolType">
-      <div class="field full"><label id="shortToolLabel">Phone number or username</label><input id="shortToolInput" placeholder=""></div>
-      <div class="field full whatsapp-tool"><label>Optional WhatsApp message</label><textarea id="shortToolMessage" placeholder="Hello, I found you through GRAVITY58."></textarea></div>
-      <div class="field full"><button class="btn orange" style="width:100%" onclick="generateShortLink()">Generate Link</button></div>
-      <div class="field full hidden" id="shortToolOutputWrap">
-        <label>Your link</label>
-        <div class="short-tool-result"><input id="shortToolOutput" readonly><button class="btn green" onclick="copyShortToolLink()">Copy</button><button class="btn" onclick="openShortToolLink()">Open</button></div>
-      </div>
-    </div>
-  </div>
-</div>
 
 </div>
 

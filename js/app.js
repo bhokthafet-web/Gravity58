@@ -2003,82 +2003,25 @@ function whatsappBusiness(id) {
     );
 }
 
-function openShortTool(type) {
-  const modal = document.getElementById("shortToolModal");
-  const title = document.getElementById("shortToolTitle");
-  const label = document.getElementById("shortToolLabel");
-  const input = document.getElementById("shortToolInput");
-  const message = document.getElementById("shortToolMessage");
-  const outputWrap = document.getElementById("shortToolOutputWrap");
-  if (!modal || !input) return;
-  document.getElementById("shortToolType").value = type;
-  if (type === "instagram") {
-    title.textContent = "Instagram Link Maker";
-    label.textContent = "Instagram username";
-    input.placeholder = "example.business";
-    document
-      .querySelectorAll(".whatsapp-tool")
-      .forEach((el) => el.classList.add("hidden"));
-  } else {
-    title.textContent = "WhatsApp Link Maker";
-    label.textContent = "WhatsApp number";
-    input.placeholder = "+91 98765 43210";
-    document
-      .querySelectorAll(".whatsapp-tool")
-      .forEach((el) => el.classList.remove("hidden"));
-  }
-  input.value = "";
-  if (message) message.value = "";
-  document.getElementById("shortToolOutput").value = "";
-  outputWrap?.classList.add("hidden");
-  modal.classList.add("show");
+const DIGIT58_TAGLINES = [
+  "Something new is brewing.",
+  "Coming soon to Gravity58.",
+  "Stay tuned for more.",
+];
+let digit58TaglineIndex = 0;
+let digit58TaglineTimer = null;
+function openDigit58Placeholder() {
+  alert("Digit58 is coming soon!");
 }
-function generateShortLink() {
-  const type = document.getElementById("shortToolType")?.value;
-  const input = document.getElementById("shortToolInput")?.value.trim() || "";
-  const message =
-    document.getElementById("shortToolMessage")?.value.trim() || "";
-  const output = document.getElementById("shortToolOutput");
-  const wrap = document.getElementById("shortToolOutputWrap");
-  if (!input) {
-    alert(
-      type === "instagram"
-        ? "Enter an Instagram username."
-        : "Enter a WhatsApp number.",
-    );
-    return;
-  }
-  let link = "";
-  if (type === "instagram") {
-    link = `https://instagram.com/${input.replace(/^@/, "").replace(/\s+/g, "")}`;
-  } else {
-    const number = normalizeBidWhatsApp(input);
-    if (number.length < 11 || number.length > 15) {
-      alert("Enter a valid WhatsApp number.");
-      return;
-    }
-    link = `https://wa.me/${number}${message ? `?text=${encodeURIComponent(message)}` : ""}`;
-  }
-  output.value = link;
-  wrap?.classList.remove("hidden");
+function startDigit58TaglineRotation() {
+  const el = document.getElementById("digit58Tagline");
+  if (!el || digit58TaglineTimer) return;
+  digit58TaglineTimer = setInterval(() => {
+    digit58TaglineIndex = (digit58TaglineIndex + 1) % DIGIT58_TAGLINES.length;
+    el.textContent = DIGIT58_TAGLINES[digit58TaglineIndex];
+  }, 2600);
 }
-async function copyShortToolLink() {
-  const value = document.getElementById("shortToolOutput")?.value || "";
-  if (!value) return;
-  try {
-    await navigator.clipboard.writeText(value);
-    alert("Link copied.");
-  } catch (error) {
-    const field = document.getElementById("shortToolOutput");
-    field?.select();
-    document.execCommand("copy");
-    alert("Link copied.");
-  }
-}
-function openShortToolLink() {
-  const value = document.getElementById("shortToolOutput")?.value || "";
-  if (value) window.open(value, "_blank", "noopener");
-}
+document.addEventListener("DOMContentLoaded", startDigit58TaglineRotation);
 
 function openAdminLogin() {
   window.location.href = "/admin/";

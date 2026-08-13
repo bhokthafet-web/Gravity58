@@ -246,8 +246,8 @@
     .catalogue-btn small{display:block;color:var(--muted);font-size:9px;margin-top:5px}
     .catalogue-btn.jobs{background:linear-gradient(145deg,rgba(37,99,235,.19),rgba(255,255,255,.035))}
     .catalogue-btn.business{background:linear-gradient(145deg,rgba(249,115,22,.20),rgba(255,255,255,.035))}
-    .catalogue-btn.whatsapp{background:linear-gradient(145deg,rgba(34,197,94,.18),rgba(255,255,255,.035))}
-    .catalogue-btn.instagram{background:linear-gradient(145deg,rgba(236,72,153,.17),rgba(124,58,237,.08))}
+    .catalogue-btn.digital-menu-ribbon{background:linear-gradient(145deg,rgba(245,158,11,.20),rgba(255,255,255,.035))}
+    .catalogue-btn.digit58-ribbon{background:linear-gradient(145deg,rgba(139,92,246,.20),rgba(255,255,255,.035))}
     .free-ad-pop{position:relative;margin-bottom:26px;border:2px solid #f97316;border-radius:24px;background:linear-gradient(145deg,rgba(249,115,22,.18),rgba(255,255,255,.035));padding:24px 26px 24px 150px;min-height:170px;color:#fff;text-align:left;overflow:hidden;box-shadow:0 24px 55px rgba(249,115,22,.18);transition:.25s}
     .free-ad-pop:hover{transform:translateY(-5px) scale(1.01);box-shadow:0 32px 70px rgba(249,115,22,.28)}
     .free-ad-pop:before{content:"FREE";position:absolute;right:18px;top:16px;background:#f97316;color:#111;border-radius:999px;padding:7px 12px;font-size:10px;font-weight:900;letter-spacing:.08em}
@@ -312,8 +312,8 @@
       z-index:4
     }
     .catalogue-btn.business{z-index:3}
-    .catalogue-btn.whatsapp{z-index:2}
-    .catalogue-btn.instagram{
+    .catalogue-btn.digital-menu-ribbon{z-index:2}
+    .catalogue-btn.digit58-ribbon{
       background:linear-gradient(180deg,#ffbd39,#f59e0b)!important;
       color:#111!important;
       z-index:1
@@ -816,6 +816,24 @@ body.qr-modal-open{overflow:hidden}
 .pos-promo-card .promo-mini-icon{color:#b9ffd0!important;background:linear-gradient(145deg,rgba(34,197,94,.35),rgba(34,197,94,.12))!important;border-color:rgba(74,222,128,.55)!important}
 .pos-promo-card .ad-kicker,.pos-promo-card strong{color:#63e88d!important}
 .pos-promo-card .ad-cta{background:#22c55e!important;color:#06170d!important}
+.digit58-promo-card{
+  border-color:rgba(139,92,246,.55)!important;
+  background:linear-gradient(145deg,rgba(139,92,246,.18),rgba(15,28,45,.88))!important;
+  box-shadow:0 20px 46px rgba(139,92,246,.12)!important;
+}
+.digit58-promo-card .promo-mini-icon{
+  background:linear-gradient(145deg,#8b5cf6,#111827)!important;
+  box-shadow:inset 3px 3px 8px rgba(255,255,255,.18),inset -6px -6px 12px rgba(0,0,0,.42),0 14px 28px rgba(139,92,246,.22)!important;
+}
+.digital-menu-promo-card{
+  border-color:rgba(245,158,11,.55)!important;
+  background:linear-gradient(145deg,rgba(245,158,11,.18),rgba(15,28,45,.88))!important;
+  box-shadow:0 20px 46px rgba(245,158,11,.12)!important;
+}
+.digital-menu-promo-card .promo-mini-icon{
+  background:linear-gradient(145deg,#f59e0b,#111827)!important;
+  box-shadow:inset 3px 3px 8px rgba(255,255,255,.18),inset -6px -6px 12px rgba(0,0,0,.42),0 14px 28px rgba(245,158,11,.22)!important;
+}
 .pos-trust-panel{
   margin:18px 0 6px;padding:18px 20px;display:grid;grid-template-columns:auto 1fr auto;
   align-items:center;gap:16px;border:1px solid rgba(34,197,94,.28);border-radius:18px;
