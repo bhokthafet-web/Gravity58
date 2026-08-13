@@ -8,6 +8,7 @@ const SUBSCRIPTION_KIND_PREFIX = 'digital_subscription_';
 const DIGIT58_CUSTOMER_KIND_PREFIX = 'digit58_customer_';
 const DIGIT58_CARD_KIND_PREFIX = 'digit58_card_';
 const DIGIT58_ORDER_KIND_PREFIX = 'digit58_order_';
+const DIGIT58_STORE_KIND_PREFIX = 'digit58_store_';
 const ADMIN_TEAM_ID = '6a776960001ca2fb66bf';
 
 const text = (value, max = 250) => String(value ?? '').trim().slice(0, max);
@@ -24,6 +25,15 @@ const subscriptionKind = ownerId => safeKindId(SUBSCRIPTION_KIND_PREFIX, ownerId
 const digit58CustomerKind = ownerId => safeKindId(DIGIT58_CUSTOMER_KIND_PREFIX, ownerId, 36);
 const digit58CardKind = ownerId => safeKindId(DIGIT58_CARD_KIND_PREFIX, ownerId, 40);
 const digit58OrderKind = ownerId => safeKindId(DIGIT58_ORDER_KIND_PREFIX, ownerId, 40);
+const digit58StoreKind = ownerId => safeKindId(DIGIT58_STORE_KIND_PREFIX, ownerId, 40);
+const digit58EntitlementRowId = ownerId => `d58-${String(ownerId).slice(0, 30)}`;
+async function isDigit58Admin(call, userId) {
+  try {
+    const query = encodeURIComponent(JSON.stringify({ method: 'equal', attribute: 'userId', values: [userId] }));
+    const result = await call(`/teams/${ADMIN_TEAM_ID}/memberships?queries[]=${query}`);
+    return (result.memberships || result.teams || []).length > 0;
+  } catch { return false; }
+}
 const formatToken = number => String(number).padStart(3, '0');
 const cleanRow = row => {
   let payload = {};
@@ -402,6 +412,31 @@ async function linkDigit58Customer(call, input, userId) {
   return cleanRow(created);
 }
 
+async function acceptDigit58Policy(call, input, userId) {
+  const ownerId = text(input.ownerId, 64);
+  if (!ownerId || ownerId !== userId) { const denied = new Error('Only the store owner can accept this policy.'); denied.code = 403; throw denied; }
+  const rowId = digit58EntitlementRowId(ownerId);
+  const row = await call(`/tablesdb/${DATABASE_ID}/tables/${TABLE_ID}/rows/${encodeURIComponent(rowId)}`).catch(() => null);
+  if (!row) throw new Error('No active Digit58 subscription found for this account.');
+  const entitlement = cleanRow(row);
+  return updateRow(call, rowId, { ...entitlement, policyAcceptedAt: new Date().toISOString() });
+}
+
+async function setDigit58StoreSuspended(call, input, userId) {
+  if (!(await isDigit58Admin(call, userId))) { const denied = new Error('Only G58 administrators can manage store status.'); denied.code = 403; throw denied; }
+  const ownerId = text(input.ownerId, 64), storeId = text(input.storeId, 40);
+  if (!ownerId || !storeId) throw new Error('Store details are missing.');
+  const row = await call(`/tablesdb/${DATABASE_ID}/tables/${TABLE_ID}/rows/${encodeURIComponent(storeId)}`);
+  if (row.kind !== digit58StoreKind(ownerId)) throw new Error('This store does not belong to the selected owner.');
+  const store = cleanRow(row);
+  const suspended = !!input.suspended;
+  const updated = await updateRow(call, storeId, { ...store, suspended, suspendedAt: suspended ? new Date().toISOString() : '' });
+  const summaryId = `owner-${storeId}`;
+  const summary = await call(`/tablesdb/${DATABASE_ID}/tables/${TABLE_ID}/rows/${encodeURIComponent(summaryId)}`).catch(() => null);
+  if (summary) await updateRow(call, summaryId, { ...cleanRow(summary), suspended }).catch(() => {});
+  return updated;
+}
+
 function buildDigit58UpiUri(upiId, payeeName, amount, refId) {
   if (!upiId) return '';
   const reference = `58${String(refId || Date.now()).replace(/\D/g, '').slice(-30)}`.slice(0, 35);
@@ -519,6 +554,14 @@ export default async ({ req, res, error }) => {
     if (requestBody?.action === 'digit58-create-order') {
       const call = appwriteClient(req);
       return res.json({ ok: true, order: await createDigit58Order(call, requestBody, userId) }, 201);
+    }
+    if (requestBody?.action === 'digit58-accept-policy') {
+      const call = appwriteClient(req);
+      return res.json({ ok: true, entitlement: await acceptDigit58Policy(call, requestBody, userId) });
+    }
+    if (requestBody?.action === 'digit58-set-store-suspended') {
+      const call = appwriteClient(req);
+      return res.json({ ok: true, store: await setDigit58StoreSuspended(call, requestBody, userId) });
     }
     const input = requestBody?.order || requestBody || {};
     const ownerId = text(input.cloudOwnerId || input.ownerId, 64);

@@ -250,12 +250,12 @@ function digit58(){
   <div class="section-head"><h2>Store owner requests</h2></div>
   <div class="card table-wrap"><table><thead><tr><th>Owner</th><th>Amount</th><th>Status</th><th>Actions</th></tr></thead><tbody>${requests.map(digit58RequestRow).join('')||'<tr><td colspan="4">No pending Digit58 requests.</td></tr>'}</tbody></table></div>
   <div class="section-head"><h2>Store owner subscriptions</h2></div>
-  <div class="card table-wrap"><table><thead><tr><th>Owner</th><th>Status</th><th>Expiry</th><th>Store Slots</th><th>Actions</th></tr></thead><tbody>${entitlements.map(digit58EntitlementRow).join('')||'<tr><td colspan="5">No activated Digit58 subscriptions.</td></tr>'}</tbody></table></div>
+  <div class="card table-wrap"><table><thead><tr><th>Owner</th><th>Status</th><th>Expiry</th><th>Store Slots</th><th>Policy</th><th>Actions</th></tr></thead><tbody>${entitlements.map(digit58EntitlementRow).join('')||'<tr><td colspan="6">No activated Digit58 subscriptions.</td></tr>'}</tbody></table></div>
   <div class="section-head"><h2>Digit58 stores</h2></div>
-  <div class="admin-filter-bar"><input id="digit58Search" placeholder="Search store, category or owner email"><select id="digit58Category"><option value="All">All categories</option>${[...new Set(stores.map(row=>row.category||'General store'))].map(category=>`<option>${esc(category)}</option>`).join('')}</select></div><div class="card table-wrap"><table><thead><tr><th>Store</th><th>Category</th><th>City</th><th>Owner</th><th>Created</th></tr></thead><tbody id="digit58Rows">${stores.map(digit58Row).join('')||'<tr><td colspan="5">No Digit58 stores yet.</td></tr>'}</tbody></table></div>
+  <div class="admin-filter-bar"><input id="digit58Search" placeholder="Search store, category or owner email"><select id="digit58Category"><option value="All">All categories</option>${[...new Set(stores.map(row=>row.category||'General store'))].map(category=>`<option>${esc(category)}</option>`).join('')}</select></div><div class="card table-wrap"><table><thead><tr><th>Store</th><th>Category</th><th>City</th><th>Owner</th><th>Status</th><th>Created</th><th>Actions</th></tr></thead><tbody id="digit58Rows">${stores.map(digit58Row).join('')||'<tr><td colspan="7">No Digit58 stores yet.</td></tr>'}</tbody></table></div>
   <div class="section-head"><div><h2>Store customers</h2><p class="muted">Customers signed up across all Digit58 stores, with their last visit.</p></div><button class="btn" id="loadDigit58Customers">${data.digit58CustomersLoaded?'Refresh':'Load Customers'}</button></div>
   <div class="card table-wrap" id="digit58CustomerTable">${data.digit58CustomersLoaded?digit58CustomersTable():'<div class="empty">Click "Load Customers" to fetch customer details across all stores.</div>'}</div>`;
-  const draw=()=>{const q=$('#digit58Search').value.toLowerCase(),category=$('#digit58Category').value,rows=stores.filter(row=>(category==='All'||row.category===category)&&`${row.storeName} ${row.category} ${row.ownerEmail}`.toLowerCase().includes(q));$('#digit58Rows').innerHTML=rows.map(digit58Row).join('')||'<tr><td colspan="5">No matching stores.</td></tr>'};
+  const draw=()=>{const q=$('#digit58Search').value.toLowerCase(),category=$('#digit58Category').value,rows=stores.filter(row=>(category==='All'||row.category===category)&&`${row.storeName} ${row.category} ${row.ownerEmail}`.toLowerCase().includes(q));$('#digit58Rows').innerHTML=rows.map(digit58Row).join('')||'<tr><td colspan="7">No matching stores.</td></tr>';$$('[data-toggle-digit58-store]').forEach(button=>button.onclick=()=>toggleDigit58Store(button.dataset.toggleDigit58Store,button.dataset.ownerId))};
   $('#digit58Search').oninput=draw;$('#digit58Category').onchange=draw;
   $('#editDigit58Pricing').onclick=editDigit58Pricing;
   $$('[data-send-digit58-link]').forEach(button=>button.onclick=()=>sendDigit58PaymentLink(button.dataset.sendDigit58Link));
@@ -264,9 +264,16 @@ function digit58(){
   $$('[data-edit-digit58-entitlement]').forEach(button=>button.onclick=()=>editDigit58Entitlement(button.dataset.editDigit58Entitlement));
   $$('[data-extend-digit58]').forEach(button=>button.onclick=()=>extendDigit58Entitlement(button.dataset.extendDigit58));
   $$('[data-pause-digit58]').forEach(button=>button.onclick=()=>toggleDigit58Pause(button.dataset.pauseDigit58));
+  $$('[data-toggle-digit58-store]').forEach(button=>button.onclick=()=>toggleDigit58Store(button.dataset.toggleDigit58Store,button.dataset.ownerId));
   $('#loadDigit58Customers').onclick=async()=>{$('#loadDigit58Customers').disabled=true;await loadDigit58Customers(true);digit58()};
 }
-function digit58Row(row){return `<tr><td><strong>${esc(row.storeName||'Store')}</strong></td><td>${esc(row.category||'General store')}</td><td>${esc(row.city||'')}</td><td>${esc(row.ownerEmail||row.ownerId||'')}</td><td>${row.createdAt?new Date(row.createdAt).toLocaleDateString('en-IN',{dateStyle:'medium'}):''}</td></tr>`}
+function digit58Row(row){return `<tr><td><strong>${esc(row.storeName||'Store')}</strong></td><td>${esc(row.category||'General store')}</td><td>${esc(row.city||'')}</td><td>${esc(row.ownerEmail||row.ownerId||'')}</td><td><span class="chip ${row.suspended?'due':'delivered'}">${row.suspended?'Paused':'Active'}</span></td><td>${row.createdAt?new Date(row.createdAt).toLocaleDateString('en-IN',{dateStyle:'medium'}):''}</td><td><button class="btn small ${row.suspended?'green':'red'}" data-toggle-digit58-store="${esc(row.storeId||row.id)}" data-owner-id="${esc(row.ownerId)}">${row.suspended?'Resume Store':'Pause Store'}</button></td></tr>`}
+async function toggleDigit58Store(storeId,ownerId){
+  try{
+    await api.executeFunction(api.config.digitalOrderFunctionId,{action:'digit58-set-store-suspended',ownerId,storeId,suspended:!data.digit58Stores.find(row=>(row.storeId||row.id)===storeId)?.suspended});
+    await refresh();toast('Store status updated');
+  }catch(error){toast(error.message||'Could not update store status')}
+}
 function digit58RequestRow(row){
   const isAdditional=row.type==='additional-store';
   const actions=row.status==='Requested'?`<button class="btn small" data-send-digit58-link="${esc(row.id)}">Send Payment Link</button><button class="btn small red" data-reject-digit58="${esc(row.id)}">Reject</button>`
@@ -275,7 +282,8 @@ function digit58RequestRow(row){
   return `<tr><td><strong>${esc(row.ownerName||'Store Owner')}</strong><br><small>${esc(row.ownerEmail||row.ownerId)}</small>${isAdditional?' <span class="chip due">+1 Store</span>':''}</td><td>${money(row.amount||399)}</td><td>${esc(row.status||'Requested')}</td><td><div class="actions">${actions}</div></td></tr>`;
 }
 function digit58EntitlementRow(row){
-  return `<tr><td>${esc(row.ownerEmail||row.ownerId)}</td><td>${row.paused?'Paused':row.active?'Active':'Inactive'}</td><td>${timeLeft(row.expiresAt,row.lifetime)}</td><td>${Math.max(1,Number(row.storeSlots)||1)}</td><td><div class="actions"><button class="btn small" data-edit-digit58-entitlement="${esc(row.id)}">Edit</button><button class="btn small green" data-extend-digit58="${esc(row.id)}">+30 days</button><button class="btn small ${row.paused?'green':'secondary'}" data-pause-digit58="${esc(row.id)}">${row.paused?'Resume':'Pause'}</button></div></td></tr>`;
+  const policy=row.policyAcceptedAt?new Date(row.policyAcceptedAt).toLocaleDateString('en-IN',{dateStyle:'medium'}):'Not accepted yet';
+  return `<tr><td>${esc(row.ownerEmail||row.ownerId)}</td><td>${row.paused?'Paused':row.active?'Active':'Inactive'}</td><td>${timeLeft(row.expiresAt,row.lifetime)}</td><td>${Math.max(1,Number(row.storeSlots)||1)}</td><td>${esc(policy)}</td><td><div class="actions"><button class="btn small" data-edit-digit58-entitlement="${esc(row.id)}">Edit</button><button class="btn small green" data-extend-digit58="${esc(row.id)}">+30 days</button><button class="btn small ${row.paused?'green':'secondary'}" data-pause-digit58="${esc(row.id)}">${row.paused?'Resume':'Pause'}</button></div></td></tr>`;
 }
 function sendDigit58PaymentLink(id){
   const row=data.digit58Requests.find(item=>item.id===id);if(!row)return;

@@ -176,9 +176,28 @@ async function boot(){
   if(!session)return renderOwnerAuth();
   await loadEntitlement();
   if(!hasActiveEntitlement())return renderAccessGate();
+  await proceedAfterEntitlement();
+}
+const DIGIT58_POLICY_TEXT='Digit58 generates a payment QR code from the UPI ID you provide, to help you collect payment from your customers. G58 only facilitates this QR generation — we are not a party to any payment and are not responsible for any fraud, dispute or disagreement between you and your customer. Please verify payments independently before fulfilling any order.';
+async function proceedAfterEntitlement(){
+  if(!entitlement?.policyAcceptedAt)return renderPolicyGate();
   await loadOwnerData();
   startOwnerRealtime();
   renderShell();
+}
+function renderPolicyGate(){
+  app.innerHTML=`<main class="screen"><section class="auth-card"><div class="brand"><div class="brand-mark">D</div><div><h2>Before you continue</h2><p class="tagline">Please review and accept the Digit58 policy</p></div></div><div class="card"><p class="muted">${html(DIGIT58_POLICY_TEXT)}</p></div><div class="actions" style="margin-top:16px"><button class="btn full" id="acceptPolicyBtn">I Accept</button><button class="btn secondary full" id="policyLogout">Sign out</button></div></section></main>`;
+  $('#acceptPolicyBtn').onclick=async()=>{
+    const button=$('#acceptPolicyBtn');button.disabled=true;
+    try{
+      const result=await api.executeFunction(api.config.digitalOrderFunctionId,{action:'digit58-accept-policy',ownerId:cloudOwnerId()});
+      entitlement=result.entitlement||{...entitlement,policyAcceptedAt:now()};
+      await loadOwnerData();
+      startOwnerRealtime();
+      renderShell();
+    }catch(error){button.disabled=false;toast(error.message||'Could not save your acceptance')}
+  };
+  $('#policyLogout').onclick=async()=>{await api.logout();session=null;renderOwnerAuth()};
 }
 async function loadEntitlement(){
   const ownerId=cloudOwnerId();if(!ownerId)return;
@@ -267,9 +286,7 @@ function renderOwnerAuth(){
       session=await api.currentUser();
       await loadEntitlement();
       if(!hasActiveEntitlement())return renderAccessGate();
-      await loadOwnerData();
-      startOwnerRealtime();
-      renderShell();
+      await proceedAfterEntitlement();
     }catch(error){button.disabled=false;toast(error.message||'Could not sign in')}
   };
 }
@@ -299,9 +316,9 @@ function navButton(key,icon,label){return `<button data-view="${key}" class="${v
 function renderView(){if(!activeStore()&&view!=='stores'&&view!=='settings'&&view!=='subscription'){view='stores';return renderShell()}({dashboard:dashboardView,stores:storesView,wall:customerWallView,orders:ordersView,orderHistory:orderHistoryView,subscription:subscriptionView,settings:settingsView}[view]||dashboardView)()}
 function ordersView(){
   refreshView=ordersView;
-  const store=activeStore();
-  const orders=activeOrders(storeOrders(store?.id)).sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
-  $('#page').innerHTML=`<div class="section-head"><div><h1>Orders</h1><p class="muted">All active orders from every customer of ${html(store?.name||'this store')}.</p></div></div><div class="grid card-grid">${orders.map(order=>ownerOrderMarkup(order,true)).join('')||'<div class="empty">No active orders right now.</div>'}</div>`;
+  const orders=activeOrders(state.orders).sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
+  const multiStore=state.stores.length>1;
+  $('#page').innerHTML=`<div class="section-head"><div><h1>Orders</h1><p class="muted">All active orders from every customer${multiStore?', across every store':''}.</p></div></div><div class="grid card-grid">${orders.map(order=>ownerOrderMarkup(order,true,multiStore)).join('')||'<div class="empty">No active orders right now.</div>'}</div>`;
   bindOwnerOrderActions();
   bindOrderChatForms(orders,'owner',refreshView);
   bindDeliveryShareButtons(orders);
@@ -408,7 +425,7 @@ function storesView(){
 }
 function storeCard(store){
   const link=publicStoreLink(store);
-  return `<article class="card"><h3>${html(store.name)}</h3><p class="muted">${html(store.category)}${store.city?' · '+html(store.city):''}</p><p>${html(store.description||'')}</p><div class="chips"><span class="chip">${ownerCustomers(store.id).length} customers</span></div><div class="actions"><button class="btn small" data-share-store="${html(store.id)}">Share Link / QR</button><button class="btn small secondary" data-edit-store="${html(store.id)}">Edit</button></div></article>`;
+  return `<article class="card"><h3>${html(store.name)}</h3><p class="muted">${html(store.category)}${store.city?' · '+html(store.city):''}</p><p>${html(store.description||'')}</p><div class="chips"><span class="chip">${ownerCustomers(store.id).length} customers</span>${store.suspended?'<span class="chip due">Paused by G58 admin</span>':''}</div><div class="actions"><button class="btn small" data-share-store="${html(store.id)}">Share Link / QR</button><button class="btn small secondary" data-edit-store="${html(store.id)}">Edit</button></div></article>`;
 }
 function publicStoreLink(store){return `${location.origin}${location.pathname.replace(/index\.html$/,'')}#store&owner=${encodeURIComponent(store.ownerId)}&store=${encodeURIComponent(store.id)}`}
 function openStoreForm(storeId=''){
@@ -422,14 +439,16 @@ function openStoreForm(storeId=''){
         if(storeId){
           await api.update(storeKind(ownerId),storeId,values);
           Object.assign(store,values);
-          try{await api.update('digit58_owners',storeId,{storeName:values.name.trim(),category:values.category.trim()||'General store',city:values.city.trim()})}catch{}
+          const ownerSummary={ownerId,ownerEmail:session?.email||'',storeId,storeName:values.name.trim(),category:values.category.trim()||'General store',city:values.city.trim(),createdAt:store.createdAt||now()};
+          try{await api.update('digit58_owners',`owner-${storeId}`,ownerSummary)}
+          catch{try{await api.create('digit58_owners',ownerSummary,`owner-${storeId}`,api.permissionSet?.('digit58_owners',ownerId,true))}catch{}}
         }else{
           const record={id:id('store'),ownerId,name:values.name.trim(),category:values.category.trim()||'General store',city:values.city.trim(),phone:values.phone.trim(),upiId:values.upiId.trim(),description:values.description.trim(),createdAt:now()};
           const permissions=api.permissionSet?.(storeKind(ownerId),ownerId);
           const created=await api.create(storeKind(ownerId),record,record.id,permissions);
           state.stores.push({...record,...created});
           state.activeStoreId=record.id;
-          try{await api.create('digit58_owners',{ownerId,ownerEmail:session?.email||'',storeId:record.id,storeName:record.name,category:record.category,city:record.city,createdAt:record.createdAt},record.id,api.permissionSet?.('digit58_owners',ownerId,true))}catch{}
+          try{await api.create('digit58_owners',{ownerId,ownerEmail:session?.email||'',storeId:record.id,storeName:record.name,category:record.category,city:record.city,createdAt:record.createdAt},`owner-${record.id}`,api.permissionSet?.('digit58_owners',ownerId,true))}catch{}
         }
         save();closeModal();renderShell();toast(storeId?'Store updated':'Store created — share its link with customers');
       }catch(error){button.disabled=false;toast(error.message||'Could not save store')}
@@ -562,10 +581,11 @@ function bindCardChatForms(cards,role,onSent){
     };
   });
 }
-function ownerOrderMarkup(order,showCustomer){
+function ownerOrderMarkup(order,showCustomer,showStore){
   const ringing=ringingIds.has(order.id);
   const customer=showCustomer?state.customers.find(c=>c.customerAccountId===order.customerAccountId&&c.storeId===order.storeId):null;
-  return `<article class="card order-item-card ${ringing?'incoming-order':''}">${ringing?'<span class="incoming-order-beacon" aria-label="New order" title="New order"></span>':''}<div class="section-head"><h3>Order #${html(order.id.slice(-6).toUpperCase())}</h3><span class="chip ${['Requested','Priced'].includes(order.status)?'due':''}">${html(order.status)}</span></div>${showCustomer?`<p class="muted" style="margin:-8px 0 4px">${html(customer?.customerName||order.customerName||'Customer')}</p>`:''}${orderStepperMarkup(order.status)}<div class="order-items-list">${order.items.map(item=>`<div class="order-line-item"><span>${item.qty} ×</span><span>${html(item.name)}</span></div>`).join('')}</div>${order.prescriptionUrl?`<a class="link-btn" href="${html(order.prescriptionUrl)}" target="_blank" rel="noopener">📄 View prescription</a>`:''}${order.amount?`<h3 style="margin:10px 0">${money(order.amount)}</h3>`:'<p class="muted">Amount not set yet.</p>'}${deliveryContactMarkup(order)}<div class="actions">${orderOwnerActions(order)}</div>${orderChatMarkup(order,'owner')}</article>`;
+  const store=showStore?state.stores.find(s=>s.id===order.storeId):null;
+  return `<article class="card order-item-card ${ringing?'incoming-order':''}">${ringing?'<span class="incoming-order-beacon" aria-label="New order" title="New order"></span>':''}<div class="section-head"><h3>Order #${html(order.id.slice(-6).toUpperCase())}</h3><span class="chip ${['Requested','Priced'].includes(order.status)?'due':''}">${html(order.status)}</span></div>${showStore?`<p class="muted" style="margin:-8px 0 0"><strong>${html(store?.name||'Store')}</strong></p>`:''}${showCustomer?`<p class="muted" style="margin:-4px 0 4px">${html(customer?.customerName||order.customerName||'Customer')}</p>`:''}${orderStepperMarkup(order.status)}<div class="order-items-list">${order.items.map(item=>`<div class="order-line-item"><span>${item.qty} ×</span><span>${html(item.name)}</span></div>`).join('')}</div>${order.prescriptionUrl?`<a class="link-btn" href="${html(order.prescriptionUrl)}" target="_blank" rel="noopener">📄 View prescription</a>`:''}${order.amount?`<h3 style="margin:10px 0">${money(order.amount)}</h3>`:'<p class="muted">Amount not set yet.</p>'}${deliveryContactMarkup(order)}<div class="actions">${orderOwnerActions(order)}</div>${orderChatMarkup(order,'owner')}</article>`;
 }
 function orderOwnerActions(order){
   const map={
@@ -678,8 +698,12 @@ function openCardForm(customer,cardId=''){
       button.disabled=true;
       try{
         if(cardId){
-          const price=Number(values.price),upiId=values.upiId.trim();
-          const changes={productName:values.productName.trim(),price,reminderDays:Number(values.reminderDays),upiId,upiUri:buildUpiUri(upiId,store?.name,price,cardId)};
+          const price=Number(values.price),upiId=values.upiId.trim(),reminderDays=Math.max(1,Number(values.reminderDays)||30);
+          const changes={productName:values.productName.trim(),price,reminderDays,upiId,upiUri:buildUpiUri(upiId,store?.name,price,cardId)};
+          if(reminderDays!==Number(card.reminderDays)){
+            const anchor=card.purchasedAt||card.lastDeliveredAt||card.createdAt||now();
+            changes.dueAt=new Date(new Date(anchor).getTime()+reminderDays*86400000).toISOString();
+          }
           await api.update(cardKind(ownerId),cardId,changes);
           Object.assign(card,changes);
         }else{
@@ -714,7 +738,8 @@ async function removeCard(cardId){
 }
 
 function settingsView(){
-  $('#page').innerHTML=`<div class="section-head"><div><h1>Settings</h1><p class="muted">Signed in as ${html(session?.email||'')}</p></div></div><div class="card"><p class="muted">More store settings are coming soon. For now, manage your stores from the My Stores tab.</p></div>`;
+  const acceptedAt=entitlement?.policyAcceptedAt?new Date(entitlement.policyAcceptedAt).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'}):'';
+  $('#page').innerHTML=`<div class="section-head"><div><h1>Settings</h1><p class="muted">Signed in as ${html(session?.email||'')}</p></div></div><div class="card"><p class="muted">More store settings are coming soon. For now, manage your stores from the My Stores tab.</p></div><div class="section-head"><h2>Privacy & Payment Policy</h2></div><div class="card"><p class="muted">${html(DIGIT58_POLICY_TEXT)}</p>${acceptedAt?`<p class="muted" style="margin-top:10px">You accepted this policy on ${acceptedAt}.</p>`:''}</div>`;
 }
 function modal(title,body,ready){document.body.insertAdjacentHTML('beforeend',`<div class="modal-backdrop" id="modal"><section class="modal"><div class="section-head"><h2>${title}</h2><button class="btn small secondary" id="closeModal">✕</button></div>${body}</section></div>`);$('#closeModal').onclick=closeModal;ready?.()}
 function closeModal(){$('#modal')?.remove()}
@@ -725,6 +750,7 @@ async function renderPublicStore(hashParams){
   let store;
   try{store=await api.get(storeKind(ownerId),storeId)}
   catch{app.innerHTML=`<main class="public-store"><div class="empty">This store could not be found.</div></main>`;return}
+  if(store.suspended){app.innerHTML=`<main class="public-store"><section class="store-hero"><h1>${html(store.name)}</h1></section><div class="empty">This store is temporarily unavailable. Please check back later.</div></main>`;return}
   const account=await api.currentUser().catch(()=>null);
   if(!account)return renderCustomerAuth(store,ownerId,storeId);
   const customer=await ensureCustomerLink(ownerId,storeId,account);

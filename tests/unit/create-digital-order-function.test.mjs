@@ -439,3 +439,75 @@ test('digit58: an order requires at least one named item', async () => {
   });
   assert.equal(response.status, 400);
 });
+
+test('digit58: the store owner can accept the one-time policy on their own entitlement', async () => {
+  const previousFetch = globalThis.fetch;
+  const entitlement = { $id: `d58-${ownerId}`, ownerId, active: true, paused: false };
+  globalThis.fetch = async (url, options = {}) => {
+    const method = options.method || 'GET';
+    if (method === 'GET') return new Response(JSON.stringify(entitlement), { status: 200 });
+    if (method === 'PATCH') return new Response(JSON.stringify({ $id: entitlement.$id, ...JSON.parse(options.body).data }), { status: 200 });
+    throw new Error(`Unexpected request ${url}`);
+  };
+  process.env.APPWRITE_FUNCTION_PROJECT_ID = 'project_1';
+  try {
+    const response = await createDigitalOrder({
+      req: { method: 'POST', headers: { 'x-appwrite-key': 'dynamic-key', 'x-appwrite-user-id': ownerId }, bodyJson: { action: 'digit58-accept-policy', ownerId } },
+      res: { json: (body, status = 200) => ({ body, status }) }, error: () => {},
+    });
+    assert.equal(response.status, 200);
+    assert.ok(response.body.entitlement.policyAcceptedAt);
+  } finally {
+    globalThis.fetch = previousFetch;
+  }
+});
+
+test('digit58: only the owner themselves can accept their policy', async () => {
+  const response = await createDigitalOrder({
+    req: { method: 'POST', headers: { 'x-appwrite-key': 'dynamic-key', 'x-appwrite-user-id': 'someone_else' }, bodyJson: { action: 'digit58-accept-policy', ownerId } },
+    res: { json: (body, status = 200) => ({ body, status }) }, error: () => {},
+  });
+  assert.equal(response.status, 403);
+});
+
+test('digit58: a G58 admin team member can suspend an individual store', async () => {
+  const previousFetch = globalThis.fetch;
+  const adminId = 'admin_1';
+  const store = { $id: 'store_1', kind: `digit58_store_${ownerId}`, payload: JSON.stringify({ id: 'store_1', ownerId, name: 'Test Pharmacy' }) };
+  globalThis.fetch = async (url, options = {}) => {
+    const method = options.method || 'GET';
+    if (String(url).includes('/teams/')) return new Response(JSON.stringify({ memberships: [{ userId: adminId }] }), { status: 200 });
+    if (method === 'GET') return new Response(JSON.stringify(store), { status: 200 });
+    if (method === 'PATCH') return new Response(JSON.stringify({ $id: store.$id, ...JSON.parse(options.body).data }), { status: 200 });
+    throw new Error(`Unexpected request ${url}`);
+  };
+  process.env.APPWRITE_FUNCTION_PROJECT_ID = 'project_1';
+  try {
+    const response = await createDigitalOrder({
+      req: { method: 'POST', headers: { 'x-appwrite-key': 'dynamic-key', 'x-appwrite-user-id': adminId }, bodyJson: { action: 'digit58-set-store-suspended', ownerId, storeId: 'store_1', suspended: true } },
+      res: { json: (body, status = 200) => ({ body, status }) }, error: () => {},
+    });
+    assert.equal(response.status, 200);
+    assert.equal(response.body.store.suspended, true);
+  } finally {
+    globalThis.fetch = previousFetch;
+  }
+});
+
+test('digit58: a non-admin cannot suspend a store', async () => {
+  const previousFetch = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    if (String(url).includes('/teams/')) return new Response(JSON.stringify({ memberships: [] }), { status: 200 });
+    throw new Error(`Unexpected request ${url}`);
+  };
+  process.env.APPWRITE_FUNCTION_PROJECT_ID = 'project_1';
+  try {
+    const response = await createDigitalOrder({
+      req: { method: 'POST', headers: { 'x-appwrite-key': 'dynamic-key', 'x-appwrite-user-id': customerId }, bodyJson: { action: 'digit58-set-store-suspended', ownerId, storeId: 'store_1', suspended: true } },
+      res: { json: (body, status = 200) => ({ body, status }) }, error: () => {},
+    });
+    assert.equal(response.status, 403);
+  } finally {
+    globalThis.fetch = previousFetch;
+  }
+});
