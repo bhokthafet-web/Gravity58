@@ -143,6 +143,11 @@ function activeMenuEntitlement(){
 }
 function menuFeature(name){return !!activeMenuEntitlement()[name]}
 function menuPlanLabel(){const plan=activeMenuEntitlement().plan;return plan==='premium'?'Digital Menu Premium':plan==='standard'?'Digital Menu Standard':'Free Digital Menu'}
+function premiumPosUrl(restaurant=activeRestaurant()){
+  if(!restaurant)return '../pos/';
+  const params=new URLSearchParams({source:'digital-menu',restaurant:restaurant.id,owner:cloudOwnerId()});
+  return `../pos/?${params.toString()}`;
+}
 function ownerSubscriptionKind(ownerId=cloudOwnerId()){return `${MENU_SUBSCRIPTION_KIND_PREFIX}${String(ownerId||'public').replace(/[^a-zA-Z0-9._-]/g,'-').slice(0,43)}`}
 function orderRetentionDecision(order,at=new Date()){return PLAN_UTILS.orderRetention(order,{premium:menuFeature('permanentOrders'),at})}
 function orderResetCountdown(){return PLAN_UTILS.resetCountdown(new Date())}
@@ -707,7 +712,8 @@ function ordersBoardMarkup(orders,emptyText='No orders yet'){
 function ordersView(){
   if(!menuFeature('ordersEnabled')){view='pricing';return pricingView()}
   const statuses=['All','Payment Verification','Pending','Accepted','Preparing','Ready','Completed','Rejected'],allOrders=sortedRestaurantOrders(),periodOrders=ordersForOwnerPeriod(allOrders),periodIds=new Set(periodOrders.map(order=>order.id)),orders=allOrders.filter(order=>activeQueueStatus(order.status)||periodIds.has(order.id)),active=allOrders.filter(order=>activeQueueStatus(order.status)),visible=orders.filter(order=>ownerOrderStatusFilter==='All'||order.status===ownerOrderStatusFilter);
-  $('#page').innerHTML=`<div class="section-head"><div><h1>Live Orders <small class="order-reset-copy">(${menuFeature('permanentOrders')?'Premium: order history is permanent':`You're using freeware — orders reset in <span id="orderResetCountdown">${orderResetCountdown()}</span>`})</small></h1><p class="muted">Instant order board · ${active.length} active token(s) always pinned · history: ${html(ownerPeriodLabel())}</p></div><span class="status-pill live-sync-pill"><span class="dot"></span> Live sync & sound alerts</span></div><div class="order-controls"><div class="tabs">${statuses.map(s=>`<button class="btn small ${s===ownerOrderStatusFilter?'':'secondary'}" data-tab="${s}">${s}</button>`).join('')}</div></div><div id="ordersGrid" class="orders-board">${ordersBoardMarkup(visible,`No ${ownerOrderStatusFilter==='All'?'':ownerOrderStatusFilter.toLowerCase()+' '}orders in this period`)}</div>`;
+  const posButton=menuFeature('posPremium')&&isCloudMenuSession()?`<a class="btn small premium-pos-button" href="${premiumPosUrl()}">▣ Open POS</a>`:'';
+  $('#page').innerHTML=`<div class="section-head"><div><h1>Live Orders <small class="order-reset-copy">(${menuFeature('permanentOrders')?'Premium: order history is permanent':`You're using freeware — orders reset in <span id="orderResetCountdown">${orderResetCountdown()}</span>`})</small></h1><p class="muted">Instant order board · ${active.length} active token(s) always pinned · history: ${html(ownerPeriodLabel())}</p></div><div class="orders-header-actions">${posButton}<span class="status-pill live-sync-pill"><span class="dot"></span> Live sync & sound alerts</span></div></div><div class="order-controls"><div class="tabs">${statuses.map(s=>`<button class="btn small ${s===ownerOrderStatusFilter?'':'secondary'}" data-tab="${s}">${s}</button>`).join('')}</div></div><div id="ordersGrid" class="orders-board">${ordersBoardMarkup(visible,`No ${ownerOrderStatusFilter==='All'?'':ownerOrderStatusFilter.toLowerCase()+' '}orders in this period`)}</div>`;
   clearInterval(orderResetTimer);if(!menuFeature('permanentOrders'))orderResetTimer=setInterval(()=>{const target=$('#orderResetCountdown');if(target)target.textContent=orderResetCountdown()},1000);
   $$('[data-tab]').forEach(b=>b.onclick=()=>{ownerOrderStatusFilter=b.dataset.tab;ordersView()});
   bindOwnerPeriodControls(ordersView);
