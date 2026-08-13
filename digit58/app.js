@@ -9,7 +9,7 @@ const storeKind=(ownerId)=>safeId('digit58_store_',ownerId,40);
 const customerKind=(ownerId)=>safeId('digit58_customer_',ownerId,36);
 const cardKind=(ownerId)=>safeId('digit58_card_',ownerId,40);
 const orderKind=(ownerId)=>safeId('digit58_order_',ownerId,40);
-const REQUEST_KIND='digit58_requests',ENTITLEMENT_KIND='digit58_entitlements',SUBSCRIPTION_AMOUNT=399;
+const REQUEST_KIND='digit58_requests',ENTITLEMENT_KIND='digit58_entitlements',SUBSCRIPTION_AMOUNT=399,QR_REVEAL_DAYS=5;
 const ORDER_STEPS=[
   {key:'Requested',icon:'📝',label:'Requested'},
   {key:'Priced',icon:'💳',label:'Payment'},
@@ -28,7 +28,8 @@ function toast(message){const target=$('#toast');if(!target)return alert(message
 
 let session=null,view='dashboard';
 let refreshView=()=>renderShell();
-let entitlement=null,myRequest=null;
+let entitlement=null,myRequest=null,myStoreRequest=null;
+function storeSlotsAllowed(){return Math.max(1,Number(entitlement?.storeSlots)||1)}
 let state={activeStoreId:'',stores:[],customers:[],cards:[],orders:[]};
 function save(){try{localStorage.setItem('gravity58Digit58',JSON.stringify(state))}catch{}}
 function load(){try{return {...state,...JSON.parse(localStorage.getItem('gravity58Digit58')||'{}')}}catch{return state}}
@@ -56,6 +57,30 @@ function updateOrderAlertSound(){
   if(!orderAlertTimer){orderAlertBeep();orderAlertTimer=setInterval(()=>orderAlertBeep(),2200)}
 }
 document.addEventListener('pointerdown',()=>{if(ringingIds.size)orderAlertBeep()},{passive:true});
+let motionRequested=false;
+function triggerVialShake(){$$('.vial-liquid').forEach(node=>{node.classList.remove('slosh');void node.offsetWidth;node.classList.add('slosh')})}
+function attachShakeListener(){
+  let lastX=null,lastY=null,lastZ=null,lastTime=0;
+  window.addEventListener('devicemotion',event=>{
+    const acc=event.accelerationIncludingGravity;if(!acc)return;
+    const time=Date.now();if(time-lastTime<150)return;
+    if(lastX!==null){
+      const delta=Math.abs((acc.x||0)-lastX)+Math.abs((acc.y||0)-lastY)+Math.abs((acc.z||0)-lastZ);
+      if(delta>26){lastTime=time;triggerVialShake()}
+    }
+    lastX=acc.x||0;lastY=acc.y||0;lastZ=acc.z||0;
+  });
+}
+function initShakeDetection(){
+  if(motionRequested||!$('.vial-liquid'))return;
+  motionRequested=true;
+  if(typeof DeviceMotionEvent!=='undefined'&&typeof DeviceMotionEvent.requestPermission==='function'){
+    DeviceMotionEvent.requestPermission().then(state=>{if(state==='granted')attachShakeListener()}).catch(()=>{});
+  }else if(typeof DeviceMotionEvent!=='undefined'){
+    attachShakeListener();
+  }
+}
+document.addEventListener('pointerdown',initShakeDetection,{passive:true});
 function startOwnerRealtime(){
   const ownerId=cloudOwnerId();if(!ownerId||!api?.subscribeKind)return;
   knownOrderIds=new Set(state.orders.map(row=>row.id));
@@ -119,7 +144,9 @@ async function loadEntitlement(){
     api.list(REQUEST_KIND).catch(()=>[]),
   ]);
   entitlement=entitlements.find(row=>row.ownerId===ownerId)||null;
-  myRequest=requests.filter(row=>row.ownerId===ownerId).sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt))[0]||null;
+  const ownerRequests=requests.filter(row=>row.ownerId===ownerId).sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
+  myRequest=ownerRequests.find(row=>row.type!=='additional-store')||null;
+  myStoreRequest=ownerRequests.find(row=>row.type==='additional-store')||null;
 }
 function hasActiveEntitlement(){
   if(!entitlement||!entitlement.active||entitlement.paused)return false;
@@ -152,12 +179,22 @@ function accessRequestBlock(status){
 async function requestStoreAccess(){
   const button=$('#requestAccessBtn');button.disabled=true;
   try{
-    const record={id:id('req'),ownerId:cloudOwnerId(),ownerEmail:session.email,ownerName:session.name||session.email.split('@')[0],amount:SUBSCRIPTION_AMOUNT,status:'Requested',paymentLink:'',createdAt:now()};
+    const record={id:id('req'),ownerId:cloudOwnerId(),ownerEmail:session.email,ownerName:session.name||session.email.split('@')[0],amount:SUBSCRIPTION_AMOUNT,status:'Requested',type:'initial',paymentLink:'',createdAt:now()};
     const created=await api.create(REQUEST_KIND,record,record.id,api.collaborativePermissionSet?.(record.ownerId));
     myRequest=created;
     renderAccessGate();
     toast('Activation request sent to the G58 team');
   }catch(error){button.disabled=false;toast(error.message||'Could not send activation request')}
+}
+async function requestAdditionalStore(){
+  const button=$('#requestStoreSlot');if(button)button.disabled=true;
+  try{
+    const record={id:id('req'),ownerId:cloudOwnerId(),ownerEmail:session.email,ownerName:session.name||session.email.split('@')[0],amount:SUBSCRIPTION_AMOUNT,status:'Requested',type:'additional-store',paymentLink:'',createdAt:now()};
+    const created=await api.create(REQUEST_KIND,record,record.id,api.collaborativePermissionSet?.(record.ownerId));
+    myStoreRequest=created;
+    storesView();
+    toast('Additional store request sent to the G58 team');
+  }catch(error){if(button)button.disabled=false;toast(error.message||'Could not send request')}
 }
 function renderConfigError(){app.innerHTML=`<main class="screen"><section class="auth-card"><div class="brand"><div class="brand-mark">D</div><div><h2>Digit58</h2><p class="tagline">Take any store online</p></div></div><p>Digit58 is temporarily unavailable. Please try again shortly.</p></section></main>`}
 
@@ -233,6 +270,49 @@ function subscriptionView(){
 }
 
 function metric(title,value){return `<article class="card metric"><span>${html(title)}</span><strong>${value}</strong></article>`}
+function periodBounds(){
+  const n=new Date();
+  const startOfDay=d=>{const x=new Date(d);x.setHours(0,0,0,0);return x};
+  const weekStart=startOfDay(n);weekStart.setDate(weekStart.getDate()-((weekStart.getDay()+6)%7));
+  const lastWeekStart=new Date(weekStart);lastWeekStart.setDate(lastWeekStart.getDate()-7);
+  const nextWeekStart=new Date(weekStart);nextWeekStart.setDate(nextWeekStart.getDate()+7);
+  const monthStart=new Date(n.getFullYear(),n.getMonth(),1);
+  const lastMonthStart=new Date(n.getFullYear(),n.getMonth()-1,1);
+  const nextMonthStart=new Date(n.getFullYear(),n.getMonth()+1,1);
+  const yearStart=new Date(n.getFullYear(),0,1);
+  const lastYearStart=new Date(n.getFullYear()-1,0,1);
+  const nextYearStart=new Date(n.getFullYear()+1,0,1);
+  return {weekStart,lastWeekStart,nextWeekStart,monthStart,lastMonthStart,nextMonthStart,yearStart,lastYearStart,nextYearStart};
+}
+function dateRangeStats(orders,from,to){
+  const filtered=orders.filter(order=>{
+    if(order.status!=='Delivered')return false;
+    const at=new Date(order.deliveredAt||order.updatedAt||order.createdAt);
+    return at>=from&&at<to;
+  });
+  return {count:filtered.length,revenue:filtered.reduce((sum,order)=>sum+Number(order.amount||0),0)};
+}
+function deltaChip(current,previous){
+  if(!current&&!previous)return '<span class="chip">No data yet</span>';
+  const delta=previous?Math.round(((current-previous)/previous)*100):100;
+  const up=delta>=0;
+  return `<span class="chip ${up?'delivered':'due'}">${up?'▲':'▼'} ${Math.abs(delta)}%</span>`;
+}
+function compareBlock(label,current,previous){
+  return `<article class="card metric"><span>${html(label)}</span><strong>${money(current.revenue)}</strong><small class="muted">${current.count} delivered order(s)</small><div style="margin-top:8px;display:flex;align-items:center;gap:6px;flex-wrap:wrap">${deltaChip(current.revenue,previous.revenue)}<small class="muted">vs ${money(previous.revenue)} previous</small></div></article>`;
+}
+function storeWiseTable(bounds){
+  if(!state.stores.length)return '<div class="empty">No stores yet.</div>';
+  const rows=state.stores.map(store=>{
+    const orders=storeOrders(store.id);
+    const allTime=dateRangeStats(orders,new Date(0),new Date(8640000000000000));
+    const thisMonth=dateRangeStats(orders,bounds.monthStart,bounds.nextMonthStart);
+    const lastMonth=dateRangeStats(orders,bounds.lastMonthStart,bounds.monthStart);
+    const active=activeOrders(orders).length;
+    return `<tr><td><strong>${html(store.name)}</strong></td><td>${active}</td><td>${allTime.count}</td><td>${money(allTime.revenue)}</td><td>${money(thisMonth.revenue)}</td><td>${deltaChip(thisMonth.revenue,lastMonth.revenue)}</td></tr>`;
+  }).join('');
+  return `<table><thead><tr><th>Store</th><th>Active Orders</th><th>Delivered Orders</th><th>Total Revenue</th><th>This Month</th><th>Month vs Last</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
 function dashboardView(){
   refreshView=dashboardView;
   const store=activeStore();
@@ -240,7 +320,19 @@ function dashboardView(){
   const orders=activeOrders(storeOrders(store?.id));
   const due=cards.filter(isCardDue).length;
   const needsAttention=orders.filter(row=>['Requested','Priced'].includes(row.status));
-  $('#page').innerHTML=`<div class="section-head"><div><h1>${html(store?.name||'Dashboard')}</h1><p class="muted">${html(store?.category||'')}${store?.city?' · '+html(store.city):''}</p></div></div><div class="grid stats">${metric('Customers',ownerCustomers(store?.id).length)}${metric('Active Orders',orders.length)}${metric('Due For Reminder',due)}${metric('Deliveries Made',cards.reduce((sum,row)=>sum+(Number(row.timesDelivered)||0),0))}</div><div class="section-head"><h2>Orders needing attention</h2></div><div class="card table-wrap">${ordersNeedingAttentionTable(needsAttention)}</div><div class="section-head"><h2>Recent buy-again requests</h2></div><div class="card table-wrap">${buyRequestsTable(cards)}</div>`;
+  const bounds=periodBounds();
+  const allOrders=state.orders;
+  const thisWeek=dateRangeStats(allOrders,bounds.weekStart,bounds.nextWeekStart),lastWeek=dateRangeStats(allOrders,bounds.lastWeekStart,bounds.weekStart);
+  const thisMonth=dateRangeStats(allOrders,bounds.monthStart,bounds.nextMonthStart),lastMonth=dateRangeStats(allOrders,bounds.lastMonthStart,bounds.monthStart);
+  const thisYear=dateRangeStats(allOrders,bounds.yearStart,bounds.nextYearStart),lastYear=dateRangeStats(allOrders,bounds.lastYearStart,bounds.yearStart);
+  $('#page').innerHTML=`<div class="section-head"><div><h1>${html(store?.name||'Dashboard')}</h1><p class="muted">${html(store?.category||'')}${store?.city?' · '+html(store.city):''}</p></div></div>
+  <div class="grid stats">${metric('Customers',ownerCustomers(store?.id).length)}${metric('Active Orders',orders.length)}${metric('Due For Reminder',due)}${metric('Deliveries Made',cards.reduce((sum,row)=>sum+(Number(row.timesDelivered)||0),0))}</div>
+  <div class="section-head"><h2>Revenue — all stores</h2></div>
+  <div class="grid stats">${compareBlock('This Week',thisWeek,lastWeek)}${compareBlock('This Month',thisMonth,lastMonth)}${compareBlock('This Year',thisYear,lastYear)}</div>
+  <div class="section-head"><h2>Store-wise performance</h2></div>
+  <div class="card table-wrap">${storeWiseTable(bounds)}</div>
+  <div class="section-head"><h2>Orders needing attention</h2></div><div class="card table-wrap">${ordersNeedingAttentionTable(needsAttention)}</div>
+  <div class="section-head"><h2>Recent buy-again requests</h2></div><div class="card table-wrap">${buyRequestsTable(cards)}</div>`;
   bindBuyRequestActions();
   $$('[data-open-order-customer]').forEach(button=>button.onclick=()=>{view='wall';customerDetailView(button.dataset.openOrderCustomer)});
 }
@@ -257,8 +349,16 @@ function bindBuyRequestActions(){$$('[data-deliver]').forEach(button=>button.onc
 
 function storesView(){
   refreshView=storesView;
-  $('#page').innerHTML=`<div class="section-head"><div><h1>My Stores</h1><p class="muted">Create a store, then share its customer link so people can sign up.</p></div><button class="btn" id="addStore">+ New Store</button></div><div class="grid store-grid">${state.stores.map(storeCard).join('')||'<div class="empty">No stores yet — create your first one.</div>'}</div>`;
-  $('#addStore').onclick=()=>openStoreForm();
+  const allowed=storeSlotsAllowed(),canCreate=state.stores.length<allowed,pending=myStoreRequest;
+  let requestBlock='';
+  if(!canCreate){
+    if(pending?.status==='Requested')requestBlock=`<div class="card" style="margin-bottom:16px"><p class="muted">Your request for an additional store (${money(SUBSCRIPTION_AMOUNT)}/month) is with the G58 team. A payment link will appear here once it's reviewed.</p></div>`;
+    else if(pending?.status==='Payment Link Sent')requestBlock=`<div class="card" style="margin-bottom:16px"><p class="muted">Pay ${money(pending.amount||SUBSCRIPTION_AMOUNT)} to unlock your next store slot.</p><a class="btn full" href="${html(pending.paymentLink)}" target="_blank" rel="noopener" style="margin-top:10px;display:block;text-align:center;text-decoration:none">Pay ${money(pending.amount||SUBSCRIPTION_AMOUNT)}</a></div>`;
+    else requestBlock=`<div class="card" style="margin-bottom:16px"><p class="muted">You're using all ${allowed} paid store slot(s). Every additional store is ${money(SUBSCRIPTION_AMOUNT)}/month — request one from the G58 team.</p><button class="btn full" id="requestStoreSlot" style="margin-top:10px">Request Additional Store (${money(SUBSCRIPTION_AMOUNT)}/month)</button></div>`;
+  }
+  $('#page').innerHTML=`<div class="section-head"><div><h1>My Stores</h1><p class="muted">${state.stores.length} of ${allowed} paid store slot(s) used. Create a store, then share its customer link so people can sign up.</p></div><button class="btn" id="addStore" ${canCreate?'':'disabled'}>+ New Store</button></div>${requestBlock}<div class="grid store-grid">${state.stores.map(storeCard).join('')||'<div class="empty">No stores yet — create your first one.</div>'}</div>`;
+  $('#addStore').onclick=()=>{if(!canCreate)return toast('Request and pay for an additional store slot first');openStoreForm()};
+  $('#requestStoreSlot')?.addEventListener('click',requestAdditionalStore);
   $$('[data-share-store]').forEach(button=>button.onclick=()=>shareStoreModal(button.dataset.shareStore));
   $$('[data-edit-store]').forEach(button=>button.onclick=()=>openStoreForm(button.dataset.editStore));
 }
@@ -344,6 +444,7 @@ function customerDetailView(customerId){
   bindOwnerCardActions();
   bindOwnerOrderActions();
   bindOrderChatForms(orders,'owner',refreshView);
+  bindCardChatForms(cards,'owner',refreshView);
 }
 const BIG_STATUS_SUB={
   Requested:'Your order has been received by the store',
@@ -381,13 +482,37 @@ async function sendOrderMessage(order,role,text,onSent){
   }catch(error){toast(error.message||'Could not send message')}
 }
 function bindOrderChatForms(orders,role,onSent){
-  $$('.order-chat-form').forEach(form=>{
+  $$('[data-order-chat]').forEach(form=>{
     form.onsubmit=async event=>{
       event.preventDefault();
       const orderId=form.dataset.orderChat,order=orders.find(o=>o.id===orderId),input=form.querySelector('input[name="message"]'),text=input.value.trim();
       if(!text||!order)return;
       input.value='';
       await sendOrderMessage(order,role,text,onSent);
+    };
+  });
+}
+function cardChatMarkup(card,role){
+  const messages=(card.messages||[]).slice(-8);
+  return `<div class="order-chat"><div class="order-chat-log">${messages.map(message=>`<div class="order-message ${message.senderRole===role?'mine':''}"><strong>${html(message.senderRole==='owner'?'Store':message.senderName||'Customer')}</strong><span>${html(message.text)}</span></div>`).join('')||'<p class="muted no-messages">No messages yet.</p>'}</div><form class="order-chat-form" data-card-chat="${html(card.id)}"><input name="message" maxlength="240" placeholder="Message ${role==='owner'?'customer':'store'}"><button class="btn small" type="submit">Send</button></form></div>`;
+}
+async function sendCardMessage(card,role,text,onSent){
+  const message={senderRole:role,senderName:role==='owner'?(session?.name||'Store'):(card.customerName||'Customer'),text,createdAt:now()};
+  const messages=[...(card.messages||[]),message];
+  try{
+    await api.update(cardKind(card.ownerId),card.id,{messages,updatedAt:now()});
+    card.messages=messages;
+    onSent?.();
+  }catch(error){toast(error.message||'Could not send message')}
+}
+function bindCardChatForms(cards,role,onSent){
+  $$('[data-card-chat]').forEach(form=>{
+    form.onsubmit=async event=>{
+      event.preventDefault();
+      const cardId=form.dataset.cardChat,card=cards.find(c=>c.id===cardId),input=form.querySelector('input[name="message"]'),text=input.value.trim();
+      if(!text||!card)return;
+      input.value='';
+      await sendCardMessage(card,role,text,onSent);
     };
   });
 }
@@ -488,7 +613,7 @@ function orderHistoryRow(order){
 }
 function ownerCardMarkup(card){
   const due=isCardDue(card),remaining=daysRemaining(card),pct=Math.min(100,Math.round((1-remaining/Math.max(1,Number(card.reminderDays)||1))*100)),ringing=ringingIds.has(card.id);
-  return `<article class="card reminder-card ${due||card.status==='Buy Requested'?'due':''} ${ringing?'incoming-order':''}">${ringing?'<span class="incoming-order-beacon" aria-label="Buy again request" title="Buy again request"></span>':''}<h3>${html(card.productName)}</h3><p class="muted">${money(card.price)} · every ${Number(card.reminderDays)} day(s)</p><div class="reminder-progress ${due?'due':''}"><span style="width:${pct}%"></span></div><div class="chips"><span class="chip ${due?'due':''}">${due?'Due now':`${remaining} day(s) left`}</span>${card.status==='Buy Requested'?'<span class="chip due">Buy requested</span>':''}${Number(card.timesDelivered)?`<span class="chip delivered">${Number(card.timesDelivered)} delivered</span>`:''}</div><div class="actions">${card.status==='Buy Requested'?`<button class="btn small green" data-deliver="${html(card.id)}">Mark Delivered</button>`:''}<button class="btn small secondary" data-edit-card="${html(card.id)}">Edit</button><button class="btn small red" data-remove-card="${html(card.id)}">Remove</button></div></article>`;
+  return `<article class="card reminder-card ${due||card.status==='Buy Requested'?'due':''} ${ringing?'incoming-order':''}">${ringing?'<span class="incoming-order-beacon" aria-label="Buy again request" title="Buy again request"></span>':''}<h3>${html(card.productName)}</h3><p class="muted">${money(card.price)} · every ${Number(card.reminderDays)} day(s)</p><div class="reminder-progress ${due?'due':''}"><span style="width:${pct}%"></span></div><div class="chips"><span class="chip ${due?'due':''}">${due?'Due now':`${remaining} day(s) left`}</span>${card.status==='Buy Requested'?'<span class="chip due">Buy requested</span>':''}${Number(card.timesDelivered)?`<span class="chip delivered">${Number(card.timesDelivered)} delivered</span>`:''}</div><div class="actions">${card.status==='Buy Requested'?`<button class="btn small green" data-deliver="${html(card.id)}">Mark Delivered</button>`:''}<button class="btn small secondary" data-edit-card="${html(card.id)}">Edit</button><button class="btn small red" data-remove-card="${html(card.id)}">Remove</button></div>${cardChatMarkup(card,'owner')}</article>`;
 }
 function bindOwnerCardActions(){
   $$('[data-deliver]').forEach(button=>button.onclick=()=>deliverCard(button.dataset.deliver));
@@ -613,26 +738,35 @@ function renderCustomerCards(store,customer,cards,orders=[]){
     const target=document.getElementById(`qr-${order.id}`);
     if(target&&window.QRCode)new QRCode(target,{text:order.upiUri,width:180,height:180});
   });
-  cards.filter(card=>card.status!=='Buy Requested'&&card.upiUri).forEach(card=>{
+  cards.filter(card=>card.status!=='Buy Requested'&&card.upiUri&&(isCardDue(card)||daysRemaining(card)<=QR_REVEAL_DAYS)).forEach(card=>{
     const target=document.getElementById(`card-qr-${card.id}`);
     if(target&&window.QRCode)new QRCode(target,{text:card.upiUri,width:160,height:160});
   });
   $('#placeOrderBtn').onclick=()=>openPlaceOrderModal(store,customer);
   $$('[data-buy-again]').forEach(button=>button.onclick=()=>requestBuyAgain(button.dataset.buyAgain,store,customer));
   bindOrderChatForms(active,'customer',()=>loadAndRenderCustomerView(store,customer));
+  bindCardChatForms(cards,'customer',()=>loadAndRenderCustomerView(store,customer));
+  initShakeDetection();
   $('#custLogout').onclick=async()=>{stopCustomerRealtime();await api.logout();location.hash=`store&owner=${encodeURIComponent(store.ownerId)}&store=${encodeURIComponent(store.id)}`;boot()};
 }
+function vialMarkup(card){
+  const remaining=daysRemaining(card),total=Math.max(1,Number(card.reminderDays)||1),due=isCardDue(card);
+  const pct=Math.max(0,Math.min(100,Math.round((remaining/total)*100)));
+  return `<div class="vial ${due?'vial-empty':''}"><div class="vial-cap"></div><div class="vial-glass"><div class="vial-liquid" style="height:${pct}%"></div></div><div class="vial-label"><strong>${due?'Due':`${remaining}d`}</strong><small>left</small></div></div>`;
+}
 function customerCardCardMarkup(card){
-  const due=isCardDue(card),remaining=daysRemaining(card),pct=Math.min(100,Math.round((1-remaining/Math.max(1,Number(card.reminderDays)||1))*100));
+  const due=isCardDue(card),remaining=daysRemaining(card),showQr=(due||remaining<=QR_REVEAL_DAYS)&&card.status!=='Buy Requested';
   let payBlock='';
   if(card.status==='Buy Requested'){
     payBlock='<p class="muted">Waiting for the store to confirm and deliver.</p>';
-  }else if(card.upiUri){
-    payBlock=`<div class="qr-wrap" id="card-qr-${html(card.id)}"></div><p class="muted" style="text-align:center;margin:8px 0">${due?'Scan to pay for your refill.':'Scan anytime to pay for this item.'}</p>${due?`<button class="btn full green" data-buy-again="${html(card.id)}">Buy Again</button>`:''}`;
-  }else if(due){
+  }else if(showQr&&card.upiUri){
+    payBlock=`<div class="qr-wrap" id="card-qr-${html(card.id)}"></div><p class="muted" style="text-align:center;margin:8px 0">${due?'Scan to pay for your refill.':`Scan to pay — refill due in ${remaining} day(s).`}</p><button class="btn full green" data-buy-again="${html(card.id)}">Buy Again</button>`;
+  }else if(showQr){
     payBlock=`<button class="btn full green" data-buy-again="${html(card.id)}">Buy Again</button>`;
+  }else{
+    payBlock=`<p class="muted" style="text-align:center">Payment QR unlocks ${remaining-QR_REVEAL_DAYS} day(s) before refill.</p>`;
   }
-  return `<article class="card reminder-card premium-card ${due?'due':''}"><h3>${html(card.productName)}</h3><p class="muted">${money(card.price)} · every ${Number(card.reminderDays)} day(s)</p><div class="reminder-progress ${due?'due':''}"><span style="width:${pct}%"></span></div><div class="chips"><span class="chip ${due?'due':''}">${due?'Due now':`${remaining} day(s) left`}</span>${card.status==='Buy Requested'?'<span class="chip due">Request sent</span>':''}</div>${payBlock}</article>`;
+  return `<article class="card reminder-card premium-card vial-card ${due?'due':''}"><div class="vial-card-body"><div class="vial-card-info"><h3>${html(card.productName)}</h3><p class="muted">${money(card.price)} · every ${Number(card.reminderDays)} day(s)</p><div class="chips"><span class="chip ${due?'due':''}">${due?'Due now':`${remaining} day(s) left`}</span>${card.status==='Buy Requested'?'<span class="chip due">Request sent</span>':''}</div></div>${vialMarkup(card)}</div>${payBlock}${cardChatMarkup(card,'customer')}</article>`;
 }
 async function requestBuyAgain(cardId,store,customer){
   try{

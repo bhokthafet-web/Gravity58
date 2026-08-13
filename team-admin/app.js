@@ -235,7 +235,7 @@ function digit58(){
   <div class="section-head"><h2>Store owner requests</h2></div>
   <div class="card table-wrap"><table><thead><tr><th>Owner</th><th>Amount</th><th>Status</th><th>Actions</th></tr></thead><tbody>${requests.map(digit58RequestRow).join('')||'<tr><td colspan="4">No pending Digit58 requests.</td></tr>'}</tbody></table></div>
   <div class="section-head"><h2>Store owner subscriptions</h2></div>
-  <div class="card table-wrap"><table><thead><tr><th>Owner</th><th>Status</th><th>Expiry</th><th>Actions</th></tr></thead><tbody>${entitlements.map(digit58EntitlementRow).join('')||'<tr><td colspan="4">No activated Digit58 subscriptions.</td></tr>'}</tbody></table></div>
+  <div class="card table-wrap"><table><thead><tr><th>Owner</th><th>Status</th><th>Expiry</th><th>Store Slots</th><th>Actions</th></tr></thead><tbody>${entitlements.map(digit58EntitlementRow).join('')||'<tr><td colspan="5">No activated Digit58 subscriptions.</td></tr>'}</tbody></table></div>
   <div class="section-head"><h2>Digit58 stores</h2></div>
   <div class="admin-filter-bar"><input id="digit58Search" placeholder="Search store, category or owner email"><select id="digit58Category"><option value="All">All categories</option>${[...new Set(stores.map(row=>row.category||'General store'))].map(category=>`<option>${esc(category)}</option>`).join('')}</select></div><div class="card table-wrap"><table><thead><tr><th>Store</th><th>Category</th><th>City</th><th>Owner</th><th>Created</th></tr></thead><tbody id="digit58Rows">${stores.map(digit58Row).join('')||'<tr><td colspan="5">No Digit58 stores yet.</td></tr>'}</tbody></table></div>
   <div class="section-head"><div><h2>Store customers</h2><p class="muted">Customers signed up across all Digit58 stores, with their last visit.</p></div><button class="btn" id="loadDigit58Customers">${data.digit58CustomersLoaded?'Refresh':'Load Customers'}</button></div>
@@ -252,13 +252,14 @@ function digit58(){
 }
 function digit58Row(row){return `<tr><td><strong>${esc(row.storeName||'Store')}</strong></td><td>${esc(row.category||'General store')}</td><td>${esc(row.city||'')}</td><td>${esc(row.ownerEmail||row.ownerId||'')}</td><td>${row.createdAt?new Date(row.createdAt).toLocaleDateString('en-IN',{dateStyle:'medium'}):''}</td></tr>`}
 function digit58RequestRow(row){
+  const isAdditional=row.type==='additional-store';
   const actions=row.status==='Requested'?`<button class="btn small" data-send-digit58-link="${esc(row.id)}">Send Payment Link</button><button class="btn small red" data-reject-digit58="${esc(row.id)}">Reject</button>`
     :row.status==='Payment Link Sent'?`<button class="btn small green" data-activate-digit58="${esc(row.id)}">Activate</button><button class="btn small red" data-reject-digit58="${esc(row.id)}">Reject</button>`
     :`<button class="btn small green" data-activate-digit58="${esc(row.id)}">Activate</button>`;
-  return `<tr><td><strong>${esc(row.ownerName||'Store Owner')}</strong><br><small>${esc(row.ownerEmail||row.ownerId)}</small></td><td>${money(row.amount||399)}</td><td>${esc(row.status||'Requested')}</td><td><div class="actions">${actions}</div></td></tr>`;
+  return `<tr><td><strong>${esc(row.ownerName||'Store Owner')}</strong><br><small>${esc(row.ownerEmail||row.ownerId)}</small>${isAdditional?' <span class="chip due">+1 Store</span>':''}</td><td>${money(row.amount||399)}</td><td>${esc(row.status||'Requested')}</td><td><div class="actions">${actions}</div></td></tr>`;
 }
 function digit58EntitlementRow(row){
-  return `<tr><td>${esc(row.ownerEmail||row.ownerId)}</td><td>${row.paused?'Paused':row.active?'Active':'Inactive'}</td><td>${timeLeft(row.expiresAt,row.lifetime)}</td><td><div class="actions"><button class="btn small" data-edit-digit58-entitlement="${esc(row.id)}">Edit</button><button class="btn small green" data-extend-digit58="${esc(row.id)}">+30 days</button><button class="btn small ${row.paused?'green':'secondary'}" data-pause-digit58="${esc(row.id)}">${row.paused?'Resume':'Pause'}</button></div></td></tr>`;
+  return `<tr><td>${esc(row.ownerEmail||row.ownerId)}</td><td>${row.paused?'Paused':row.active?'Active':'Inactive'}</td><td>${timeLeft(row.expiresAt,row.lifetime)}</td><td>${Math.max(1,Number(row.storeSlots)||1)}</td><td><div class="actions"><button class="btn small" data-edit-digit58-entitlement="${esc(row.id)}">Edit</button><button class="btn small green" data-extend-digit58="${esc(row.id)}">+30 days</button><button class="btn small ${row.paused?'green':'secondary'}" data-pause-digit58="${esc(row.id)}">${row.paused?'Resume':'Pause'}</button></div></td></tr>`;
 }
 function sendDigit58PaymentLink(id){
   const row=data.digit58Requests.find(item=>item.id===id);if(!row)return;
@@ -268,11 +269,26 @@ function sendDigit58PaymentLink(id){
 }
 function activateDigit58Request(id){
   const request=data.digit58Requests.find(row=>row.id===id),existing=data.digit58Entitlements.find(row=>row.ownerId===request?.ownerId);if(!request)return;
+  if(request.type==='additional-store'){
+    const nextSlots=Math.max(1,Number(existing?.storeSlots)||1)+1;
+    modal('Grant Additional Store Slot',`<p><strong>${esc(request.ownerEmail||request.ownerId)}</strong> paid for one more store (${money(request.amount||399)}/month). This raises their paid store slots to <strong>${nextSlots}</strong>.</p><div class="actions" style="margin-top:14px"><button class="btn green full" id="confirmGrantSlot">Grant Store Slot</button></div>`,()=>{
+      $('#confirmGrantSlot').onclick=async()=>{
+        try{
+          const payload={storeSlots:nextSlots,updatedAt:now()};
+          if(existing)await api.update('digit58_entitlements',existing.id,payload);
+          else await api.create('digit58_entitlements',{ownerId:request.ownerId,ownerEmail:request.ownerEmail||'',active:true,paused:false,lifetime:false,storeSlots:nextSlots,activatedAt:now(),updatedAt:now()},`d58-${String(request.ownerId).slice(0,30)}`,api.managedPermissionSet?.()||api.collaborativePermissionSet(request.ownerId));
+          await api.update('digit58_requests',id,{status:'Activated',activatedAt:now()});
+          closeModal();await refresh();toast('Additional store slot granted');
+        }catch(error){toast(error.message||'Could not grant store slot')}
+      };
+    });
+    return;
+  }
   modal('Activate Digit58 Store Access',`<form id="activateDigit58Form"><p><strong>${esc(request.ownerEmail||request.ownerId)}</strong> — ${money(request.amount||399)}/month.</p><div class="form-grid"><div class="field"><label>Activation months</label><input name="months" type="number" min="1" max="120" value="1" required></div></div><label class="notice"><input name="lifetime" type="checkbox" ${existing?.lifetime?'checked':''}> Lifetime access — subscription never expires</label><button class="btn green full">Activate Store Access</button></form>`,()=>{
     $('#activateDigit58Form').onsubmit=async event=>{
       event.preventDefault();
       const fd=new FormData(event.target),months=Number(fd.get('months')),lifetime=fd.has('lifetime'),base=Math.max(Date.now(),new Date(existing?.expiresAt||0).getTime()),expiry=new Date(base);expiry.setMonth(expiry.getMonth()+months);
-      const payload={ownerId:request.ownerId,ownerEmail:request.ownerEmail||'',active:true,paused:false,lifetime,expiresAt:lifetime?'':expiry.toISOString(),activatedAt:existing?.activatedAt||now(),updatedAt:now()};
+      const payload={ownerId:request.ownerId,ownerEmail:request.ownerEmail||'',active:true,paused:false,lifetime,expiresAt:lifetime?'':expiry.toISOString(),storeSlots:Math.max(1,Number(existing?.storeSlots)||1),activatedAt:existing?.activatedAt||now(),updatedAt:now()};
       try{
         if(existing)await api.update('digit58_entitlements',existing.id,payload);
         else await api.create('digit58_entitlements',payload,`d58-${String(request.ownerId).slice(0,30)}`,api.managedPermissionSet?.()||api.collaborativePermissionSet(request.ownerId));
