@@ -279,4 +279,5 @@ async function requestBuyAgain(cardId,store,customer){
   }catch(error){toast(error.message||'Could not send request')}
 }
 
+window.addEventListener('hashchange',boot);
 boot();
