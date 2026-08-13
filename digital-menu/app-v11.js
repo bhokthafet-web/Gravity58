@@ -390,10 +390,10 @@ async function persistCloudOrder(order){
   const kind=cloudOrderKind(order.cloudOwnerId);
   const current=await Gravity58Ads.ensureUser();
   order.customerAccountId||=current?.$id||'';
-  if(order.paymentMethod==='counter'&&validCustomerPhone(order.phone)){
+  if(validCustomerPhone(order.phone)){
     const storedId=sessionStorage.getItem(customerOpenOrderKey(order.restaurantId));
     let existing=storedId?await Gravity58Ads.get(kind,storedId).catch(()=>null):null;
-    const mergeable=row=>row&&row.restaurantId===order.restaurantId&&normaliseCustomerPhone(row.phone)===normaliseCustomerPhone(order.phone)&&row.paymentMethod==='counter'&&row.orderDay===orderDay()&&['Pending','Accepted','Preparing','Ready'].includes(row.status);
+    const mergeable=row=>row&&row.restaurantId===order.restaurantId&&normaliseCustomerPhone(row.phone)===normaliseCustomerPhone(order.phone)&&row.serviceMode===order.serviceMode&&(order.serviceMode!=='table'||row.tableNumber===order.tableNumber)&&row.orderDay===orderDay()&&['Pending','Accepted','Preparing','Ready'].includes(row.status);
     if(!mergeable(existing))existing=null;
     if(!existing){
       const candidates=await Gravity58Ads.list(kind).catch(()=>[]);
@@ -402,7 +402,8 @@ async function persistCloudOrder(order){
     if(existing){
       const items=combinedOrderItems(existing.items,order.items),subtotal=items.reduce((sum,item)=>sum+(Number(item.price)||0)*(Number(item.qty)||1),0),restaurant=state.restaurants.find(row=>row.id===order.restaurantId)||{};
       const tax=Math.round(subtotal*(Number(restaurant.tax)||0))/100,serviceCharge=Math.round(subtotal*(Number(restaurant.service)||0))/100;
-      return Gravity58Ads.update(kind,existing.id||existing.$id,{items,subtotal,tax,serviceCharge,total:Math.round((subtotal+tax+serviceCharge)*100)/100,status:'Pending',customer:order.customer,customerName:order.customerName,serviceMode:order.serviceMode,tableNumber:order.tableNumber,phone:normaliseCustomerPhone(order.phone),menuHash:order.menuHash,menuRecordId:order.menuRecordId,lastItemsAddedAt:now(),updatedAt:now()});
+      const onlineTopUp=order.paymentMethod==='online';
+      return Gravity58Ads.update(kind,existing.id||existing.$id,{items,subtotal,tax,serviceCharge,total:Math.round((subtotal+tax+serviceCharge)*100)/100,status:onlineTopUp?'Payment Verification':'Pending',customer:order.customer,customerName:order.customerName,serviceMode:order.serviceMode,tableNumber:order.tableNumber,phone:normaliseCustomerPhone(order.phone),paymentMethod:order.paymentMethod,paymentStatus:onlineTopUp?'Awaiting confirmation':'Not required',transactionId:onlineTopUp?'':existing.transactionId,upiId:onlineTopUp?order.upiId:existing.upiId,upiUri:onlineTopUp?order.upiUri:existing.upiUri,paymentReceiptUrl:onlineTopUp?(order.paymentReceiptUrl||''):existing.paymentReceiptUrl,paymentReceiptFileId:onlineTopUp?(order.paymentReceiptFileId||''):existing.paymentReceiptFileId,paymentReceiptName:onlineTopUp?(order.paymentReceiptName||''):existing.paymentReceiptName,paymentReceiptType:onlineTopUp?(order.paymentReceiptType||''):existing.paymentReceiptType,menuHash:order.menuHash,menuRecordId:order.menuRecordId,lastItemsAddedAt:now(),updatedAt:now()});
     }
   }
   const functionId=Gravity58Ads.config?.digitalOrderFunctionId;
