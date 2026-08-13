@@ -70,18 +70,22 @@ async function refreshOwnerOrdersRealtime(){
   const ownerId=cloudOwnerId();if(!ownerId)return;
   const orders=await api.list(orderKind(ownerId)).catch(()=>null);
   if(!orders)return;
-  orders.forEach(order=>{if(order.status==='Requested'&&!knownOrderIds.has(order.id))ringingIds.add(order.id);knownOrderIds.add(order.id)});
+  let isNew=false;
+  orders.forEach(order=>{if(order.status==='Requested'&&!knownOrderIds.has(order.id)){ringingIds.add(order.id);isNew=true}knownOrderIds.add(order.id)});
   state.orders=orders;save();
   updateOrderAlertSound();
+  if(isNew)toast('🔔 New order received');
   if(!$('.modal-backdrop'))refreshView();
 }
 async function refreshOwnerCardsRealtime(){
   const ownerId=cloudOwnerId();if(!ownerId)return;
   const cards=await api.list(cardKind(ownerId)).catch(()=>null);
   if(!cards)return;
-  cards.forEach(card=>{if(card.status==='Buy Requested'&&!knownBuyRequestIds.has(card.id))ringingIds.add(card.id);knownBuyRequestIds.add(card.id)});
+  let isNew=false;
+  cards.forEach(card=>{if(card.status==='Buy Requested'&&!knownBuyRequestIds.has(card.id)){ringingIds.add(card.id);isNew=true}knownBuyRequestIds.add(card.id)});
   state.cards=cards;save();
   updateOrderAlertSound();
+  if(isNew)toast('🔔 Buy again request received');
   if(!$('.modal-backdrop'))refreshView();
 }
 
@@ -205,14 +209,22 @@ async function loadOwnerData(){
 
 function renderShell(){
   const store=activeStore();
-  app.innerHTML=`<div class="shell"><aside class="sidebar"><div class="brand"><div class="brand-mark">D</div><div><strong>Digit58</strong><small class="muted">Store workspace</small></div></div><nav class="nav">${navButton('dashboard','◉','Dashboard')}${navButton('stores','◫','My Stores')}${navButton('wall','☰','Customer Wall')}${navButton('orderHistory','🕘','Order History')}${navButton('subscription','♢','Subscription')}${navButton('settings','⚙','Settings')}<button id="logout">⇥ Logout</button></nav></aside><main class="main"><header class="topbar"><div>${state.stores.length?`<select id="storeSwitch">${state.stores.map(row=>`<option value="${html(row.id)}" ${row.id===state.activeStoreId?'selected':''}>${html(row.name)}</option>`).join('')}</select>`:'<strong>No store yet</strong>'}</div><span class="status-pill"><span class="dot"></span>${html(session?.email||'')}</span></header><section class="content" id="page"></section></main></div>`;
+  app.innerHTML=`<div class="shell"><aside class="sidebar"><div class="brand"><div class="brand-mark">D</div><div><strong>Digit58</strong><small class="muted">Store workspace</small></div></div><nav class="nav">${navButton('dashboard','◉','Dashboard')}${navButton('stores','◫','My Stores')}${navButton('wall','☰','Customer Wall')}${navButton('orders','🧾','Orders')}${navButton('orderHistory','🕘','Order History')}${navButton('subscription','♢','Subscription')}${navButton('settings','⚙','Settings')}<button id="logout">⇥ Logout</button></nav></aside><main class="main"><header class="topbar"><div>${state.stores.length?`<select id="storeSwitch">${state.stores.map(row=>`<option value="${html(row.id)}" ${row.id===state.activeStoreId?'selected':''}>${html(row.name)}</option>`).join('')}</select>`:'<strong>No store yet</strong>'}</div><span class="status-pill"><span class="dot"></span>${html(session?.email||'')}</span></header><section class="content" id="page"></section></main></div>`;
   $$('[data-view]').forEach(button=>button.onclick=()=>{view=button.dataset.view;renderShell()});
   $('#logout').onclick=async()=>{stopOwnerRealtime();await api.logout();session=null;renderOwnerAuth()};
   $('#storeSwitch')?.addEventListener('change',event=>{state.activeStoreId=event.target.value;save();renderShell()});
   renderView();
 }
 function navButton(key,icon,label){return `<button data-view="${key}" class="${view===key?'active':''}"><span>${icon}</span>${label}</button>`}
-function renderView(){if(!activeStore()&&view!=='stores'&&view!=='settings'&&view!=='subscription'){view='stores';return renderShell()}({dashboard:dashboardView,stores:storesView,wall:customerWallView,orderHistory:orderHistoryView,subscription:subscriptionView,settings:settingsView}[view]||dashboardView)()}
+function renderView(){if(!activeStore()&&view!=='stores'&&view!=='settings'&&view!=='subscription'){view='stores';return renderShell()}({dashboard:dashboardView,stores:storesView,wall:customerWallView,orders:ordersView,orderHistory:orderHistoryView,subscription:subscriptionView,settings:settingsView}[view]||dashboardView)()}
+function ordersView(){
+  refreshView=ordersView;
+  const store=activeStore();
+  const orders=activeOrders(storeOrders(store?.id)).sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
+  $('#page').innerHTML=`<div class="section-head"><div><h1>Orders</h1><p class="muted">All active orders from every customer of ${html(store?.name||'this store')}.</p></div></div><div class="grid card-grid">${orders.map(order=>ownerOrderMarkup(order,true)).join('')||'<div class="empty">No active orders right now.</div>'}</div>`;
+  bindOwnerOrderActions();
+  bindOrderChatForms(orders,'owner',refreshView);
+}
 function subscriptionView(){
   refreshView=subscriptionView;
   const expiry=entitlement?.lifetime?'Lifetime access':entitlement?.expiresAt?new Date(entitlement.expiresAt).toLocaleDateString('en-IN',{dateStyle:'medium'}):'—';
@@ -324,7 +336,7 @@ function customerDetailView(customerId){
   const orders=activeOrders(customerOrders(customer.customerAccountId,customer.storeId)).sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
   $('#page').innerHTML=`<div class="section-head"><div><h1>${html(customer.customerName||'Customer')}</h1><p class="muted">${html(customer.customerEmail||'')}</p></div><div class="actions"><button class="btn secondary" id="backToWall">← Back</button><button class="btn" id="addCard">+ Add Reminder Card</button></div></div>
   <div class="section-head"><h2>Orders</h2></div>
-  <div class="grid card-grid">${orders.map(ownerOrderMarkup).join('')||'<div class="empty">No active orders from this customer.</div>'}</div>
+  <div class="grid card-grid">${orders.map(order=>ownerOrderMarkup(order)).join('')||'<div class="empty">No active orders from this customer.</div>'}</div>
   <div class="section-head"><h2>Reminder Cards</h2></div>
   <div class="grid card-grid">${cards.map(ownerCardMarkup).join('')||'<div class="empty">No cards yet for this customer.</div>'}</div>`;
   $('#backToWall').onclick=()=>{view='wall';renderShell()};
@@ -332,6 +344,23 @@ function customerDetailView(customerId){
   bindOwnerCardActions();
   bindOwnerOrderActions();
   bindOrderChatForms(orders,'owner',refreshView);
+}
+const BIG_STATUS_SUB={
+  Requested:'Your order has been received by the store',
+  Priced:'Review the amount below and pay to continue',
+  Accepted:'The store has accepted your order',
+  Preparing:'Your order is being packed',
+  'Out for Delivery':'On its way to you',
+  Delivered:'Delivered successfully — enjoy!',
+  Rejected:'This order was rejected by the store',
+};
+function bigStatusMarkup(status){
+  const rejected=status==='Rejected';
+  const step=ORDER_STEPS.find(s=>s.key===status);
+  const icon=rejected?'🚫':(step?.icon||'📝');
+  const label=rejected?'Order Rejected':(step?.label||status);
+  const slug=String(status||'').toLowerCase().replace(/[^a-z]+/g,'-');
+  return `<div class="big-status status-${slug} ${rejected?'rejected':''}"><span class="big-status-icon">${icon}</span><strong>${html(label)}</strong><small>${html(BIG_STATUS_SUB[status]||'')}</small></div>`;
 }
 function orderStepperMarkup(status){
   if(status==='Rejected')return `<div class="order-stepper"><div class="order-step current"><span class="order-step-icon">🚫</span><small>Rejected</small></div></div>`;
@@ -362,9 +391,10 @@ function bindOrderChatForms(orders,role,onSent){
     };
   });
 }
-function ownerOrderMarkup(order){
+function ownerOrderMarkup(order,showCustomer){
   const ringing=ringingIds.has(order.id);
-  return `<article class="card order-item-card ${ringing?'incoming-order':''}">${ringing?'<span class="incoming-order-beacon" aria-label="New order" title="New order"></span>':''}<div class="section-head"><h3>Order #${html(order.id.slice(-6).toUpperCase())}</h3><span class="chip ${['Requested','Priced'].includes(order.status)?'due':''}">${html(order.status)}</span></div>${orderStepperMarkup(order.status)}<div class="order-items-list">${order.items.map(item=>`<div class="order-line-item"><span>${item.qty} ×</span><span>${html(item.name)}</span></div>`).join('')}</div>${order.prescriptionUrl?`<a class="link-btn" href="${html(order.prescriptionUrl)}" target="_blank" rel="noopener">📄 View prescription</a>`:''}${order.amount?`<h3 style="margin:10px 0">${money(order.amount)}</h3>`:'<p class="muted">Amount not set yet.</p>'}<div class="actions">${orderOwnerActions(order)}</div>${orderChatMarkup(order,'owner')}</article>`;
+  const customer=showCustomer?state.customers.find(c=>c.customerAccountId===order.customerAccountId&&c.storeId===order.storeId):null;
+  return `<article class="card order-item-card ${ringing?'incoming-order':''}">${ringing?'<span class="incoming-order-beacon" aria-label="New order" title="New order"></span>':''}<div class="section-head"><h3>Order #${html(order.id.slice(-6).toUpperCase())}</h3><span class="chip ${['Requested','Priced'].includes(order.status)?'due':''}">${html(order.status)}</span></div>${showCustomer?`<p class="muted" style="margin:-8px 0 4px">${html(customer?.customerName||order.customerName||'Customer')}</p>`:''}${orderStepperMarkup(order.status)}<div class="order-items-list">${order.items.map(item=>`<div class="order-line-item"><span>${item.qty} ×</span><span>${html(item.name)}</span></div>`).join('')}</div>${order.prescriptionUrl?`<a class="link-btn" href="${html(order.prescriptionUrl)}" target="_blank" rel="noopener">📄 View prescription</a>`:''}${order.amount?`<h3 style="margin:10px 0">${money(order.amount)}</h3>`:'<p class="muted">Amount not set yet.</p>'}<div class="actions">${orderOwnerActions(order)}</div>${orderChatMarkup(order,'owner')}</article>`;
 }
 function orderOwnerActions(order){
   const map={
@@ -602,7 +632,7 @@ function customerCardCardMarkup(card){
   }else if(due){
     payBlock=`<button class="btn full green" data-buy-again="${html(card.id)}">Buy Again</button>`;
   }
-  return `<article class="card reminder-card ${due?'due':''}"><h3>${html(card.productName)}</h3><p class="muted">${money(card.price)} · every ${Number(card.reminderDays)} day(s)</p><div class="reminder-progress ${due?'due':''}"><span style="width:${pct}%"></span></div><div class="chips"><span class="chip ${due?'due':''}">${due?'Due now':`${remaining} day(s) left`}</span>${card.status==='Buy Requested'?'<span class="chip due">Request sent</span>':''}</div>${payBlock}</article>`;
+  return `<article class="card reminder-card premium-card ${due?'due':''}"><h3>${html(card.productName)}</h3><p class="muted">${money(card.price)} · every ${Number(card.reminderDays)} day(s)</p><div class="reminder-progress ${due?'due':''}"><span style="width:${pct}%"></span></div><div class="chips"><span class="chip ${due?'due':''}">${due?'Due now':`${remaining} day(s) left`}</span>${card.status==='Buy Requested'?'<span class="chip due">Request sent</span>':''}</div>${payBlock}</article>`;
 }
 async function requestBuyAgain(cardId,store,customer){
   try{
@@ -615,7 +645,7 @@ function customerOrderMarkup(order){
   const paymentBlock=order.status==='Priced'
     ?`<div class="qr-wrap" id="qr-${html(order.id)}"></div><h3 style="margin:10px 0;text-align:center">${money(order.amount)}</h3><p class="muted" style="text-align:center">Scan to pay via UPI. The store will accept your order once payment is received.</p>`
     :order.amount?`<h3 style="margin:10px 0">${money(order.amount)}</h3>`:'<p class="muted">Waiting for the store to review and set the amount.</p>';
-  return `<article class="card order-item-card"><div class="section-head"><h3>Order #${html(order.id.slice(-6).toUpperCase())}</h3><span class="chip">${html(order.status)}</span></div>${orderStepperMarkup(order.status)}<div class="order-items-list">${order.items.map(item=>`<div class="order-line-item"><span>${item.qty} ×</span><span>${html(item.name)}</span></div>`).join('')}</div>${order.prescriptionUrl?`<a class="link-btn" href="${html(order.prescriptionUrl)}" target="_blank" rel="noopener">📄 View your prescription</a>`:''}${paymentBlock}${orderChatMarkup(order,'customer')}</article>`;
+  return `<article class="card order-item-card premium-card"><div class="section-head"><h3>Order #${html(order.id.slice(-6).toUpperCase())}</h3><span class="chip">${html(order.status)}</span></div>${bigStatusMarkup(order.status)}${orderStepperMarkup(order.status)}<div class="order-items-list">${order.items.map(item=>`<div class="order-line-item"><span>${item.qty} ×</span><span>${html(item.name)}</span></div>`).join('')}</div>${order.prescriptionUrl?`<a class="link-btn" href="${html(order.prescriptionUrl)}" target="_blank" rel="noopener">📄 View your prescription</a>`:''}${paymentBlock}${orderChatMarkup(order,'customer')}</article>`;
 }
 function customerOrderHistoryRow(order){
   return `<tr><td>${order.items.map(item=>`${item.qty}×${html(item.name)}`).join(', ')}</td><td>${money(order.amount)}</td><td>${html(order.status)}</td><td>${new Date(order.updatedAt||order.createdAt).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'})}</td></tr>`;
