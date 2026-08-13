@@ -8,13 +8,28 @@ const safeId=(prefix,ownerId,max)=>`${prefix}${String(ownerId||'public').replace
 const storeKind=(ownerId)=>safeId('digit58_store_',ownerId,40);
 const customerKind=(ownerId)=>safeId('digit58_customer_',ownerId,36);
 const cardKind=(ownerId)=>safeId('digit58_card_',ownerId,40);
+const orderKind=(ownerId)=>safeId('digit58_order_',ownerId,40);
 const REQUEST_KIND='digit58_requests',ENTITLEMENT_KIND='digit58_entitlements',SUBSCRIPTION_AMOUNT=399;
+const ORDER_STEPS=[
+  {key:'Requested',icon:'📝',label:'Requested'},
+  {key:'Priced',icon:'💳',label:'Payment'},
+  {key:'Accepted',icon:'✅',label:'Accepted'},
+  {key:'Preparing',icon:'📦',label:'Preparing'},
+  {key:'Out for Delivery',icon:'🚚',label:'Out for Delivery'},
+  {key:'Delivered',icon:'🏠',label:'Delivered'},
+];
+function buildUpiUri(upiId,payeeName,amount,orderId){
+  if(!upiId)return '';
+  const reference=`58${String(orderId||Date.now()).replace(/\D/g,'').slice(-30)}`.slice(0,35);
+  const params=new URLSearchParams({pa:upiId,pn:payeeName||upiId,tr:reference,tn:`Digit58 order ${orderId}`,am:Number(amount||0).toFixed(2),cu:'INR'});
+  return `upi://pay?${params.toString()}`;
+}
 function toast(message){const target=$('#toast');if(!target)return alert(message);target.textContent=message;target.classList.add('show');setTimeout(()=>target.classList.remove('show'),2400)}
 
 let session=null,view='dashboard';
 let refreshView=()=>renderShell();
 let entitlement=null,myRequest=null;
-let state={activeStoreId:'',stores:[],customers:[],cards:[]};
+let state={activeStoreId:'',stores:[],customers:[],cards:[],orders:[]};
 function save(){try{localStorage.setItem('gravity58Digit58',JSON.stringify(state))}catch{}}
 function load(){try{return {...state,...JSON.parse(localStorage.getItem('gravity58Digit58')||'{}')}}catch{return state}}
 state=load();
@@ -25,6 +40,10 @@ function ownerCustomers(storeId=state.activeStoreId){return state.customers.filt
 function customerCards(customerAccountId,storeId=state.activeStoreId){return state.cards.filter(row=>row.storeId===storeId&&row.customerAccountId===customerAccountId)}
 function isCardDue(card){return new Date(card.dueAt).getTime()<=Date.now()}
 function daysRemaining(card){return Math.max(0,Math.ceil((new Date(card.dueAt).getTime()-Date.now())/86400000))}
+function storeOrders(storeId=state.activeStoreId){return state.orders.filter(row=>row.storeId===storeId)}
+function customerOrders(customerAccountId,storeId=state.activeStoreId){return state.orders.filter(row=>row.storeId===storeId&&row.customerAccountId===customerAccountId)}
+function activeOrders(orders){return orders.filter(row=>!['Delivered','Rejected'].includes(row.status))}
+function orderHistoryOrders(orders){return orders.filter(row=>['Delivered','Rejected'].includes(row.status))}
 
 async function boot(){
   if(!api?.configured)return renderConfigError();
@@ -110,6 +129,8 @@ function renderOwnerAuth(){
       if(mode==='signup')await api.register(values.email.trim(),values.password,values.name.trim()||values.email.split('@')[0]);
       else await api.login(values.email.trim(),values.password);
       session=await api.currentUser();
+      await loadEntitlement();
+      if(!hasActiveEntitlement())return renderAccessGate();
       await loadOwnerData();
       renderShell();
     }catch(error){button.disabled=false;toast(error.message||'Could not sign in')}
@@ -118,35 +139,43 @@ function renderOwnerAuth(){
 
 async function loadOwnerData(){
   const ownerId=cloudOwnerId();if(!ownerId)return;
-  const [stores,customers,cards]=await Promise.all([
+  const [stores,customers,cards,orders]=await Promise.all([
     api.list(storeKind(ownerId)).catch(()=>[]),
     api.list(customerKind(ownerId)).catch(()=>[]),
     api.list(cardKind(ownerId)).catch(()=>[]),
+    api.list(orderKind(ownerId)).catch(()=>[]),
   ]);
-  state.stores=stores;state.customers=customers;state.cards=cards;
+  state.stores=stores;state.customers=customers;state.cards=cards;state.orders=orders;
   if(!state.activeStoreId||!stores.some(row=>row.id===state.activeStoreId))state.activeStoreId=stores[0]?.id||'';
   save();
 }
 
 function renderShell(){
   const store=activeStore();
-  app.innerHTML=`<div class="shell"><aside class="sidebar"><div class="brand"><div class="brand-mark">D</div><div><strong>Digit58</strong><small class="muted">Store workspace</small></div></div><nav class="nav">${navButton('dashboard','◉','Dashboard')}${navButton('stores','◫','My Stores')}${navButton('wall','☰','Customer Wall')}${navButton('settings','⚙','Settings')}<button id="logout">⇥ Logout</button></nav></aside><main class="main"><header class="topbar"><div>${state.stores.length?`<select id="storeSwitch">${state.stores.map(row=>`<option value="${html(row.id)}" ${row.id===state.activeStoreId?'selected':''}>${html(row.name)}</option>`).join('')}</select>`:'<strong>No store yet</strong>'}</div><span class="status-pill"><span class="dot"></span>${html(session?.email||'')}</span></header><section class="content" id="page"></section></main></div>`;
+  app.innerHTML=`<div class="shell"><aside class="sidebar"><div class="brand"><div class="brand-mark">D</div><div><strong>Digit58</strong><small class="muted">Store workspace</small></div></div><nav class="nav">${navButton('dashboard','◉','Dashboard')}${navButton('stores','◫','My Stores')}${navButton('wall','☰','Customer Wall')}${navButton('orderHistory','🕘','Order History')}${navButton('settings','⚙','Settings')}<button id="logout">⇥ Logout</button></nav></aside><main class="main"><header class="topbar"><div>${state.stores.length?`<select id="storeSwitch">${state.stores.map(row=>`<option value="${html(row.id)}" ${row.id===state.activeStoreId?'selected':''}>${html(row.name)}</option>`).join('')}</select>`:'<strong>No store yet</strong>'}</div><span class="status-pill"><span class="dot"></span>${html(session?.email||'')}</span></header><section class="content" id="page"></section></main></div>`;
   $$('[data-view]').forEach(button=>button.onclick=()=>{view=button.dataset.view;renderShell()});
   $('#logout').onclick=async()=>{await api.logout();session=null;renderOwnerAuth()};
   $('#storeSwitch')?.addEventListener('change',event=>{state.activeStoreId=event.target.value;save();renderShell()});
   renderView();
 }
 function navButton(key,icon,label){return `<button data-view="${key}" class="${view===key?'active':''}"><span>${icon}</span>${label}</button>`}
-function renderView(){if(!activeStore()&&view!=='stores'&&view!=='settings'){view='stores';return renderShell()}({dashboard:dashboardView,stores:storesView,wall:customerWallView,settings:settingsView}[view]||dashboardView)()}
+function renderView(){if(!activeStore()&&view!=='stores'&&view!=='settings'){view='stores';return renderShell()}({dashboard:dashboardView,stores:storesView,wall:customerWallView,orderHistory:orderHistoryView,settings:settingsView}[view]||dashboardView)()}
 
 function metric(title,value){return `<article class="card metric"><span>${html(title)}</span><strong>${value}</strong></article>`}
 function dashboardView(){
   refreshView=dashboardView;
   const store=activeStore();
   const cards=state.cards.filter(row=>row.storeId===store?.id);
+  const orders=activeOrders(storeOrders(store?.id));
   const due=cards.filter(isCardDue).length;
-  $('#page').innerHTML=`<div class="section-head"><div><h1>${html(store?.name||'Dashboard')}</h1><p class="muted">${html(store?.category||'')}${store?.city?' · '+html(store.city):''}</p></div></div><div class="grid stats">${metric('Customers',ownerCustomers(store?.id).length)}${metric('Active Cards',cards.length)}${metric('Due For Reminder',due)}${metric('Deliveries Made',cards.reduce((sum,row)=>sum+(Number(row.timesDelivered)||0),0))}</div><div class="section-head"><h2>Recent buy-again requests</h2></div><div class="card table-wrap">${buyRequestsTable(cards)}</div>`;
+  const needsAttention=orders.filter(row=>['Requested','Priced'].includes(row.status));
+  $('#page').innerHTML=`<div class="section-head"><div><h1>${html(store?.name||'Dashboard')}</h1><p class="muted">${html(store?.category||'')}${store?.city?' · '+html(store.city):''}</p></div></div><div class="grid stats">${metric('Customers',ownerCustomers(store?.id).length)}${metric('Active Orders',orders.length)}${metric('Due For Reminder',due)}${metric('Deliveries Made',cards.reduce((sum,row)=>sum+(Number(row.timesDelivered)||0),0))}</div><div class="section-head"><h2>Orders needing attention</h2></div><div class="card table-wrap">${ordersNeedingAttentionTable(needsAttention)}</div><div class="section-head"><h2>Recent buy-again requests</h2></div><div class="card table-wrap">${buyRequestsTable(cards)}</div>`;
   bindBuyRequestActions();
+  $$('[data-open-order-customer]').forEach(button=>button.onclick=()=>{view='wall';customerDetailView(button.dataset.openOrderCustomer)});
+}
+function ordersNeedingAttentionTable(orders){
+  if(!orders.length)return `<div class="empty">No orders waiting on you right now.</div>`;
+  return `<table><thead><tr><th>Customer</th><th>Items</th><th>Status</th><th>Action</th></tr></thead><tbody>${orders.map(order=>{const customer=state.customers.find(c=>c.customerAccountId===order.customerAccountId&&c.storeId===order.storeId);return `<tr><td>${html(customer?.customerName||order.customerName||'Customer')}</td><td>${order.items.map(item=>`${item.qty}×${html(item.name)}`).join(', ')}</td><td>${html(order.status)}</td><td>${customer?`<button class="btn small" data-open-order-customer="${html(customer.id)}">Open</button>`:''}</td></tr>`}).join('')}</tbody></table>`;
 }
 function buyRequestsTable(cards){
   const requested=cards.filter(row=>row.status==='Buy Requested');
@@ -169,7 +198,7 @@ function storeCard(store){
 function publicStoreLink(store){return `${location.origin}${location.pathname.replace(/index\.html$/,'')}#store&owner=${encodeURIComponent(store.ownerId)}&store=${encodeURIComponent(store.id)}`}
 function openStoreForm(storeId=''){
   const store=state.stores.find(row=>row.id===storeId)||{};
-  modal(storeId?'Edit Store':'Create Store',`<form id="storeForm"><div class="field"><label>Store name</label><input name="name" value="${html(store.name||'')}" required></div><div class="form-grid"><div class="field"><label>Category</label><input name="category" value="${html(store.category||'')}" placeholder="Example: Pharmacy"></div><div class="field"><label>City</label><input name="city" value="${html(store.city||'')}"></div></div><div class="field"><label>Phone</label><input name="phone" value="${html(store.phone||'')}"></div><div class="field"><label>Description</label><textarea name="description">${html(store.description||'')}</textarea></div><button class="btn full">${storeId?'Save Store':'Create Store'}</button></form>`,()=>{
+  modal(storeId?'Edit Store':'Create Store',`<form id="storeForm"><div class="field"><label>Store name</label><input name="name" value="${html(store.name||'')}" required></div><div class="form-grid"><div class="field"><label>Category</label><input name="category" value="${html(store.category||'')}" placeholder="Example: Pharmacy"></div><div class="field"><label>City</label><input name="city" value="${html(store.city||'')}"></div></div><div class="field"><label>Phone</label><input name="phone" value="${html(store.phone||'')}"></div><div class="field"><label>UPI ID <small>(for order payment QR codes)</small></label><input name="upiId" value="${html(store.upiId||'')}" placeholder="yourstore@upi"></div><div class="field"><label>Description</label><textarea name="description">${html(store.description||'')}</textarea></div><button class="btn full">${storeId?'Save Store':'Create Store'}</button></form>`,()=>{
     $('#storeForm').onsubmit=async event=>{
       event.preventDefault();
       const values=Object.fromEntries(new FormData(event.target)),ownerId=cloudOwnerId(),button=event.submitter;
@@ -180,7 +209,7 @@ function openStoreForm(storeId=''){
           Object.assign(store,values);
           try{await api.update('digit58_owners',storeId,{storeName:values.name.trim(),category:values.category.trim()||'General store',city:values.city.trim()})}catch{}
         }else{
-          const record={id:id('store'),ownerId,name:values.name.trim(),category:values.category.trim()||'General store',city:values.city.trim(),phone:values.phone.trim(),description:values.description.trim(),createdAt:now()};
+          const record={id:id('store'),ownerId,name:values.name.trim(),category:values.category.trim()||'General store',city:values.city.trim(),phone:values.phone.trim(),upiId:values.upiId.trim(),description:values.description.trim(),createdAt:now()};
           const permissions=api.permissionSet?.(storeKind(ownerId),ownerId);
           const created=await api.create(storeKind(ownerId),record,record.id,permissions);
           state.stores.push({...record,...created});
@@ -233,10 +262,120 @@ function customerDetailView(customerId){
   refreshView=()=>customerDetailView(customerId);
   const customer=state.customers.find(row=>row.id===customerId);if(!customer)return;
   const cards=customerCards(customer.customerAccountId,customer.storeId);
-  $('#page').innerHTML=`<div class="section-head"><div><h1>${html(customer.customerName||'Customer')}</h1><p class="muted">${html(customer.customerEmail||'')}</p></div><div class="actions"><button class="btn secondary" id="backToWall">← Back</button><button class="btn" id="addCard">+ Add Reminder Card</button></div></div><div class="grid card-grid">${cards.map(ownerCardMarkup).join('')||'<div class="empty">No cards yet for this customer.</div>'}</div>`;
+  const orders=activeOrders(customerOrders(customer.customerAccountId,customer.storeId)).sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
+  $('#page').innerHTML=`<div class="section-head"><div><h1>${html(customer.customerName||'Customer')}</h1><p class="muted">${html(customer.customerEmail||'')}</p></div><div class="actions"><button class="btn secondary" id="backToWall">← Back</button><button class="btn" id="addCard">+ Add Reminder Card</button></div></div>
+  <div class="section-head"><h2>Orders</h2></div>
+  <div class="grid card-grid">${orders.map(ownerOrderMarkup).join('')||'<div class="empty">No active orders from this customer.</div>'}</div>
+  <div class="section-head"><h2>Reminder Cards</h2></div>
+  <div class="grid card-grid">${cards.map(ownerCardMarkup).join('')||'<div class="empty">No cards yet for this customer.</div>'}</div>`;
   $('#backToWall').onclick=()=>{view='wall';renderShell()};
   $('#addCard').onclick=()=>openCardForm(customer);
   bindOwnerCardActions();
+  bindOwnerOrderActions();
+  bindOrderChatForms(orders,'owner',refreshView);
+}
+function orderStepperMarkup(status){
+  if(status==='Rejected')return `<div class="order-stepper"><div class="order-step current"><span class="order-step-icon">🚫</span><small>Rejected</small></div></div>`;
+  const currentIndex=ORDER_STEPS.findIndex(step=>step.key===status);
+  return `<div class="order-stepper">${ORDER_STEPS.map((step,index)=>`<div class="order-step ${index<=currentIndex?'done':''} ${index===currentIndex?'current':''}"><span class="order-step-icon">${step.icon}</span><small>${step.label}</small></div>`).join('')}</div>`;
+}
+function orderChatMarkup(order,role){
+  const messages=(order.messages||[]).slice(-8);
+  return `<div class="order-chat"><div class="order-chat-log">${messages.map(message=>`<div class="order-message ${message.senderRole===role?'mine':''}"><strong>${html(message.senderRole==='owner'?'Store':message.senderName||'Customer')}</strong><span>${html(message.text)}</span></div>`).join('')||'<p class="muted no-messages">No messages yet.</p>'}</div><form class="order-chat-form" data-order-chat="${html(order.id)}"><input name="message" maxlength="240" placeholder="Message ${role==='owner'?'customer':'store'}"><button class="btn small" type="submit">Send</button></form></div>`;
+}
+async function sendOrderMessage(order,role,text,onSent){
+  const message={senderRole:role,senderName:role==='owner'?(session?.name||'Store'):(order.customerName||'Customer'),text,createdAt:now()};
+  const messages=[...(order.messages||[]),message];
+  try{
+    await api.update(orderKind(order.ownerId),order.id,{messages,updatedAt:now()});
+    order.messages=messages;
+    onSent?.();
+  }catch(error){toast(error.message||'Could not send message')}
+}
+function bindOrderChatForms(orders,role,onSent){
+  $$('.order-chat-form').forEach(form=>{
+    form.onsubmit=async event=>{
+      event.preventDefault();
+      const orderId=form.dataset.orderChat,order=orders.find(o=>o.id===orderId),input=form.querySelector('input[name="message"]'),text=input.value.trim();
+      if(!text||!order)return;
+      input.value='';
+      await sendOrderMessage(order,role,text,onSent);
+    };
+  });
+}
+function ownerOrderMarkup(order){
+  return `<article class="card order-item-card"><div class="section-head"><h3>Order #${html(order.id.slice(-6).toUpperCase())}</h3><span class="chip ${['Requested','Priced'].includes(order.status)?'due':''}">${html(order.status)}</span></div>${orderStepperMarkup(order.status)}<div class="order-items-list">${order.items.map(item=>`<div class="order-line-item"><span>${item.qty} ×</span><span>${html(item.name)}</span></div>`).join('')}</div>${order.prescriptionUrl?`<a class="link-btn" href="${html(order.prescriptionUrl)}" target="_blank" rel="noopener">📄 View prescription</a>`:''}${order.amount?`<h3 style="margin:10px 0">${money(order.amount)}</h3>`:'<p class="muted">Amount not set yet.</p>'}<div class="actions">${orderOwnerActions(order)}</div>${orderChatMarkup(order,'owner')}</article>`;
+}
+function orderOwnerActions(order){
+  const map={
+    Requested:`<button class="btn small" data-set-amount="${html(order.id)}">Set Amount</button><button class="btn small red" data-reject-order="${html(order.id)}">Reject</button>`,
+    Priced:`<button class="btn small green" data-accept-order="${html(order.id)}">Accept Order</button><button class="btn small red" data-reject-order="${html(order.id)}">Reject</button>`,
+    Accepted:`<button class="btn small green" data-advance-order="${html(order.id)}" data-next="Preparing">Start Preparing</button>`,
+    Preparing:`<button class="btn small green" data-advance-order="${html(order.id)}" data-next="Out for Delivery">Out for Delivery</button>`,
+    'Out for Delivery':`<button class="btn small green" data-advance-order="${html(order.id)}" data-next="Delivered">Mark Delivered</button>`,
+  };
+  return map[order.status]||'';
+}
+function bindOwnerOrderActions(){
+  $$('[data-set-amount]').forEach(button=>button.onclick=()=>setOrderAmount(button.dataset.setAmount));
+  $$('[data-accept-order]').forEach(button=>button.onclick=()=>advanceOrder(button.dataset.acceptOrder,'Accepted'));
+  $$('[data-advance-order]').forEach(button=>button.onclick=()=>advanceOrder(button.dataset.advanceOrder,button.dataset.next));
+  $$('[data-reject-order]').forEach(button=>button.onclick=()=>rejectOrder(button.dataset.rejectOrder));
+}
+function setOrderAmount(orderId){
+  const order=state.orders.find(row=>row.id===orderId);if(!order)return;
+  const store=state.stores.find(row=>row.id===order.storeId);
+  modal('Set Order Amount',`<form id="setAmountForm"><div class="field"><label>Amount (₹)</label><input name="amount" type="number" min="1" step="0.01" required></div>${!store?.upiId?'<p class="muted">Add a UPI ID in Edit Store to generate a payment QR code for the customer.</p>':''}<button class="btn full">Set Amount</button></form>`,()=>{
+    $('#setAmountForm').onsubmit=async event=>{
+      event.preventDefault();
+      const amount=Number(new FormData(event.target).get('amount')),button=event.submitter;
+      button.disabled=true;
+      const upiUri=buildUpiUri(store?.upiId,store?.name,amount,order.id);
+      try{
+        await api.update(orderKind(order.ownerId),order.id,{amount,upiUri,status:'Priced',pricedAt:now()});
+        Object.assign(order,{amount,upiUri,status:'Priced',pricedAt:now()});
+        closeModal();refreshView();toast('Amount set — customer can now pay');
+      }catch(error){button.disabled=false;toast(error.message||'Could not set amount')}
+    };
+  });
+}
+async function advanceOrder(orderId,next){
+  const order=state.orders.find(row=>row.id===orderId);if(!order||!next)return;
+  const changes={status:next,updatedAt:now()};
+  if(next==='Accepted')changes.acceptedAt=now();
+  if(next==='Delivered')changes.deliveredAt=now();
+  try{
+    await api.update(orderKind(order.ownerId),orderId,changes);
+    Object.assign(order,changes);
+    refreshView();
+    toast(next==='Delivered'?'Order delivered':`Order status: ${next}`);
+  }catch(error){toast(error.message||'Could not update order')}
+}
+async function rejectOrder(orderId){
+  const order=state.orders.find(row=>row.id===orderId);if(!order||!confirm('Reject this order?'))return;
+  try{
+    await api.update(orderKind(order.ownerId),orderId,{status:'Rejected',rejectedAt:now()});
+    Object.assign(order,{status:'Rejected',rejectedAt:now()});
+    refreshView();toast('Order rejected');
+  }catch(error){toast(error.message||'Could not reject order')}
+}
+function orderHistoryView(){
+  refreshView=orderHistoryView;
+  const store=activeStore();
+  const fromInput=$('#historyFrom')?.value||'',toInput=$('#historyTo')?.value||'';
+  const all=orderHistoryOrders(storeOrders(store?.id));
+  const filtered=all.filter(order=>{
+    const day=new Date(order.deliveredAt||order.updatedAt||order.createdAt).toISOString().slice(0,10);
+    if(fromInput&&day<fromInput)return false;
+    if(toInput&&day>toInput)return false;
+    return true;
+  }).sort((a,b)=>new Date(b.deliveredAt||b.updatedAt||b.createdAt)-new Date(a.deliveredAt||a.updatedAt||a.createdAt));
+  $('#page').innerHTML=`<div class="section-head"><div><h1>Order History</h1><p class="muted">Completed and rejected orders for ${html(store?.name||'this store')}.</p></div></div><div class="date-filter-bar"><label>From<input id="historyFrom" type="date" value="${html(fromInput)}"></label><label>To<input id="historyTo" type="date" value="${html(toInput)}"></label></div><div class="grid stats">${metric('Orders',filtered.length)}${metric('Revenue',money(filtered.filter(o=>o.status==='Delivered').reduce((sum,o)=>sum+Number(o.amount||0),0)))}</div><div class="card table-wrap"><table><thead><tr><th>Customer</th><th>Items</th><th>Amount</th><th>Status</th><th>Date</th></tr></thead><tbody>${filtered.map(orderHistoryRow).join('')||'<tr><td colspan="5">No orders in this period.</td></tr>'}</tbody></table></div>`;
+  $('#historyFrom').onchange=orderHistoryView;$('#historyTo').onchange=orderHistoryView;
+}
+function orderHistoryRow(order){
+  const customer=state.customers.find(c=>c.customerAccountId===order.customerAccountId&&c.storeId===order.storeId);
+  return `<tr><td>${html(customer?.customerName||order.customerName||'Customer')}</td><td>${order.items.map(i=>`${i.qty}×${html(i.name)}`).join(', ')}</td><td>${money(order.amount)}</td><td>${html(order.status)}</td><td>${new Date(order.deliveredAt||order.updatedAt||order.createdAt).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'})}</td></tr>`;
 }
 function ownerCardMarkup(card){
   const due=isCardDue(card),remaining=daysRemaining(card),pct=Math.min(100,Math.round((1-remaining/Math.max(1,Number(card.reminderDays)||1))*100));
@@ -304,8 +443,16 @@ async function renderPublicStore(hashParams){
   const account=await api.currentUser().catch(()=>null);
   if(!account)return renderCustomerAuth(store,ownerId,storeId);
   const customer=await ensureCustomerLink(ownerId,storeId,account);
-  const cards=(await api.list(cardKind(ownerId)).catch(()=>[])).filter(row=>row.storeId===storeId&&row.customerAccountId===account.$id);
-  renderCustomerCards(store,customer,cards);
+  await loadAndRenderCustomerView(store,customer);
+}
+async function loadAndRenderCustomerView(store,customer){
+  const [cards,orders]=await Promise.all([
+    api.list(cardKind(store.ownerId)).catch(()=>[]),
+    api.list(orderKind(store.ownerId)).catch(()=>[]),
+  ]);
+  renderCustomerCards(store,customer,
+    cards.filter(row=>row.storeId===store.id&&row.customerAccountId===customer.customerAccountId),
+    orders.filter(row=>row.storeId===store.id&&row.customerAccountId===customer.customerAccountId));
 }
 function renderCustomerAuth(store,ownerId,storeId){
   app.innerHTML=`<main class="public-store"><section class="store-hero"><span class="chip">${html(store.category||'Store')}</span><h1>${html(store.name)}</h1><p class="muted">${html(store.description||'')}${store.city?' · '+html(store.city):''}</p></section><div class="card"><div class="actions" style="margin-bottom:14px"><button class="btn small" id="custTabLogin">Sign in</button><button class="btn small secondary" id="custTabSignup">Sign up</button></div><form id="customerAuthForm"><div class="field full-name-field hidden"><label>Your name</label><input name="name"></div><div class="field"><label>Email</label><input name="email" type="email" required></div><div class="field"><label>Password</label><input name="password" type="password" minlength="8" required></div><button class="btn full" id="custAuthSubmit" type="submit">Sign In</button></form></div></main>`;
@@ -328,9 +475,23 @@ async function ensureCustomerLink(ownerId,storeId,account){
   const result=await api.executeFunction(api.config.digitalOrderFunctionId,{action:'digit58-link-customer',ownerId,storeId,customerName:account.name||account.email.split('@')[0],customerEmail:account.email});
   return result.customer;
 }
-function renderCustomerCards(store,customer,cards){
-  app.innerHTML=`<main class="public-store"><section class="store-hero"><span class="chip">${html(store.category||'Store')}</span><h1>${html(store.name)}</h1><p class="muted">${html(store.description||'')}${store.city?' · '+html(store.city):''}</p></section><div class="section-head"><h2>Your reminder cards</h2></div><div class="grid card-grid" id="customerCardGrid">${cards.map(customerCardCardMarkup).join('')||'<div class="empty">Your store will add reminder cards here after your first purchase.</div>'}</div><div class="actions" style="margin-top:20px"><button class="btn secondary" id="custLogout">Sign out</button></div></main>`;
+function renderCustomerCards(store,customer,cards,orders=[]){
+  const active=activeOrders(orders).sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
+  const history=orderHistoryOrders(orders).sort((a,b)=>new Date(b.updatedAt||b.createdAt)-new Date(a.updatedAt||a.createdAt));
+  app.innerHTML=`<main class="public-store"><section class="store-hero"><span class="chip">${html(store.category||'Store')}</span><h1>${html(store.name)}</h1><p class="muted">${html(store.description||'')}${store.city?' · '+html(store.city):''}</p></section>
+  <div class="section-head"><h2>Your orders</h2><button class="btn small" id="placeOrderBtn">+ Place New Order</button></div>
+  <div class="grid card-grid">${active.map(customerOrderMarkup).join('')||'<div class="empty">No active orders. Place a new order to get started.</div>'}</div>
+  <div class="section-head"><h2>Your reminder cards</h2></div>
+  <div class="grid card-grid" id="customerCardGrid">${cards.map(customerCardCardMarkup).join('')||'<div class="empty">Your store will add reminder cards here after your first purchase.</div>'}</div>
+  ${history.length?`<div class="section-head"><h2>Order History</h2></div><div class="card table-wrap"><table><thead><tr><th>Items</th><th>Amount</th><th>Status</th><th>Date</th></tr></thead><tbody>${history.map(customerOrderHistoryRow).join('')}</tbody></table></div>`:''}
+  <div class="actions" style="margin-top:20px"><button class="btn secondary" id="custLogout">Sign out</button></div></main>`;
+  active.filter(order=>order.status==='Priced'&&order.upiUri).forEach(order=>{
+    const target=document.getElementById(`qr-${order.id}`);
+    if(target&&window.QRCode)new QRCode(target,{text:order.upiUri,width:180,height:180});
+  });
+  $('#placeOrderBtn').onclick=()=>openPlaceOrderModal(store,customer);
   $$('[data-buy-again]').forEach(button=>button.onclick=()=>requestBuyAgain(button.dataset.buyAgain,store,customer));
+  bindOrderChatForms(active,'customer',()=>loadAndRenderCustomerView(store,customer));
   $('#custLogout').onclick=async()=>{await api.logout();location.hash=`store&owner=${encodeURIComponent(store.ownerId)}&store=${encodeURIComponent(store.id)}`;boot()};
 }
 function customerCardCardMarkup(card){
@@ -341,9 +502,43 @@ async function requestBuyAgain(cardId,store,customer){
   try{
     await api.executeFunction(api.config.digitalOrderFunctionId,{action:'digit58-request-buy-again',ownerId:store.ownerId,cardId});
     toast('Request sent — the store will confirm and deliver soon');
-    const cards=(await api.list(cardKind(store.ownerId)).catch(()=>[])).filter(row=>row.storeId===store.id&&row.customerAccountId===customer.customerAccountId);
-    renderCustomerCards(store,customer,cards);
+    await loadAndRenderCustomerView(store,customer);
   }catch(error){toast(error.message||'Could not send request')}
+}
+function customerOrderMarkup(order){
+  const paymentBlock=order.status==='Priced'
+    ?`<div class="qr-wrap" id="qr-${html(order.id)}"></div><h3 style="margin:10px 0;text-align:center">${money(order.amount)}</h3><p class="muted" style="text-align:center">Scan to pay via UPI. The store will accept your order once payment is received.</p>`
+    :order.amount?`<h3 style="margin:10px 0">${money(order.amount)}</h3>`:'<p class="muted">Waiting for the store to review and set the amount.</p>';
+  return `<article class="card order-item-card"><div class="section-head"><h3>Order #${html(order.id.slice(-6).toUpperCase())}</h3><span class="chip">${html(order.status)}</span></div>${orderStepperMarkup(order.status)}<div class="order-items-list">${order.items.map(item=>`<div class="order-line-item"><span>${item.qty} ×</span><span>${html(item.name)}</span></div>`).join('')}</div>${order.prescriptionUrl?`<a class="link-btn" href="${html(order.prescriptionUrl)}" target="_blank" rel="noopener">📄 View your prescription</a>`:''}${paymentBlock}${orderChatMarkup(order,'customer')}</article>`;
+}
+function customerOrderHistoryRow(order){
+  return `<tr><td>${order.items.map(item=>`${item.qty}×${html(item.name)}`).join(', ')}</td><td>${money(order.amount)}</td><td>${html(order.status)}</td><td>${new Date(order.updatedAt||order.createdAt).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'})}</td></tr>`;
+}
+function orderItemRowMarkup(){return `<div class="order-item-row"><input name="itemName[]" placeholder="Item name" required><input name="itemQty[]" type="number" min="1" value="1" aria-label="Quantity"><button type="button" class="btn small secondary remove-item-row" aria-label="Remove item">✕</button></div>`}
+function openPlaceOrderModal(store,customer){
+  modal('Place New Order',`<form id="placeOrderForm"><div id="orderItemRows">${orderItemRowMarkup()}</div><button type="button" class="btn small secondary" id="addItemRow" style="margin-top:8px">+ Add another item</button><div class="field" style="margin-top:14px"><label>Prescription image <small>(optional)</small></label><input id="prescriptionFile" type="file" accept="image/jpeg,image/png,image/webp"></div><button class="btn full" type="submit" style="margin-top:14px">Submit Order</button></form>`,()=>{
+    $('#addItemRow').onclick=()=>$('#orderItemRows').insertAdjacentHTML('beforeend',orderItemRowMarkup());
+    $('#orderItemRows').addEventListener('click',event=>{const row=event.target.closest('.remove-item-row');if(row&&$$('.order-item-row').length>1)row.closest('.order-item-row').remove()});
+    $('#placeOrderForm').onsubmit=async event=>{
+      event.preventDefault();
+      const names=$$('input[name="itemName[]"]').map(input=>input.value.trim());
+      const qtys=$$('input[name="itemQty[]"]').map(input=>Math.max(1,Number(input.value)||1));
+      const items=names.map((name,index)=>({name,qty:qtys[index]})).filter(item=>item.name);
+      if(!items.length)return toast('Add at least one item');
+      const button=event.submitter;button.disabled=true;
+      try{
+        let prescription={};
+        const file=$('#prescriptionFile').files[0];
+        if(file){
+          const uploaded=await api.uploadAdMedia(file);
+          prescription={prescriptionUrl:uploaded.mediaUrl,prescriptionFileId:uploaded.fileId,prescriptionName:uploaded.mediaName,prescriptionType:uploaded.mediaType};
+        }
+        await api.executeFunction(api.config.digitalOrderFunctionId,{action:'digit58-create-order',ownerId:store.ownerId,storeId:store.id,customerName:customer.customerName,customerEmail:customer.customerEmail,items,...prescription});
+        closeModal();toast('Order sent to the store');
+        await loadAndRenderCustomerView(store,customer);
+      }catch(error){button.disabled=false;toast(error.message||'Could not place order')}
+    };
+  });
 }
 
 window.addEventListener('hashchange',boot);

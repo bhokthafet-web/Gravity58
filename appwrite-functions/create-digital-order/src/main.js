@@ -7,6 +7,7 @@ const TOKEN_KIND_PREFIX = 'digital_token_';
 const SUBSCRIPTION_KIND_PREFIX = 'digital_subscription_';
 const DIGIT58_CUSTOMER_KIND_PREFIX = 'digit58_customer_';
 const DIGIT58_CARD_KIND_PREFIX = 'digit58_card_';
+const DIGIT58_ORDER_KIND_PREFIX = 'digit58_order_';
 const ADMIN_TEAM_ID = '6a776960001ca2fb66bf';
 
 const text = (value, max = 250) => String(value ?? '').trim().slice(0, max);
@@ -22,6 +23,7 @@ const menuKind = ownerId => safeKindId(MENU_KIND_PREFIX, ownerId, 48);
 const subscriptionKind = ownerId => safeKindId(SUBSCRIPTION_KIND_PREFIX, ownerId, 43);
 const digit58CustomerKind = ownerId => safeKindId(DIGIT58_CUSTOMER_KIND_PREFIX, ownerId, 36);
 const digit58CardKind = ownerId => safeKindId(DIGIT58_CARD_KIND_PREFIX, ownerId, 40);
+const digit58OrderKind = ownerId => safeKindId(DIGIT58_ORDER_KIND_PREFIX, ownerId, 40);
 const formatToken = number => String(number).padStart(3, '0');
 const cleanRow = row => {
   let payload = {};
@@ -428,6 +430,28 @@ async function requestDigit58BuyAgain(call, input, userId) {
   return updateRow(call, cardId, { ...card, status: 'Buy Requested', buyRequestedAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
 }
 
+async function createDigit58Order(call, input, userId) {
+  const ownerId = text(input.ownerId, 64), storeId = text(input.storeId, 40);
+  if (!ownerId || !storeId) throw new Error('Store details are missing.');
+  const items = Array.isArray(input.items) ? input.items : [];
+  if (!items.length || items.length > 40) throw new Error('Add between 1 and 40 items to your order.');
+  const cleanItems = items.map(item => ({
+    name: text(item.name, 160), qty: Math.max(1, Math.min(99, Math.floor(finite(item.qty, 1)))),
+  })).filter(item => item.name);
+  if (!cleanItems.length) throw new Error('Enter at least one item name.');
+  const createdAt = new Date().toISOString();
+  const record = {
+    id: digit58Id('order'), ownerId, storeId, customerAccountId: userId,
+    customerName: text(input.customerName, 120), customerEmail: text(input.customerEmail, 250),
+    items: cleanItems, amount: 0, upiUri: '',
+    prescriptionUrl: text(input.prescriptionUrl, 1000), prescriptionFileId: text(input.prescriptionFileId, 80),
+    prescriptionName: text(input.prescriptionName, 200), prescriptionType: text(input.prescriptionType, 100),
+    status: 'Requested', messages: [], createdAt, updatedAt: createdAt,
+  };
+  const created = await createRow(call, record.id, digit58OrderKind(ownerId), record, rowPermissionsFor([ownerId, userId]));
+  return cleanRow(created);
+}
+
 export default async ({ req, res, error }) => {
   if (req.method === 'GET') return res.json({ ok: true, service: 'Gravity58 secure digital orders' });
   if (req.method !== 'POST') return res.json({ ok: false, error: 'Method not allowed.' }, 405);
@@ -469,6 +493,10 @@ export default async ({ req, res, error }) => {
     if (requestBody?.action === 'digit58-request-buy-again') {
       const call = appwriteClient(req);
       return res.json({ ok: true, card: await requestDigit58BuyAgain(call, requestBody, userId) });
+    }
+    if (requestBody?.action === 'digit58-create-order') {
+      const call = appwriteClient(req);
+      return res.json({ ok: true, order: await createDigit58Order(call, requestBody, userId) }, 201);
     }
     const input = requestBody?.order || requestBody || {};
     const ownerId = text(input.cloudOwnerId || input.ownerId, 64);
