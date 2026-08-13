@@ -3,7 +3,7 @@ const app=$('#app'),api=window.Gravity58Ads,now=()=>new Date().toISOString(),mon
 const esc=value=>String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
 const AD_PLACEMENT_SPECS={right_rail:{label:'Right menu rail',size:'1080 × 1350 px',ratio:'4:5'},preparing:{label:'Preparing screen',size:'1200 × 628 px',ratio:'1.91:1'},thankyou:{label:'Thank-you screen',size:'1080 × 1080 px',ratio:'1:1'}};
 const placementSpec=slotId=>AD_PLACEMENT_SPECS[slotId]||{label:slotId||'Advertisement',size:'Confirm with G58',ratio:''};
-let user=null,view='overview',data={bookings:[],advertisements:[],profiles:[],slots:[],customers:[],businesses:[],postRows:[],legacyPostDocument:null,menuPricing:[],menuEntitlements:[],menuRequests:[],dinerOrders:[],dinerOrdersLoaded:false,digit58Stores:[],digit58Requests:[],digit58Entitlements:[],digit58Customers:[],digit58CustomersLoaded:false};
+let user=null,view='overview',data={bookings:[],advertisements:[],profiles:[],slots:[],customers:[],businesses:[],postRows:[],legacyPostDocument:null,menuPricing:[],menuEntitlements:[],menuRequests:[],dinerOrders:[],dinerOrdersLoaded:false,digit58Stores:[],digit58Requests:[],digit58Entitlements:[],digit58Customers:[],digit58CustomersLoaded:false,digit58Pricing:[]};
 function toast(message){const target=$('#toast');target.textContent=message;target.classList.add('show');setTimeout(()=>target.classList.remove('show'),2200)}
 function timeLeft(expiresAt,lifetime=false){if(lifetime)return'Lifetime';if(!expiresAt)return'No expiry';const ms=new Date(expiresAt)-new Date();if(ms<=0)return'Expired';const days=Math.floor(ms/864e5),hours=Math.floor(ms%864e5/36e5),minutes=Math.floor(ms%36e5/6e4);return`${days?days+'d ':''}${hours}h ${minutes}m remaining`}
 async function boot(){if(!api.configured)return configurationRequired();user=await api.currentUser();if(!user)return login();if(!await api.isTeamAdmin())return accessDenied();await loadData();shell()}
@@ -19,11 +19,11 @@ const renderAdminLogin=login;
 login=function(){renderAdminLogin();installAdminPasswordRecovery()};
 function accessDenied(){app.innerHTML=`<main class="screen auth"><section class="auth-card glass"><h2>Access denied</h2><p>This signed-in account is not a G58 team member.</p><button class="btn full" id="leave">Sign out</button></section></main>`;$('#leave').onclick=async()=>{await api.logout();user=null;login()}}
 async function loadData(){
-  const [bookings,advertisements,profiles,slots,posts,menuPricing,menuEntitlements,menuRequests,digit58Stores,digit58Requests,digit58Entitlements]=await Promise.all([api.list('bookings'),api.list('advertisements'),api.list('profiles'),api.list('slots'),api.list('posts'),api.list('digital_menu_pricing').catch(()=>[]),api.list('digital_menu_entitlements').catch(()=>[]),api.list('digital_menu_requests').catch(()=>[]),api.list('digit58_owners').catch(()=>[]),api.list('digit58_requests').catch(()=>[]),api.list('digit58_entitlements').catch(()=>[])]);
+  const [bookings,advertisements,profiles,slots,posts,menuPricing,menuEntitlements,menuRequests,digit58Stores,digit58Requests,digit58Entitlements,digit58Pricing]=await Promise.all([api.list('bookings'),api.list('advertisements'),api.list('profiles'),api.list('slots'),api.list('posts'),api.list('digital_menu_pricing').catch(()=>[]),api.list('digital_menu_entitlements').catch(()=>[]),api.list('digital_menu_requests').catch(()=>[]),api.list('digit58_owners').catch(()=>[]),api.list('digit58_requests').catch(()=>[]),api.list('digit58_entitlements').catch(()=>[]),api.list('digit58_pricing').catch(()=>[])]);
   const legacy=posts.find(row=>row.recordKey==='global'&&(row.customers||row.businesses));
   const postRows=posts.filter(row=>row.recordKey!=='global'),customers=[],businesses=[];
   postRows.forEach(row=>{const post=parsePost(row.payload);if(!post)return;post.userId||=row.userId||'';(row.postType==='business'?businesses:customers).push(post)});
-  data={bookings,advertisements,profiles,slots,postRows,legacyPostDocument:legacy||null,customers:legacy?parse(legacy.customers):customers,businesses:legacy?parse(legacy.businesses):businesses,menuPricing,menuEntitlements,menuRequests,digit58Stores,digit58Requests,digit58Entitlements,digit58Customers:data.digit58Customers||[],digit58CustomersLoaded:false};
+  data={bookings,advertisements,profiles,slots,postRows,legacyPostDocument:legacy||null,customers:legacy?parse(legacy.customers):customers,businesses:legacy?parse(legacy.businesses):businesses,menuPricing,menuEntitlements,menuRequests,digit58Stores,digit58Requests,digit58Entitlements,digit58Pricing,digit58Customers:data.digit58Customers||[],digit58CustomersLoaded:false};
   await reconcileExpiredCampaigns();
 }
 async function reconcileExpiredCampaigns(){
@@ -226,12 +226,27 @@ function drawDiners(){
     toast(`Exported ${summaries.length} customer(s) to CSV`);
   };
 }
+function digit58PricingConfig(){const row=data.digit58Pricing.find(item=>(item.id||item.$id)==='default')||data.digit58Pricing[0]||{};return {paymentLink:row.paymentLink||''}}
+function editDigit58Pricing(){
+  const pricing=digit58PricingConfig();
+  modal('Set Default Digit58 Payment Link',`<form id="digit58PricingForm"><p class="muted">This link is pre-filled whenever you send a payment link for a Digit58 activation or additional-store request (${money(399)}/month). You can still override it per request.</p><div class="field"><label>Default payment link</label><input name="paymentLink" type="url" value="${esc(pricing.paymentLink)}" placeholder="https://rzp.io/..." required></div><button class="btn full">Save Default Link</button></form>`,()=>{
+    $('#digit58PricingForm').onsubmit=async event=>{
+      event.preventDefault();
+      const values=Object.fromEntries(new FormData(event.target)),payload={paymentLink:values.paymentLink.trim(),updatedAt:now()},existing=data.digit58Pricing.find(row=>(row.id||row.$id)==='default');
+      try{
+        existing?await api.update('digit58_pricing',existing.id,payload):await api.create('digit58_pricing',payload,'default',api.permissionSet('digit58_pricing',user.$id,true));
+        closeModal();await refresh();toast('Default Digit58 payment link saved');
+      }catch(error){toast(error.message||'Could not save payment link')}
+    };
+  });
+}
 function digit58(){
   const stores=[...data.digit58Stores].sort((a,b)=>new Date(b.createdAt||b.$createdAt)-new Date(a.createdAt||a.$createdAt));
   const owners=new Set(stores.map(row=>row.ownerId)).size;
   const requests=[...data.digit58Requests].filter(row=>!['Activated','Rejected'].includes(row.status)).sort((a,b)=>new Date(b.createdAt||b.$createdAt)-new Date(a.createdAt||a.$createdAt));
   const entitlements=[...data.digit58Entitlements].sort((a,b)=>String(a.ownerEmail||a.ownerId).localeCompare(String(b.ownerEmail||b.ownerId)));
-  $('#page').innerHTML=`<div class="section-head"><div><h1>Digit58</h1><p class="muted">Store subscriptions, activation requests, stores and customers across every Digit58 owner.</p></div></div><div class="grid stats">${metric('Stores',stores.length)}${metric('Store Owners',owners)}${metric('Pending Requests',requests.length)}${metric('Active Subscriptions',entitlements.filter(row=>row.active&&!row.paused).length)}</div>
+  const pricing=digit58PricingConfig();
+  $('#page').innerHTML=`<div class="section-head"><div><h1>Digit58</h1><p class="muted">Store subscriptions, activation requests, stores and customers across every Digit58 owner.</p></div><button class="btn secondary" id="editDigit58Pricing">${pricing.paymentLink?'Edit':'Set'} Default Payment Link</button></div><div class="grid stats">${metric('Stores',stores.length)}${metric('Store Owners',owners)}${metric('Pending Requests',requests.length)}${metric('Active Subscriptions',entitlements.filter(row=>row.active&&!row.paused).length)}</div>
   <div class="section-head"><h2>Store owner requests</h2></div>
   <div class="card table-wrap"><table><thead><tr><th>Owner</th><th>Amount</th><th>Status</th><th>Actions</th></tr></thead><tbody>${requests.map(digit58RequestRow).join('')||'<tr><td colspan="4">No pending Digit58 requests.</td></tr>'}</tbody></table></div>
   <div class="section-head"><h2>Store owner subscriptions</h2></div>
@@ -242,6 +257,7 @@ function digit58(){
   <div class="card table-wrap" id="digit58CustomerTable">${data.digit58CustomersLoaded?digit58CustomersTable():'<div class="empty">Click "Load Customers" to fetch customer details across all stores.</div>'}</div>`;
   const draw=()=>{const q=$('#digit58Search').value.toLowerCase(),category=$('#digit58Category').value,rows=stores.filter(row=>(category==='All'||row.category===category)&&`${row.storeName} ${row.category} ${row.ownerEmail}`.toLowerCase().includes(q));$('#digit58Rows').innerHTML=rows.map(digit58Row).join('')||'<tr><td colspan="5">No matching stores.</td></tr>'};
   $('#digit58Search').oninput=draw;$('#digit58Category').onchange=draw;
+  $('#editDigit58Pricing').onclick=editDigit58Pricing;
   $$('[data-send-digit58-link]').forEach(button=>button.onclick=()=>sendDigit58PaymentLink(button.dataset.sendDigit58Link));
   $$('[data-activate-digit58]').forEach(button=>button.onclick=()=>activateDigit58Request(button.dataset.activateDigit58));
   $$('[data-reject-digit58]').forEach(button=>button.onclick=()=>rejectDigit58Request(button.dataset.rejectDigit58));
@@ -263,7 +279,8 @@ function digit58EntitlementRow(row){
 }
 function sendDigit58PaymentLink(id){
   const row=data.digit58Requests.find(item=>item.id===id);if(!row)return;
-  modal('Send Digit58 Payment Link',`<form id="sendDigit58LinkForm"><p><strong>${esc(row.ownerEmail||row.ownerId)}</strong> requested Digit58 store access for ${money(row.amount||399)}.</p><div class="field"><label>Payment link</label><input name="paymentLink" type="url" required placeholder="Razorpay payment link"></div><button class="btn full">Send to store owner</button></form>`,()=>{
+  const defaultLink=digit58PricingConfig().paymentLink;
+  modal('Send Digit58 Payment Link',`<form id="sendDigit58LinkForm"><p><strong>${esc(row.ownerEmail||row.ownerId)}</strong> requested Digit58 store access for ${money(row.amount||399)}.</p><div class="field"><label>Payment link</label><input name="paymentLink" type="url" value="${esc(defaultLink)}" required placeholder="Razorpay payment link"></div>${defaultLink?'<p class="muted">Pre-filled from your saved default — edit if this request needs a different link.</p>':''}<button class="btn full">Send to store owner</button></form>`,()=>{
     $('#sendDigit58LinkForm').onsubmit=async event=>{event.preventDefault();const values=Object.fromEntries(new FormData(event.target));try{await api.update('digit58_requests',id,{...values,status:'Payment Link Sent',paymentLinkSentAt:now()});closeModal();await refresh();toast('Payment link sent to store owner')}catch(error){toast(error.message||'Could not send payment link')}};
   });
 }
