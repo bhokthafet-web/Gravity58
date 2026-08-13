@@ -107,7 +107,7 @@ function bindBuyRequestActions(){$$('[data-deliver]').forEach(button=>button.onc
 function storesView(){
   refreshView=storesView;
   $('#page').innerHTML=`<div class="section-head"><div><h1>My Stores</h1><p class="muted">Create a store, then share its customer link so people can sign up.</p></div><button class="btn" id="addStore">+ New Store</button></div><div class="grid store-grid">${state.stores.map(storeCard).join('')||'<div class="empty">No stores yet — create your first one.</div>'}</div>`;
-  $('#addStore').onclick=openStoreForm;
+  $('#addStore').onclick=()=>openStoreForm();
   $$('[data-share-store]').forEach(button=>button.onclick=()=>shareStoreModal(button.dataset.shareStore));
   $$('[data-edit-store]').forEach(button=>button.onclick=()=>openStoreForm(button.dataset.editStore));
 }
