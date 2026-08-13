@@ -117,3 +117,6 @@ body{background:radial-gradient(circle at 12% 3%,#ffdcae 0,transparent 32%),radi
 *{scrollbar-width:thin;scrollbar-color:#e0b075 transparent}
 ::-webkit-scrollbar{width:9px;height:9px}::-webkit-scrollbar-thumb{background:#e0b075;border-radius:99px}::-webkit-scrollbar-track{background:transparent}
 a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid var(--cyan);outline-offset:2px}
+.track-message.schedule-start-alert{background:linear-gradient(135deg,#ffe3d0,#ffb083);border:2px solid #e2560a;color:#5a2200;font-weight:700;text-align:center;animation:scheduleRingPulse 1s ease-in-out infinite}
+.track-message.schedule-start-alert strong{display:block;font-size:18px;margin-bottom:4px}
+@keyframes scheduleRingPulse{0%,100%{box-shadow:0 0 0 rgba(226,86,10,.4)}50%{box-shadow:0 0 26px rgba(226,86,10,.6)}}
