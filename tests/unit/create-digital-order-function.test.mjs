@@ -310,3 +310,91 @@ test('restaurant payment approval permanently deletes the receipt before advanci
     globalThis.fetch = previousFetch;
   }
 });
+
+test('digit58: linking a customer to a store grants owner+customer permissions and is idempotent', async () => {
+  const previousFetch = globalThis.fetch;
+  const requests = [];
+  const storeId = 'store_1';
+  let existingRows = [];
+  globalThis.fetch = async (url, options = {}) => {
+    const method = options.method || 'GET', body = options.body ? JSON.parse(options.body) : null, target = String(url);
+    requests.push({ url: target, method, body });
+    if (method === 'GET' && target.includes('/rows?')) return new Response(JSON.stringify({ rows: existingRows }), { status: 200 });
+    if (method === 'POST') { existingRows = [{ $id: body.rowId, kind: body.data.kind, payload: body.data.payload }]; return new Response(JSON.stringify({ $id: body.rowId, ...body.data }), { status: 201 }); }
+    throw new Error(`Unexpected request ${url}`);
+  };
+  process.env.APPWRITE_FUNCTION_PROJECT_ID = 'project_1';
+  try {
+    const context = () => ({
+      req: { method: 'POST', headers: { 'x-appwrite-key': 'dynamic-key', 'x-appwrite-user-id': customerId }, bodyJson: { action: 'digit58-link-customer', ownerId, storeId, customerName: 'Test Customer', customerEmail: 'customer@example.test' } },
+      res: { json: (body, status = 200) => ({ body, status }) }, error: () => {},
+    });
+    const first = await createDigitalOrder(context());
+    assert.equal(first.status, 200);
+    assert.equal(first.body.customer.customerAccountId, customerId);
+    const createRequest = requests.find(request => request.method === 'POST');
+    assert.ok(createRequest.body.permissions.includes(`read(\"user:${ownerId}\")`));
+    assert.ok(createRequest.body.permissions.includes(`read(\"user:${customerId}\")`));
+    const beforeSecondCall = requests.length;
+    const second = await createDigitalOrder(context());
+    assert.equal(second.status, 200);
+    assert.equal(second.body.customer.customerAccountId, customerId);
+    assert.ok(!requests.slice(beforeSecondCall).some(request => request.method === 'POST'), 'second link request should not create a duplicate row');
+  } finally {
+    globalThis.fetch = previousFetch;
+  }
+});
+
+test('digit58: only the store owner can create a reminder card for a customer', async () => {
+  const response = await createDigitalOrder({
+    req: { method: 'POST', headers: { 'x-appwrite-key': 'dynamic-key', 'x-appwrite-user-id': customerId }, bodyJson: { action: 'digit58-create-card', ownerId, storeId: 'store_1', customerAccountId: customerId, productName: 'Thyroid medicine', price: 199, reminderDays: 30 } },
+    res: { json: (body, status = 200) => ({ body, status }) }, error: () => {},
+  });
+  assert.equal(response.status, 403);
+});
+
+test('digit58: the store owner can create a reminder card granting both owner and customer access', async () => {
+  const previousFetch = globalThis.fetch;
+  const requests = [];
+  globalThis.fetch = async (url, options = {}) => {
+    const method = options.method || 'GET', body = options.body ? JSON.parse(options.body) : null;
+    requests.push({ url: String(url), method, body });
+    if (method === 'POST') return new Response(JSON.stringify({ $id: body.rowId, ...body.data }), { status: 201 });
+    throw new Error(`Unexpected request ${url}`);
+  };
+  process.env.APPWRITE_FUNCTION_PROJECT_ID = 'project_1';
+  try {
+    const response = await createDigitalOrder({
+      req: { method: 'POST', headers: { 'x-appwrite-key': 'dynamic-key', 'x-appwrite-user-id': ownerId }, bodyJson: { action: 'digit58-create-card', ownerId, storeId: 'store_1', customerAccountId: customerId, productName: 'Thyroid medicine', price: 199, reminderDays: 30 } },
+      res: { json: (body, status = 200) => ({ body, status }) }, error: () => {},
+    });
+    assert.equal(response.status, 201);
+    assert.equal(response.body.card.productName, 'Thyroid medicine');
+    assert.equal(response.body.card.status, 'Active');
+    const createRequest = requests.find(request => request.method === 'POST');
+    assert.ok(createRequest.body.permissions.includes(`read(\"user:${ownerId}\")`));
+    assert.ok(createRequest.body.permissions.includes(`read(\"user:${customerId}\")`));
+  } finally {
+    globalThis.fetch = previousFetch;
+  }
+});
+
+test('digit58: only the card\'s own customer can request a buy-again reorder', async () => {
+  const previousFetch = globalThis.fetch;
+  const card = { $id: 'card_1', kind: `digit58_card_${ownerId}`, payload: JSON.stringify({ id: 'card_1', ownerId, storeId: 'store_1', customerAccountId: customerId, productName: 'Thyroid medicine', price: 199, reminderDays: 30, status: 'Active' }) };
+  globalThis.fetch = async (url, options = {}) => {
+    const method = options.method || 'GET';
+    if (method === 'GET') return new Response(JSON.stringify(card), { status: 200 });
+    throw new Error(`Unexpected request ${url}`);
+  };
+  process.env.APPWRITE_FUNCTION_PROJECT_ID = 'project_1';
+  try {
+    const response = await createDigitalOrder({
+      req: { method: 'POST', headers: { 'x-appwrite-key': 'dynamic-key', 'x-appwrite-user-id': 'someone_else' }, bodyJson: { action: 'digit58-request-buy-again', ownerId, cardId: 'card_1' } },
+      res: { json: (body, status = 200) => ({ body, status }) }, error: () => {},
+    });
+    assert.equal(response.status, 403);
+  } finally {
+    globalThis.fetch = previousFetch;
+  }
+});

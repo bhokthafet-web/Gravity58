@@ -195,10 +195,8 @@ function openCardForm(customer,cardId=''){
           Object.assign(card,changes);
         }else{
           const reminderDays=Math.max(1,Number(values.reminderDays)||30);
-          const record={id:id('card'),ownerId,storeId:owner.storeId,customerAccountId:owner.customerAccountId,productName:values.productName.trim(),price:Number(values.price),reminderDays,purchasedAt:now(),dueAt:new Date(Date.now()+reminderDays*86400000).toISOString(),status:'Active',timesDelivered:0,buyRequestedAt:'',createdAt:now()};
-          const permissions=api.userPermissionSet?.([ownerId,owner.customerAccountId]);
-          const created=await api.create(cardKind(ownerId),record,record.id,permissions);
-          state.cards.push({...record,...created});
+          const result=await api.executeFunction(api.config.digitalOrderFunctionId,{action:'digit58-create-card',ownerId,storeId:owner.storeId,customerAccountId:owner.customerAccountId,productName:values.productName.trim(),price:Number(values.price),reminderDays});
+          state.cards.push(result.card);
         }
         save();closeModal();customerDetailView(owner.id);toast(cardId?'Card updated':'Reminder card added');
       }catch(error){button.disabled=false;toast(error.message||'Could not save card')}
@@ -260,13 +258,8 @@ function renderCustomerAuth(store,ownerId,storeId){
   };
 }
 async function ensureCustomerLink(ownerId,storeId,account){
-  const kind=customerKind(ownerId);
-  const rows=await api.list(kind).catch(()=>[]);
-  const existing=rows.find(row=>row.storeId===storeId&&row.customerAccountId===account.$id);
-  if(existing)return existing;
-  const record={id:id('cust'),ownerId,storeId,customerAccountId:account.$id,customerName:account.name||account.email.split('@')[0],customerEmail:account.email,phone:'',createdAt:now()};
-  const permissions=api.userPermissionSet?.([ownerId,account.$id]);
-  return api.create(kind,record,record.id,permissions);
+  const result=await api.executeFunction(api.config.digitalOrderFunctionId,{action:'digit58-link-customer',ownerId,storeId,customerName:account.name||account.email.split('@')[0],customerEmail:account.email});
+  return result.customer;
 }
 function renderCustomerCards(store,customer,cards){
   app.innerHTML=`<main class="public-store"><section class="store-hero"><span class="chip">${html(store.category||'Store')}</span><h1>${html(store.name)}</h1><p class="muted">${html(store.description||'')}${store.city?' · '+html(store.city):''}</p></section><div class="section-head"><h2>Your reminder cards</h2></div><div class="grid card-grid" id="customerCardGrid">${cards.map(customerCardCardMarkup).join('')||'<div class="empty">Your store will add reminder cards here after your first purchase.</div>'}</div><div class="actions" style="margin-top:20px"><button class="btn secondary" id="custLogout">Sign out</button></div></main>`;
@@ -279,7 +272,7 @@ function customerCardCardMarkup(card){
 }
 async function requestBuyAgain(cardId,store,customer){
   try{
-    await api.update(cardKind(store.ownerId),cardId,{status:'Buy Requested',buyRequestedAt:now()});
+    await api.executeFunction(api.config.digitalOrderFunctionId,{action:'digit58-request-buy-again',ownerId:store.ownerId,cardId});
     toast('Request sent — the store will confirm and deliver soon');
     const cards=(await api.list(cardKind(store.ownerId)).catch(()=>[])).filter(row=>row.storeId===store.id&&row.customerAccountId===customer.customerAccountId);
     renderCustomerCards(store,customer,cards);

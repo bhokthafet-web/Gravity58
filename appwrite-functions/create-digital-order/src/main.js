@@ -5,6 +5,8 @@ const MENU_KIND_PREFIX = 'digital_menu_';
 const ORDER_KIND_PREFIX = 'digital_order_';
 const TOKEN_KIND_PREFIX = 'digital_token_';
 const SUBSCRIPTION_KIND_PREFIX = 'digital_subscription_';
+const DIGIT58_CUSTOMER_KIND_PREFIX = 'digit58_customer_';
+const DIGIT58_CARD_KIND_PREFIX = 'digit58_card_';
 const ADMIN_TEAM_ID = '6a776960001ca2fb66bf';
 
 const text = (value, max = 250) => String(value ?? '').trim().slice(0, max);
@@ -18,6 +20,8 @@ const orderKind = ownerId => safeKindId(ORDER_KIND_PREFIX, ownerId, 47);
 const tokenKind = ownerId => safeKindId(TOKEN_KIND_PREFIX, ownerId, 47);
 const menuKind = ownerId => safeKindId(MENU_KIND_PREFIX, ownerId, 48);
 const subscriptionKind = ownerId => safeKindId(SUBSCRIPTION_KIND_PREFIX, ownerId, 43);
+const digit58CustomerKind = ownerId => safeKindId(DIGIT58_CUSTOMER_KIND_PREFIX, ownerId, 36);
+const digit58CardKind = ownerId => safeKindId(DIGIT58_CARD_KIND_PREFIX, ownerId, 40);
 const formatToken = number => String(number).padStart(3, '0');
 const cleanRow = row => {
   let payload = {};
@@ -154,13 +158,16 @@ function mergeOrder(existing, incoming, restaurant) {
   };
 }
 
-function rowPermissions(userId, ownerId) {
+function rowPermissionsFor(userIds) {
   return [...new Set([
-    ...[userId, ownerId].filter(Boolean).flatMap(id => [
+    ...userIds.filter(Boolean).flatMap(id => [
       `read(\"user:${id}\")`, `update(\"user:${id}\")`, `delete(\"user:${id}\")`,
     ]),
     `read(\"team:${ADMIN_TEAM_ID}\")`,
   ])];
+}
+function rowPermissions(userId, ownerId) {
+  return rowPermissionsFor([userId, ownerId]);
 }
 
 async function validateReceipt(call, input, userId) {
@@ -374,6 +381,52 @@ async function confirmSubscriptionPayment(call, input, userId) {
   });
 }
 
+const digit58Id = prefix => `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
+
+async function linkDigit58Customer(call, input, userId) {
+  const ownerId = text(input.ownerId, 64), storeId = text(input.storeId, 40);
+  if (!ownerId || !storeId) throw new Error('Store details are missing.');
+  const kind = digit58CustomerKind(ownerId);
+  const existing = (await listRowsByKind(call, kind)).map(cleanRow)
+    .find(row => row.storeId === storeId && row.customerAccountId === userId);
+  if (existing) return existing;
+  const record = {
+    id: digit58Id('cust'), ownerId, storeId, customerAccountId: userId,
+    customerName: text(input.customerName, 120), customerEmail: text(input.customerEmail, 250),
+    phone: '', createdAt: new Date().toISOString(),
+  };
+  const created = await createRow(call, record.id, kind, record, rowPermissionsFor([ownerId, userId]));
+  return cleanRow(created);
+}
+
+async function createDigit58Card(call, input, userId) {
+  const ownerId = text(input.ownerId, 64), storeId = text(input.storeId, 40), customerAccountId = text(input.customerAccountId, 64);
+  if (userId !== ownerId) { const denied = new Error('Only the store owner can add a reminder card.'); denied.code = 403; throw denied; }
+  if (!storeId || !customerAccountId) throw new Error('Customer details are missing.');
+  const productName = text(input.productName, 160);
+  if (!productName) throw new Error('Enter an item or medicine name.');
+  const price = Math.max(0, finite(input.price));
+  const reminderDays = Math.max(1, Math.floor(finite(input.reminderDays, 30)));
+  const createdAt = new Date().toISOString();
+  const record = {
+    id: digit58Id('card'), ownerId, storeId, customerAccountId, productName, price, reminderDays,
+    purchasedAt: createdAt, dueAt: new Date(Date.now() + reminderDays * 86400000).toISOString(),
+    status: 'Active', timesDelivered: 0, buyRequestedAt: '', createdAt,
+  };
+  const created = await createRow(call, record.id, digit58CardKind(ownerId), record, rowPermissionsFor([ownerId, customerAccountId]));
+  return cleanRow(created);
+}
+
+async function requestDigit58BuyAgain(call, input, userId) {
+  const ownerId = text(input.ownerId, 64), cardId = text(input.cardId, 40);
+  if (!ownerId || !cardId) throw new Error('Card details are missing.');
+  const row = await call(`/tablesdb/${DATABASE_ID}/tables/${TABLE_ID}/rows/${encodeURIComponent(cardId)}`);
+  const card = cleanRow(row);
+  if (row.kind !== digit58CardKind(ownerId)) throw new Error('This is not a Digit58 reminder card.');
+  if (card.customerAccountId !== userId) { const denied = new Error("Only this card's customer can request a reorder."); denied.code = 403; throw denied; }
+  return updateRow(call, cardId, { ...card, status: 'Buy Requested', buyRequestedAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
+}
+
 export default async ({ req, res, error }) => {
   if (req.method === 'GET') return res.json({ ok: true, service: 'Gravity58 secure digital orders' });
   if (req.method !== 'POST') return res.json({ ok: false, error: 'Method not allowed.' }, 405);
@@ -403,6 +456,18 @@ export default async ({ req, res, error }) => {
     if (requestBody?.action === 'confirm-subscription-payment') {
       const call = appwriteClient(req);
       return res.json({ ok: true, subscription: await confirmSubscriptionPayment(call, requestBody.subscription || {}, userId) });
+    }
+    if (requestBody?.action === 'digit58-link-customer') {
+      const call = appwriteClient(req);
+      return res.json({ ok: true, customer: await linkDigit58Customer(call, requestBody, userId) });
+    }
+    if (requestBody?.action === 'digit58-create-card') {
+      const call = appwriteClient(req);
+      return res.json({ ok: true, card: await createDigit58Card(call, requestBody, userId) }, 201);
+    }
+    if (requestBody?.action === 'digit58-request-buy-again') {
+      const call = appwriteClient(req);
+      return res.json({ ok: true, card: await requestDigit58BuyAgain(call, requestBody, userId) });
     }
     const input = requestBody?.order || requestBody || {};
     const ownerId = text(input.cloudOwnerId || input.ownerId, 64);

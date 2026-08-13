@@ -7,6 +7,7 @@ window.GRAVITY58_CONFIG = {
     adminTeamId: "6a776960001ca2fb66bf",
     sharedTableId: "g58_records",
     mediaBucketId: "ad-media",
+    digitalOrderFunctionId: "create-digital-order",
     collections: {
       posts: "g58_posts",
       profiles: "ad_customer_profiles",
