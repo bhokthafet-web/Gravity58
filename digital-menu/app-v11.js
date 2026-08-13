@@ -698,8 +698,9 @@ function orderCompactTable(orders,{actions=true,emptyText='No orders in this per
 function ordersBoardMarkup(orders,emptyText='No orders yet'){
   if(!orders.length)return empty(emptyText);
   const activeOrders=orders.filter(order=>activeQueueStatus(order.status));
-  const featured=activeOrders.length?activeOrders:orders.slice(0,3);
-  const history=activeOrders.length?orders.filter(order=>!activeQueueStatus(order.status)):orders.slice(3);
+  const featured=activeOrders.length?activeOrders:orders.slice().sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt)).slice(0,3);
+  const featuredIds=new Set(featured.map(order=>order.id));
+  const history=orders.filter(order=>!featuredIds.has(order.id));
   const subtitle=activeOrders.length?'Completed and other closed orders.':'Order 4 onward is shown in a compact list.';
   return `<div class="featured-order-grid">${featured.map(orderCard).join('')}</div><div class="section-head compact-order-heading"><div><h2>Orders History</h2><p class="muted">${subtitle}</p></div><div class="order-history-controls">${ownerPeriodControls('Filter order history')}<span class="chip">${history.length} order${history.length===1?'':'s'}</span></div></div>${orderCompactTable(history)}`;
 }
