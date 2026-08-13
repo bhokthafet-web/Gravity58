@@ -366,12 +366,16 @@ test('digit58: the store owner can create a reminder card granting both owner an
   process.env.APPWRITE_FUNCTION_PROJECT_ID = 'project_1';
   try {
     const response = await createDigitalOrder({
-      req: { method: 'POST', headers: { 'x-appwrite-key': 'dynamic-key', 'x-appwrite-user-id': ownerId }, bodyJson: { action: 'digit58-create-card', ownerId, storeId: 'store_1', customerAccountId: customerId, productName: 'Thyroid medicine', price: 199, reminderDays: 30 } },
+      req: { method: 'POST', headers: { 'x-appwrite-key': 'dynamic-key', 'x-appwrite-user-id': ownerId }, bodyJson: { action: 'digit58-create-card', ownerId, storeId: 'store_1', customerAccountId: customerId, productName: 'Thyroid medicine', price: 199, reminderDays: 30, upiId: 'store@upi', payeeName: 'Test Pharmacy' } },
       res: { json: (body, status = 200) => ({ body, status }) }, error: () => {},
     });
     assert.equal(response.status, 201);
     assert.equal(response.body.card.productName, 'Thyroid medicine');
     assert.equal(response.body.card.status, 'Active');
+    assert.equal(response.body.card.upiId, 'store@upi');
+    assert.match(response.body.card.upiUri, /^upi:\/\/pay\?/);
+    assert.match(response.body.card.upiUri, /pa=store%40upi/);
+    assert.match(response.body.card.upiUri, /am=199\.00/);
     const createRequest = requests.find(request => request.method === 'POST');
     assert.ok(createRequest.body.permissions.includes(`read(\"user:${ownerId}\")`));
     assert.ok(createRequest.body.permissions.includes(`read(\"user:${customerId}\")`));

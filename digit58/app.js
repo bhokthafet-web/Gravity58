@@ -322,18 +322,34 @@ function bindOwnerOrderActions(){
   $$('[data-advance-order]').forEach(button=>button.onclick=()=>advanceOrder(button.dataset.advanceOrder,button.dataset.next));
   $$('[data-reject-order]').forEach(button=>button.onclick=()=>rejectOrder(button.dataset.rejectOrder));
 }
+function bindLiveQrPreview({amountInput,upiInput,previewEl,payeeName,refId}){
+  const update=()=>{
+    const amount=Number(amountInput.value)||0,upiId=upiInput.value.trim();
+    previewEl.innerHTML='';
+    if(amount>0&&upiId&&window.QRCode){
+      new QRCode(previewEl,{text:buildUpiUri(upiId,payeeName,amount,refId),width:160,height:160});
+    }else{
+      previewEl.innerHTML='<p class="muted" style="margin:0;padding:12px;text-align:center">Enter an amount and UPI ID to preview the QR code.</p>';
+    }
+  };
+  amountInput.addEventListener('input',update);
+  upiInput.addEventListener('input',update);
+  update();
+}
 function setOrderAmount(orderId){
   const order=state.orders.find(row=>row.id===orderId);if(!order)return;
   const store=state.stores.find(row=>row.id===order.storeId);
-  modal('Set Order Amount',`<form id="setAmountForm"><div class="field"><label>Amount (₹)</label><input name="amount" type="number" min="1" step="0.01" required></div>${!store?.upiId?'<p class="muted">Add a UPI ID in Edit Store to generate a payment QR code for the customer.</p>':''}<button class="btn full">Set Amount</button></form>`,()=>{
+  modal('Set Order Amount',`<form id="setAmountForm"><div class="form-grid"><div class="field"><label>Amount (₹)</label><input id="amountInput" name="amount" type="number" min="1" step="0.01" value="${order.amount||''}" required></div><div class="field"><label>UPI ID</label><input id="upiIdInput" name="upiId" value="${html(order.upiId||store?.upiId||'')}" placeholder="yourstore@upi"></div></div><div class="qr-wrap" id="amountQrPreview"></div><button class="btn full" style="margin-top:14px">Set Amount</button></form>`,()=>{
+    bindLiveQrPreview({amountInput:$('#amountInput'),upiInput:$('#upiIdInput'),previewEl:$('#amountQrPreview'),payeeName:store?.name,refId:order.id});
     $('#setAmountForm').onsubmit=async event=>{
       event.preventDefault();
-      const amount=Number(new FormData(event.target).get('amount')),button=event.submitter;
+      const amount=Number($('#amountInput').value),upiId=$('#upiIdInput').value.trim(),button=event.submitter;
+      if(!amount||amount<=0)return toast('Enter a valid amount');
       button.disabled=true;
-      const upiUri=buildUpiUri(store?.upiId,store?.name,amount,order.id);
+      const upiUri=buildUpiUri(upiId,store?.name,amount,order.id);
       try{
-        await api.update(orderKind(order.ownerId),order.id,{amount,upiUri,status:'Priced',pricedAt:now()});
-        Object.assign(order,{amount,upiUri,status:'Priced',pricedAt:now()});
+        await api.update(orderKind(order.ownerId),order.id,{amount,upiId,upiUri,status:'Priced',pricedAt:now()});
+        Object.assign(order,{amount,upiId,upiUri,status:'Priced',pricedAt:now()});
         closeModal();refreshView();toast('Amount set — customer can now pay');
       }catch(error){button.disabled=false;toast(error.message||'Could not set amount')}
     };
@@ -389,19 +405,22 @@ function bindOwnerCardActions(){
 function openCardForm(customer,cardId=''){
   const card=cardId?state.cards.find(row=>row.id===cardId):null;
   const owner=customer||state.customers.find(row=>row.customerAccountId===card?.customerAccountId&&row.storeId===card?.storeId);
-  modal(cardId?'Edit Reminder Card':'Add Reminder Card',`<form id="cardForm"><div class="field"><label>Item / medicine name</label><input name="productName" value="${html(card?.productName||'')}" required></div><div class="form-grid"><div class="field"><label>Price (₹)</label><input name="price" type="number" min="0" step="0.01" value="${card?.price??''}" required></div><div class="field"><label>Remind every (days)</label><input name="reminderDays" type="number" min="1" step="1" value="${card?.reminderDays||30}" required></div></div><button class="btn full">${cardId?'Save Card':'Add Card'}</button></form>`,()=>{
+  const store=state.stores.find(row=>row.id===owner?.storeId);
+  modal(cardId?'Edit Reminder Card':'Add Reminder Card',`<form id="cardForm"><div class="field"><label>Item / medicine name</label><input name="productName" value="${html(card?.productName||'')}" required></div><div class="form-grid"><div class="field"><label>Price (₹)</label><input id="cardPriceInput" name="price" type="number" min="0" step="0.01" value="${card?.price??''}" required></div><div class="field"><label>Remind every (days)</label><input name="reminderDays" type="number" min="1" step="1" value="${card?.reminderDays||30}" required></div></div><div class="field"><label>UPI ID</label><input id="cardUpiInput" name="upiId" value="${html(card?.upiId||store?.upiId||'')}" placeholder="yourstore@upi"></div><div class="qr-wrap" id="cardQrPreview"></div><button class="btn full" style="margin-top:14px">${cardId?'Save Card':'Add Card'}</button></form>`,()=>{
+    bindLiveQrPreview({amountInput:$('#cardPriceInput'),upiInput:$('#cardUpiInput'),previewEl:$('#cardQrPreview'),payeeName:store?.name,refId:card?.id||'new'});
     $('#cardForm').onsubmit=async event=>{
       event.preventDefault();
       const values=Object.fromEntries(new FormData(event.target)),ownerId=cloudOwnerId(),button=event.submitter;
       button.disabled=true;
       try{
         if(cardId){
-          const changes={productName:values.productName.trim(),price:Number(values.price),reminderDays:Number(values.reminderDays)};
+          const price=Number(values.price),upiId=values.upiId.trim();
+          const changes={productName:values.productName.trim(),price,reminderDays:Number(values.reminderDays),upiId,upiUri:buildUpiUri(upiId,store?.name,price,cardId)};
           await api.update(cardKind(ownerId),cardId,changes);
           Object.assign(card,changes);
         }else{
           const reminderDays=Math.max(1,Number(values.reminderDays)||30);
-          const result=await api.executeFunction(api.config.digitalOrderFunctionId,{action:'digit58-create-card',ownerId,storeId:owner.storeId,customerAccountId:owner.customerAccountId,productName:values.productName.trim(),price:Number(values.price),reminderDays});
+          const result=await api.executeFunction(api.config.digitalOrderFunctionId,{action:'digit58-create-card',ownerId,storeId:owner.storeId,customerAccountId:owner.customerAccountId,productName:values.productName.trim(),price:Number(values.price),reminderDays,upiId:values.upiId.trim(),payeeName:store?.name});
           state.cards.push(result.card);
         }
         save();closeModal();customerDetailView(owner.id);toast(cardId?'Card updated':'Reminder card added');
@@ -489,6 +508,10 @@ function renderCustomerCards(store,customer,cards,orders=[]){
     const target=document.getElementById(`qr-${order.id}`);
     if(target&&window.QRCode)new QRCode(target,{text:order.upiUri,width:180,height:180});
   });
+  cards.filter(card=>isCardDue(card)&&card.status!=='Buy Requested'&&card.upiUri).forEach(card=>{
+    const target=document.getElementById(`card-qr-${card.id}`);
+    if(target&&window.QRCode)new QRCode(target,{text:card.upiUri,width:160,height:160});
+  });
   $('#placeOrderBtn').onclick=()=>openPlaceOrderModal(store,customer);
   $$('[data-buy-again]').forEach(button=>button.onclick=()=>requestBuyAgain(button.dataset.buyAgain,store,customer));
   bindOrderChatForms(active,'customer',()=>loadAndRenderCustomerView(store,customer));
@@ -496,7 +519,8 @@ function renderCustomerCards(store,customer,cards,orders=[]){
 }
 function customerCardCardMarkup(card){
   const due=isCardDue(card),remaining=daysRemaining(card),pct=Math.min(100,Math.round((1-remaining/Math.max(1,Number(card.reminderDays)||1))*100));
-  return `<article class="card reminder-card ${due?'due':''}"><h3>${html(card.productName)}</h3><p class="muted">${money(card.price)} · every ${Number(card.reminderDays)} day(s)</p><div class="reminder-progress ${due?'due':''}"><span style="width:${pct}%"></span></div><div class="chips"><span class="chip ${due?'due':''}">${due?'Due now':`${remaining} day(s) left`}</span>${card.status==='Buy Requested'?'<span class="chip due">Request sent</span>':''}</div>${due&&card.status!=='Buy Requested'?`<button class="btn full green" data-buy-again="${html(card.id)}">Buy Again</button>`:card.status==='Buy Requested'?'<p class="muted">Waiting for the store to confirm and deliver.</p>':''}</article>`;
+  const payBlock=due&&card.status!=='Buy Requested'?`${card.upiUri?`<div class="qr-wrap" id="card-qr-${html(card.id)}"></div>`:''}<button class="btn full green" data-buy-again="${html(card.id)}">Buy Again</button>`:card.status==='Buy Requested'?'<p class="muted">Waiting for the store to confirm and deliver.</p>':'';
+  return `<article class="card reminder-card ${due?'due':''}"><h3>${html(card.productName)}</h3><p class="muted">${money(card.price)} · every ${Number(card.reminderDays)} day(s)</p><div class="reminder-progress ${due?'due':''}"><span style="width:${pct}%"></span></div><div class="chips"><span class="chip ${due?'due':''}">${due?'Due now':`${remaining} day(s) left`}</span>${card.status==='Buy Requested'?'<span class="chip due">Request sent</span>':''}</div>${payBlock}</article>`;
 }
 async function requestBuyAgain(cardId,store,customer){
   try{

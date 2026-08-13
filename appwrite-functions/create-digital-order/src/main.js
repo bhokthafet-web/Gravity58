@@ -402,6 +402,12 @@ async function linkDigit58Customer(call, input, userId) {
   return cleanRow(created);
 }
 
+function buildDigit58UpiUri(upiId, payeeName, amount, refId) {
+  if (!upiId) return '';
+  const reference = `58${String(refId || Date.now()).replace(/\D/g, '').slice(-30)}`.slice(0, 35);
+  const params = new URLSearchParams({ pa: upiId, pn: payeeName || upiId, tr: reference, tn: `Digit58 order ${refId}`, am: Number(amount || 0).toFixed(2), cu: 'INR' });
+  return `upi://pay?${params.toString()}`;
+}
 async function createDigit58Card(call, input, userId) {
   const ownerId = text(input.ownerId, 64), storeId = text(input.storeId, 40), customerAccountId = text(input.customerAccountId, 64);
   if (userId !== ownerId) { const denied = new Error('Only the store owner can add a reminder card.'); denied.code = 403; throw denied; }
@@ -410,9 +416,12 @@ async function createDigit58Card(call, input, userId) {
   if (!productName) throw new Error('Enter an item or medicine name.');
   const price = Math.max(0, finite(input.price));
   const reminderDays = Math.max(1, Math.floor(finite(input.reminderDays, 30)));
+  const upiId = text(input.upiId, 120);
+  const cardId = digit58Id('card');
   const createdAt = new Date().toISOString();
   const record = {
-    id: digit58Id('card'), ownerId, storeId, customerAccountId, productName, price, reminderDays,
+    id: cardId, ownerId, storeId, customerAccountId, productName, price, reminderDays,
+    upiId, upiUri: buildDigit58UpiUri(upiId, text(input.payeeName, 120), price, cardId),
     purchasedAt: createdAt, dueAt: new Date(Date.now() + reminderDays * 86400000).toISOString(),
     status: 'Active', timesDelivered: 0, buyRequestedAt: '', createdAt,
   };
