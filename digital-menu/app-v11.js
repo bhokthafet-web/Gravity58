@@ -129,7 +129,7 @@ let orderResetTimer = null;
 let orderRetentionTimer = null;
 let scheduleAlertTimer = null;
 const scheduleAlertedIds = new Set();
-let ownerPeriodFilter = {mode:'day',day:indiaDateValue(),month:indiaDateValue().slice(0,7),year:indiaDateValue().slice(0,4)};
+let ownerPeriodFilter = {mode:'day',day:indiaDateValue(),week:indiaWeekValue(),month:indiaDateValue().slice(0,7),year:indiaDateValue().slice(0,4)};
 let ownerOrderStatusFilter = 'All';
 
 function activeMenuEntitlement(){
@@ -201,16 +201,31 @@ function cloudTokenKind(ownerId=cloudOwnerId()){return `${CLOUD_TOKEN_KIND_PREFI
 function orderDay(value=now()){return new Date(value).toLocaleDateString('en-CA',{timeZone:'Asia/Kolkata'}).replaceAll('-','')}
 function indiaDateValue(value=now()){const key=orderDay(value);return `${key.slice(0,4)}-${key.slice(4,6)}-${key.slice(6,8)}`}
 function orderCalendarDate(order){const key=String(order?.orderDay||'');return /^\d{8}$/.test(key)?`${key.slice(0,4)}-${key.slice(4,6)}-${key.slice(6,8)}`:indiaDateValue(order?.createdAt||now())}
+function indiaWeekValue(value=now()){const d=new Date(`${indiaDateValue(value)}T00:00:00`);const day=(d.getDay()+6)%7;d.setDate(d.getDate()-day+3);const firstThursday=new Date(d.getFullYear(),0,4);const diff=(d-firstThursday)/86400000;const week=1+Math.round(diff/7);return `${d.getFullYear()}-W${String(week).padStart(2,'0')}`}
+function ownerWeekRange(weekValue){const [yearStr,weekStr]=String(weekValue||'').split('-W');const year=Number(yearStr),week=Number(weekStr);if(!year||!week)return null;const jan4=new Date(year,0,4);const jan4Day=(jan4.getDay()+6)%7;const monday=new Date(jan4);monday.setDate(jan4.getDate()-jan4Day+(week-1)*7);const sunday=new Date(monday);sunday.setDate(monday.getDate()+6);const fmt=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;return {start:fmt(monday),end:fmt(sunday)}}
 function effectiveOwnerPeriod(premium=menuFeature('permanentOrders')){
   if(!premium)return {mode:'day',value:indiaDateValue()};
-  const mode=['day','month','year'].includes(ownerPeriodFilter.mode)?ownerPeriodFilter.mode:'day';
-  return {mode,value:ownerPeriodFilter[mode]||({day:indiaDateValue(),month:indiaDateValue().slice(0,7),year:indiaDateValue().slice(0,4)})[mode]};
+  const mode=['day','week','month','year'].includes(ownerPeriodFilter.mode)?ownerPeriodFilter.mode:'day';
+  return {mode,value:ownerPeriodFilter[mode]||({day:indiaDateValue(),week:indiaWeekValue(),month:indiaDateValue().slice(0,7),year:indiaDateValue().slice(0,4)})[mode]};
 }
-function ordersForOwnerPeriod(records,premium=menuFeature('permanentOrders')){const period=effectiveOwnerPeriod(premium);return records.filter(order=>{const date=orderCalendarDate(order);return period.mode==='day'?date===period.value:period.mode==='month'?date.startsWith(period.value+'-'):date.startsWith(period.value+'-')})}
-function ownerPeriodLabel(premium=menuFeature('permanentOrders')){const period=effectiveOwnerPeriod(premium);if(!premium)return 'Today';if(period.mode==='day')return new Date(`${period.value}T12:00:00`).toLocaleDateString('en-IN',{dateStyle:'medium'});if(period.mode==='month')return new Date(`${period.value}-01T12:00:00`).toLocaleDateString('en-IN',{month:'long',year:'numeric'});return period.value}
+function ordersForOwnerPeriod(records,premium=menuFeature('permanentOrders')){
+  const period=effectiveOwnerPeriod(premium);
+  if(period.mode==='week'){const range=ownerWeekRange(period.value);return range?records.filter(order=>{const date=orderCalendarDate(order);return date>=range.start&&date<=range.end}):records}
+  return records.filter(order=>{const date=orderCalendarDate(order);return period.mode==='day'?date===period.value:period.mode==='month'?date.startsWith(period.value+'-'):date.startsWith(period.value+'-')});
+}
+function ownerPeriodLabel(premium=menuFeature('permanentOrders')){
+  const period=effectiveOwnerPeriod(premium);
+  if(!premium)return 'Today';
+  if(period.mode==='day')return new Date(`${period.value}T12:00:00`).toLocaleDateString('en-IN',{dateStyle:'medium'});
+  if(period.mode==='week'){const range=ownerWeekRange(period.value);return range?`${new Date(`${range.start}T12:00:00`).toLocaleDateString('en-IN',{day:'numeric',month:'short'})} – ${new Date(`${range.end}T12:00:00`).toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'})}`:period.value}
+  if(period.mode==='month')return new Date(`${period.value}-01T12:00:00`).toLocaleDateString('en-IN',{month:'long',year:'numeric'});
+  return period.value;
+}
 function ownerPeriodControls(label='Filter dashboard'){
-  const premium=menuFeature('permanentOrders'),period=effectiveOwnerPeriod(premium),input=period.mode==='day'?`<input id="ownerPeriodValue" type="date" value="${html(period.value)}">`:period.mode==='month'?`<input id="ownerPeriodValue" type="month" value="${html(period.value)}">`:`<input id="ownerPeriodValue" type="number" min="2020" max="2100" step="1" value="${html(period.value)}" aria-label="Year">`;
-  return `<div class="owner-period-filter" aria-label="${html(label)}"><label><span>View by</span><select id="ownerPeriodMode" ${premium?'':'disabled'}><option value="day" ${period.mode==='day'?'selected':''}>Date</option>${premium?`<option value="month" ${period.mode==='month'?'selected':''}>Month</option><option value="year" ${period.mode==='year'?'selected':''}>Year</option>`:''}</select></label><label><span>${period.mode==='day'?'Date':period.mode==='month'?'Month':'Year'}</span>${premium?input:`<input value="${html(period.value)}" disabled aria-label="Today only">`}</label><small>${premium?'Premium historical filters':'Free plan shows today only'}</small></div>`;
+  const premium=menuFeature('permanentOrders'),period=effectiveOwnerPeriod(premium);
+  const input=period.mode==='day'?`<input id="ownerPeriodValue" type="date" value="${html(period.value)}">`:period.mode==='week'?`<input id="ownerPeriodValue" type="week" value="${html(period.value)}">`:period.mode==='month'?`<input id="ownerPeriodValue" type="month" value="${html(period.value)}">`:`<input id="ownerPeriodValue" type="number" min="2020" max="2100" step="1" value="${html(period.value)}" aria-label="Year">`;
+  const modeLabel=period.mode==='day'?'Date':period.mode==='week'?'Week':period.mode==='month'?'Month':'Year';
+  return `<div class="owner-period-filter" aria-label="${html(label)}"><label><span>View by</span><select id="ownerPeriodMode" ${premium?'':'disabled'}><option value="day" ${period.mode==='day'?'selected':''}>Date</option>${premium?`<option value="week" ${period.mode==='week'?'selected':''}>Week</option><option value="month" ${period.mode==='month'?'selected':''}>Month</option><option value="year" ${period.mode==='year'?'selected':''}>Year</option>`:''}</select></label><label><span>${modeLabel}</span>${premium?input:`<input value="${html(period.value)}" disabled aria-label="Today only">`}</label><small>${premium?'Premium historical filters':'Free plan shows today only'}</small></div>`;
 }
 function bindOwnerPeriodControls(renderer){const mode=$('#ownerPeriodMode'),value=$('#ownerPeriodValue');if(mode&&!mode.disabled)mode.onchange=()=>{ownerPeriodFilter.mode=mode.value;renderer()};if(value&&!value.disabled)value.onchange=()=>{if(value.value){ownerPeriodFilter[ownerPeriodFilter.mode]=value.value;renderer()}}}
 function formatToken(value){return String(Math.max(0,Number(value)||0)).padStart(4,'0')}
@@ -680,11 +695,18 @@ function orderCompactRow(o,{actions=true}={}){
   return `<tr class="compact-order-row ${incoming?'incoming-order-row':''}" data-status="${html(o.status)}" data-order-row="${html(o.id)}"><td><strong class="compact-order-token">${formatToken(o.tokenNumber)}</strong><small>${html(o.id)}</small></td><td><strong>${html(o.customerName||o.customer||'Guest')}</strong><small>${html(identity)}</small></td><td class="compact-order-items">${items}</td><td><strong>${new Date(o.createdAt).toLocaleDateString('en-IN',{dateStyle:'medium'})}</strong><small>${new Date(o.createdAt).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'})}</small></td><td><strong>${money(o.total)}</strong></td><td><span class="chip order-status">${html(o.status)}</span></td>${actions?`<td><div class="compact-order-actions">${orderActions(o)}<button class="btn small secondary" data-order-details="${html(o.id)}">Details</button><button class="btn small secondary" data-print-order="${html(o.id)}">Print</button></div></td>`:''}</tr>`;
 }
 function orderCompactTable(orders,{actions=true,emptyText='No orders in this period'}={}){if(!orders.length)return empty(emptyText);return `<div class="card table-wrap order-list-table"><table><thead><tr><th>Token / Order</th><th>Customer</th><th>Items</th><th>Date & time</th><th>Amount</th><th>Status</th>${actions?'<th>Actions</th>':''}</tr></thead><tbody>${orders.map(order=>orderCompactRow(order,{actions})).join('')}</tbody></table></div>`}
-function ordersBoardMarkup(orders,emptyText='No orders yet'){if(!orders.length)return empty(emptyText);const featured=orders.slice(0,3),history=orders.slice(3);return `<div class="featured-order-grid">${featured.map(orderCard).join('')}</div>${history.length?`<div class="section-head compact-order-heading"><div><h2>Orders History</h2><p class="muted">Order 4 onward is shown in a compact list.</p></div><span class="chip">${history.length} more</span></div>${orderCompactTable(history)}`:''}`}
+function ordersBoardMarkup(orders,emptyText='No orders yet'){
+  if(!orders.length)return empty(emptyText);
+  const activeOrders=orders.filter(order=>activeQueueStatus(order.status));
+  const featured=activeOrders.length?activeOrders:orders.slice(0,3);
+  const history=activeOrders.length?orders.filter(order=>!activeQueueStatus(order.status)):orders.slice(3);
+  const subtitle=activeOrders.length?'Completed and other closed orders.':'Order 4 onward is shown in a compact list.';
+  return `<div class="featured-order-grid">${featured.map(orderCard).join('')}</div><div class="section-head compact-order-heading"><div><h2>Orders History</h2><p class="muted">${subtitle}</p></div><div class="order-history-controls">${ownerPeriodControls('Filter order history')}<span class="chip">${history.length} order${history.length===1?'':'s'}</span></div></div>${orderCompactTable(history)}`;
+}
 function ordersView(){
   if(!menuFeature('ordersEnabled')){view='pricing';return pricingView()}
   const statuses=['All','Payment Verification','Pending','Accepted','Preparing','Ready','Completed','Rejected'],allOrders=sortedRestaurantOrders(),periodOrders=ordersForOwnerPeriod(allOrders),periodIds=new Set(periodOrders.map(order=>order.id)),orders=allOrders.filter(order=>activeQueueStatus(order.status)||periodIds.has(order.id)),active=allOrders.filter(order=>activeQueueStatus(order.status)),visible=orders.filter(order=>ownerOrderStatusFilter==='All'||order.status===ownerOrderStatusFilter);
-  $('#page').innerHTML=`<div class="section-head"><div><h1>Live Orders <small class="order-reset-copy">(${menuFeature('permanentOrders')?'Premium: order history is permanent':`You're using freeware — orders reset in <span id="orderResetCountdown">${orderResetCountdown()}</span>`})</small></h1><p class="muted">Instant order board · ${active.length} active token(s) always pinned · history: ${html(ownerPeriodLabel())}</p></div><span class="status-pill live-sync-pill"><span class="dot"></span> Live sync & sound alerts</span></div><div class="order-controls"><div class="tabs">${statuses.map(s=>`<button class="btn small ${s===ownerOrderStatusFilter?'':'secondary'}" data-tab="${s}">${s}</button>`).join('')}</div>${ownerPeriodControls('Filter order history')}</div><div id="ordersGrid" class="orders-board">${ordersBoardMarkup(visible,`No ${ownerOrderStatusFilter==='All'?'':ownerOrderStatusFilter.toLowerCase()+' '}orders in this period`)}</div>`;
+  $('#page').innerHTML=`<div class="section-head"><div><h1>Live Orders <small class="order-reset-copy">(${menuFeature('permanentOrders')?'Premium: order history is permanent':`You're using freeware — orders reset in <span id="orderResetCountdown">${orderResetCountdown()}</span>`})</small></h1><p class="muted">Instant order board · ${active.length} active token(s) always pinned · history: ${html(ownerPeriodLabel())}</p></div><span class="status-pill live-sync-pill"><span class="dot"></span> Live sync & sound alerts</span></div><div class="order-controls"><div class="tabs">${statuses.map(s=>`<button class="btn small ${s===ownerOrderStatusFilter?'':'secondary'}" data-tab="${s}">${s}</button>`).join('')}</div></div><div id="ordersGrid" class="orders-board">${ordersBoardMarkup(visible,`No ${ownerOrderStatusFilter==='All'?'':ownerOrderStatusFilter.toLowerCase()+' '}orders in this period`)}</div>`;
   clearInterval(orderResetTimer);if(!menuFeature('permanentOrders'))orderResetTimer=setInterval(()=>{const target=$('#orderResetCountdown');if(target)target.textContent=orderResetCountdown()},1000);
   $$('[data-tab]').forEach(b=>b.onclick=()=>{ownerOrderStatusFilter=b.dataset.tab;ordersView()});
   bindOwnerPeriodControls(ordersView);
