@@ -956,6 +956,14 @@ async function loadCloudMenuConfig(recordId,ownerId){
 
 function publicMenuParams(){return new URLSearchParams(location.hash.slice(1).replace(/^menu(?:&|\?)?/,''))}
 
+function publicMenuHeadingText(cats,filters){
+  const category=cats.find(c=>c.id===filters.category)?.name||'';
+  const diet=filters.diet&&filters.diet!=='all'?filters.diet:'';
+  if(category&&diet)return `${category} · Selected: ${diet}`;
+  if(diet)return `Selected: ${diet}`;
+  if(category)return category;
+  return 'Menu Items';
+}
 function renderPublicMenu(){
   const params=publicMenuParams();
   const configUrl=params.get('config')||'',cloudId=params.get('cloud')||'',cloudMenu=!!cloudId,ownerId=params.get('owner')||'',published=!!configUrl,sharedMenu=published||cloudMenu;
@@ -998,7 +1006,7 @@ function renderPublicMenu(){
             <select id="publicMenuCategory" aria-label="Category"><option value="all" ${filters.category==='all'?'selected':''}>All categories</option>${cats.map(c=>`<option value="${c.id}" ${c.id===filters.category?'selected':''}>${html(c.name)}</option>`).join('')}</select>
           </div>
         </div>
-        <header class="focused-menu-heading"><div><p class="eyebrow">CURATED MENU</p><h2 id="publicMenuHeading">${html(activeCategory?.name||'All dishes')}</h2></div><span id="publicMenuCount">${items.length} items</span></header>
+        <header class="focused-menu-heading"><div><h2 id="publicMenuHeading">${html(publicMenuHeadingText(cats,filters))}</h2></div><span id="publicMenuCount">${items.length} items</span></header>
         <div class="poster-menu-list swiggy-menu-list" id="publicMenuItems">${items.map((item,index)=>publicItem(item,{categories:cats,index,readOnly:published||!orderingEnabled})).join('')}</div>
         <div class="empty menu-filter-empty hidden" id="menuFilterEmpty">No dishes match these filters.</div>
       </section>
@@ -1013,7 +1021,7 @@ function renderPublicMenu(){
     cards.forEach(card=>{const show=(filters.category==='all'||card.dataset.category===filters.category)&&(filters.diet==='all'||card.dataset.type===filters.diet)&&(!filters.available||card.dataset.available==='true')&&(!query||card.dataset.search.includes(query));card.classList.toggle('hidden',!show);if(show)visible++});
     $$('[data-diet]').forEach(chip=>chip.classList.toggle('active',chip.dataset.diet===filters.diet));
     $('.availability-filter')?.classList.toggle('active',filters.available);
-    const heading=cats.find(c=>c.id===filters.category)?.name||'All dishes';$('#publicMenuHeading').textContent=heading;$('#publicMenuCount').textContent=`${visible} item${visible===1?'':'s'}`;$('#menuFilterEmpty').classList.toggle('hidden',visible!==0);persistFilters();
+    $('#publicMenuHeading').textContent=publicMenuHeadingText(cats,filters);$('#publicMenuCount').textContent=`${visible} item${visible===1?'':'s'}`;$('#menuFilterEmpty').classList.toggle('hidden',visible!==0);persistFilters();
   };
   $('#publicMenuCategory').onchange=e=>{filters.category=e.target.value;applyFilters()};
   $$('[data-diet]').forEach(b=>b.onclick=()=>{filters.diet=b.dataset.diet;applyFilters()});
