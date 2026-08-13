@@ -62,6 +62,9 @@ test("Premium owner gets readable history filters and a restaurant-scoped POS li
   await expect(mode).toHaveCSS("color", "rgb(45, 22, 10)");
   await mode.selectOption("month");
   await expect(page.locator('#ownerPeriodValue[type="month"]')).toBeVisible();
+  await page.locator('[data-view="orders"]').click();
+  await expect(page.getByRole("heading", { name: /Live Orders/ })).toBeVisible();
+  await expect(page.getByRole("link", { name: /Premium POS/ })).toHaveCount(0);
   await assertNoErrors();
 });
 
@@ -226,6 +229,7 @@ test("signed-out customer places an immediate receipt-backed order without login
   await prepareProductionMock(page, { seed: { "digital_menu_owner-1": [premiumMenu] } });
   await page.goto("/digital-menu/#menu&cloud=restaurant-one&owner=owner-1");
   await page.getByRole("textbox", { name: "Enter your name" }).fill("Walk-in Guest");
+  await page.getByPlaceholder("Enter customer phone number").fill("9876500001");
   await page.getByRole("button", { name: "Continue to Menu" }).click();
   await page.locator('.poster-menu-item [data-qty-action="plus"]').click();
   await page.locator("#openCart").click();
@@ -241,6 +245,32 @@ test("signed-out customer places an immediate receipt-backed order without login
   await assertNoErrors();
 });
 
+test("signed-in customer can see all restaurant orders and the combined total", async ({ page }) => {
+  const assertNoErrors = monitorPageErrors(page);
+  const customer = { $id: "customer-orders-1", email: "orders@customer.test", name: "Order Customer" };
+  await prepareProductionMock(page, {
+    initialUser: customer,
+    seed: {
+      "digital_menu_owner-1": [menuRecord()],
+      "digital_order_owner-1": [
+        { id: "customer-order-1", ownerId: "owner-1", cloudOwnerId: "owner-1", restaurantId: "restaurant-one", customerAccountId: customer.$id, customerName: customer.name, phone: "9876500010", tokenNumber: 3, items: [{ id: "item-one", name: "Meal One", qty: 1, price: 199 }], total: 199, status: "Completed", createdAt: "2026-08-12T08:00:00.000Z" },
+        { id: "customer-order-2", ownerId: "owner-1", cloudOwnerId: "owner-1", restaurantId: "restaurant-one", customerAccountId: customer.$id, customerName: customer.name, phone: "9876500010", tokenNumber: 4, items: [{ id: "item-one", name: "Meal One", qty: 2, price: 199 }], total: 398, status: "Pending", createdAt: "2026-08-13T08:00:00.000Z" },
+      ],
+    },
+  });
+  await page.goto("/digital-menu/#menu&cloud=restaurant-one&owner=owner-1");
+  await page.getByRole("textbox", { name: "Enter your name" }).fill(customer.name);
+  await page.getByPlaceholder("Enter customer phone number").fill("9876500010");
+  await page.getByRole("button", { name: "Continue to Menu" }).click();
+  await expect(page.getByRole("button", { name: "My Orders" })).toBeVisible();
+  await page.getByRole("button", { name: "My Orders" }).click();
+  await expect(page.getByRole("heading", { name: "My Orders" })).toBeVisible();
+  await expect(page.locator(".customer-order-history-summary")).toContainText("2");
+  await expect(page.locator(".customer-order-history-summary")).toContainText("₹597");
+  await expect(page.locator(".customer-order-history-list>article")).toHaveCount(2);
+  await assertNoErrors();
+});
+
 test("Premium customer creates a meal subscription and schedules a receipt-backed UPI order", async ({ page }) => {
   const assertNoErrors = monitorPageErrors(page);
   const premiumMenu = menuRecord();
@@ -252,6 +282,7 @@ test("Premium customer creates a meal subscription and schedules a receipt-backe
   page.on("popup", (popup) => popup.close());
   await page.goto("/digital-menu/#menu&cloud=restaurant-one&owner=owner-1");
   await page.getByRole("textbox", { name: "Enter your name" }).fill("Premium Customer");
+  await page.getByPlaceholder("Enter customer phone number").fill("9876500002");
   await page.getByRole("button", { name: "Continue to Menu" }).click();
   await expect(page.locator(".premium-customer-access-card")).toHaveCount(0);
   await expect(page.locator("#openMealSubscriptions")).toBeHidden();
@@ -368,6 +399,7 @@ test("checkout requires a restaurant UPI QR and does not offer payment-link redi
   page.on("popup", (popup) => popup.close());
   await page.goto("/digital-menu/#menu&cloud=restaurant-one&owner=owner-1");
   await page.getByRole("textbox", { name: "Enter your name" }).fill("Pay Link Customer");
+  await page.getByPlaceholder("Enter customer phone number").fill("9876500003");
   await page.getByRole("button", { name: "Continue to Menu" }).click();
   await page.locator('.poster-menu-item[data-search*="meal one"] [data-qty-action="plus"]').click();
   await page.locator("#openCart").click();

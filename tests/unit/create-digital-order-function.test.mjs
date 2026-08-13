@@ -5,6 +5,7 @@ import createDigitalOrder from '../../appwrite-functions/create-digital-order/sr
 const ownerId = 'owner_123';
 const customerId = 'customer_456';
 const restaurantId = 'restaurant_1';
+const indiaTestDay = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
 const menuPayload = {
   restaurant: { id: restaurantId, name: 'Test Kitchen', open: true, accepting: true, tax: 5, service: 2, paymentEnabled: true, upiId: 'test@upi' },
   items: [{ id: 'item_1', restaurantId, name: 'Chicken Fry', price: 120, available: true }],
@@ -125,6 +126,39 @@ test('secure order function continues the durable restaurant token sequence', as
     assert.equal(response.status, 201);
     assert.equal(response.body.order.tokenNumber, 8);
     assert.ok(requests.some(request => request.body?.rowId?.endsWith('-008')));
+  } finally {
+    globalThis.fetch = previousFetch;
+  }
+});
+
+test('secure order function accumulates active counter items for the same customer phone', async () => {
+  const previousFetch = globalThis.fetch;
+  const requests = [];
+  const existing = {
+    ...inputOrder, id: 'GR58-OPEN-1001', tokenNumber: 3, tokenReservationId: 'tok-003',
+    customerAccountId: customerId, paymentMethod: 'counter', status: 'Accepted', orderDay: indiaTestDay(),
+    phone: '9999999999', items: [{ id: 'item_1', name: 'Chicken Fry', qty: 1, price: 120 }],
+    subtotal: 120, tax: 6, serviceCharge: 2.4, total: 128.4,
+  };
+  globalThis.fetch = async (url, options = {}) => {
+    const method = options.method || 'GET', body = options.body ? JSON.parse(options.body) : null, target = String(url);
+    requests.push({ url: target, method, body });
+    if (method === 'GET' && target.includes('/rows?')) return new Response(JSON.stringify({ rows: [{ $id: existing.id, kind: `digital_order_${ownerId}`, payload: JSON.stringify(existing) }] }), { status: 200 });
+    if (method === 'GET') return new Response(JSON.stringify(menuRow), { status: 200 });
+    if (method === 'PATCH') return new Response(JSON.stringify({ $id: existing.id, kind: `digital_order_${ownerId}`, payload: body.data.payload }), { status: 200 });
+    throw new Error(`Unexpected request ${url}`);
+  };
+  process.env.APPWRITE_FUNCTION_PROJECT_ID = 'project_1';
+  try {
+    const response = await createDigitalOrder(functionContext());
+    assert.equal(response.status, 200);
+    assert.equal(response.body.accumulated, true);
+    assert.equal(response.body.order.id, existing.id);
+    assert.equal(response.body.order.tokenNumber, 3);
+    assert.equal(response.body.order.status, 'Pending');
+    assert.equal(response.body.order.items[0].qty, 3);
+    assert.equal(response.body.order.total, 385.2);
+    assert.ok(!requests.some(request => request.body?.data?.kind?.startsWith('digital_token_')));
   } finally {
     globalThis.fetch = previousFetch;
   }

@@ -8,6 +8,7 @@ const SUBSCRIPTION_KIND_PREFIX = 'digital_subscription_';
 
 const text = (value, max = 250) => String(value ?? '').trim().slice(0, max);
 const finite = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
+const normalisePhone = value => String(value || '').replace(/\D/g, '');
 const indiaDay = (value = new Date()) => new Intl.DateTimeFormat('en-CA', {
   timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit',
 }).format(new Date(value));
@@ -86,6 +87,8 @@ function buildOrder(input, menu, userId, tokenNumber, tokenReservationId) {
   const serviceCharge = Math.round(subtotal * Math.max(0, finite(restaurant.service)) / 100 * 100) / 100;
   const total = Math.round((subtotal + tax + serviceCharge) * 100) / 100;
   const paymentMethod = input.paymentMethod === 'online' ? 'online' : 'counter';
+  const phone = normalisePhone(input.phone);
+  if (phone.length < 10 || phone.length > 15) throw new Error('Enter a valid customer phone number with 10 to 15 digits.');
   if (paymentMethod === 'online' && !restaurant.paymentEnabled) throw new Error('Online payment is not enabled for this restaurant.');
   if (paymentMethod === 'online' && !text(input.paymentReceiptFileId, 80)) throw new Error('Payment receipt image is required.');
   const scheduledFor = text(input.scheduledFor, 40);
@@ -97,7 +100,7 @@ function buildOrder(input, menu, userId, tokenNumber, tokenReservationId) {
     ownerId: text(input.cloudOwnerId || input.ownerId, 64), cloudOwnerId: text(input.cloudOwnerId || input.ownerId, 64),
     tokenNumber, tokenReservationId, orderDay: indiaDay(createdAt), messages: [],
     customerName: text(input.customerName, 120), serviceMode: input.serviceMode === 'table' ? 'table' : 'takeaway',
-    tableNumber: text(input.tableNumber, 50), phone: text(input.phone, 30), items,
+    tableNumber: text(input.tableNumber, 50), phone, items,
     subtotal, tax, serviceCharge, total, paymentMethod,
     upiId: paymentMethod === 'online' ? text(restaurant.upiId, 120) : '',
     paymentLink: paymentMethod === 'online' ? text(restaurant.paymentLink, 500) : '',
@@ -109,7 +112,34 @@ function buildOrder(input, menu, userId, tokenNumber, tokenReservationId) {
     paymentReceiptType: paymentMethod === 'online' ? text(input.paymentReceiptType, 100) : '',
     scheduledFor, customerAccountId: userId,
     customerEmail: text(input.customerEmail, 250),
+    menuHash: text(input.menuHash, 500), menuRecordId: text(input.menuRecordId || restaurant.id, 64),
     status: paymentMethod === 'online' ? 'Payment Verification' : 'Pending', createdAt,
+  };
+}
+
+function combineOrderItems(existingItems = [], incomingItems = []) {
+  const merged = [];
+  [...existingItems, ...incomingItems].forEach(item => {
+    const key = [item.id || item.name, item.prepareInstruction || '', ...(item.prepareOptions || []), item.customPrepareNote || ''].join('|');
+    const found = merged.find(row => row.key === key);
+    if (found) found.item.qty = Math.min(99, found.item.qty + Math.max(1, Math.floor(finite(item.qty, 1))));
+    else merged.push({ key, item: { ...item, qty: Math.max(1, Math.floor(finite(item.qty, 1))) } });
+  });
+  return merged.map(row => row.item).slice(0, 50);
+}
+
+function mergeCounterOrder(existing, incoming, restaurant) {
+  const items = combineOrderItems(existing.items, incoming.items);
+  const subtotal = items.reduce((sum, item) => sum + finite(item.price) * finite(item.qty, 1), 0);
+  const tax = Math.round(subtotal * Math.max(0, finite(restaurant.tax)) / 100 * 100) / 100;
+  const serviceCharge = Math.round(subtotal * Math.max(0, finite(restaurant.service)) / 100 * 100) / 100;
+  return {
+    ...existing, items, subtotal, tax, serviceCharge,
+    total: Math.round((subtotal + tax + serviceCharge) * 100) / 100,
+    customer: incoming.customer, customerName: incoming.customerName, serviceMode: incoming.serviceMode,
+    tableNumber: incoming.tableNumber, phone: incoming.phone, status: 'Pending',
+    menuHash: incoming.menuHash || existing.menuHash || '', menuRecordId: incoming.menuRecordId || existing.menuRecordId || incoming.restaurantId,
+    lastItemsAddedAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
   };
 }
 
@@ -368,6 +398,19 @@ export default async ({ req, res, error }) => {
     const menuRow = await call(`/tablesdb/${DATABASE_ID}/tables/${TABLE_ID}/rows/${encodeURIComponent(restaurantId)}`);
     const menu = parseMenu(menuRow, ownerId, restaurantId);
     await validateReceipt(call, input, userId);
+    if (input.paymentMethod !== 'online') {
+      const phone = normalisePhone(input.phone);
+      if (phone.length < 10 || phone.length > 15) throw new Error('Enter a valid customer phone number with 10 to 15 digits.');
+      const existing = (await listRowsByKind(call, orderKind(ownerId))).map(cleanRow).find(order =>
+        !order.tokenReservation && order.restaurantId === restaurantId && order.customerAccountId === userId &&
+        normalisePhone(order.phone) === phone && order.paymentMethod === 'counter' && order.orderDay === indiaDay() &&
+        ['Pending', 'Accepted', 'Preparing', 'Ready'].includes(order.status));
+      if (existing) {
+        const incoming = buildOrder({ ...input, phone }, menu, userId, existing.tokenNumber, existing.tokenReservationId);
+        const merged = await updateRow(call, existing.id || existing.$id, mergeCounterOrder(existing, incoming, menu.restaurant));
+        return res.json({ ok: true, order: merged, accumulated: true });
+      }
+    }
     const reservation = await reserveToken(call, ownerId, restaurantId, userId);
     try {
       const order = buildOrder(input, menu, userId, reservation.number, reservation.id);

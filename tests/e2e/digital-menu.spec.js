@@ -162,7 +162,7 @@ test("Premium order history uses three cards, compact rows and shared date filte
   await assertNoErrors();
 });
 
-test("customer QR entry requires a customer name or table number", async ({ page }) => {
+test("customer QR entry requires a phone number and a customer name or table number", async ({ page }) => {
   await prepareOffline(page, { state: null });
   const assertNoErrors = monitorPageErrors(page);
   await page.goto("/digital-menu/#menu&restaurant=res_cafe");
@@ -173,6 +173,7 @@ test("customer QR entry requires a customer name or table number", async ({ page
   await page.getByRole("radio", { name: /Enter Table Number/ }).check();
   await expect(page.locator("#tableNumberField")).toBeVisible();
   await page.getByRole("textbox", { name: "Example: 12" }).fill("7");
+  await page.getByPlaceholder("Enter customer phone number").fill("9876543210");
   await page.getByRole("button", { name: "Continue to Menu" }).click();
   await expect(page.locator("#modal")).toHaveCount(0);
   const context = await page.evaluate(() => JSON.parse(sessionStorage.getItem("gravity58Customer_res_cafe")));
@@ -186,6 +187,7 @@ test("mobile menu uses photo cards and keeps the advertisement beside the restau
   const assertNoErrors = monitorPageErrors(page);
   await page.goto("/digital-menu/#menu&restaurant=res_cafe");
   await page.getByRole("textbox", { name: "Enter your name" }).fill("Mobile Guest");
+  await page.getByPlaceholder("Enter customer phone number").fill("9876543211");
   await page.getByRole("button", { name: "Continue to Menu" }).click();
   await expect(page.locator("#publicMenuCategory")).toBeVisible();
   await expect(page.locator(".category-chip-strip")).toHaveCount(0);
@@ -212,6 +214,7 @@ test("public menu offers premium category, veg, non-veg, search and availability
   const assertNoErrors = monitorPageErrors(page);
   await page.goto("/digital-menu/#menu&restaurant=res_family");
   await page.getByRole("textbox", { name: "Enter your name" }).fill("Filter Guest");
+  await page.getByPlaceholder("Enter customer phone number").fill("9876543212");
   await page.getByRole("button", { name: "Continue to Menu" }).click();
 
   await expect(page.locator("#publicMenuCount")).toHaveText("3 items");
@@ -249,7 +252,7 @@ test("customer adds quantities and preparation instructions, places order and tr
   const assertNoErrors = monitorPageErrors(page);
   await page.goto("/digital-menu/#menu&restaurant=res_cafe");
   await page.getByRole("textbox", { name: "Enter your name" }).fill("Menu Customer");
-  await page.getByRole("textbox", { name: "Optional contact number" }).fill("9876543210");
+  await page.getByPlaceholder("Enter customer phone number").fill("9876543210");
   await page.getByRole("button", { name: "Continue to Menu" }).click();
 
   const dosa = page.locator(".poster-menu-item", { hasText: "Masala Dosa" });
@@ -512,6 +515,7 @@ test("customer can load the latest account menu on another device", async ({ pag
   await expect(page.getByRole("heading", { name: "Public Cloud Café", exact: true })).toBeVisible();
   await expect(page.getByText("Live account menu")).toBeVisible();
   await page.getByRole("textbox", { name: "Enter your name" }).fill("Cloud Guest");
+  await page.getByPlaceholder("Enter customer phone number").fill("9876543213");
   await page.getByRole("button", { name: "Continue to Menu" }).click();
   await expect(page.getByRole("heading", { name: "Cloud Meal" })).toBeVisible();
   await expect(page.locator('.poster-menu-item img[src="https://cdn.example.com/cloud-meal.jpg"]')).toBeVisible();
@@ -544,7 +548,7 @@ test("customer can load the latest account menu on another device", async ({ pag
   await assertNoErrors();
 });
 
-test("simultaneous cloud orders receive unique serial tokens and remain independently trackable", async ({ page }) => {
+test("same-phone counter orders accumulate under one token and another customer gets a new token", async ({ page }) => {
   const cloudMenu = {
     id: "queue-cafe", ownerId: "queue-owner", schemaVersion: 2,
     restaurant: { id: "queue-cafe", name: "Queue Café", type: "Café", city: "Hyderabad", description: "Live queue test", address: "Queue Road", phone: "+91 9000000000", open: true, accepting: true, tax: 0, service: 0, identification: "Customer Name", restaurantKey: "Queue Café|Hyderabad", social: {} },
@@ -555,21 +559,33 @@ test("simultaneous cloud orders receive unique serial tokens and remain independ
   const assertNoErrors = monitorPageErrors(page);
   await page.goto("/digital-menu/#menu&cloud=queue-cafe&owner=queue-owner");
   await page.getByRole("textbox", { name: "Enter your name" }).fill("Queue Customer");
+  await page.getByPlaceholder("Enter customer phone number").fill("9876543214");
   await page.getByRole("button", { name: "Continue to Menu" }).click();
 
   for (let index = 0; index < 2; index += 1) {
     await page.getByRole("button", { name: "ADD" }).click();
     await page.locator("#openCart").click();
     await page.locator("#confirmPlaceOrder").click();
-    await expect(page.locator(".customer-token-panel strong")).toHaveText(index === 0 ? "0001" : "0002");
+    await expect(page.locator(".customer-token-panel strong")).toHaveText("0001");
     if (index === 0) {
       await page.locator(".customer-chat-toggle").click();
       await page.getByRole("textbox", { name: "Message restaurant" }).fill("First order message");
       await page.locator("[data-customer-chat]").getByRole("button", { name: "Send" }).click();
       await expect(page.locator(".customer-order-chat")).toContainText("First order message");
       await page.getByRole("button", { name: "View Menu" }).click();
+      await expect(page).toHaveURL(/#menu&cloud=queue-cafe&owner=queue-owner$/);
     }
   }
+
+  await page.getByRole("button", { name: "View Menu" }).click();
+  await page.getByRole("button", { name: "Start New Customer" }).click();
+  await page.getByRole("textbox", { name: "Enter your name" }).fill("Second Queue Customer");
+  await page.getByPlaceholder("Enter customer phone number").fill("9876543215");
+  await page.getByRole("button", { name: "Continue to Menu" }).click();
+  await page.getByRole("button", { name: "ADD" }).click();
+  await page.locator("#openCart").click();
+  await page.locator("#confirmPlaceOrder").click();
+  await expect(page.locator(".customer-token-panel strong")).toHaveText("0002");
 
   const result = await page.evaluate(() => ({
     tokens: window.__g58Mock.store["digital_order_queue-owner"].map((row) => row.tokenNumber).sort((a, b) => a - b),
@@ -582,6 +598,8 @@ test("simultaneous cloud orders receive unique serial tokens and remain independ
   expect(result.orderPermissions.every((permissions) => permissions.includes("read:user:queue-owner") && permissions.includes("update:user:queue-owner"))).toBe(true);
   expect(result.tokenPermissions.every((permissions) => !permissions.some((permission) => permission.includes("queue-owner")))).toBe(true);
   const storedOrders = await page.evaluate(() => window.__g58Mock.store["digital_order_queue-owner"]);
+  expect(storedOrders.find((row) => row.tokenNumber === 1)).toMatchObject({ phone: "9876543214", total: 80 });
+  expect(storedOrders.find((row) => row.tokenNumber === 1).items[0].qty).toBe(2);
   expect(storedOrders.find((row) => row.tokenNumber === 1).messages.at(-1)).toMatchObject({ senderRole: "customer", text: "First order message" });
   await assertNoErrors();
 });
@@ -657,6 +675,7 @@ test("older customer links recover a missing owner and repair the URL", async ({
   await expect(page.getByRole("heading", { name: "Recovered Café", exact: true })).toBeVisible();
   await expect(page).toHaveURL(/#menu&cloud=ownerless-cafe&owner=recovered-owner$/);
   await page.getByRole("textbox", { name: "Enter your name" }).fill("Recovered Guest");
+  await page.getByPlaceholder("Enter customer phone number").fill("9876543215");
   await page.getByRole("button", { name: "Continue to Menu" }).click();
   await expect(page.getByRole("heading", { name: "Fresh Tea" })).toBeVisible();
   await assertNoErrors();
