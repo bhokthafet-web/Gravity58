@@ -117,5 +117,9 @@ th,td{text-align:left;padding:12px;border-bottom:1px solid var(--line);white-spa
 @keyframes vialIdle{0%,100%{transform:translateY(0) rotate(0)}50%{transform:translateY(-1.5px) rotate(.6deg)}}
 .vial-liquid.slosh{animation:vialSlosh .7s cubic-bezier(.36,.07,.19,.97)}
 @keyframes vialSlosh{0%{transform:translateY(0) rotate(0)}20%{transform:translateY(-7px) rotate(-5deg)}40%{transform:translateY(4px) rotate(4deg)}60%{transform:translateY(-5px) rotate(-3deg)}80%{transform:translateY(2px) rotate(1deg)}100%{transform:translateY(0) rotate(0)}}
+.delivery-block{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:10px 0;padding:10px 12px;border-radius:13px;background:rgba(127,255,212,.08);border:1px solid var(--line)}
+.delivery-info{display:flex;flex-direction:column;gap:3px;font-size:13px}
+.delivery-info a{color:var(--violet)}
+#locationStatus.location-captured{color:var(--violet)}
 @media(max-width:980px){.shell{grid-template-columns:1fr}.sidebar{position:fixed;left:0;right:0;bottom:0;top:auto;height:auto;z-index:30;padding:8px;background:#171426}.sidebar .brand{display:none}.nav{display:flex;overflow:auto}.nav button{min-width:max-content;font-size:12px}.main{padding-bottom:78px}.stats{grid-template-columns:repeat(2,1fr)}.store-grid,.customer-grid,.card-grid{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:620px){.content,.topbar{padding:14px}.stats,.store-grid,.customer-grid,.card-grid,.form-grid{grid-template-columns:1fr}}

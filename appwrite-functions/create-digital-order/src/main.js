@@ -436,7 +436,15 @@ async function requestDigit58BuyAgain(call, input, userId) {
   const card = cleanRow(row);
   if (row.kind !== digit58CardKind(ownerId)) throw new Error('This is not a Digit58 reminder card.');
   if (card.customerAccountId !== userId) { const denied = new Error("Only this card's customer can request a reorder."); denied.code = 403; throw denied; }
-  return updateRow(call, cardId, { ...card, status: 'Buy Requested', buyRequestedAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
+  const changes = { status: 'Buy Requested', buyRequestedAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
+  const phone = normalisePhone(input.phone);
+  if (phone) changes.phone = phone.slice(0, 15);
+  const lat = Number(input.locationLat), lng = Number(input.locationLng);
+  if (Number.isFinite(lat) && Number.isFinite(lng)) {
+    changes.locationLat = lat; changes.locationLng = lng;
+    changes.locationUrl = `https://www.google.com/maps?q=${lat},${lng}`;
+  }
+  return updateRow(call, cardId, { ...card, ...changes });
 }
 
 async function createDigit58Order(call, input, userId) {
@@ -448,10 +456,15 @@ async function createDigit58Order(call, input, userId) {
     name: text(item.name, 160), qty: Math.max(1, Math.min(99, Math.floor(finite(item.qty, 1)))),
   })).filter(item => item.name);
   if (!cleanItems.length) throw new Error('Enter at least one item name.');
+  const phone = normalisePhone(input.phone);
+  const lat = Number(input.locationLat), lng = Number(input.locationLng), hasLocation = Number.isFinite(lat) && Number.isFinite(lng);
   const createdAt = new Date().toISOString();
   const record = {
     id: digit58Id('order'), ownerId, storeId, customerAccountId: userId,
     customerName: text(input.customerName, 120), customerEmail: text(input.customerEmail, 250),
+    phone: phone.slice(0, 15),
+    locationLat: hasLocation ? lat : '', locationLng: hasLocation ? lng : '',
+    locationUrl: hasLocation ? `https://www.google.com/maps?q=${lat},${lng}` : '',
     items: cleanItems, amount: 0, upiUri: '',
     prescriptionUrl: text(input.prescriptionUrl, 1000), prescriptionFileId: text(input.prescriptionFileId, 80),
     prescriptionName: text(input.prescriptionName, 200), prescriptionType: text(input.prescriptionType, 100),
