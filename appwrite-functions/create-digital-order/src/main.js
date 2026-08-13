@@ -5,6 +5,7 @@ const MENU_KIND_PREFIX = 'digital_menu_';
 const ORDER_KIND_PREFIX = 'digital_order_';
 const TOKEN_KIND_PREFIX = 'digital_token_';
 const SUBSCRIPTION_KIND_PREFIX = 'digital_subscription_';
+const ADMIN_TEAM_ID = '6a776960001ca2fb66bf';
 
 const text = (value, max = 250) => String(value ?? '').trim().slice(0, max);
 const finite = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
@@ -154,9 +155,12 @@ function mergeOrder(existing, incoming, restaurant) {
 }
 
 function rowPermissions(userId, ownerId) {
-  return [...new Set([userId, ownerId].filter(Boolean).flatMap(id => [
-    `read(\"user:${id}\")`, `update(\"user:${id}\")`, `delete(\"user:${id}\")`,
-  ]))];
+  return [...new Set([
+    ...[userId, ownerId].filter(Boolean).flatMap(id => [
+      `read(\"user:${id}\")`, `update(\"user:${id}\")`, `delete(\"user:${id}\")`,
+    ]),
+    `read(\"team:${ADMIN_TEAM_ID}\")`,
+  ])];
 }
 
 async function validateReceipt(call, input, userId) {

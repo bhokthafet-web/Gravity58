@@ -51,6 +51,7 @@ test('secure order function creates owner/customer-private order with server tot
     const orderRequest = requests.find(request => request.body?.data?.kind?.startsWith('digital_order_'));
     assert.ok(orderRequest.body.permissions.includes(`read(\"user:${customerId}\")`));
     assert.ok(orderRequest.body.permissions.includes(`read(\"user:${ownerId}\")`));
+    assert.ok(orderRequest.body.permissions.some(permission => permission.startsWith('read("team:')));
     assert.ok(!orderRequest.body.permissions.some(permission => permission.includes('users')));
   } finally {
     globalThis.fetch = previousFetch;
