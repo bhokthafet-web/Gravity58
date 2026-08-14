@@ -21,10 +21,7 @@
     .header-account-btn.logout{border-color:rgba(239,68,68,.34);background:rgba(239,68,68,.10);color:#fecaca}
     .header-user-name{max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#fff;font-size:12px;font-weight:900}
     .brand{display:flex;align-items:center;gap:11px;font-family:Manrope,sans-serif;font-weight:800;font-size:20px}
-    .logo3d{width:46px;height:46px;border-radius:15px;display:grid;place-items:center;position:relative;background:#F97316;box-shadow:inset 4px 4px 10px rgba(255,255,255,.18),
-      inset -6px -7px 12px rgba(0,0,0,.28),0 14px 30px rgba(249,115,22,.30);perspective:300px}
-    .logo3d span{font-family:Manrope,sans-serif;font-size:29px;font-weight:800;color:#fff;transform:rotateY(-18deg) rotateX(8deg);
-      text-shadow:2px 2px 0 #111827,4px 4px 6px rgba(0,0,0,.55)}
+    .logo3d{width:40px;height:40px;flex-shrink:0}
     .nav-actions{margin-left:auto;display:flex;gap:8px;align-items:center;padding:6px;border:1px solid rgba(255,255,255,.10);background:rgba(255,255,255,.045);border-radius:18px;backdrop-filter:blur(12px)}
 
     .nav-icon-btn{width:42px;height:42px;padding:0;border-radius:13px;border:1px solid rgba(255,255,255,.10);background:rgba(255,255,255,.055);color:#fff;display:grid;place-items:center;font-size:18px;cursor:pointer;transition:.22s;position:relative}
