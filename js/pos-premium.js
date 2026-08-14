@@ -280,8 +280,7 @@
       <button class="premium-tab" data-p="dashboard">Dashboard</button>
       ${linkedOrderTab}
       <a class="premium-tab digital-menu-tab" href="/digital-menu/">Digital Menu ↗</a>
-    </div><div id="pp"></div><footer class="g58-site-footer"><div class="g58-site-footer-badge"><button type="button" class="g58-app-badge" id="posAndroidAppBtn"><span class="g58-app-badge-icon">▶</span><span class="g58-app-badge-text"><small>Coming soon on</small><strong>Get G58 App</strong></span></button></div><p class="g58-site-footer-note">© ${new Date().getFullYear()} Gravity58 · POS</p></footer>`;
-    $("posAndroidAppBtn")?.addEventListener("click", () => toast("Android app coming soon — stay tuned!"));
+    </div><div id="pp"></div><footer class="g58-site-footer"><p class="g58-site-footer-note">© ${new Date().getFullYear()} Gravity58 · POS</p></footer>`;
     let supportBtn = document.getElementById("g58SupportBtn");
     if (!supportBtn) {
       document.body.insertAdjacentHTML("beforeend", `<a id="g58SupportBtn" class="g58-floating-support" href="/support/?from=pos" title="Support">🛟<span>Support</span></a>`);
