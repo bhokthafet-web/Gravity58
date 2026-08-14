@@ -186,7 +186,8 @@ async function proceedAfterEntitlement(){
   renderShell();
 }
 function renderPolicyGate(){
-  app.innerHTML=`<main class="screen"><section class="auth-card"><div class="brand"><div class="brand-mark">R</div><div><h2>Before you continue</h2><p class="tagline">Please review and accept the Refills policy</p></div></div><div class="card"><p class="muted">${html(DIGIT58_POLICY_TEXT)}</p></div><div class="actions" style="margin-top:16px"><button class="btn full" id="acceptPolicyBtn">I Accept</button><button class="btn secondary full" id="policyLogout">Sign out</button></div></section></main>`;
+  app.innerHTML=`<main class="screen"><section class="auth-card"><div class="brand"><div class="brand-mark">R</div><div><h2>Before you continue</h2><p class="tagline">Please review and accept the Refills policy</p></div></div><div class="card"><p class="muted">${html(DIGIT58_POLICY_TEXT)}</p></div><div class="actions" style="margin-top:16px"><button class="btn full" id="acceptPolicyBtn">I Accept</button><button class="btn secondary full" id="policyLogout">Sign out</button></div></section></main>${siteFooter()}`;
+  bindAndroidAppFooter();
   $('#acceptPolicyBtn').onclick=async()=>{
     const button=$('#acceptPolicyBtn');button.disabled=true;
     try{
@@ -231,7 +232,8 @@ function renderAccessGate(){
   }else{
     body=accessRequestBlock(status);
   }
-  app.innerHTML=`<main class="screen"><section class="auth-card"><div class="brand"><div class="brand-mark">R</div><div><h2>Refills</h2><p class="tagline">Store portal access is ${money(SUBSCRIPTION_AMOUNT)}/month.</p></div></div>${body}<div class="actions" style="margin-top:16px"><button class="btn secondary full" id="gateLogout">Sign out</button></div></section></main>`;
+  app.innerHTML=`<main class="screen"><section class="auth-card"><div class="brand"><div class="brand-mark">R</div><div><h2>Refills</h2><p class="tagline">Store portal access is ${money(SUBSCRIPTION_AMOUNT)}/month.</p></div></div>${body}<div class="actions" style="margin-top:16px"><button class="btn secondary full" id="gateLogout">Sign out</button></div></section></main>${siteFooter()}`;
+  bindAndroidAppFooter();
   $('#requestAccessBtn')?.addEventListener('click',requestStoreAccess);
   $('#gateLogout').onclick=async()=>{stopOwnerRealtime();await api.logout();session=null;renderOwnerAuth()};
 }
@@ -258,7 +260,7 @@ async function requestAdditionalStore(){
     toast('Additional store request sent to the G58 team');
   }catch(error){if(button)button.disabled=false;toast(error.message||'Could not send request')}
 }
-function renderConfigError(){app.innerHTML=`<main class="screen"><section class="auth-card"><div class="brand"><div class="brand-mark">R</div><div><h2>Refills</h2><p class="tagline">Take any store online</p></div></div><p>Refills is temporarily unavailable. Please try again shortly.</p></section></main>`}
+function renderConfigError(){app.innerHTML=`<main class="screen"><section class="auth-card"><div class="brand"><div class="brand-mark">R</div><div><h2>Refills</h2><p class="tagline">Take any store online</p></div></div><p>Refills is temporarily unavailable. Please try again shortly.</p></section></main>${siteFooter()}`;bindAndroidAppFooter()}
 
 function renderOwnerAuth(){
   app.innerHTML=`<main class="screen"><section class="auth-card">
@@ -271,7 +273,8 @@ function renderOwnerAuth(){
       <button class="btn full" id="ownerAuthSubmit" type="submit">Sign In</button>
     </form>
     <p class="muted" style="text-align:center;margin-top:14px">Are you a customer? Use the link your store shared with you.</p>
-  </section></main>`;
+  </section></main>${siteFooter()}`;
+  bindAndroidAppFooter();
   let mode='login';
   const syncMode=()=>{$('.full-name-field').classList.toggle('hidden',mode!=='signup');$('#ownerAuthSubmit').textContent=mode==='signup'?'Create Account':'Sign In';$('#tabLogin').className=mode==='login'?'btn small':'btn small secondary';$('#tabSignup').className=mode==='signup'?'btn small':'btn small secondary'};
   $('#tabLogin').onclick=()=>{mode='login';syncMode()};
@@ -750,11 +753,11 @@ function closeModal(){$('#modal')?.remove()}
 
 async function renderPublicStore(hashParams){
   const ownerId=hashParams.get('owner')||'',storeId=hashParams.get('store')||'';
-  if(!ownerId||!storeId){app.innerHTML=`<main class="public-store"><div class="empty">This store link is invalid.</div></main>`;return}
+  if(!ownerId||!storeId){app.innerHTML=`<main class="public-store"><div class="empty">This store link is invalid.</div></main>${siteFooter()}`;bindAndroidAppFooter();return}
   let store;
   try{store=await api.get(storeKind(ownerId),storeId)}
-  catch{app.innerHTML=`<main class="public-store"><div class="empty">This store could not be found.</div></main>`;return}
-  if(store.suspended){app.innerHTML=`<main class="public-store"><section class="store-hero"><h1>${html(store.name)}</h1></section><div class="empty">This store is temporarily unavailable. Please check back later.</div></main>`;return}
+  catch{app.innerHTML=`<main class="public-store"><div class="empty">This store could not be found.</div></main>${siteFooter()}`;bindAndroidAppFooter();return}
+  if(store.suspended){app.innerHTML=`<main class="public-store"><section class="store-hero"><h1>${html(store.name)}</h1></section><div class="empty">This store is temporarily unavailable. Please check back later.</div></main>${siteFooter()}`;bindAndroidAppFooter();return}
   const account=await api.currentUser().catch(()=>null);
   if(!account)return renderCustomerAuth(store,ownerId,storeId);
   const customer=await ensureCustomerLink(ownerId,storeId,account);
@@ -780,7 +783,8 @@ function startCustomerRealtime(store,customer){
 }
 function stopCustomerRealtime(){customerOrdersUnsubscribe?.();customerCardsUnsubscribe?.();customerOrdersUnsubscribe=customerCardsUnsubscribe=null}
 function renderCustomerAuth(store,ownerId,storeId){
-  app.innerHTML=`<main class="public-store"><section class="store-hero"><span class="chip">${html(store.category||'Store')}</span><h1>${html(store.name)}</h1><p class="muted">${html(store.description||'')}${store.city?' · '+html(store.city):''}</p></section><div class="card"><div class="actions" style="margin-bottom:14px"><button class="btn small" id="custTabLogin">Sign in</button><button class="btn small secondary" id="custTabSignup">Sign up</button></div><form id="customerAuthForm"><div class="field full-name-field hidden"><label>Your name</label><input name="name"></div><div class="field"><label>Email</label><input name="email" type="email" required></div><div class="field"><label>Password</label><input name="password" type="password" minlength="8" required></div><button class="btn full" id="custAuthSubmit" type="submit">Sign In</button></form></div></main>`;
+  app.innerHTML=`<main class="public-store"><section class="store-hero"><span class="chip">${html(store.category||'Store')}</span><h1>${html(store.name)}</h1><p class="muted">${html(store.description||'')}${store.city?' · '+html(store.city):''}</p></section><div class="card"><div class="actions" style="margin-bottom:14px"><button class="btn small" id="custTabLogin">Sign in</button><button class="btn small secondary" id="custTabSignup">Sign up</button></div><form id="customerAuthForm"><div class="field full-name-field hidden"><label>Your name</label><input name="name"></div><div class="field"><label>Email</label><input name="email" type="email" required></div><div class="field"><label>Password</label><input name="password" type="password" minlength="8" required></div><button class="btn full" id="custAuthSubmit" type="submit">Sign In</button></form></div></main>${siteFooter()}`;
+  bindAndroidAppFooter();
   let mode='login';
   const syncMode=()=>{$('.full-name-field').classList.toggle('hidden',mode!=='signup');$('#custAuthSubmit').textContent=mode==='signup'?'Create Account':'Sign In';$('#custTabLogin').className=mode==='login'?'btn small':'btn small secondary';$('#custTabSignup').className=mode==='signup'?'btn small':'btn small secondary'};
   $('#custTabLogin').onclick=()=>{mode='login';syncMode()};
