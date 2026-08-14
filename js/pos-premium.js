@@ -217,7 +217,7 @@
     gate.id = "posAccountGate";
     gate.className = "local-account-gate";
     gate.innerHTML = `<section class="card local-account-card">
-      <div class="local-account-brand"><span class="logo">G</span><div><h2>${restaurantIntegrationRequested ? "Premium Restaurant POS" : "Restaurant workspace"}</h2><p>${restaurantIntegrationRequested ? "Sign in with the same restaurant-owner account used for Digital Menu." : "Sign in to open your account-synced G58 POS workspace."}</p></div></div>
+      <div class="local-account-brand"><a href="/" aria-label="G58 home"><svg class="logo" viewBox="0 0 120 120" fill="none" stroke="#F97316" stroke-width="8"><circle cx="60" cy="26" r="15"/><circle cx="28" cy="82" r="15"/><circle cx="92" cy="82" r="15"/></svg></a><div><h2>${restaurantIntegrationRequested ? "Premium Restaurant POS" : "Restaurant workspace"}</h2><p>${restaurantIntegrationRequested ? "Sign in with the same restaurant-owner account used for Digital Menu." : "Sign in to open your account-synced G58 POS workspace."}</p></div></div>
       <div class="field"><label>Email</label><input id="gateEmail" type="email" autocomplete="email" placeholder="owner@restaurant.com"></div>
       <div class="field"><label>Password</label><input id="gatePassword" type="password" autocomplete="current-password" placeholder="Minimum 6 characters"></div>
       <div class="gate-actions"><button class="btn btn-primary" id="gateLogin">Login</button>${restaurantIntegrationRequested ? "" : '<button class="btn btn-outline" id="gateSignup">Create account</button>'}<button class="btn btn-dark" id="gateForgot">Forgot password</button></div>
@@ -269,7 +269,7 @@
     const linkedOrderTab = linkedRestaurant ? '<button class="premium-tab" data-p="orders">Digital Menu Orders</button>' : '';
     shell.style.setProperty("display", "block", "important");
     shell.innerHTML = `<div class="premium-bar">
-      <div class="premium-title"><span class="logo">G</span><div><strong>${esc(linkedRestaurant ? `${restaurantName} POS` : "G58 Restaurant POS")}</strong><small>${esc(session?.email || "G58 account")} · ${linkedRestaurant ? "restaurant-synced workspace" : "cloud workspace"}</small></div></div>
+      <div class="premium-title"><a href="/" aria-label="G58 home"><svg class="logo" viewBox="0 0 120 120" fill="none" stroke="#F97316" stroke-width="8"><circle cx="60" cy="26" r="15"/><circle cx="28" cy="82" r="15"/><circle cx="92" cy="82" r="15"/></svg></a><div><strong>${esc(linkedRestaurant ? `${restaurantName} POS` : "G58 Restaurant POS")}</strong><small>${esc(session?.email || "G58 account")} · ${linkedRestaurant ? "restaurant-synced workspace" : "cloud workspace"}</small></div></div>
       <span class="premium-badge ${isPremium() ? "active" : ""}">${isPremium() ? "PREMIUM ACTIVE" : "FREE POS"}</span>
     </div>
     ${linkedRestaurant ? `<div class="restaurant-sync-banner"><div><span class="restaurant-sync-dot"></span><strong>Live sync: ${esc(restaurantName)}</strong><small>Menu, availability, counter bills and online orders use this restaurant workspace only.</small></div><a href="/digital-menu/">Back to Restaurant Dashboard</a></div>` : ""}

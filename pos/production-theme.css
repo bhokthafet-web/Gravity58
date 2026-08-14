@@ -2,7 +2,7 @@
 body{color:var(--text);background:radial-gradient(circle at 8% 6%,#ffdcae 0,transparent 32%),radial-gradient(circle at 94% 16%,#fff2df 0,transparent 30%),var(--bg);letter-spacing:-.006em}
 .card,.premium-shell{background:rgba(255,254,251,.97);border-color:var(--line);box-shadow:var(--shadow);transition:box-shadow .25s ease}
 .brand-title{color:var(--text);font-weight:800}.tagline,.card-head p,.helper,.payment-profile small,.meta-box small{color:var(--muted)}
-.site-pill{color:#9a3d05;background:#fff1de;border-color:#eec092}.logo{background:linear-gradient(150deg,#ffab5c,#e8630a 55%,#c74600);box-shadow:0 10px 26px rgba(232,99,10,.32),inset 0 1px 0 rgba(255,255,255,.4)}
+.site-pill{color:#9a3d05;background:#fff1de;border-color:#eec092}
 .nav-actions{background:rgba(255,252,247,.94);border-color:#ecd6b9;box-shadow:0 8px 22px rgba(52,28,8,.07)}
 .nav-icon-btn{color:#553517;background:#fff;border-color:#ecd6b9;box-shadow:0 4px 10px rgba(52,28,8,.05);transition:transform .18s ease,box-shadow .18s ease,color .18s ease,background .18s ease}
 .nav-icon-btn:hover{color:#fff;background:linear-gradient(150deg,#ffa552,#e2560a);border-color:#e2560a;transform:translateY(-1px);box-shadow:0 8px 18px rgba(226,86,10,.28)}
