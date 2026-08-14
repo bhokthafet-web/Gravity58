@@ -1395,7 +1395,7 @@ body{background:
    #home, so it hides/shows exactly like the existing quick-actions
    block already does when selectMode() toggles the wall.
    ================================================================ */
-.landing{display:block!important;place-items:initial!important;padding:130px 0 0!important}
+.landing{display:block;place-items:initial!important;padding:130px 0 0!important;min-height:0!important}
 .reveal{opacity:0;transform:translateY(18px);transition:opacity .6s ease,transform .6s ease}
 .reveal.in-view{opacity:1;transform:none}
 @media(prefers-reduced-motion:reduce){.reveal{opacity:1;transform:none;transition:none}}
