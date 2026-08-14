@@ -53,14 +53,9 @@
       margin-bottom:24px;
     }
 
-    .brand{display:flex;align-items:center;gap:14px}
+    .brand{display:flex;align-items:center;gap:14px;color:inherit;text-decoration:none}
 
-    .logo{
-      width:58px;height:58px;border-radius:18px;
-      display:grid;place-items:center;font-size:27px;font-weight:900;color:#fff;
-      background:linear-gradient(145deg,#ff9a3d,#f97316 56%,#d85c08);
-      box-shadow:0 14px 36px rgba(249,115,22,.34),inset 0 1px 0 rgba(255,255,255,.35);
-    }
+    .logo{width:44px;height:44px;flex-shrink:0}
 
     .brand-title{
       margin:0;font-size:clamp(25px,5vw,40px);
@@ -356,7 +351,7 @@
       .report-controls{grid-template-columns:1fr}
       .value-entry,.value-entry.with-note{grid-template-columns:1fr}
       .modal-actions,.expired-actions{grid-template-columns:1fr}
-      .logo{width:52px;height:52px}
+      .logo{width:36px;height:36px}
       .tagline{letter-spacing:.1em}
       .payment-profile{grid-template-columns:1fr}
       .profile-options{text-align:left}
@@ -441,13 +436,13 @@
 <body>
   <div class="app">
     <header class="topbar">
-      <div class="brand">
-        <div class="logo">G</div>
+      <a class="brand" href="/">
+        <svg class="logo" viewBox="0 0 120 120" fill="none" stroke="#F97316" stroke-width="8" aria-hidden="true"><circle cx="60" cy="26" r="15"/><circle cx="28" cy="82" r="15"/><circle cx="92" cy="82" r="15"/></svg>
         <div>
           <h1 class="brand-title">GRAVITY<span>58</span></h1>
           <p class="tagline">POST. BID. CONNECT.</p>
         </div>
-      </div>
+      </a>
       
     <div class="nav-actions">
       <a class="nav-icon-btn" href="/" aria-label="Home" title="Home">
