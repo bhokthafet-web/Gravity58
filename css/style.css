@@ -1264,3 +1264,82 @@ body{background:
 .field label{font-size:11px!important;font-weight:600!important;letter-spacing:.02em!important;text-transform:uppercase!important;color:var(--muted)!important}
 .field input,.field textarea,.field select{background:rgba(255,255,255,.03)!important;border-color:rgba(255,255,255,.10)!important;transition:.15s ease!important}
 .field input:focus,.field textarea:focus,.field select:focus{outline:none!important;border-color:var(--blue)!important;box-shadow:0 0 0 3px rgba(37,99,235,.18)!important}
+
+
+/* ================================================================
+   Hero v2 — light, minimal, single-accent (reference: paid.ai).
+   Scoped to .landing only; the wall/modals below stay on the dark
+   surface theme. Every text rule below is written against the exact
+   class combo it targets (not left to inherit) so it can't lose a
+   specificity fight the way the old ribbon/promo colors did.
+   ================================================================ */
+:root{--ink:#12181F;--ink-muted:#5B6472;--accent:#1D4ED8;--hero-bg:#F5F4EF;--hero-surface:#FFFFFF;--hero-border:rgba(18,24,31,.10)}
+
+.landing{background:var(--hero-bg)!important;position:relative;z-index:1}
+.landing:before{content:'';position:absolute;inset:0;z-index:-1;background:var(--hero-bg)}
+.landing-card{background:var(--hero-surface)!important;border:1px solid var(--hero-border)!important;box-shadow:0 1px 2px rgba(18,24,31,.04)!important;backdrop-filter:none!important}
+.landing-side{background:var(--hero-surface)!important;border:1px solid var(--hero-border)!important;box-shadow:0 1px 2px rgba(18,24,31,.04)!important;backdrop-filter:none!important}
+.side-title{color:var(--ink)!important;border-color:var(--hero-border)!important}
+.recent-location-row{color:var(--ink-muted)!important}
+.recent-location-row small{color:var(--accent)!important}
+.recent-empty{color:var(--ink-muted)!important}
+
+.recent-job{background:var(--hero-surface)!important;border:1px solid var(--hero-border)!important;color:var(--ink)!important}
+.recent-job strong{color:var(--ink)!important}
+.recent-job span{color:var(--ink-muted)!important}
+.recent-job .recent-category{color:var(--accent)!important}
+.recent-job .recent-count{background:var(--accent)!important;color:#fff!important}
+
+.landing-card h1{color:var(--ink)!important}
+.gradient-text{background:none!important;-webkit-text-fill-color:var(--accent)!important;color:var(--accent)!important}
+.landing-card>.landing-content>p,.landing-content>p{color:var(--ink-muted)!important}
+
+/* Top ribbon — flat white cards, one accent, bulletproof text color */
+.catalogue-ribbons{gap:12px!important}
+.catalogue-btn,
+.catalogue-btn.jobs,.catalogue-btn.business,.catalogue-btn.digital-menu-ribbon,.catalogue-btn.digit58-ribbon{
+  background:var(--hero-surface)!important;border:1px solid var(--hero-border)!important;color:var(--ink)!important;
+  border-radius:12px!important;box-shadow:none!important
+}
+.catalogue-btn:hover,
+.catalogue-btn.jobs:hover,.catalogue-btn.business:hover,.catalogue-btn.digital-menu-ribbon:hover,.catalogue-btn.digit58-ribbon:hover{
+  border-color:var(--accent)!important;background:var(--hero-surface)!important;transform:translateY(-2px)!important
+}
+.catalogue-btn strong,.catalogue-btn small,
+.catalogue-btn.jobs strong,.catalogue-btn.jobs small,
+.catalogue-btn.business strong,.catalogue-btn.business small,
+.catalogue-btn.digital-menu-ribbon strong,.catalogue-btn.digital-menu-ribbon small,
+.catalogue-btn.digit58-ribbon strong,.catalogue-btn.digit58-ribbon small{color:var(--ink)!important}
+.catalogue-btn small,.catalogue-btn.jobs small,.catalogue-btn.business small,.catalogue-btn.digital-menu-ribbon small,.catalogue-btn.digit58-ribbon small{color:var(--ink-muted)!important;font-weight:400!important}
+
+/* Promo cards — same flat card, one accent icon badge, bulletproof text color */
+.promo-split-card,.free-ad-pop,
+.business-promo-card,.pos-promo-card,.digit58-promo-card,.digital-menu-promo-card,.customer-promo-card{
+  background:var(--hero-surface)!important;border:1px solid var(--hero-border)!important;box-shadow:none!important
+}
+.promo-split-card:hover{border-color:var(--accent)!important;box-shadow:0 12px 28px rgba(18,24,31,.08)!important}
+.promo-split-card .promo-mini-icon{background:var(--accent)!important;color:#fff!important;box-shadow:none!important}
+.promo-split-card strong,.free-ad-pop strong,
+.promo-split-card .ad-kicker,.pos-promo-card .ad-kicker,.pos-promo-card strong{color:var(--ink)!important}
+.promo-split-card p,.promo-white-text,.customer-promo-card .promo-split-copy p{color:var(--ink-muted)!important;font-weight:400!important}
+.promo-split-card .ad-cta,.pos-promo-card .ad-cta,.free-ad-pop .ad-cta{color:var(--accent)!important;background:transparent!important}
+
+/* Trust strip — flat, one accent */
+.premium-trust-strip>div{background:var(--hero-surface)!important;border:1px solid var(--hero-border)!important;box-shadow:none!important}
+.premium-trust-strip>div>span{background:rgba(29,78,216,.10)!important;color:var(--accent)!important}
+.premium-trust-strip strong{color:var(--ink)!important}
+.premium-trust-strip small{color:var(--ink-muted)!important}
+
+/* Header — dark icons/text while floating over the light hero; the
+   existing .scrolled state (dark blurred bar) is unchanged. */
+.topbar:not(.scrolled) .gravity-main{color:var(--ink)!important;text-shadow:none!important}
+.topbar:not(.scrolled) .gravity-wordmark small{color:var(--ink-muted)!important}
+.topbar:not(.scrolled) .nav-icon-btn{background:rgba(18,24,31,.05)!important;border-color:rgba(18,24,31,.12)!important;color:var(--ink)!important}
+.topbar:not(.scrolled) .nav-icon-btn.pos-nav-btn,.topbar:not(.scrolled) .nav-icon-btn.primary{background:rgba(29,78,216,.10)!important;border-color:rgba(29,78,216,.3)!important;color:var(--accent)!important}
+.topbar:not(.scrolled) .nav-actions{background:rgba(18,24,31,.03)!important;border-color:var(--hero-border)!important;box-shadow:none!important}
+.topbar:not(.scrolled) .header-account-btn:not(.login){background:rgba(18,24,31,.05)!important;border-color:rgba(18,24,31,.14)!important;color:var(--ink)!important}
+.topbar:not(.scrolled) .header-user-name{color:var(--ink)!important}
+
+@media(max-width:800px){
+  .landing-side.left-side{background:var(--hero-surface)!important}
+}
