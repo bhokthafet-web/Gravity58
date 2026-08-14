@@ -10,7 +10,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/css/style.css?v=8">
+  <link rel="stylesheet" href="/css/style.css?v=9">
   <link rel="stylesheet" href="/css/mobile.css">
   <link rel="canonical" href="https://g58.in/" />
   <meta name="robots" content="index, follow, max-image-preview:large" />
@@ -390,7 +390,23 @@
         <button class="location-chip state-change-chip" id="activeLocationChip" type="button" onclick="openStateSelection(false)">📍 Select State</button>
       </div>
     </div>
+
+    <div class="cw-header">
+      <div class="cw-header-left">
+        <h2>Customer Wall</h2>
+        <p>Discover requirements posted by customers.</p>
+      </div>
+      <div class="cw-header-right">
+        <button type="button" class="cw-location-pill" onclick="openStateSelection(false)">📍 <span id="cwLocationLabel">Select State</span></button>
+        <button type="button" class="cw-refresh-pill" onclick="renderWall()" aria-label="Refresh requirements">⟳ Refresh</button>
+      </div>
+    </div>
+
+    <div class="cw-stats" id="cwStats"></div>
+
     <div id="locationNotice" class="location-notice warning">Select your State / UT to view posts.</div>
+
+    <div class="cw-filter-group" id="cwFilterGroup">
       <div class="state-district-filter">
         <label>District Filter</label>
         <select id="districtFilter" onchange="changeDistrictFilter()"><option value="">All Districts</option></select>
@@ -402,13 +418,26 @@
         </label>
       </div>
       <div class="filters">
-      <input id="searchInput" placeholder="Search by service, requirement or location" oninput="renderWall()">
+      <input id="searchInput" placeholder="Search requirements, services or locations..." oninput="renderWall()">
       <select id="categoryFilter" onchange="renderWall()"><option value="">All categories</option><option>Interior Design</option><option>Modular Kitchen</option><option>Plumbing</option><option>Electrical</option><option>Painting</option><option>Carpentry</option><option>Cleaning</option><option>Pest Control</option><option>Home Repair</option><option>Furniture</option><option>Catering</option><option>Transport</option><option>Packers and Movers</option><option>Vehicle Repair</option><option>Beauty Services</option><option>Fitness Training</option><option>Tuition</option><option>Medical Support</option><option>Pet Care</option><option>Website Development</option><option>Digital Marketing</option><option>Graphic Design</option><option>Printing</option><option>Accounting</option><option>Legal Services</option><option>Photography</option><option>Video Production</option><option>Event Management</option><option>Other</option></select>
-      <select id="sortFilter" onchange="renderWall()"><option value="nearby">Latest first</option><option value="latest">Latest posts</option><option value="low">Price low to high</option><option value="rated">Highest rated</option><option value="shuffle">Shuffle</option></select>
+      <select id="budgetFilter" onchange="renderWall()"><option value="">Any Budget</option><option value="0-50000">Under ₹50,000</option><option value="50000-100000">₹50,000 – ₹1,00,000</option><option value="100000-300000">₹1,00,000 – ₹3,00,000</option><option value="300000-1000000">₹3,00,000 – ₹10,00,000</option><option value="1000000-999999999">Above ₹10,00,000</option></select>
+      <select id="sortFilter" onchange="renderWall()"><option value="nearby">Newest</option><option value="latest">Latest posts</option><option value="low">Budget: Low to High</option><option value="high">Budget: High to Low</option><option value="few">Fewest Offers</option><option value="rated">Highest rated</option><option value="shuffle">Shuffle</option></select>
+      <button type="button" class="cw-clear-chip" onclick="clearCustomerWallFilters()">Clear All</button>
     </div>
-    <div class="wall" id="wall"></div>
+    </div>
+
+    <div class="cw-body">
+      <div class="wall" id="wall"></div>
+      <aside class="cw-sidebar" id="cwSidebar"></aside>
+    </div>
   </div>
 </section>
+
+<div class="req-detail-overlay" id="reqDetailOverlay" onclick="closeRequirementDetail()"></div>
+<aside class="req-detail-panel" id="reqDetailPanel">
+  <button type="button" class="req-detail-close" onclick="closeRequirementDetail()" aria-label="Close">×</button>
+  <div class="req-detail-body" id="reqDetailBody"></div>
+</aside>
 </main>
 <nav class="seo-link-strip hidden" aria-label="SEO pages">
   <a href="/business/telangana/hyderabad/">Hyderabad Businesses</a>
@@ -558,38 +587,87 @@
 </div>
 
 <div class="modal" id="bidModal" onclick="closeOnBackdrop(event,'bidModal')">
-  <div class="modal-card">
-    <div class="modal-head"><h3>Submit a Business Bid</h3><button class="close" onclick="closeModal('bidModal')">×</button></div>
+  <div class="modal-card bid-modal-card">
+    <button class="close" onclick="closeModal('bidModal')">×</button>
+    <span class="bid-modal-label">SUBMIT AN OFFER</span>
+    <h2 class="bid-modal-heading">Make your best offer.</h2>
+    <div class="bid-req-summary">
+      <strong id="bidSummaryTitle">Requirement</strong>
+      <span id="bidSummaryLocation"></span>
+      <div class="bid-req-summary-row"><div><small>Customer Budget</small><strong id="bidSummaryBudget"></strong></div><div><small>Offers</small><strong id="bidSummaryOffers"></strong></div></div>
+    </div>
     <div class="form-grid">
       <input type="hidden" id="bidPostId">
-      <div class="field"><label>Business Name</label><input id="bidBusiness"></div>
-      <div class="field"><label>Bid Amount</label><input id="bidAmount" type="number"></div>
-      <div class="field"><label>Completion Time</label><input id="bidTime"></div>
-      <div class="field">
-        <label>Valid WhatsApp Number</label>
-        <input id="bidWhatsapp" type="tel" inputmode="numeric" autocomplete="tel" placeholder="+91 98765 43210">
-        <small class="field-help">Enter an active WhatsApp number. The customer will contact this number only after accepting your bid.</small>
+      <div class="field full"><label>Business Name</label><input id="bidBusiness"></div>
+      <div class="field full">
+        <label>Your Offer</label>
+        <div class="bid-amount-wrap"><span class="bid-amount-prefix">₹</span><input id="bidAmount" type="number" placeholder="Enter your quote"></div>
       </div>
-      <div class="field full"><label>Proposal</label><textarea id="bidProposal"></textarea></div>
-      <div class="field full"><div class="bid-lock-warning">🔒 One bid per mobile number for each customer post. The customer may delete an unsuitable bid to reopen a slot, but that mobile number cannot bid again on the same post.</div></div>
-      <div class="field full"><button class="btn orange" style="width:100%" onclick="submitBid()">Submit My Bid</button></div>
+      <div class="field full"><label>Estimated Completion</label><input id="bidTime" placeholder="e.g. 21 Days"></div>
+      <div class="field full">
+        <label>Business WhatsApp</label>
+        <input id="bidWhatsapp" type="tel" inputmode="numeric" autocomplete="tel" placeholder="+91 98765 43210">
+        <small class="field-help">The customer can contact this number only after accepting your offer.</small>
+      </div>
+      <div class="field full">
+        <label>Why should the customer choose you?</label>
+        <textarea id="bidProposal" maxlength="400" placeholder="Briefly explain your offer, experience, scope and what is included..." oninput="document.getElementById('bidProposalCount').textContent=this.value.length+' / 400'"></textarea>
+        <small class="field-help bid-char-count" id="bidProposalCount">0 / 400</small>
+      </div>
+      <div class="field full">
+        <div class="bid-lock-warning"><span class="bid-lock-icon">🔒</span><div><strong>One offer per business.</strong><p>One mobile number can submit only one offer for this customer requirement.</p></div></div>
+      </div>
+      <div class="field full"><button class="btn primary" id="bidSubmitBtn" style="width:100%" onclick="handleSubmitBidClick()">Submit Offer <span class="cta-arrow">→</span></button></div>
     </div>
   </div>
 </div>
 
 <div class="modal" id="bidSuccessModal" onclick="closeOnBackdrop(event,'bidSuccessModal')">
   <div class="modal-card bid-success-card">
-    <div class="modal-head">
-      <h3>Bid Submitted Successfully</h3>
-      <button class="close" onclick="closeModal('bidSuccessModal')">×</button>
-    </div>
+    <button class="close" onclick="closeModal('bidSuccessModal')">×</button>
     <div class="bid-success-icon">✓</div>
-    <h2>Your bid is now live</h2>
-    <p id="bidSuccessCount">This requirement now has 1 of 5 bids.</p>
-    <div class="bid-success-note">
-      The customer will contact you if your bid is accepted. Keep the WhatsApp number you provided active and available.
+    <h2>Your offer is live.</h2>
+    <p class="bid-success-sub">The customer can now review your proposal.</p>
+    <div class="bid-success-stats">
+      <div><strong id="bidSuccessAmount"></strong><small>Your Offer</small></div>
+      <div><strong id="bidSuccessTime"></strong><small>Estimated Completion</small></div>
+      <div><strong id="bidSuccessOffers"></strong><small>Offers Received</small></div>
     </div>
-    <button class="btn orange" style="width:100%" onclick="closeModal('bidSuccessModal')">Done</button>
+    <p id="bidSuccessCount" class="bid-success-count-note">This requirement now has 1 of 5 bids.</p>
+    <div class="bid-success-note">
+      The customer will contact you if your offer is accepted. Keep the WhatsApp number you provided active and available.
+    </div>
+    <button class="btn primary" style="width:100%" onclick="closeModal('bidSuccessModal')">Done</button>
+  </div>
+</div>
+
+<div class="modal" id="acceptConfirmModal" onclick="closeOnBackdrop(event,'acceptConfirmModal')">
+  <div class="modal-card accept-confirm-card">
+    <button class="close" onclick="closeAcceptConfirm()">×</button>
+    <h2>Accept this offer?</h2>
+    <div class="accept-confirm-summary">
+      <strong id="acceptConfirmBusiness"></strong>
+      <div class="accept-confirm-row"><span id="acceptConfirmAmount"></span><span id="acceptConfirmTime"></span></div>
+    </div>
+    <p class="accept-confirm-note">Once accepted, this business will be selected for your requirement.</p>
+    <div class="accept-confirm-actions">
+      <button class="btn" onclick="closeAcceptConfirm()">Cancel</button>
+      <button class="btn primary" onclick="confirmAcceptOffer()">Accept &amp; Connect</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal" id="acceptedAnimationModal">
+  <div class="modal-card accepted-animation-card">
+    <div class="accepted-check">✓</div>
+    <h2>Offer Accepted.</h2>
+    <div class="accepted-summary"><strong id="acceptedBusiness"></strong><div class="accepted-summary-row"><span id="acceptedAmount"></span><span id="acceptedTime"></span></div></div>
+    <h3 class="accepted-connected-heading">You're Connected.</h3>
+    <div class="accepted-contact-actions">
+      <a id="acceptedWaLink" class="btn primary" href="#" target="_blank" rel="noopener">WhatsApp — Contact Business</a>
+      <a id="acceptedCallLink" class="btn" href="#">Call Business</a>
+    </div>
+    <button class="btn" style="width:100%" onclick="closeAcceptedAnimation()">Done</button>
   </div>
 </div>
 
@@ -711,7 +789,7 @@
 <script src="/js/config.js"></script>
 <script src="/js/appwrite-ads.js?v=13"></script>
 <script src="/js/database.js"></script>
-<script src="/js/app.js?v=2"></script>
+<script src="/js/app.js?v=3"></script>
 <script src="/js/site-auth.js?v=2"></script>
 <script>
 (function(){
@@ -846,6 +924,67 @@
     }, 120);
     return false;
   };
+
+  function syncCwLocationLabels(){
+    var chip = document.getElementById('activeLocationChip');
+    var text = chip ? chip.textContent : (typeof selectedState !== 'undefined' && selectedState ? '📍 ' + selectedState : '📍 Select State');
+    var label = document.getElementById('cwLocationLabel');
+    if (label) label.textContent = String(text || '').replace(/^📍\s*/, '');
+  }
+  function renderCwStats(){
+    var el = document.getElementById('cwStats');
+    if (!el || typeof customers === 'undefined') return;
+    if (!selectedState) { el.innerHTML = ''; return; }
+    var scoped = customers.filter(matchesSelectedLocation);
+    var open = scoped.filter(function(c){ return (c.bids || []).length < 5; }).length;
+    var today = scoped.filter(function(c){ return Date.now() - c.created < 86400000; }).length;
+    var cats = new Set(scoped.map(function(c){ return c.category; }));
+    el.innerHTML = [[open, 'Open Requirements'], [today, 'Added Today'], [cats.size, 'Categories']]
+      .map(function(s){ return '<div class="cw-stat"><strong>' + s[0] + '</strong><small>' + s[1] + '</small></div>'; })
+      .join('');
+  }
+  window.g58FilterByCategory = function(cat){
+    var sel = document.getElementById('categoryFilter');
+    if (!sel) return;
+    sel.value = cat;
+    renderWall();
+    document.getElementById('wall')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+  function renderCwSidebar(){
+    var el = document.getElementById('cwSidebar');
+    if (!el || typeof customers === 'undefined') return;
+    if (!selectedState) { el.innerHTML = ''; return; }
+    var scoped = customers.filter(matchesSelectedLocation);
+    var open = scoped.filter(function(c){ return (c.bids || []).length < 5; }).length;
+    var today = scoped.filter(function(c){ return Date.now() - c.created < 86400000; }).length;
+    var counts = {};
+    scoped.forEach(function(c){ counts[c.category] = (counts[c.category] || 0) + 1; });
+    var topCats = Object.keys(counts).sort(function(a, b){ return counts[b] - counts[a]; }).slice(0, 6);
+    el.innerHTML =
+      '<div class="cw-sidebar-card"><h4>Your Market</h4><div class="cw-market-loc">📍 ' + escapeHtml(selectedDistrict || selectedState) + '</div>'
+      + '<div class="cw-market-stat"><strong>' + open + '</strong><small>Open Requirements</small></div>'
+      + '<div class="cw-market-stat"><strong>' + today + '</strong><small>New Today</small></div></div>'
+      + (topCats.length
+        ? '<div class="cw-sidebar-card"><h4>Popular Categories</h4><div class="cw-cat-list">'
+          + topCats.map(function(cat){
+              return '<button type="button" class="cw-cat-chip" onclick="g58FilterByCategory(\'' + cat.replace(/'/g, "\\'") + '\')">' + escapeHtml(cat) + ' <small>' + counts[cat] + '</small></button>';
+            }).join('')
+          + '</div></div>'
+        : '');
+  }
+  window.afterRenderWall = function(list){
+    if (typeof activeMode === 'undefined' || activeMode !== 'customer') return;
+    renderCwStats();
+    renderCwSidebar();
+    syncCwLocationLabels();
+  };
+  if (typeof window.updateStateUI === 'function') {
+    var origUpdateStateUI = window.updateStateUI;
+    window.updateStateUI = function(){
+      origUpdateStateUI.apply(this, arguments);
+      syncCwLocationLabels();
+    };
+  }
 })();
 </script>
 </body>

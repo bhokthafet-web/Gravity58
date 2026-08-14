@@ -463,6 +463,9 @@ function selectMode(mode) {
   document
     .getElementById("businessNationalToggle")
     ?.classList.toggle("hidden", mode !== "business");
+  document
+    .getElementById("contentArea")
+    ?.classList.toggle("g58-mode-customer", mode === "customer");
   if (mode !== "business") {
     showNationalBusinessesOnly = false;
     const nationalCheckbox = document.getElementById("nationalBusinessOnly");
@@ -489,6 +492,7 @@ function renderWall() {
   const q = normalize(document.getElementById("searchInput").value);
   const cat = document.getElementById("categoryFilter").value;
   const sort = document.getElementById("sortFilter").value;
+  const budget = document.getElementById("budgetFilter")?.value || "";
   let list = (
     activeMode === "customer" ? [...customers] : [...businesses]
   ).filter((item) => item.moderationStatus !== "blocked");
@@ -504,9 +508,20 @@ function renderWall() {
         ).includes(q)) &&
       (!cat || i.category === cat),
   );
+  if (activeMode === "customer" && budget) {
+    const [minB, maxB] = budget.split("-").map(Number);
+    list = list.filter((i) => {
+      const lo = Number(i.price || 0);
+      const hi = Number(i.maxPrice || i.price || 0);
+      return hi >= minB && lo <= maxB;
+    });
+  }
   if (sort === "nearby") list.sort((a, b) => b.created - a.created);
   if (sort === "latest") list.sort((a, b) => b.created - a.created);
   if (sort === "low") list.sort((a, b) => a.price - b.price);
+  if (sort === "high") list.sort((a, b) => b.price - a.price);
+  if (sort === "few")
+    list.sort((a, b) => (a.bids || []).length - (b.bids || []).length);
   if (sort === "rated" && activeMode === "business")
     list.sort(
       (a, b) =>
@@ -515,31 +530,185 @@ function renderWall() {
     );
   if (sort === "shuffle") list.sort(() => Math.random() - 0.5);
   const wall = document.getElementById("wall");
-  wall.innerHTML = list.length
-    ? list.map(activeMode === "customer" ? customerCard : businessCard).join("")
-    : `<div class="empty">${activeMode === "business" && showNationalBusinessesOnly ? "No National Business Cards are available in the selected location." : selectedState ? `No posts are available in ${escapeHtml(selectedDistrict || selectedState)} yet.` : "Select your State / UT to view posts."}</div>`;
+  if (activeMode === "customer" && !gravity58Ready) {
+    wall.innerHTML = customerWallSkeleton();
+  } else if (list.length) {
+    wall.innerHTML = list
+      .map(activeMode === "customer" ? customerCard : businessCard)
+      .join("");
+  } else if (activeMode === "customer") {
+    const rawQuery = document.getElementById("searchInput").value.trim();
+    wall.innerHTML = rawQuery
+      ? `<div class="req-empty"><div class="req-empty-icon">🔍</div><h3>No results for "${escapeHtml(rawQuery)}"</h3><p>Try another keyword or browse nearby requirements.</p><button class="btn" onclick="document.getElementById('searchInput').value='';renderWall()">Clear Search</button></div>`
+      : `<div class="req-empty"><div class="req-empty-icon">📭</div><h3>No requirements found here yet.</h3><p>Try another district, category or broaden your filters.</p><div class="req-empty-actions"><button class="btn" onclick="clearCustomerWallFilters()">Clear Filters</button><button class="btn primary" onclick="openStateSelection(true)">Change Location</button></div></div>`;
+  } else {
+    wall.innerHTML = `<div class="empty">${activeMode === "business" && showNationalBusinessesOnly ? "No National Business Cards are available in the selected location." : selectedState ? `No posts are available in ${escapeHtml(selectedDistrict || selectedState)} yet.` : "Select your State / UT to view posts."}</div>`;
+  }
+  if (typeof window.afterRenderWall === "function") window.afterRenderWall(list);
+}
+function customerWallSkeleton() {
+  return Array.from(
+    { length: 4 },
+    () =>
+      `<article class="req-card req-skeleton"><div class="sk-line sk-w40"></div><div class="sk-line sk-w80 sk-h20"></div><div class="sk-line sk-w60"></div><div class="sk-line sk-w100"></div><div class="sk-line sk-w100"></div><div class="sk-row"><div class="sk-line sk-w30"></div><div class="sk-line sk-w30"></div></div></article>`,
+  ).join("");
+}
+function clearCustomerWallFilters() {
+  document.getElementById("searchInput").value = "";
+  document.getElementById("categoryFilter").value = "";
+  const budgetEl = document.getElementById("budgetFilter");
+  if (budgetEl) budgetEl.value = "";
+  const districtEl = document.getElementById("districtFilter");
+  if (districtEl) {
+    districtEl.value = "";
+    changeDistrictFilter();
+  }
+  renderWall();
+}
+function timeAgoLabel(ts) {
+  const diff = Date.now() - Number(ts || 0);
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "Just now";
+  if (mins < 60) return mins + (mins === 1 ? " minute ago" : " minutes ago");
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return hrs + (hrs === 1 ? " hour ago" : " hours ago");
+  const days = Math.floor(hrs / 24);
+  return days + (days === 1 ? " day ago" : " days ago");
 }
 function customerCard(c) {
-  return `<div class="flip-card" data-post-id="${c.id}" id="flip-${c.id}"><div class="flip-inner"><article class="market-card front">
-<div class="card-image"><img src="${c.image}" alt="${escapeHtml(c.title)}"><div class="badge-row"><span class="badge customer">${escapeHtml(c.category)}</span><span class="badge open">${daysLeft(c)} days left</span></div></div>
-<div class="card-body"><h3>${escapeHtml(c.title)}</h3><p>${escapeHtml(c.description)}</p><div class="meta"><span>📍 ${escapeHtml(c.area)}, ${escapeHtml(itemDistrict(c))}</span><span>💰 ${formatMoney(c.price)}–${formatMoney(c.maxPrice)}</span><span>🧾 ${(c.bids || []).length} Bids</span><span>🔒 Owner locked</span></div>
-<div class="card-actions">${
-    (c.bids || []).length >= 5
-      ? '<div class="bid-closed">🔒 Maximum 5 bids received. Bidding is locked.</div>'
-      : `<button class="bid-donut-button" onclick="openBidModal('${c.id}')" aria-label="Submit bid, ${(c.bids || []).length} of 5 bids received">
-    <span class="bid-donut" style="--bid-progress:${((c.bids || []).length / 5) * 360}deg"><span>${(c.bids || []).length}<small>/5</small></span></span>
-    <span class="bid-donut-copy"><strong>Submit Bid</strong><small>${5 - (c.bids || []).length} bid slots remaining</small></span>
-  </button>`
+  const bidCount = (c.bids || []).length;
+  const isOwner = sessionStorage.getItem(`g58OwnerUnlocked_${c.id}`) === "true";
+  const full = bidCount >= 5;
+  const almost = bidCount >= 4 && !full;
+  const statusClass = full ? "full" : almost ? "almost" : "open";
+  const statusLabel = full
+    ? "Offers Full"
+    : almost
+      ? `${bidCount} of 5 Offers`
+      : "Accepting Offers";
+  const dots = Array.from(
+    { length: 5 },
+    (_, i) => `<span class="req-dot${i < bidCount ? " filled" : ""}"></span>`,
+  ).join("");
+  const shareRow = `<div class="req-share-row"><button type="button" class="req-link-btn" onclick="copyCustomerLink('${c.id}',this)">Copy Link</button><button type="button" class="req-link-btn" onclick="shareCustomerOnWhatsApp('${c.id}')">Share</button></div><div class="share-status" id="customer-share-${c.id}"></div>`;
+
+  if (isOwner) {
+    return `<article class="req-card owner" data-post-id="${c.id}">
+<div class="req-top"><span class="req-owner-badge">Your Requirement</span><span class="req-status ${statusClass}"><i></i>${statusLabel}</span></div>
+<h3 class="req-title">${escapeHtml(c.title)}</h3>
+<div class="req-meta-row"><span>📍 ${escapeHtml(c.area)}, ${escapeHtml(itemDistrict(c))}</span><span>${timeAgoLabel(c.created)}</span></div>
+<div class="req-bottom-row"><div class="req-budget"><strong>${formatMoney(c.price)}–${formatMoney(c.maxPrice)}</strong><small>Budget</small></div><div class="req-bid-progress"><div class="req-dots">${dots}</div><small>${bidCount} / 5 Offers</small></div></div>
+<div class="req-actions"><button type="button" class="btn primary" onclick="openRequirementDetail('${c.id}')">View Offers (${bidCount}) <span class="req-arrow">→</span></button></div>
+${shareRow}
+</article>`;
   }
-<button class="btn share-btn" onclick="copyCustomerLink('${c.id}',this)">Copy Link</button>
-<button class="btn green" onclick="shareCustomerOnWhatsApp('${c.id}')">Share WhatsApp</button>
+
+  return `<article class="req-card" data-post-id="${c.id}">
+<div class="req-top"><span class="req-category">${escapeHtml(c.category)}</span><span class="req-status ${statusClass}"><i></i>${statusLabel}</span></div>
+<h3 class="req-title">${escapeHtml(c.title)}</h3>
+<div class="req-meta-row"><span>📍 ${escapeHtml(c.area)}, ${escapeHtml(itemDistrict(c))}</span><span>${timeAgoLabel(c.created)}</span></div>
+<p class="req-desc">${escapeHtml(c.description)}</p>
+<div class="req-bottom-row"><div class="req-budget"><strong>${formatMoney(c.price)}–${formatMoney(c.maxPrice)}</strong><small>Budget</small></div><div class="req-bid-progress"><div class="req-dots">${dots}</div><small>${bidCount} / 5 Offers</small></div></div>
+${bidCount === 4 ? '<div class="req-scarcity">Only 1 offer slot remaining</div>' : ""}
+<div class="req-actions">
+<button type="button" class="btn ghost" onclick="openRequirementDetail('${c.id}')">View Requirement <span class="req-arrow">→</span></button>
+${full ? '<button type="button" class="btn" disabled>Offers Full</button>' : `<button type="button" class="btn primary" onclick="openBidModal('${c.id}')">Submit Bid</button>`}
 </div>
-<div class="share-status" id="customer-share-${c.id}"></div>
-<label class="unlock-check-row"><input type="checkbox" onchange="requestCardUnlock('customer','${c.id}',this)"><span>Unlock</span></label></div></article>
-<article class="market-card back"><div style="display:flex;justify-content:space-between;gap:10px;align-items:center"><h3 style="margin:0">Bids for ${escapeHtml(c.title)}</h3><button class="btn" onclick="flipBack('${c.id}')">Back</button></div>
-<div class="bid-owner-note">Customer controls: accept a bid or delete an unsuitable bid to reopen one slot. Deleted mobile numbers cannot bid again on this post.</div>
-<div class="bid-table"><div class="bid-row header"><span>Business</span><span>Amount</span><span>Time</span><span>Owner Actions</span></div>${(c.bids || []).length ? (c.bids || []).map((b, i) => `<div class="bid-row"><span><strong>${escapeHtml(b.business)}</strong><small class="locked-bid-label">🔒 One-time mobile bid</small></span><span>${formatMoney(b.amount)}</span><span>${escapeHtml(b.time)}</span><span class="bid-owner-actions"><button class="btn green" onclick="acceptBid('${c.id}',${i})">Accept</button><button class="btn danger" onclick="deleteCustomerBid('${c.id}','${escapeHtml(b.id || String(i))}')">Delete</button></span></div>`).join("") : '<div class="notice info">No active bids. Available slots: 5.</div>'}</div></article>
-</div></div>`;
+<label class="req-unlock-row"><input type="checkbox" onchange="requestCardUnlock('customer','${c.id}',this)"><span>Is this your post? Unlock</span></label>
+${shareRow}
+</article>`;
+}
+
+let activeRequirementDetailId = null;
+function openRequirementDetail(id) {
+  const c = customers.find((x) => x.id === id);
+  if (!c) return;
+  activeRequirementDetailId = id;
+  const isOwner = sessionStorage.getItem(`g58OwnerUnlocked_${id}`) === "true";
+  const body = document.getElementById("reqDetailBody");
+  if (body)
+    body.innerHTML = isOwner
+      ? renderOfferComparisonContent(c)
+      : renderRequirementDetailContent(c);
+  document.getElementById("reqDetailPanel")?.classList.add("open");
+  document.getElementById("reqDetailOverlay")?.classList.add("open");
+  document.body.classList.add("req-detail-lock");
+}
+function closeRequirementDetail() {
+  document.getElementById("reqDetailPanel")?.classList.remove("open");
+  document.getElementById("reqDetailOverlay")?.classList.remove("open");
+  document.body.classList.remove("req-detail-lock");
+  activeRequirementDetailId = null;
+}
+function refreshRequirementDetailIfOpen(id) {
+  if (activeRequirementDetailId === id) openRequirementDetail(id);
+}
+function renderRequirementDetailContent(c) {
+  const bidCount = (c.bids || []).length;
+  const full = bidCount >= 5;
+  const almost = bidCount >= 4 && !full;
+  const statusClass = full ? "full" : almost ? "almost" : "open";
+  const statusLabel = full
+    ? "Offers Full"
+    : almost
+      ? `${bidCount} of 5 Offers`
+      : "Accepting Offers";
+  const dots = Array.from(
+    { length: 5 },
+    (_, i) => `<span class="req-dot${i < bidCount ? " filled" : ""}"></span>`,
+  ).join("");
+  return `
+<span class="req-detail-category">${escapeHtml(c.category)}</span>
+<h2 class="req-detail-title">${escapeHtml(c.title)}</h2>
+<div class="req-detail-meta"><span>📍 ${escapeHtml(c.area)}, ${escapeHtml(itemDistrict(c))}</span><span>${timeAgoLabel(c.created)}</span></div>
+<span class="req-status ${statusClass}"><i></i>${statusLabel}</span>
+<div class="req-detail-section"><h4>Requirement</h4><p>${escapeHtml(c.description)}</p></div>
+<div class="req-detail-section"><h4>Budget</h4><div class="req-detail-budget">${formatMoney(c.price)} – ${formatMoney(c.maxPrice)}</div><small>Expected Budget</small></div>
+<div class="req-detail-section"><h4>Location</h4><p>${escapeHtml(c.area)}<br>${escapeHtml(itemDistrict(c))}<br>${escapeHtml(itemState(c))}</p></div>
+<div class="req-detail-section"><h4>Offer Activity</h4><div class="req-bid-progress"><div class="req-dots">${dots}</div><small>${bidCount} / 5 Offers Received</small></div></div>
+<div class="req-detail-sticky">${
+    full
+      ? '<button type="button" class="btn" style="width:100%" disabled>Offers Full</button><p class="req-detail-sticky-note">This requirement has received the maximum number of offers.</p>'
+      : `<button type="button" class="btn primary" style="width:100%" onclick="openBidModal('${c.id}')">Submit Your Offer <span class="cta-arrow">→</span></button>`
+  }</div>`;
+}
+function renderOfferComparisonContent(c) {
+  const bids = c.bids || [];
+  return `
+<span class="req-owner-badge">Your Requirement</span>
+<h2 class="req-detail-title">${escapeHtml(c.title)}</h2>
+<div class="req-detail-meta"><span>📍 ${escapeHtml(c.area)}, ${escapeHtml(itemDistrict(c))}</span><span>${timeAgoLabel(c.created)}</span></div>
+<h3 class="req-compare-heading">Compare Offers</h3>
+<p class="req-compare-sub">Review each business before making your choice.</p>
+${
+  bids.length
+    ? `<div class="req-offer-list">${bids
+        .map(
+          (b, i) => `
+<article class="req-offer-card">
+<div class="req-offer-top"><span class="req-offer-num">OFFER ${String(i + 1).padStart(2, "0")}</span></div>
+<h4>${escapeHtml(b.business)}</h4>
+<div class="req-offer-price">${formatMoney(b.amount)}</div>
+<div class="req-offer-time">${escapeHtml(b.time)}</div>
+<p class="req-offer-proposal">${escapeHtml(b.proposal)}</p>
+<div class="req-offer-contact">🔒 Available after acceptance</div>
+<div class="req-offer-actions">
+<button type="button" class="btn primary" onclick="acceptBid('${c.id}',${i})">Accept Offer</button>
+<button type="button" class="btn danger" onclick="deleteCustomerBid('${c.id}','${escapeHtml(b.id || String(i))}')">Delete</button>
+</div>
+</article>`,
+        )
+        .join("")}</div>${bids.length >= 2 ? renderOfferComparisonTable(bids) : ""}`
+    : '<div class="req-offer-empty">No active offers yet. Available slots: 5.</div>'
+}`;
+}
+function renderOfferComparisonTable(bids) {
+  return `<div class="req-compare-table-wrap"><table class="req-compare-table">
+<tr><th></th>${bids.map((_, i) => `<th>Offer ${i + 1}</th>`).join("")}</tr>
+<tr><td>Price</td>${bids.map((b) => `<td>${formatMoney(b.amount)}</td>`).join("")}</tr>
+<tr><td>Time</td>${bids.map((b) => `<td>${escapeHtml(b.time)}</td>`).join("")}</tr>
+<tr><td>Business</td>${bids.map((b) => `<td>${escapeHtml(b.business)}</td>`).join("")}</tr>
+</table></div>`;
 }
 function businessDemoUrl(b) {
   const raw = String(b.socialUrl || b.demoUrl || b.instagram || "").trim();
@@ -1579,14 +1748,11 @@ function unlockCustomerCard(id, providedPhone = "") {
 
   if (entered === cleanNumber(c.phone) || entered === cleanNumber(c.whatsapp)) {
     sessionStorage.setItem(`g58OwnerUnlocked_${id}`, "true");
-    document.getElementById("flip-" + id)?.classList.add("flipped");
+    renderWall();
     return true;
   }
   alert("Phone number does not match this customer post.");
   return false;
-}
-function flipBack(id) {
-  document.getElementById("flip-" + id).classList.remove("flipped");
 }
 function openBrowseGuide() {
   const customer = activeMode === "customer";
@@ -1803,6 +1969,9 @@ function validateAndPublish() {
   status.className = "moderation-status notice success";
   status.innerHTML = `Your post is live now.<br>Post ID: <strong>${id}</strong>`;
   activeMode = type;
+  document
+    .getElementById("contentArea")
+    ?.classList.toggle("g58-mode-customer", activeMode === "customer");
   updateStateUI();
   renderRecentJobs();
   renderWall();
@@ -1839,8 +2008,38 @@ function openBidModal(id) {
 
   resetBidForm();
   document.getElementById("bidPostId").value = id;
+  const summaryTitle = document.getElementById("bidSummaryTitle");
+  if (summaryTitle) summaryTitle.textContent = p.title;
+  const summaryLoc = document.getElementById("bidSummaryLocation");
+  if (summaryLoc) summaryLoc.textContent = `${p.area}, ${itemDistrict(p)}`;
+  const summaryBudget = document.getElementById("bidSummaryBudget");
+  if (summaryBudget)
+    summaryBudget.textContent = `${formatMoney(p.price)} – ${formatMoney(p.maxPrice)}`;
+  const summaryOffers = document.getElementById("bidSummaryOffers");
+  if (summaryOffers) summaryOffers.textContent = `${(p.bids || []).length} / 5`;
+  const submitBtn = document.getElementById("bidSubmitBtn");
+  if (submitBtn) {
+    submitBtn.disabled = false;
+    submitBtn.textContent = "Submit Offer";
+  }
+  const proposalInput = document.getElementById("bidProposal");
+  const proposalCount = document.getElementById("bidProposalCount");
+  if (proposalInput && proposalCount) proposalCount.textContent = "0 / 400";
   document.getElementById("bidModal").classList.add("show");
   setTimeout(() => document.getElementById("bidBusiness")?.focus(), 100);
+}
+function handleSubmitBidClick() {
+  const btn = document.getElementById("bidSubmitBtn");
+  if (btn && btn.disabled) return;
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = "Submitting Offer...";
+  }
+  submitBid();
+  if (btn && document.getElementById("bidModal")?.classList.contains("show")) {
+    btn.disabled = false;
+    btn.textContent = "Submit Offer";
+  }
 }
 function submitBid() {
   const p = customers.find(
@@ -1915,10 +2114,17 @@ function submitBid() {
   saveData();
   closeModal("bidModal");
   renderWall();
+  refreshRequirementDetailIfOpen(p.id);
 
   const count = p.bids.length;
   document.getElementById("bidSuccessCount").textContent =
     `This requirement now has ${count} of 5 active bids. Your mobile number cannot submit another bid on this post, but you can bid on other posts.`;
+  const successAmount = document.getElementById("bidSuccessAmount");
+  if (successAmount) successAmount.textContent = formatMoney(amount);
+  const successTime = document.getElementById("bidSuccessTime");
+  if (successTime) successTime.textContent = time;
+  const successOffers = document.getElementById("bidSuccessOffers");
+  if (successOffers) successOffers.textContent = `${count} / 5`;
   document.getElementById("bidSuccessModal").classList.add("show");
 }
 
@@ -1955,18 +2161,10 @@ function deleteCustomerBid(postId, bidId) {
   post.bids.splice(index, 1);
   saveData();
   renderWall();
-
-  setTimeout(() => {
-    const card = document.getElementById("flip-" + postId);
-    if (
-      card &&
-      sessionStorage.getItem(`g58OwnerUnlocked_${postId}`) === "true"
-    ) {
-      card.classList.add("flipped");
-    }
-  }, 60);
+  refreshRequirementDetailIfOpen(postId);
 }
 
+let pendingAccept = null;
 function acceptBid(postId, bidIndex) {
   const c = customers.find((x) => x.id === postId);
   const b = c?.bids?.[bidIndex];
@@ -1979,19 +2177,56 @@ function acceptBid(postId, bidIndex) {
     return;
   }
 
-  const message = `Hello ${b.business}, I accepted your GRAVITY58 bid for ${c.title}. Location: ${c.area}, ${itemDistrict(c)}. Bid: ${formatMoney(b.amount)}. Customer: ${c.name}. Phone: ${c.phone}. Email: ${c.email}.`;
-  if (
-    confirm("Accept this bid and permanently remove the post from the wall?")
-  ) {
-    window.open(
-      `https://wa.me/${cleanNumber(b.whatsapp)}?text=${encodeURIComponent(message)}`,
-      "_blank",
-    );
-    customers = customers.filter((x) => x.id !== postId);
-    sessionStorage.removeItem(`g58OwnerUnlocked_${postId}`);
-    saveData();
-    renderWall();
+  pendingAccept = { postId, bidIndex };
+  const nameEl = document.getElementById("acceptConfirmBusiness");
+  const amountEl = document.getElementById("acceptConfirmAmount");
+  const timeEl = document.getElementById("acceptConfirmTime");
+  if (nameEl) nameEl.textContent = b.business;
+  if (amountEl) amountEl.textContent = formatMoney(b.amount);
+  if (timeEl) timeEl.textContent = b.time;
+  document.getElementById("acceptConfirmModal")?.classList.add("show");
+}
+function closeAcceptConfirm() {
+  document.getElementById("acceptConfirmModal")?.classList.remove("show");
+  pendingAccept = null;
+}
+function confirmAcceptOffer() {
+  if (!pendingAccept) return;
+  const { postId, bidIndex } = pendingAccept;
+  const c = customers.find((x) => x.id === postId);
+  const b = c?.bids?.[bidIndex];
+  if (!c || !b) {
+    closeAcceptConfirm();
+    return;
   }
+
+  const message = `Hello ${b.business}, I accepted your GRAVITY58 bid for ${c.title}. Location: ${c.area}, ${itemDistrict(c)}. Bid: ${formatMoney(b.amount)}. Customer: ${c.name}. Phone: ${c.phone}. Email: ${c.email}.`;
+  const waNumber = cleanNumber(b.whatsapp);
+  const waUrl = `https://wa.me/${waNumber}?text=${encodeURIComponent(message)}`;
+
+  document.getElementById("acceptConfirmModal")?.classList.remove("show");
+  pendingAccept = null;
+  closeRequirementDetail();
+
+  const busEl = document.getElementById("acceptedBusiness");
+  const amtEl = document.getElementById("acceptedAmount");
+  const timeEl2 = document.getElementById("acceptedTime");
+  const waLink = document.getElementById("acceptedWaLink");
+  const callLink = document.getElementById("acceptedCallLink");
+  if (busEl) busEl.textContent = b.business;
+  if (amtEl) amtEl.textContent = formatMoney(b.amount);
+  if (timeEl2) timeEl2.textContent = b.time;
+  if (waLink) waLink.href = waUrl;
+  if (callLink) callLink.href = "tel:" + waNumber;
+  document.getElementById("acceptedAnimationModal")?.classList.add("show");
+
+  customers = customers.filter((x) => x.id !== postId);
+  sessionStorage.removeItem(`g58OwnerUnlocked_${postId}`);
+  saveData();
+  renderWall();
+}
+function closeAcceptedAnimation() {
+  document.getElementById("acceptedAnimationModal")?.classList.remove("show");
 }
 
 function whatsappBusiness(id) {
