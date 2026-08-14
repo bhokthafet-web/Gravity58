@@ -1907,6 +1907,7 @@ body.req-detail-lock{overflow:hidden}
 .biz-profile-hero h2{margin:2px 0 8px;font-size:24px;line-height:1.25}
 .biz-profile-hero-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}
 .biz-profile-hero-actions .btn{border-radius:12px;font-weight:600}
+.btn-whatsapp{background:linear-gradient(135deg,#25D366,#1da851)!important;border:0!important;color:#fff!important}
 .biz-quick-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:10px;margin:18px 0}
 .biz-quick-stat{background:var(--hero-bg,#F5F4EF);border-radius:14px;padding:14px 10px;text-align:center}
 .biz-quick-stat strong{display:block;font-size:19px;color:var(--ink,#12181F)}

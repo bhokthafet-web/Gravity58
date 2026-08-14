@@ -1658,7 +1658,7 @@ function floatingBusinessMarkup(b) {
     );
 
   const ownerHeaderActions = `<button type="button" class="btn ghost" onclick="openBusinessEdit('${b.id}')">Edit Profile</button><button type="button" class="btn ghost" onclick="shareBusinessProfile('${b.id}')">Share</button><button type="button" class="btn ghost" onclick="openBusinessQr('${b.id}')">QR</button>`;
-  const visitorHeaderActions = `${b.whatsapp ? `<button type="button" class="btn primary" onclick="contactBusinessOnWhatsApp('${b.id}')">WhatsApp</button>` : ""}${b.phone ? `<button type="button" class="btn ghost" onclick="callBusinessPhone('${b.id}')">Call</button>` : ""}<button type="button" class="btn ghost" onclick="shareBusinessProfile('${b.id}')">Share</button>`;
+  const visitorHeaderActions = `${b.whatsapp ? `<button type="button" class="btn btn-whatsapp" onclick="contactBusinessOnWhatsApp('${b.id}')">💬 WhatsApp</button>` : ""}${b.phone ? `<button type="button" class="btn ghost" onclick="callBusinessPhone('${b.id}')">Call</button>` : ""}<button type="button" class="btn ghost" onclick="shareBusinessProfile('${b.id}')">Share</button>`;
 
   const ownerDash = isOwner
     ? `<div class="biz-profile-section biz-owner-dash">
