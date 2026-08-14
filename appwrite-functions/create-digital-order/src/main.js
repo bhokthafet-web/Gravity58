@@ -10,6 +10,7 @@ const DIGIT58_CARD_KIND_PREFIX = 'digit58_card_';
 const DIGIT58_ORDER_KIND_PREFIX = 'digit58_order_';
 const DIGIT58_STORE_KIND_PREFIX = 'digit58_store_';
 const ADMIN_TEAM_ID = '6a776960001ca2fb66bf';
+const SUPPORT_KIND = 'support_tickets';
 
 const text = (value, max = 250) => String(value ?? '').trim().slice(0, max);
 const finite = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
@@ -412,6 +413,28 @@ async function linkDigit58Customer(call, input, userId) {
   return cleanRow(created);
 }
 
+function ticketPermissions(requesterId) {
+  return [...new Set([
+    `read("user:${requesterId}")`, `update("user:${requesterId}")`,
+    `read("team:${ADMIN_TEAM_ID}")`, `update("team:${ADMIN_TEAM_ID}")`,
+  ])];
+}
+async function raiseSupportTicket(call, input, userId) {
+  const subject = text(input.subject, 160), message = text(input.message, 2000);
+  if (!subject || !message) throw new Error('Enter a subject and a message.');
+  const source = text(input.source, 40) || 'g58';
+  const requesterName = text(input.requesterName, 120) || 'Customer';
+  const createdAt = new Date().toISOString();
+  const record = {
+    id: digit58Id('ticket'), requesterId: userId,
+    requesterEmail: text(input.requesterEmail, 250), requesterName, source, subject,
+    status: 'Open', messages: [{ senderRole: 'requester', senderName: requesterName, text: message, createdAt }],
+    createdAt, updatedAt: createdAt,
+  };
+  const created = await createRow(call, record.id, SUPPORT_KIND, record, ticketPermissions(userId));
+  return cleanRow(created);
+}
+
 async function acceptDigit58Policy(call, input, userId) {
   const ownerId = text(input.ownerId, 64);
   if (!ownerId || ownerId !== userId) { const denied = new Error('Only the store owner can accept this policy.'); denied.code = 403; throw denied; }
@@ -554,6 +577,10 @@ export default async ({ req, res, error }) => {
     if (requestBody?.action === 'digit58-create-order') {
       const call = appwriteClient(req);
       return res.json({ ok: true, order: await createDigit58Order(call, requestBody, userId) }, 201);
+    }
+    if (requestBody?.action === 'raise-support-ticket') {
+      const call = appwriteClient(req);
+      return res.json({ ok: true, ticket: await raiseSupportTicket(call, requestBody, userId) }, 201);
     }
     if (requestBody?.action === 'digit58-accept-policy') {
       const call = appwriteClient(req);

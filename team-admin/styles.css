@@ -78,3 +78,48 @@ body{color:var(--text);background:radial-gradient(circle at 10% 10%,#ffe8bd 0,tr
 .diner-filter-bar{display:flex;align-items:end;gap:14px;flex-wrap:wrap;margin:0 0 16px}
 .diner-filter-bar label{display:grid;gap:6px;font-size:12px;color:var(--muted);font-weight:800;letter-spacing:.04em;text-transform:uppercase}
 .diner-filter-bar input[type=date]{padding:12px 14px;border:1px solid var(--line);border-radius:13px;background:#fffdf7;color:var(--text);color-scheme:light}
+
+/* ============================================================
+   Premium admin theme — deep graphite + indigo/amber accents.
+   Overrides the inherited restaurant-menu palette above; this
+   portal is an internal tool and intentionally looks distinct
+   from every customer-facing G58 product.
+   ============================================================ */
+:root{--bg:#0a0c12;--panel:#12151f;--panel2:#171b28;--line:rgba(148,163,196,.14);--text:#eef1f8;--muted:#8b93a7;--indigo:#6d5ef0;--indigo2:#9b8cff;--gold:#f0b955;--gold2:#f7d38a;--green:#34d399;--red:#f2637a;--shadow:0 30px 80px rgba(0,0,0,.55)}
+body{color:var(--text);background:radial-gradient(circle at 10% 0%,rgba(109,94,240,.16),transparent 34%),radial-gradient(circle at 92% 8%,rgba(240,185,85,.10),transparent 30%),radial-gradient(circle at 50% 100%,rgba(109,94,240,.08),transparent 40%),linear-gradient(150deg,#07080d,#0d0f16 55%,#0a0c12);background-attachment:fixed}
+.glass,.card{background:linear-gradient(165deg,rgba(23,27,40,.92),rgba(15,17,25,.94));border:1px solid var(--line);box-shadow:var(--shadow);position:relative}
+.card::before{content:'';position:absolute;left:0;right:0;top:0;height:2px;border-radius:20px 20px 0 0;background:linear-gradient(90deg,var(--indigo),var(--gold))}
+.brand-mark{background:linear-gradient(135deg,var(--indigo),var(--indigo2));box-shadow:0 12px 30px rgba(109,94,240,.4)}
+.eyebrow{color:var(--gold)}
+.sidebar{background:rgba(9,10,16,.92);border-color:var(--line)}
+.nav button{color:#aab2c6}
+.nav button.active,.nav button:hover{color:#fff;background:linear-gradient(90deg,rgba(109,94,240,.24),rgba(240,185,85,.10));border:1px solid var(--line);box-shadow:0 8px 20px rgba(109,94,240,.14)}
+.topbar{background:rgba(10,12,18,.86);border-color:var(--line);backdrop-filter:blur(20px)}
+.restaurant-switch select,.toolbar input,.toolbar select,.admin-filter-bar input,.admin-filter-bar select,.field input,.field select,.field textarea,.diner-filter-bar input,.admin-filter-bar input{background:rgba(6,7,11,.75);color:var(--text);border:1px solid var(--line)}
+.field label{color:#cdd3e6}
+.field input:focus,.field select:focus,.field textarea:focus{border-color:var(--indigo);box-shadow:0 0 0 3px rgba(109,94,240,.2)}
+.modal{background:linear-gradient(165deg,#161a26,#0f1119);border:1px solid var(--line);box-shadow:var(--shadow)}
+.modal-backdrop{background:rgba(3,4,7,.72);backdrop-filter:blur(4px)}
+.btn{background:linear-gradient(135deg,var(--indigo),var(--indigo2));color:#0a0c12;font-weight:800;box-shadow:0 10px 24px rgba(109,94,240,.28)}
+.btn.secondary{color:var(--text);background:rgba(255,255,255,.06);border:1px solid var(--line);box-shadow:none}
+.btn.green{background:linear-gradient(135deg,#34d399,#6ee7b7);color:#052e1c;box-shadow:0 10px 24px rgba(52,211,153,.24)}
+.btn.red{background:linear-gradient(135deg,#f2637a,#fca5b7);color:#33060f;box-shadow:0 10px 24px rgba(242,99,122,.24)}
+.status-pill{background:rgba(52,211,153,.12);color:#8bf3c9;border:1px solid rgba(52,211,153,.28)}
+.chip{background:rgba(255,255,255,.055);color:#d3d9ea;border:1px solid var(--line)}
+.chip.due{background:rgba(240,185,85,.16);color:var(--gold2);border-color:rgba(240,185,85,.35)}
+.chip.delivered{background:rgba(52,211,153,.14);color:#8bf3c9;border-color:rgba(52,211,153,.3)}
+.metric,.stats>.metric{background:rgba(255,255,255,.02);border-radius:16px;padding:16px 18px;border:1px solid var(--line)}
+.metric strong,.stats>.metric strong{background:linear-gradient(135deg,#fff,var(--gold2));-webkit-background-clip:text;background-clip:text;color:transparent}
+table{color:var(--text)}
+th{color:var(--gold);font-size:11px;letter-spacing:.06em;text-transform:uppercase;font-weight:800}
+th,td{border-color:var(--line)}
+.table-wrap tr:hover td{background:rgba(109,94,240,.05)}
+.toast{background:linear-gradient(135deg,#171b28,#0f1119);color:var(--text);border:1px solid var(--line)}
+.notice{padding:12px 14px;border-radius:13px;background:rgba(109,94,240,.08);border:1px solid rgba(109,94,240,.22);color:#d6d2ff;font-size:13px;display:block}
+.empty{border-color:var(--line);color:var(--muted)}
+.admin-action{cursor:pointer;text-align:left;border:1px solid var(--line);transition:.2s transform,.2s border-color}
+.admin-action:hover{transform:translateY(-3px);border-color:rgba(109,94,240,.4)}
+.ticket-thread{display:grid;gap:8px;margin:12px 0;max-height:280px;overflow:auto}
+.ticket-message{padding:10px 12px;border-radius:13px;background:rgba(255,255,255,.045);font-size:13px;max-width:88%;border:1px solid var(--line)}
+.ticket-message.mine{margin-left:auto;background:rgba(109,94,240,.14);border-color:rgba(109,94,240,.28)}
+.ticket-message strong{display:block;font-size:10px;color:var(--muted);margin-bottom:3px;text-transform:uppercase;letter-spacing:.05em}

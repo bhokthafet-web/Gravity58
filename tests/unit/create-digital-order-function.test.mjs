@@ -494,6 +494,41 @@ test('digit58: a G58 admin team member can suspend an individual store', async (
   }
 });
 
+test('support: a logged-in user can raise a ticket granting admin read+update', async () => {
+  const previousFetch = globalThis.fetch;
+  const requests = [];
+  globalThis.fetch = async (url, options = {}) => {
+    const method = options.method || 'GET', body = options.body ? JSON.parse(options.body) : null;
+    requests.push({ url: String(url), method, body });
+    if (method === 'POST') return new Response(JSON.stringify({ $id: body.rowId, ...body.data }), { status: 201 });
+    throw new Error(`Unexpected request ${url}`);
+  };
+  process.env.APPWRITE_FUNCTION_PROJECT_ID = 'project_1';
+  try {
+    const response = await createDigitalOrder({
+      req: { method: 'POST', headers: { 'x-appwrite-key': 'dynamic-key', 'x-appwrite-user-id': customerId }, bodyJson: { action: 'raise-support-ticket', subject: 'Cannot generate QR', message: 'The UPI QR is blank on the order screen.', source: 'digit58', requesterName: 'Test Owner', requesterEmail: 'owner@example.test' } },
+      res: { json: (body, status = 200) => ({ body, status }) }, error: () => {},
+    });
+    assert.equal(response.status, 201);
+    assert.equal(response.body.ticket.status, 'Open');
+    assert.equal(response.body.ticket.messages.length, 1);
+    const createRequest = requests.find(request => request.method === 'POST');
+    assert.ok(createRequest.body.permissions.includes(`read(\"user:${customerId}\")`));
+    assert.ok(createRequest.body.permissions.includes(`update(\"user:${customerId}\")`));
+    assert.ok(createRequest.body.permissions.some(permission => permission.startsWith('update("team:')));
+  } finally {
+    globalThis.fetch = previousFetch;
+  }
+});
+
+test('support: a ticket requires both a subject and a message', async () => {
+  const response = await createDigitalOrder({
+    req: { method: 'POST', headers: { 'x-appwrite-key': 'dynamic-key', 'x-appwrite-user-id': customerId }, bodyJson: { action: 'raise-support-ticket', subject: '', message: '' } },
+    res: { json: (body, status = 200) => ({ body, status }) }, error: () => {},
+  });
+  assert.equal(response.status, 400);
+});
+
 test('digit58: a non-admin cannot suspend a store', async () => {
   const previousFetch = globalThis.fetch;
   globalThis.fetch = async (url) => {

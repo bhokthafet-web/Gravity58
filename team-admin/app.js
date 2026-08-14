@@ -3,7 +3,7 @@ const app=$('#app'),api=window.Gravity58Ads,now=()=>new Date().toISOString(),mon
 const esc=value=>String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
 const AD_PLACEMENT_SPECS={right_rail:{label:'Right menu rail',size:'1080 × 1350 px',ratio:'4:5'},preparing:{label:'Preparing screen',size:'1200 × 628 px',ratio:'1.91:1'},thankyou:{label:'Thank-you screen',size:'1080 × 1080 px',ratio:'1:1'}};
 const placementSpec=slotId=>AD_PLACEMENT_SPECS[slotId]||{label:slotId||'Advertisement',size:'Confirm with G58',ratio:''};
-let user=null,view='overview',data={bookings:[],advertisements:[],profiles:[],slots:[],customers:[],businesses:[],postRows:[],legacyPostDocument:null,menuPricing:[],menuEntitlements:[],menuRequests:[],dinerOrders:[],dinerOrdersLoaded:false,digit58Stores:[],digit58Requests:[],digit58Entitlements:[],digit58Customers:[],digit58CustomersLoaded:false,digit58Pricing:[]};
+let user=null,view='overview',data={bookings:[],advertisements:[],profiles:[],slots:[],customers:[],businesses:[],postRows:[],legacyPostDocument:null,menuPricing:[],menuEntitlements:[],menuRequests:[],dinerOrders:[],dinerOrdersLoaded:false,digit58Stores:[],digit58Requests:[],digit58Entitlements:[],digit58Customers:[],digit58CustomersLoaded:false,digit58Pricing:[],supportTickets:[]};
 function toast(message){const target=$('#toast');target.textContent=message;target.classList.add('show');setTimeout(()=>target.classList.remove('show'),2200)}
 function timeLeft(expiresAt,lifetime=false){if(lifetime)return'Lifetime';if(!expiresAt)return'No expiry';const ms=new Date(expiresAt)-new Date();if(ms<=0)return'Expired';const days=Math.floor(ms/864e5),hours=Math.floor(ms%864e5/36e5),minutes=Math.floor(ms%36e5/6e4);return`${days?days+'d ':''}${hours}h ${minutes}m remaining`}
 async function boot(){if(!api.configured)return configurationRequired();user=await api.currentUser();if(!user)return login();if(!await api.isTeamAdmin())return accessDenied();await loadData();shell()}
@@ -19,11 +19,12 @@ const renderAdminLogin=login;
 login=function(){renderAdminLogin();installAdminPasswordRecovery()};
 function accessDenied(){app.innerHTML=`<main class="screen auth"><section class="auth-card glass"><h2>Access denied</h2><p>This signed-in account is not a G58 team member.</p><button class="btn full" id="leave">Sign out</button></section></main>`;$('#leave').onclick=async()=>{await api.logout();user=null;login()}}
 async function loadData(){
-  const [bookings,advertisements,profiles,slots,posts,menuPricing,menuEntitlements,menuRequests,digit58Stores,digit58Requests,digit58Entitlements,digit58Pricing]=await Promise.all([api.list('bookings'),api.list('advertisements'),api.list('profiles'),api.list('slots'),api.list('posts'),api.list('digital_menu_pricing').catch(()=>[]),api.list('digital_menu_entitlements').catch(()=>[]),api.list('digital_menu_requests').catch(()=>[]),api.list('digit58_owners').catch(()=>[]),api.list('digit58_requests').catch(()=>[]),api.list('digit58_entitlements').catch(()=>[]),api.list('digit58_pricing').catch(()=>[])]);
+  const [bookings,advertisements,profiles,slots,posts,menuPricing,menuEntitlements,menuRequests,digit58Stores,digit58Requests,digit58Entitlements,digit58Pricing,supportTickets]=await Promise.all([api.list('bookings'),api.list('advertisements'),api.list('profiles'),api.list('slots'),api.list('posts'),api.list('digital_menu_pricing').catch(()=>[]),api.list('digital_menu_entitlements').catch(()=>[]),api.list('digital_menu_requests').catch(()=>[]),api.list('digit58_owners').catch(()=>[]),api.list('digit58_requests').catch(()=>[]),api.list('digit58_entitlements').catch(()=>[]),api.list('digit58_pricing').catch(()=>[]),api.list('support_tickets').catch(()=>[])]);
   const legacy=posts.find(row=>row.recordKey==='global'&&(row.customers||row.businesses));
   const postRows=posts.filter(row=>row.recordKey!=='global'),customers=[],businesses=[];
   postRows.forEach(row=>{const post=parsePost(row.payload);if(!post)return;post.userId||=row.userId||'';(row.postType==='business'?businesses:customers).push(post)});
-  data={bookings,advertisements,profiles,slots,postRows,legacyPostDocument:legacy||null,customers:legacy?parse(legacy.customers):customers,businesses:legacy?parse(legacy.businesses):businesses,menuPricing,menuEntitlements,menuRequests,digit58Stores,digit58Requests,digit58Entitlements,digit58Pricing,digit58Customers:data.digit58Customers||[],digit58CustomersLoaded:false};
+  data={bookings,advertisements,profiles,slots,postRows,legacyPostDocument:legacy||null,customers:legacy?parse(legacy.customers):customers,businesses:legacy?parse(legacy.businesses):businesses,menuPricing,menuEntitlements,menuRequests,digit58Stores,digit58Requests,digit58Entitlements,digit58Pricing,supportTickets,digit58Customers:data.digit58Customers||[],digit58CustomersLoaded:false};
+  digit58OrdersCache=null;
   await reconcileExpiredCampaigns();
 }
 async function reconcileExpiredCampaigns(){
@@ -40,9 +41,9 @@ async function reconcileExpiredCampaigns(){
 }
 function parse(value){try{return Array.isArray(value)?value:JSON.parse(value||'[]')}catch{return[]}}
 function parsePost(value){try{return typeof value==='string'?JSON.parse(value):value}catch{return null}}
-function shell(){app.innerHTML=`<div class="shell"><aside class="sidebar"><div class="brand"><div class="brand-mark">G</div><div><strong>Gravity58</strong><small class="muted">Team Administration</small></div></div><nav class="nav">${nav('overview','◉','Overview')}${nav('bookings','▣','Ad Bookings')}${nav('campaigns','✦','Campaigns')}${nav('digitalMenus','◇','Digital Menu Plans')}${nav('diners','☎','Customer Details')}${nav('digit58','⬡','Digit58')}${nav('marketplace','⌘','Public Posts')}${nav('accounts','◎','Accounts')}${nav('slots','▦','Ad Placements')}<button id="logout">⇥ Logout</button></nav></aside><main class="main"><header class="topbar"><strong>Private Gravity58 Team Portal</strong><span class="status-pill"><span class="dot"></span>${esc(user.email)}</span></header><section class="content" id="page"></section></main></div>`;$$('[data-view]').forEach(button=>button.onclick=()=>{view=button.dataset.view;shell()});$('#logout').onclick=async()=>{await api.logout();user=null;login()};renderView()}
+function shell(){app.innerHTML=`<div class="shell"><aside class="sidebar"><div class="brand"><div class="brand-mark">G</div><div><strong>Gravity58</strong><small class="muted">Team Administration</small></div></div><nav class="nav">${nav('overview','◉','Overview')}${nav('bookings','▣','Ad Bookings')}${nav('campaigns','✦','Campaigns')}${nav('digitalMenus','◇','Digital Menu Plans')}${nav('diners','☎','Customer Details')}${nav('digit58','⬡','Digit58')}${nav('support','☏','Support Tickets')}${nav('marketplace','⌘','Public Posts')}${nav('accounts','◎','Accounts')}${nav('slots','▦','Ad Placements')}${nav('system','⌗','System')}<button id="logout">⇥ Logout</button></nav></aside><main class="main"><header class="topbar"><strong>Private Gravity58 Team Portal</strong><span class="status-pill"><span class="dot"></span>${esc(user.email)}</span></header><section class="content" id="page"></section></main></div>`;$$('[data-view]').forEach(button=>button.onclick=()=>{view=button.dataset.view;shell()});$('#logout').onclick=async()=>{await api.logout();user=null;login()};renderView()}
 function nav(key,icon,label){return`<button data-view="${key}" class="${view===key?'active':''}"><span>${icon}</span>${label}</button>`}
-function renderView(){({overview,bookings,campaigns,digitalMenus,diners,digit58,marketplace,accounts,slots}[view]||overview)()}
+function renderView(){({overview,bookings,campaigns,digitalMenus,diners,digit58,support:supportTicketsView,marketplace,accounts,slots,system:systemView}[view]||overview)()}
 function metric(title,value){return`<article class="metric"><span>${title}</span><strong>${value}</strong></article>`}
 function overview(){const revenue=data.bookings.filter(row=>['Live','Expired'].includes(row.status)).reduce((sum,row)=>sum+Number(row.amount||0),0);$('#page').innerHTML=`<div class="section-head"><div><h1>Unified Administration</h1><p class="muted">Manage advertising, public posts, accounts and restaurant placements from one G58-only portal.</p></div><button class="btn" id="refresh">Refresh</button></div><div class="grid stats">${metric('Pending Bookings',data.bookings.filter(row=>['Requested','Proof Sent'].includes(row.status)).length)}${metric('Live Ads',data.advertisements.filter(row=>row.active&&(!row.expiresAt||new Date(row.expiresAt)>new Date())).length)}${metric('Public Posts',data.customers.length+data.businesses.length)}${metric('Booked Revenue',money(revenue))}</div><div class="section-head"><h2>Quick actions</h2></div><div class="grid restaurant-grid"><button class="card admin-action" data-open="bookings"><h3>Review bookings</h3><p>Send payment links and activate paid campaigns.</p></button><button class="card admin-action" data-open="campaigns"><h3>Campaign timers</h3><p>Pause, publish or remove restaurant ads.</p></button><button class="card admin-action" data-open="marketplace"><h3>Moderate posts</h3><p>Review customer posts and business cards.</p></button></div>`;$('#refresh').onclick=refresh;$$('[data-open]').forEach(button=>button.onclick=()=>{view=button.dataset.open;shell()})}
 function bookings(){
@@ -344,6 +345,86 @@ function digit58CustomersTable(){
   const rows=[...data.digit58Customers].sort((a,b)=>new Date(b.lastLoginAt||b.createdAt||0)-new Date(a.lastLoginAt||a.createdAt||0));
   const storeName=storeId=>data.digit58Stores.find(row=>row.storeId===storeId)?.storeName||storeId;
   return `<table><thead><tr><th>Customer</th><th>Contact</th><th>Store</th><th>Last login</th><th>Signed up</th></tr></thead><tbody>${rows.map(row=>`<tr><td><strong>${esc(row.customerName||'Customer')}</strong><br><small>${esc(row.customerEmail||'')}</small></td><td>${esc(row.phone||'—')}</td><td>${esc(storeName(row.storeId))}</td><td>${row.lastLoginAt?new Date(row.lastLoginAt).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'}):'—'}</td><td>${row.createdAt?new Date(row.createdAt).toLocaleDateString('en-IN',{dateStyle:'medium'}):''}</td></tr>`).join('')||'<tr><td colspan="5">No Digit58 customers found.</td></tr>'}</tbody></table>`;
+}
+
+function ticketSourceLabel(source){return {digit58:'Digit58','digital-menu':'Digital Menu',digitalMenu:'Digital Menu',pos:'POS'}[source]||source||'G58'}
+function supportTicketsView(){
+  const tickets=[...data.supportTickets].sort((a,b)=>new Date(b.updatedAt||b.createdAt)-new Date(a.updatedAt||a.createdAt));
+  const statuses=['All','Open','In Progress','Resolved'];
+  $('#page').innerHTML=`<div class="section-head"><div><h1>Support Tickets</h1><p class="muted">Tickets raised by premium Digit58, Digital Menu and POS owners.</p></div><button class="btn" id="refresh">Refresh</button></div><div class="grid stats">${metric('Open',tickets.filter(row=>row.status==='Open').length)}${metric('In Progress',tickets.filter(row=>row.status==='In Progress').length)}${metric('Resolved',tickets.filter(row=>row.status==='Resolved').length)}${metric('Total',tickets.length)}</div><div class="admin-filter-bar"><input id="ticketSearch" placeholder="Search subject or requester email"><select id="ticketStatus">${statuses.map(status=>`<option>${status}</option>`).join('')}</select></div><div class="card table-wrap"><table><thead><tr><th>Subject</th><th>Requester</th><th>Source</th><th>Status</th><th>Updated</th><th>Actions</th></tr></thead><tbody id="ticketRows">${tickets.map(ticketRow).join('')||'<tr><td colspan="6">No support tickets yet.</td></tr>'}</tbody></table></div>`;
+  const draw=()=>{const q=$('#ticketSearch').value.toLowerCase(),status=$('#ticketStatus').value,rows=tickets.filter(row=>(status==='All'||row.status===status)&&`${row.subject} ${row.requesterEmail}`.toLowerCase().includes(q));$('#ticketRows').innerHTML=rows.map(ticketRow).join('')||'<tr><td colspan="6">No matching tickets.</td></tr>';$$('[data-open-ticket]').forEach(button=>button.onclick=()=>openTicketModal(button.dataset.openTicket))};
+  $('#ticketSearch').oninput=draw;$('#ticketStatus').onchange=draw;
+  $('#refresh').onclick=refresh;
+  $$('[data-open-ticket]').forEach(button=>button.onclick=()=>openTicketModal(button.dataset.openTicket));
+}
+function ticketRow(row){return `<tr><td><strong>${esc(row.subject)}</strong></td><td>${esc(row.requesterName||'')}<br><small>${esc(row.requesterEmail||'')}</small></td><td>${esc(ticketSourceLabel(row.source))}</td><td><span class="chip ${row.status==='Resolved'?'delivered':row.status==='In Progress'?'due':''}">${esc(row.status)}</span></td><td>${row.updatedAt?new Date(row.updatedAt).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'}):''}</td><td><button class="btn small" data-open-ticket="${esc(row.id)}">Open</button></td></tr>`}
+function openTicketModal(id){
+  const ticket=data.supportTickets.find(row=>row.id===id);if(!ticket)return;
+  const messages=ticket.messages||[];
+  modal(`Ticket: ${esc(ticket.subject)}`,`<p class="muted">${esc(ticket.requesterName||'')} · ${esc(ticket.requesterEmail||'')} · ${esc(ticketSourceLabel(ticket.source))}</p><div class="ticket-thread">${messages.map(message=>`<div class="ticket-message ${message.senderRole==='admin'?'mine':''}"><strong>${esc(message.senderRole==='admin'?'G58 Support':message.senderName||'Requester')}</strong><span>${esc(message.text)}</span></div>`).join('')||'<p class="muted">No messages yet.</p>'}</div><form id="ticketReplyForm"><div class="field"><label>Reply (optional)</label><textarea name="message" placeholder="Leave blank to only change status"></textarea></div><div class="form-grid"><div class="field"><label>Status</label><select name="status"><option ${ticket.status==='Open'?'selected':''}>Open</option><option ${ticket.status==='In Progress'?'selected':''}>In Progress</option><option ${ticket.status==='Resolved'?'selected':''}>Resolved</option></select></div></div><button class="btn full">Update Ticket</button></form>`,()=>{
+    $('#ticketReplyForm').onsubmit=async event=>{
+      event.preventDefault();
+      const values=Object.fromEntries(new FormData(event.target)),button=event.submitter,text=values.message.trim();
+      button.disabled=true;
+      try{
+        const updatedMessages=text?[...messages,{senderRole:'admin',senderName:user.name||user.email,text,createdAt:now()}]:messages;
+        await api.update('support_tickets',ticket.id,{messages:updatedMessages,status:values.status,updatedAt:now()});
+        Object.assign(ticket,{messages:updatedMessages,status:values.status,updatedAt:now()});
+        closeModal();supportTicketsView();toast('Ticket updated');
+      }catch(error){button.disabled=false;toast(error.message||'Could not update ticket')}
+    };
+  });
+}
+
+let digit58OrdersCache=null;
+function digit58OwnerIds(){return [...new Set([...data.digit58Entitlements.map(row=>row.ownerId),...data.digit58Requests.map(row=>row.ownerId)].filter(Boolean))]}
+function digit58OrderKind(ownerId){return `digit58_order_${String(ownerId).replace(/[^a-zA-Z0-9._-]/g,'-').slice(0,40)}`}
+async function loadPurgeableDigit58Orders(){
+  if(!digit58OrdersCache){
+    const ownerIds=digit58OwnerIds();
+    const perOwner=await Promise.all(ownerIds.map(ownerId=>api.list(digit58OrderKind(ownerId)).catch(()=>[])));
+    digit58OrdersCache=perOwner.flat();
+  }
+  return digit58OrdersCache.map(row=>({...row,_kind:digit58OrderKind(row.ownerId)}));
+}
+async function loadPurgeableMenuOrders(){
+  await loadDinerOrders();
+  return data.dinerOrders.map(row=>({...row,_kind:dinerOrderKind(row.ownerId)}));
+}
+const PURGE_TARGETS=[
+  {id:'menuOrders',label:'Digital Menu Orders',statuses:['Completed','Rejected','Payment Rejected'],dateField:'createdAt',loader:loadPurgeableMenuOrders,refreshAfter:false,resetCache:()=>{data.dinerOrdersLoaded=false}},
+  {id:'digit58Orders',label:'Digit58 Orders',statuses:['Delivered','Rejected'],dateField:'createdAt',loader:loadPurgeableDigit58Orders,refreshAfter:false,resetCache:()=>{digit58OrdersCache=null}},
+  {id:'bookings',label:'Ad Bookings',statuses:['Rejected','Expired'],dateField:'createdAt',loader:async()=>data.bookings.map(row=>({...row,_kind:'bookings'})),refreshAfter:true},
+  {id:'advertisements',label:'Advertisements',statuses:['Expired'],dateField:'createdAt',loader:async()=>data.advertisements.map(row=>({...row,_kind:'advertisements'})),refreshAfter:true},
+  {id:'menuRequests',label:'Digital Menu Requests',statuses:['Rejected'],dateField:'createdAt',loader:async()=>data.menuRequests.map(row=>({...row,_kind:'digital_menu_requests'})),refreshAfter:true},
+  {id:'digit58Requests',label:'Digit58 Requests',statuses:['Rejected'],dateField:'createdAt',loader:async()=>data.digit58Requests.map(row=>({...row,_kind:'digit58_requests'})),refreshAfter:true},
+  {id:'tickets',label:'Support Tickets',statuses:['Resolved'],dateField:'updatedAt',loader:async()=>data.supportTickets.map(row=>({...row,_kind:'support_tickets'})),refreshAfter:true},
+];
+function systemView(){
+  $('#page').innerHTML=`<div class="section-head"><div><h1>System</h1><p class="muted">Bulk cleanup for old records. Every purge shows the exact count and asks for confirmation before deleting — this cannot be undone.</p></div></div><div class="grid restaurant-grid">${PURGE_TARGETS.map(target=>`<article class="card"><h3>${esc(target.label)}</h3><p class="muted">Deletes records with status ${target.statuses.join(' / ')} older than the chosen number of days.</p><div class="form-grid"><div class="field"><label>Older than (days)</label><input id="purgeDays-${target.id}" type="number" min="1" value="90"></div></div><button class="btn red full" id="purgeBtn-${target.id}">Purge Now</button></article>`).join('')}</div>`;
+  PURGE_TARGETS.forEach(target=>{$(`#purgeBtn-${target.id}`).onclick=()=>runPurge(target.id)});
+}
+async function runPurge(targetId){
+  const target=PURGE_TARGETS.find(row=>row.id===targetId);if(!target)return;
+  const daysInput=$(`#purgeDays-${targetId}`),button=$(`#purgeBtn-${targetId}`);
+  const days=Math.max(1,Number(daysInput?.value)||90);
+  button.disabled=true;const original=button.textContent;button.textContent='Scanning…';
+  try{
+    const rows=await target.loader();
+    const cutoff=Date.now()-days*86400000;
+    const matches=rows.filter(row=>target.statuses.includes(row.status)&&new Date(row[target.dateField]||row.updatedAt||row.createdAt||0).getTime()<cutoff);
+    if(!matches.length){toast('Nothing to purge — no matching records');button.disabled=false;button.textContent=original;return}
+    if(!confirm(`Delete ${matches.length} ${target.label} record(s) older than ${days} day(s) with status ${target.statuses.join('/')}? This cannot be undone.`)){button.disabled=false;button.textContent=original;return}
+    let done=0;
+    for(const row of matches){
+      try{await api.remove(row._kind,row.id||row.$id)}catch(error){console.warn('Purge failed for a record',row.id,error)}
+      done++;button.textContent=`Deleting ${done}/${matches.length}…`;
+    }
+    toast(`Purged ${done} ${target.label} record(s)`);
+    button.disabled=false;button.textContent=original;
+    target.resetCache?.();
+    if(target.refreshAfter)await refresh();else systemView();
+  }catch(error){toast(error.message||'Purge failed');button.disabled=false;button.textContent=original}
 }
 function marketplace(){$('#page').innerHTML=`<div class="section-head"><div><h1>Public Posts & Business Cards</h1><p class="muted">Edit records or select multiple entries for permanent deletion.</p></div><button class="btn red" id="deleteSelected">Delete selected</button></div><div class="tabs"><button class="btn small" data-market="customer">Customer posts (${data.customers.length})</button><button class="btn small secondary" data-market="business">Business cards (${data.businesses.length})</button></div><div class="card table-wrap" id="marketTable" style="margin-top:14px"></div>`;let type='customer';const draw=()=>{const rows=type==='customer'?data.customers:data.businesses;$('#marketTable').innerHTML=`<table><thead><tr><th></th><th>Title</th><th>Location</th><th>Account</th><th>Status</th><th>Action</th></tr></thead><tbody>${rows.map(row=>`<tr><td><input type="checkbox" data-post-id="${esc(row.id)}"></td><td>${esc(row.title)}</td><td>${esc(row.district||row.city||'')}</td><td>${esc(row.accountEmail||row.email||'')}</td><td>${row.blocked?'Blocked':'Active'}</td><td><button class="btn small" data-edit-post="${esc(row.id)}">Edit</button></td></tr>`).join('')||'<tr><td colspan="6">No records.</td></tr>'}</tbody></table>`;$$('[data-edit-post]').forEach(button=>button.onclick=()=>editPost(type,button.dataset.editPost))};draw();$$('[data-market]').forEach(button=>button.onclick=()=>{type=button.dataset.market;$$('[data-market]').forEach(item=>item.className='btn small secondary');button.className='btn small';draw()});$('#deleteSelected').onclick=async()=>{const ids=$$('[data-post-id]:checked').map(input=>input.dataset.postId);if(!ids.length||!confirm(`Delete ${ids.length} selected record(s)?`))return;if(type==='customer')data.customers=data.customers.filter(row=>!ids.includes(row.id));else data.businesses=data.businesses.filter(row=>!ids.includes(row.id));await savePosts();marketplace()}}
 function editPost(type,id){const post=(type==='customer'?data.customers:data.businesses).find(row=>String(row.id)===String(id));if(!post)return;modal('Edit Public Record',`<form id="editPostForm"><div class="field"><label>Title</label><input name="title" value="${esc(post.title||'')}" required></div><div class="field"><label>Description</label><textarea name="description" required>${esc(post.description||'')}</textarea></div><div class="form-grid"><div class="field"><label>State</label><input name="state" value="${esc(post.state||'')}"></div><div class="field"><label>District / City</label><input name="district" value="${esc(post.district||post.city||'')}"></div></div><button class="btn full">Save Changes</button></form>`,()=>{$('#editPostForm').onsubmit=async event=>{event.preventDefault();const values=Object.fromEntries(new FormData(event.target));Object.assign(post,values,{city:values.district});await savePost(post,type);closeModal();marketplace();toast('Public record updated')}})}

@@ -280,7 +280,14 @@
       <button class="premium-tab" data-p="dashboard">Dashboard</button>
       ${linkedOrderTab}
       <a class="premium-tab digital-menu-tab" href="/digital-menu/">Digital Menu ↗</a>
-    </div><div id="pp"></div>`;
+    </div><div id="pp"></div><div class="pos-android-footer"><button type="button" class="btn btn-outline" id="posAndroidAppBtn">📱 Get the Android App</button></div>`;
+    $("posAndroidAppBtn")?.addEventListener("click", () => toast("Android app coming soon — stay tuned!"));
+    let supportBtn = document.getElementById("g58SupportBtn");
+    if (!supportBtn) {
+      document.body.insertAdjacentHTML("beforeend", `<a id="g58SupportBtn" class="g58-floating-support" href="/support/?from=pos" title="Support">🛟<span>Support</span></a>`);
+      supportBtn = document.getElementById("g58SupportBtn");
+    }
+    supportBtn.style.display = isPremium() ? "flex" : "none";
     shell.querySelectorAll("[data-p]").forEach((button) => {
       button.onclick = () => {
         shell.querySelectorAll("[data-p]").forEach((item) => item.classList.remove("active"));

@@ -25,7 +25,7 @@ h1,h2,h3,p{margin-top:0}
 .muted{color:var(--muted)}
 .actions{display:flex;gap:10px;flex-wrap:wrap}
 .shell{display:grid;grid-template-columns:250px 1fr;min-height:100vh}
-.sidebar{padding:20px 16px;border-right:1px solid var(--line);background:rgba(8,6,16,.7);position:sticky;top:0;height:100vh}
+.sidebar{padding:20px 16px;border-right:1px solid var(--line);background:rgba(8,6,16,.7);position:sticky;top:0;height:100vh;display:flex;flex-direction:column}
 .sidebar .brand{margin-bottom:26px}
 .nav{display:grid;gap:8px}
 .nav button{display:flex;align-items:center;gap:10px;text-align:left;border:0;color:#c9bfe6;background:transparent;padding:11px 12px;border-radius:13px;cursor:pointer}
@@ -121,5 +121,11 @@ th,td{text-align:left;padding:12px;border-bottom:1px solid var(--line);white-spa
 .delivery-info{display:flex;flex-direction:column;gap:3px;font-size:13px}
 .delivery-info a{color:var(--violet)}
 #locationStatus.location-captured{color:var(--violet)}
-@media(max-width:980px){.shell{grid-template-columns:1fr}.sidebar{position:fixed;left:0;right:0;bottom:0;top:auto;height:auto;z-index:30;padding:8px;background:#171426}.sidebar .brand{display:none}.nav{display:flex;overflow:auto}.nav button{min-width:max-content;font-size:12px}.main{padding-bottom:78px}.stats{grid-template-columns:repeat(2,1fr)}.store-grid,.customer-grid,.card-grid{grid-template-columns:repeat(2,1fr)}}
+.floating-support-btn{position:fixed;right:20px;bottom:20px;z-index:60;display:flex;align-items:center;gap:8px;padding:13px 18px;border-radius:999px;background:linear-gradient(135deg,var(--violet),var(--violet2));color:#04231a;font-weight:800;text-decoration:none;box-shadow:0 16px 34px rgba(127,255,212,.35);transition:.2s transform}
+.floating-support-btn:hover{transform:translateY(-2px) scale(1.03)}
+.floating-support-btn span{font-size:13px}
+.android-app-footer{margin-top:auto;padding-top:14px}
+.android-app-footer .btn{width:100%}
+main.public-store .android-app-footer{max-width:320px;margin:24px auto 0}
+@media(max-width:980px){.shell{grid-template-columns:1fr}.sidebar{position:fixed;left:0;right:0;bottom:0;top:auto;height:auto;z-index:30;padding:8px;background:#171426}.sidebar .brand{display:none}.nav{display:flex;overflow:auto}.nav button{min-width:max-content;font-size:12px}.main{padding-bottom:78px}.stats{grid-template-columns:repeat(2,1fr)}.store-grid,.customer-grid,.card-grid{grid-template-columns:repeat(2,1fr)}.sidebar .android-app-footer{display:none}.floating-support-btn{bottom:86px}}
 @media(max-width:620px){.content,.topbar{padding:14px}.stats,.store-grid,.customer-grid,.card-grid,.form-grid{grid-template-columns:1fr}}
