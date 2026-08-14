@@ -10,7 +10,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/css/style.css?v=7">
+  <link rel="stylesheet" href="/css/style.css?v=8">
   <link rel="stylesheet" href="/css/mobile.css">
   <link rel="canonical" href="https://g58.in/" />
   <meta name="robots" content="index, follow, max-image-preview:large" />
@@ -105,20 +105,41 @@
         <div class="demo-card-row"><small>Budget</small><strong>₹2L – ₹3L</strong></div>
         <div class="demo-card-row"><small>Status</small><span class="demo-status-pill">Receiving Offers</span></div>
       </article>
-      <article class="hero-demo-card demo-card-2">
+      <article class="hero-demo-card demo-card-2" id="heroDemoOfferCard">
         <span class="demo-card-label">Business Offer</span>
-        <strong>Modern Space Interiors</strong>
+        <strong id="heroDemoOfferName">Urban Interiors</strong>
         <div class="demo-stars">★★★★★</div>
-        <div class="demo-card-row"><small>Quote</small><strong>₹2,35,000</strong></div>
-        <div class="demo-card-row"><small>Timeline</small><strong>21 Days</strong></div>
+        <div class="demo-card-row"><small>Quote</small><strong id="heroDemoOfferQuote">₹3,45,000</strong></div>
+        <div class="demo-card-row"><small>Timeline</small><strong id="heroDemoOfferTime">25 Days</strong></div>
         <span class="demo-view-btn">View Offer</span>
       </article>
-      <article class="hero-demo-card demo-card-3">
+      <article class="hero-demo-card demo-card-3" id="heroDemoAcceptedCard">
         <span class="demo-status-dot"></span>
         <strong>Offer Accepted</strong>
-        <p class="demo-card-loc">Modern Space Interiors</p>
+        <p class="demo-card-loc" id="heroDemoAcceptedName">Urban Interiors</p>
         <small>Customer &amp; Business Connected</small>
       </article>
+      <span class="hero-float-badge float-badge-1" aria-hidden="true">+ New Bid ₹3,20,000</span>
+      <span class="hero-float-badge float-badge-2" aria-hidden="true">5 Businesses Interested</span>
+      <span class="hero-float-badge float-badge-3" aria-hidden="true">✓ Verified Business</span>
+      <span class="hero-float-badge float-badge-4" aria-hidden="true">📍 Nearby</span>
+    </div>
+  </div>
+
+  <div class="shell dual-path-shell reveal">
+    <div class="dual-path-grid">
+      <button type="button" class="dual-path-card path-need" onclick="openCustomerPostCreator()">
+        <span class="dual-path-icon">🔍</span>
+        <h3>I Need a Service</h3>
+        <p>Post your requirement once and receive offers from nearby businesses.</p>
+        <span class="dual-path-cta">Post a Requirement <span class="cta-arrow">→</span></span>
+      </button>
+      <button type="button" class="dual-path-card path-provide" onclick="openBusinessCardCreator()">
+        <span class="dual-path-icon">🏪</span>
+        <h3>I Provide a Service</h3>
+        <p>Create your business card, get discovered and win local requirements.</p>
+        <span class="dual-path-cta">Create Business Card <span class="cta-arrow">→</span></span>
+      </button>
     </div>
   </div>
 
@@ -250,6 +271,18 @@
     </div>
   </section>
 
+  <section class="live-activity-section reveal">
+    <div class="shell">
+      <div class="section-heading">
+        <h2>Live on G58</h2>
+        <p class="section-sub">Real requirements posted by customers near you, right now.</p>
+      </div>
+      <div class="live-activity-grid" id="liveActivityGrid">
+        <div class="live-activity-empty">Loading nearby activity…</div>
+      </div>
+    </div>
+  </section>
+
   <section class="comparison-section">
     <div class="shell">
       <h2 class="reveal">G58 works differently.</h2>
@@ -301,6 +334,24 @@
     </div>
   </section>
 
+  <section class="card-promo-section reveal">
+    <div class="shell card-promo-shell">
+      <div class="card-promo-copy">
+        <span class="tool-kicker">Business Card</span>
+        <h2>Scanned. Opened. Contacted.</h2>
+        <p class="section-sub">Share one QR code and let customers see your ratings, catalogue and contact details instantly — no app download required.</p>
+        <button type="button" class="btn primary" onclick="openBusinessCardCreator()">Create Your Free Card <span class="cta-arrow">→</span></button>
+      </div>
+      <div class="card-promo-flow" aria-hidden="true">
+        <div class="card-promo-step"><span class="card-promo-icon">▦</span><small>QR Code</small></div>
+        <span class="card-promo-arrow">→</span>
+        <div class="card-promo-step"><span class="card-promo-icon">🪪</span><small>Business Card</small></div>
+        <span class="card-promo-arrow">→</span>
+        <div class="card-promo-step"><span class="card-promo-icon">💬</span><small>Direct Contact</small></div>
+      </div>
+    </div>
+  </section>
+
   <section class="business-cta-dark reveal">
     <div class="shell">
       <h2>Customers are already looking.<br>Make sure they can find you.</h2>
@@ -314,10 +365,11 @@
   <section class="customer-cta-search reveal">
     <div class="shell">
       <h2>What do you need today?</h2>
-      <form class="cta-search-form" onsubmit="event.preventDefault();openCustomerPostCreator()">
-        <input id="ctaSearchInput" type="text" placeholder="Describe what you're looking for…" readonly onclick="openCustomerPostCreator()">
-        <button class="btn primary" type="submit">Post Requirement <span class="cta-arrow">→</span></button>
+      <form class="cta-search-form" id="ctaSearchForm" onsubmit="return g58HomeSearchSubmit(event)">
+        <input id="ctaSearchInput" type="text" placeholder="Describe what you're looking for…">
+        <button class="btn primary" type="submit">Search <span class="cta-arrow">→</span></button>
       </form>
+      <p class="cta-search-hint">Or <button type="button" class="link-btn" onclick="openCustomerPostCreator()">post it as a new requirement →</button></p>
     </div>
   </section>
 
@@ -708,6 +760,92 @@
       }, 3200);
     }
   }
+
+  var heroOffers = [
+    { name: 'Urban Interiors', quote: '₹3,45,000', time: '25 Days' },
+    { name: 'Design Studio', quote: '₹3,20,000', time: '30 Days' },
+    { name: 'HomeCraft', quote: '₹3,60,000', time: '21 Days' }
+  ];
+  var offerCard = document.getElementById('heroDemoOfferCard');
+  var acceptedCard = document.getElementById('heroDemoAcceptedCard');
+  if (offerCard && !reduceMotion) {
+    var offerNameEl = document.getElementById('heroDemoOfferName');
+    var offerQuoteEl = document.getElementById('heroDemoOfferQuote');
+    var offerTimeEl = document.getElementById('heroDemoOfferTime');
+    var acceptedNameEl = document.getElementById('heroDemoAcceptedName');
+    var heroIdx = 0;
+    setInterval(function(){
+      heroIdx = (heroIdx + 1) % heroOffers.length;
+      var o = heroOffers[heroIdx];
+      if (offerNameEl) offerNameEl.textContent = o.name;
+      if (offerQuoteEl) offerQuoteEl.textContent = o.quote;
+      if (offerTimeEl) offerTimeEl.textContent = o.time;
+      if (acceptedNameEl) acceptedNameEl.textContent = o.name;
+      [offerCard, acceptedCard].forEach(function(card){
+        if (!card) return;
+        card.classList.remove('demo-pulse');
+        void card.offsetWidth;
+        card.classList.add('demo-pulse');
+      });
+    }, 3200);
+  }
+
+  function g58RelTime(ts){
+    var diff = Date.now() - Number(ts || 0);
+    var hrs = Math.floor(diff / 3600000);
+    if (hrs < 1) return 'Just now';
+    if (hrs < 24) return hrs + 'h ago';
+    return Math.floor(hrs / 24) + 'd ago';
+  }
+  function renderLiveActivity(){
+    var grid = document.getElementById('liveActivityGrid');
+    if (!grid || typeof customers === 'undefined' || typeof matchesSelectedLocation !== 'function') return;
+    if (!selectedState) {
+      grid.innerHTML = '<div class="live-activity-empty"><p>Select your location to see live requirements near you.</p><button type="button" class="btn primary" onclick="openStateSelection(true)">Select Location</button></div>';
+      return;
+    }
+    var list = customers
+      .filter(matchesSelectedLocation)
+      .sort(function(a, b){ return b.created - a.created; })
+      .slice(0, 6);
+    if (!list.length) {
+      grid.innerHTML = '<div class="live-activity-empty">No live requirements in your area yet. Be the first to post one.</div>';
+      return;
+    }
+    grid.innerHTML = list.map(function(c){
+      var bidCount = (c.bids || []).length;
+      return '<article class="live-activity-card">'
+        + '<div class="live-activity-top"><span class="live-activity-category">' + escapeHtml(c.category) + '</span><span class="live-status-pill">' + (bidCount >= 5 ? 'Bids Closed' : 'Receiving Offers') + '</span></div>'
+        + '<h3>' + escapeHtml(c.title) + '</h3>'
+        + '<div class="live-activity-meta"><span>📍 ' + escapeHtml(c.area) + ', ' + escapeHtml(itemDistrict(c)) + '</span><span>💰 ' + formatMoney(c.price) + '–' + formatMoney(c.maxPrice) + '</span></div>'
+        + '<div class="live-activity-foot"><span>🧾 ' + bidCount + ' Bids</span><span>' + g58RelTime(c.created) + '</span></div>'
+        + '<button type="button" class="live-activity-cta" onclick="openRecentJob(\'' + c.id + '\')">View Requirement <span class="cta-arrow">→</span></button>'
+        + '</article>';
+    }).join('');
+  }
+  renderLiveActivity();
+  if (typeof window.renderRecentJobs === 'function') {
+    var origRenderRecentJobs = window.renderRecentJobs;
+    window.renderRecentJobs = function(){
+      origRenderRecentJobs.apply(this, arguments);
+      renderLiveActivity();
+    };
+  }
+
+  window.g58HomeSearchSubmit = function(event){
+    event.preventDefault();
+    var input = document.getElementById('ctaSearchInput');
+    var q = input ? input.value.trim() : '';
+    if (!q) { openCustomerPostCreator(); return false; }
+    selectMode('customer');
+    var wallSearch = document.getElementById('searchInput');
+    if (wallSearch) wallSearch.value = q;
+    if (typeof renderWall === 'function') renderWall();
+    setTimeout(function(){
+      document.getElementById('wall')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 120);
+    return false;
+  };
 })();
 </script>
 </body>
