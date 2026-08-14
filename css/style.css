@@ -1192,3 +1192,75 @@ body.qr-modal-open{overflow:hidden}
   .wall .flip-card,.wall .flip-inner{height:385px!important;min-height:385px!important}
   .unlock-check-row{font-size:10px;padding:5px 7px}
 }
+
+
+/* ================================================================
+   Corporate refresh — quieter palette, no per-card carnival colors,
+   no ribbon badges, calmer motion. Overrides the layers above.
+   ================================================================ */
+body{background:
+  radial-gradient(circle at 12% 0%,rgba(37,99,235,.12),transparent 32%),
+  radial-gradient(circle at 92% 8%,rgba(37,99,235,.06),transparent 30%),var(--bg)!important}
+
+.gradient-text{background:linear-gradient(90deg,#eef2ff,#93c5fd)!important;-webkit-background-clip:text!important;background-clip:text!important;color:transparent!important}
+.landing-card{background:
+  radial-gradient(circle at top left,rgba(37,99,235,.14),transparent 40%),rgba(16,28,44,.82)!important;
+  border-color:rgba(255,255,255,.08)!important}
+
+/* Top ribbon: one calm card style, no skew, no per-category paint job */
+.catalogue-ribbons{display:grid!important;grid-template-columns:repeat(4,1fr)!important;gap:10px!important;
+  border-bottom:0!important;max-width:none!important;padding:0!important;align-items:stretch!important}
+.catalogue-btn{
+  min-height:72px!important;border:1px solid var(--border)!important;border-radius:14px!important;
+  background:rgba(255,255,255,.03)!important;color:#fff!important;padding:14px 16px!important;
+  text-align:left!important;box-shadow:none!important;transform:none!important;transition:.2s ease!important
+}
+.catalogue-btn:hover{border-color:rgba(147,197,253,.55)!important;background:rgba(255,255,255,.055)!important;transform:translateY(-2px)!important}
+.catalogue-btn strong,.catalogue-btn small{transform:none!important;color:inherit}
+.catalogue-btn strong{font-size:14px!important;font-weight:700!important}
+.catalogue-btn small{font-size:10px!important;color:var(--muted)!important}
+.catalogue-btn.jobs,.catalogue-btn.business,.catalogue-btn.digital-menu-ribbon,.catalogue-btn.digit58-ribbon{background:rgba(255,255,255,.03)!important}
+.catalogue-btn:before,.catalogue-btn:after{display:none!important}
+@media(max-width:700px){.catalogue-ribbons{grid-template-columns:repeat(2,1fr)!important}}
+
+/* Promo cards: one restrained card system, no FREE/PREMIUM ribbons */
+.promo-split-card{border:1px solid var(--border)!important;border-radius:18px!important;
+  background:rgba(255,255,255,.03)!important;box-shadow:none!important;transition:.2s ease!important}
+.promo-split-card:hover{transform:translateY(-3px)!important;border-color:rgba(147,197,253,.4)!important;box-shadow:0 18px 40px rgba(0,0,0,.24)!important}
+.free-ad-pop{padding:24px!important}
+.free-ad-pop:before{display:none!important}
+.free-ad-pop .ad-kicker{display:none!important}
+.promo-split-card,.business-promo-card,.pos-promo-card,.digit58-promo-card,.digital-menu-promo-card{
+  border-color:var(--border)!important;background:rgba(255,255,255,.03)!important}
+.promo-split-card .promo-mini-icon{
+  background:linear-gradient(150deg,rgba(37,99,235,.9),rgba(29,78,216,.95))!important;
+  box-shadow:none!important;color:#eaf1ff!important;font-size:11px!important;letter-spacing:.06em!important;
+  border-radius:16px!important
+}
+.promo-split-card strong,.free-ad-pop strong{color:#fff!important;font-size:clamp(19px,2vw,26px)!important;font-weight:700!important}
+.promo-split-card .ad-kicker,.pos-promo-card .ad-kicker,.pos-promo-card strong{color:#fff!important}
+.promo-split-card p,.promo-white-text,.customer-promo-card .promo-split-copy p{color:var(--muted)!important;font-weight:400!important}
+.ad-cta,.promo-split-card .ad-cta,.pos-promo-card .ad-cta{
+  background:transparent!important;color:#93c5fd!important;padding:0!important;font-weight:700!important;font-size:12px!important
+}
+
+/* Trust strip: one accent color, not orange-badge-everywhere */
+.premium-trust-strip>div{background:rgba(255,255,255,.03)!important;box-shadow:none!important}
+.premium-trust-strip>div>span{background:rgba(37,99,235,.18)!important;color:#93c5fd!important;font-weight:800!important}
+
+/* Buttons: fewer competing hues, calmer hover */
+.btn{transition:.18s ease!important}
+.btn:hover{transform:translateY(-1px)!important}
+.btn.orange{background:linear-gradient(135deg,var(--blue),#1d4ed8)!important;color:#fff!important}
+.header-account-btn.login{background:var(--blue)!important;border-color:var(--blue)!important;color:#fff!important}
+.header-account-btn{border-color:rgba(255,255,255,.14)!important;background:rgba(255,255,255,.04)!important;color:#dfe7f0!important}
+.header-account-btn:hover{background:rgba(255,255,255,.08)!important}
+.nav-icon-btn.pos-nav-btn,.nav-icon-btn.primary{background:rgba(37,99,235,.16)!important;border-color:rgba(37,99,235,.4)!important;color:#93c5fd!important}
+
+/* Forms: more breathing room, quieter inputs */
+.modal-card{background:#0B1622!important;border-color:rgba(255,255,255,.08)!important}
+.modal-head h3{font-size:18px!important;font-weight:700!important}
+.form-grid{gap:16px 14px!important}
+.field label{font-size:11px!important;font-weight:600!important;letter-spacing:.02em!important;text-transform:uppercase!important;color:var(--muted)!important}
+.field input,.field textarea,.field select{background:rgba(255,255,255,.03)!important;border-color:rgba(255,255,255,.10)!important;transition:.15s ease!important}
+.field input:focus,.field textarea:focus,.field select:focus{outline:none!important;border-color:var(--blue)!important;box-shadow:0 0 0 3px rgba(37,99,235,.18)!important}
