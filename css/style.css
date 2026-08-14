@@ -172,6 +172,15 @@
     .admin-grid{display:grid;gap:10px;margin-top:16px}
     .admin-row{display:grid;grid-template-columns:auto 1fr 1fr 1fr;gap:10px;align-items:center;padding:12px;border:1px solid var(--border);border-radius:12px;background:rgba(255,255,255,.035);font-size:12px}
     footer{border-top:1px solid var(--border);padding:34px 0;color:var(--muted);text-align:center;font-size:12px}.hidden{display:none!important}
+    .g58-site-footer{position:relative;border-top:0;margin-top:32px;padding:40px 0 26px;background:var(--surface)}
+    .g58-site-footer::before{content:'';position:absolute;top:-9px;left:0;right:0;height:9px;background-image:linear-gradient(-45deg,var(--surface) 6px,transparent 0),linear-gradient(45deg,var(--surface) 6px,transparent 0);background-position:0 6px,0 6px;background-size:12px 12px;background-repeat:repeat-x;background-color:transparent}
+    .g58-site-footer-badge{display:flex;justify-content:center;margin-bottom:16px}
+    .g58-app-badge{display:inline-flex;align-items:center;gap:10px;padding:9px 18px;border-radius:11px;background:#0b0b0b;border:1px solid #3a3a3a;cursor:pointer;color:#fff;transition:.2s transform}
+    .g58-app-badge:hover{transform:translateY(-1px);border-color:#5a5a5a}
+    .g58-app-badge-icon{font-size:20px;color:var(--orange);flex-shrink:0}
+    .g58-app-badge-text{display:flex;flex-direction:column;align-items:flex-start;line-height:1.2;text-align:left}
+    .g58-app-badge-text small{font-size:9px;letter-spacing:.03em;color:#c9c9c9;text-transform:uppercase}
+    .g58-app-badge-text strong{font-size:15px;font-weight:700;color:#fff}
     .auth-success-card{max-width:430px!important;text-align:center!important;padding:34px!important}
     .auth-success-icon{width:62px;height:62px;margin:0 auto 16px;border-radius:50%;display:grid;place-items:center;background:rgba(34,197,94,.14);border:1px solid rgba(34,197,94,.42);color:#4ade80;font-size:30px;font-weight:1000}
     .auth-success-card h3{margin:0 0 9px;color:#fff;font-size:24px}.auth-success-card p{margin:0 0 22px;color:#b9c5d4;line-height:1.65}.auth-success-card .btn{min-width:130px}
