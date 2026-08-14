@@ -10,7 +10,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/css/style.css?v=5">
+  <link rel="stylesheet" href="/css/style.css?v=6">
   <link rel="stylesheet" href="/css/mobile.css">
   <link rel="canonical" href="https://g58.in/" />
   <meta name="robots" content="index, follow, max-image-preview:large" />
@@ -41,44 +41,87 @@
 </head>
 <body>
 <header class="topbar" id="topbar">
-  <div class="shell nav">
-    <div class="brand-account-group">
-      <a class="brand gravity-brand" href="#home">
-        <svg class="logo3d" viewBox="0 0 120 120" fill="none" stroke="#F97316" stroke-width="8" aria-hidden="true"><circle cx="60" cy="26" r="15"/><circle cx="28" cy="82" r="15"/><circle cx="92" cy="82" r="15"/></svg>
-        <div class="gravity-wordmark">
-          <div class="gravity-main">GRAVITY<span>58</span></div>
-          <small>POST. BID. CONNECT.</small>
-        </div>
-      </a>
-      <div class="header-account-controls" aria-label="Account controls">
-        <button class="header-account-btn login" id="siteLoginButton" type="button" onclick="window.G58AccountAction?.()">Login</button>
-        <span class="header-user-name hidden" id="siteUserName"></span>
-        <button class="header-account-btn hidden" id="myPostsButton" type="button" onclick="openMyPostsPage()">My Posts</button>
-        <button class="header-account-btn logout hidden" id="siteLogoutButton" type="button" onclick="window.G58LogoutAction?.()">Logout</button>
+  <div class="shell nav nav-v2">
+    <a class="brand gravity-brand" href="#home">
+      <svg class="logo3d" viewBox="0 0 120 120" fill="none" stroke="#F97316" stroke-width="8" aria-hidden="true"><circle cx="60" cy="26" r="15"/><circle cx="28" cy="82" r="15"/><circle cx="92" cy="82" r="15"/></svg>
+      <div class="gravity-wordmark">
+        <div class="gravity-main">GRAVITY<span>58</span></div>
+        <small>POST · BID · CONNECT</small>
       </div>
-    </div>
-    <div class="nav-actions" aria-label="Primary navigation">
-      <a class="nav-icon-btn" href="/" aria-label="Home" title="Home">
-        <span class="nav-letter-icon">⌂</span><span class="nav-tooltip">Home</span>
-      </a>
-      <a class="nav-icon-btn" href="/?view=customer" onclick="if(location.pathname==='/'){event.preventDefault();selectMode('customer')}" aria-label="P - Wall" title="P - Wall">
-        <span class="nav-letter-icon">P</span><span class="nav-tooltip">P - Wall</span>
-      </a>
-      <a class="nav-icon-btn" href="/business/" aria-label="C - Wall" title="C - Wall">
-        <span class="nav-letter-icon">C</span><span class="nav-tooltip">C - Wall</span>
-      </a>
-      <span class="nav-pos-wrap">
-        <a class="nav-icon-btn pos-nav-btn" href="/pos/" aria-label="Free POS billing tool" title="Free POS Billing">
-          <span class="nav-letter-icon">₹</span><span class="nav-tooltip">Free POS</span>
-        </a>
-        <span class="pos-free-callout" aria-hidden="true"><span class="pos-free-arrow">↑</span><span class="pos-free-text">FREE POS</span></span>
-      </span>
+    </a>
+
+    <nav class="nav-center" aria-label="Primary">
+      <button type="button" class="nav-link" onclick="document.querySelector('.how-it-works-section')?.scrollIntoView({behavior:'smooth'})">How It Works</button>
+      <button type="button" class="nav-link" onclick="selectMode('customer')">For Customers</button>
+      <button type="button" class="nav-link" onclick="openBusinessCardCreator()">For Businesses</button>
+      <div class="nav-mega-wrap">
+        <button type="button" class="nav-link nav-mega-trigger" aria-expanded="false" aria-haspopup="true">Products <span class="mega-caret">⌄</span></button>
+        <div class="nav-mega-menu" role="menu">
+          <a href="/business/" role="menuitem"><strong>Business Cards</strong><small>Professional digital cards</small></a>
+          <a href="/digital-menu/" role="menuitem"><strong>Digital Menu</strong><small>Manage orders and menus online</small></a>
+          <a href="/pos/" role="menuitem"><strong>Free POS</strong><small>Simple billing, no setup</small></a>
+          <a href="/digit58/" role="menuitem"><strong>Refills</strong><small>Take any store online</small></a>
+        </div>
+      </div>
+    </nav>
+
+    <div class="header-account-controls" aria-label="Account controls">
+      <button class="header-account-btn login" id="siteLoginButton" type="button" onclick="window.G58AccountAction?.()">Login</button>
+      <span class="header-user-name hidden" id="siteUserName"></span>
+      <button class="header-account-btn hidden" id="myPostsButton" type="button" onclick="openMyPostsPage()">My Posts</button>
+      <button class="header-account-btn logout hidden" id="siteLogoutButton" type="button" onclick="window.G58LogoutAction?.()">Logout</button>
+      <button class="btn primary nav-post-cta" type="button" onclick="openCustomerPostCreator()">Post Requirement</button>
     </div>
   </div>
 </header>
 
 <main>
 <section class="landing" id="home">
+
+  <div class="hero-v2 shell reveal">
+    <span class="hero-badge">A smarter local marketplace</span>
+    <h1 class="hero-v2-heading">Need Something?<br>Let Businesses Come to You.</h1>
+    <p class="hero-v2-sub">Post your requirement once, receive offers from relevant businesses, compare them and choose the one that works for you.</p>
+    <div class="hero-v2-ctas">
+      <button class="btn primary hero-primary-cta" type="button" onclick="openCustomerPostCreator()">Post a Requirement <span class="cta-arrow">→</span></button>
+      <button class="btn hero-secondary-cta" type="button" onclick="selectMode('business')">Browse Businesses</button>
+    </div>
+    <ul class="hero-trust-row">
+      <li>Location-based discovery</li>
+      <li>Compare multiple offers</li>
+      <li>Direct business connection</li>
+      <li>Free to browse</li>
+    </ul>
+
+    <div class="hero-demo" aria-hidden="true">
+      <svg class="hero-demo-lines" viewBox="0 0 640 260" preserveAspectRatio="none">
+        <path class="demo-line" d="M180,70 C260,70 260,130 340,130" fill="none"/>
+        <path class="demo-line" d="M340,130 C420,130 420,190 500,190" fill="none"/>
+      </svg>
+      <article class="hero-demo-card demo-card-1">
+        <span class="demo-card-label">Customer Requirement</span>
+        <strong>Interior Work Required</strong>
+        <p class="demo-card-loc">Hyderabad · Manikonda</p>
+        <div class="demo-card-row"><small>Budget</small><strong>₹2L – ₹3L</strong></div>
+        <div class="demo-card-row"><small>Status</small><span class="demo-status-pill">Receiving Offers</span></div>
+      </article>
+      <article class="hero-demo-card demo-card-2">
+        <span class="demo-card-label">Business Offer</span>
+        <strong>Modern Space Interiors</strong>
+        <div class="demo-stars">★★★★★</div>
+        <div class="demo-card-row"><small>Quote</small><strong>₹2,35,000</strong></div>
+        <div class="demo-card-row"><small>Timeline</small><strong>21 Days</strong></div>
+        <span class="demo-view-btn">View Offer</span>
+      </article>
+      <article class="hero-demo-card demo-card-3">
+        <span class="demo-status-dot"></span>
+        <strong>Offer Accepted</strong>
+        <p class="demo-card-loc">Modern Space Interiors</p>
+        <small>Customer &amp; Business Connected</small>
+      </article>
+    </div>
+  </div>
+
   <div class="shell">
     <div class="landing-grid">
 
@@ -162,13 +205,122 @@
   <div><span>⌖</span><strong>Location focused</strong><small>State and district discovery</small></div>
 </div>
 
-<h1>Find Local Work or the <span class="gradient-text">Right Local Business.</span></h1>
-          <p>Select your State, browse district-wise customer jobs, and discover professional local business cards.</p>
-        </div>
+</div>
       </div>
 
     </div>
   </div>
+
+  <section class="g58-marquee-section reveal">
+    <p class="marquee-kicker">Built for everyday local requirements</p>
+    <div class="marquee-track">
+      <div class="marquee-track-inner">
+        <span>Interior Design</span><span>Construction</span><span>Electrical</span><span>Plumbing</span><span>Catering</span><span>Repairs</span><span>Automobile</span><span>Events</span><span>Home Services</span><span>Professional Services</span>
+        <span aria-hidden="true">Interior Design</span><span aria-hidden="true">Construction</span><span aria-hidden="true">Electrical</span><span aria-hidden="true">Plumbing</span><span aria-hidden="true">Catering</span><span aria-hidden="true">Repairs</span><span aria-hidden="true">Automobile</span><span aria-hidden="true">Events</span><span aria-hidden="true">Home Services</span><span aria-hidden="true">Professional Services</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="how-it-works-section">
+    <div class="shell">
+      <div class="section-heading reveal">
+        <h2>One requirement.<br>Multiple possibilities.</h2>
+        <p class="section-sub">Stop searching business after business. Tell G58 what you need and let businesses compete for your requirement.</p>
+      </div>
+      <div class="workflow-steps">
+        <article class="workflow-step reveal">
+          <span class="step-num">01</span><h3>Post</h3>
+          <p>Tell us what you need, where you need it and your expected budget.</p>
+        </article>
+        <article class="workflow-step reveal">
+          <span class="step-num">02</span><h3>Receive Bids</h3>
+          <p>Relevant businesses discover the requirement and submit their offers.</p>
+          <div class="bid-chip-stack"><span>₹2,50,000</span><span>₹2,35,000</span><span>₹2,70,000</span><span>₹2,42,000</span></div>
+        </article>
+        <article class="workflow-step reveal">
+          <span class="step-num">03</span><h3>Compare</h3>
+          <p>See price, rating, experience, completion time and proposal — side by side.</p>
+        </article>
+        <article class="workflow-step reveal">
+          <span class="step-num">04</span><h3>Connect</h3>
+          <p>Accept the offer that works for you and connect directly on WhatsApp.</p>
+          <span class="accepted-pill">Offer Accepted ✓</span>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section class="comparison-section">
+    <div class="shell">
+      <h2 class="reveal">G58 works differently.</h2>
+      <div class="comparison-grid reveal">
+        <div class="comparison-col old">
+          <h4>Traditional Search</h4>
+          <ol><li>Search Google</li><li>Call businesses one by one</li><li>Explain requirement repeatedly</li><li>Collect quotes manually</li><li>Compare everything yourself</li></ol>
+        </div>
+        <div class="comparison-col new">
+          <h4>G58</h4>
+          <ol><li>Post once</li><li>Receive bids</li><li>Compare</li><li>Choose</li></ol>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="tools-showcase">
+    <div class="shell">
+      <div class="section-heading reveal">
+        <h2>More than a marketplace.</h2>
+        <p class="section-sub">G58 gives businesses practical tools to run and grow digitally.</p>
+      </div>
+      <div class="tools-grid">
+        <article class="tool-card reveal">
+          <span class="tool-kicker">Digital Menu</span>
+          <h3>Turn Any Table Into a Digital Ordering Point.</h3>
+          <div class="tool-flow"><span>QR</span><span>→</span><span>Menu</span><span>→</span><span>Order</span><span>→</span><span>Kitchen</span><span>→</span><span>Ready</span></div>
+          <a class="tool-cta" href="/digital-menu/">Explore Digital Menu <span class="cta-arrow">→</span></a>
+        </article>
+        <article class="tool-card reveal">
+          <span class="tool-kicker">Free POS</span>
+          <h3>Simple Billing. No Complicated Setup.</h3>
+          <div class="tool-flow"><span>Billing</span><span>·</span><span>GST</span><span>·</span><span>UPI QR</span><span>·</span><span>Receipts</span><span>·</span><span>Daily Reports</span></div>
+          <a class="tool-cta" href="/pos/">Open Free POS <span class="cta-arrow">→</span></a>
+        </article>
+        <article class="tool-card reveal">
+          <span class="tool-kicker">Refills</span>
+          <h3>Take Repeat Orders Online.</h3>
+          <p>Create refill-based ordering experiences for repeat customers.</p>
+          <a class="tool-cta" href="/digit58/">Explore Refills <span class="cta-arrow">→</span></a>
+        </article>
+        <article class="tool-card reveal">
+          <span class="tool-kicker">Business Card</span>
+          <h3>Your Business Everywhere.</h3>
+          <p>Share your digital card by QR — scanned, opened, contacted.</p>
+          <button type="button" class="tool-cta" onclick="openBusinessCardCreator()">Create Your Card <span class="cta-arrow">→</span></button>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section class="business-cta-dark reveal">
+    <div class="shell">
+      <h2>Customers are already looking.<br>Make sure they can find you.</h2>
+      <div class="dark-cta-actions">
+        <button class="btn primary" type="button" onclick="openBusinessCardCreator()">Create Business Card</button>
+        <button class="btn ghost-light" type="button" onclick="selectMode('customer')">Browse Requirements</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="customer-cta-search reveal">
+    <div class="shell">
+      <h2>What do you need today?</h2>
+      <form class="cta-search-form" onsubmit="event.preventDefault();openCustomerPostCreator()">
+        <input id="ctaSearchInput" type="text" placeholder="Describe what you're looking for…" readonly onclick="openCustomerPostCreator()">
+        <button class="btn primary" type="submit">Post Requirement <span class="cta-arrow">→</span></button>
+      </form>
+    </div>
+  </section>
+
 </section>
 
 
@@ -206,22 +358,52 @@
   </div>
 </section>
 </main>
-<nav class="seo-link-strip" aria-label="SEO pages">
-  <a href="/jobs/">Browse Jobs</a>
-  <a href="/business/">Browse Businesses</a>
+<nav class="seo-link-strip hidden" aria-label="SEO pages">
   <a href="/business/telangana/hyderabad/">Hyderabad Businesses</a>
   <a href="/category/plumbing/">Plumbers</a>
   <a href="/category/interior-design/">Interior Designers</a>
-  <a href="/about/">About</a>
-  <a href="/contact/">Contact</a>
 </nav>
 
+<footer class="g58-footer-v2">
+  <div class="shell g58-footer-grid">
+    <div class="footer-brand-col">
+      <a class="brand gravity-brand" href="#home">
+        <svg class="logo3d" viewBox="0 0 120 120" fill="none" stroke="#F97316" stroke-width="8" aria-hidden="true"><circle cx="60" cy="26" r="15"/><circle cx="28" cy="82" r="15"/><circle cx="92" cy="82" r="15"/></svg>
+        <div class="gravity-wordmark">
+          <div class="gravity-main">GRAVITY<span>58</span></div>
+          <small>POST · BID · CONNECT</small>
+        </div>
+      </a>
+      <p class="footer-tagline">A smarter way for customers and businesses to find each other.</p>
+      <div class="g58-site-footer-badge">
+        <button type="button" class="g58-app-badge" onclick="alert('Android app coming soon — stay tuned!')"><span class="g58-app-badge-icon">▶</span><span class="g58-app-badge-text"><small>Coming soon on</small><strong>Get G58 App</strong></span></button>
+      </div>
+    </div>
 
-<footer class="g58-site-footer">
-  <div class="g58-site-footer-badge">
-    <button type="button" class="g58-app-badge" onclick="alert('Android app coming soon — stay tuned!')"><span class="g58-app-badge-icon">▶</span><span class="g58-app-badge-text"><small>Coming soon on</small><strong>Get G58 App</strong></span></button>
+    <div class="footer-col">
+      <h5>Platform</h5>
+      <a href="/jobs/">Customer Wall</a>
+      <button type="button" onclick="selectMode('business')">Business Wall</button>
+      <button type="button" onclick="openCustomerPostCreator()">Post Requirement</button>
+      <a href="/business/">Business Cards</a>
+    </div>
+
+    <div class="footer-col">
+      <h5>Business Tools</h5>
+      <a href="/digital-menu/">Digital Menu</a>
+      <a href="/pos/">Free POS</a>
+      <a href="/digit58/">Refills</a>
+    </div>
+
+    <div class="footer-col">
+      <h5>Company</h5>
+      <a href="/about/">About</a>
+      <a href="/contact/">Contact</a>
+      <a href="/terms/">Terms</a>
+      <a href="/privacy-policy/">Privacy</a>
+    </div>
   </div>
-  <div class="shell">© 2026 GRAVITY58</div>
+  <div class="shell footer-bottom">© 2026 GRAVITY58</div>
 </footer>
 
 <div class="modal state-selection-modal" id="stateSelectionModal">
@@ -479,5 +661,54 @@
 <script src="/js/database.js"></script>
 <script src="/js/app.js"></script>
 <script src="/js/site-auth.js?v=2"></script>
+<script>
+(function(){
+  var reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var revealTargets = document.querySelectorAll('.reveal');
+  if (reduceMotion || !('IntersectionObserver' in window)) {
+    revealTargets.forEach(function(el){ el.classList.add('in-view'); });
+  } else {
+    var io = new IntersectionObserver(function(entries){
+      entries.forEach(function(entry){
+        if (entry.isIntersecting) { entry.target.classList.add('in-view'); io.unobserve(entry.target); }
+      });
+    }, { threshold: 0.15 });
+    revealTargets.forEach(function(el){ io.observe(el); });
+  }
+
+  document.querySelectorAll('.nav-mega-trigger').forEach(function(trigger){
+    trigger.addEventListener('click', function(event){
+      event.stopPropagation();
+      var wrap = trigger.closest('.nav-mega-wrap');
+      var open = wrap.classList.toggle('touch-open');
+      trigger.setAttribute('aria-expanded', open ? 'true' : 'false');
+    });
+  });
+  document.addEventListener('click', function(){
+    document.querySelectorAll('.nav-mega-wrap.touch-open').forEach(function(wrap){
+      wrap.classList.remove('touch-open');
+      wrap.querySelector('.nav-mega-trigger')?.setAttribute('aria-expanded', 'false');
+    });
+  });
+
+  var ctaInput = document.getElementById('ctaSearchInput');
+  if (ctaInput) {
+    var suggestions = [
+      'Need an interior designer for my 3BHK',
+      'Looking for catering for 100 guests',
+      'Need an electrician near me',
+      'Looking for shop renovation'
+    ];
+    var i = 0;
+    ctaInput.setAttribute('placeholder', suggestions[0]);
+    if (!reduceMotion) {
+      setInterval(function(){
+        i = (i + 1) % suggestions.length;
+        ctaInput.setAttribute('placeholder', suggestions[i]);
+      }, 3200);
+    }
+  }
+})();
+</script>
 </body>
 </html>
