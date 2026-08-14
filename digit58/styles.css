@@ -6,7 +6,7 @@ button,input,select,textarea{font:inherit}
 .screen{min-height:100vh;display:grid;place-items:center;padding:24px}
 .auth-card{width:min(460px,100%);padding:30px;border-radius:28px;background:var(--panel);border:1px solid var(--line);box-shadow:var(--shadow)}
 .brand{display:flex;align-items:center;gap:14px;margin-bottom:18px}
-.brand-mark{width:52px;height:52px;border-radius:18px;display:grid;place-items:center;font-weight:900;font-size:22px;background:linear-gradient(135deg,var(--violet),var(--violet2));box-shadow:0 12px 30px rgba(127,255,212,.35)}
+.brand-mark{width:44px;height:44px;flex-shrink:0}
 h1,h2,h3,p{margin-top:0}
 .tagline{color:var(--muted);margin:6px 0 20px}
 .field{display:grid;gap:8px;margin:14px 0}
