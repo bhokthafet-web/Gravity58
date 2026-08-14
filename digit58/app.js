@@ -21,7 +21,7 @@ const ORDER_STEPS=[
 function buildUpiUri(upiId,payeeName,amount,orderId){
   if(!upiId)return '';
   const reference=`58${String(orderId||Date.now()).replace(/\D/g,'').slice(-30)}`.slice(0,35);
-  const params=new URLSearchParams({pa:upiId,pn:payeeName||upiId,tr:reference,tn:`Digit58 order ${orderId}`,am:Number(amount||0).toFixed(2),cu:'INR'});
+  const params=new URLSearchParams({pa:upiId,pn:payeeName||upiId,tr:reference,tn:`Refills order ${orderId}`,am:Number(amount||0).toFixed(2),cu:'INR'});
   return `upi://pay?${params.toString()}`;
 }
 function toast(message){const target=$('#toast');if(!target)return alert(message);target.textContent=message;target.classList.add('show');setTimeout(()=>target.classList.remove('show'),2400)}
@@ -178,7 +178,7 @@ async function boot(){
   if(!hasActiveEntitlement())return renderAccessGate();
   await proceedAfterEntitlement();
 }
-const DIGIT58_POLICY_TEXT='Digit58 generates a payment QR code from the UPI ID you provide, to help you collect payment from your customers. G58 only facilitates this QR generation — we are not a party to any payment and are not responsible for any fraud, dispute or disagreement between you and your customer. Please verify payments independently before fulfilling any order.';
+const DIGIT58_POLICY_TEXT='Refills generates a payment QR code from the UPI ID you provide, to help you collect payment from your customers. G58 only facilitates this QR generation — we are not a party to any payment and are not responsible for any fraud, dispute or disagreement between you and your customer. Please verify payments independently before fulfilling any order.';
 async function proceedAfterEntitlement(){
   if(!entitlement?.policyAcceptedAt)return renderPolicyGate();
   await loadOwnerData();
@@ -186,7 +186,7 @@ async function proceedAfterEntitlement(){
   renderShell();
 }
 function renderPolicyGate(){
-  app.innerHTML=`<main class="screen"><section class="auth-card"><div class="brand"><div class="brand-mark">D</div><div><h2>Before you continue</h2><p class="tagline">Please review and accept the Digit58 policy</p></div></div><div class="card"><p class="muted">${html(DIGIT58_POLICY_TEXT)}</p></div><div class="actions" style="margin-top:16px"><button class="btn full" id="acceptPolicyBtn">I Accept</button><button class="btn secondary full" id="policyLogout">Sign out</button></div></section></main>`;
+  app.innerHTML=`<main class="screen"><section class="auth-card"><div class="brand"><div class="brand-mark">R</div><div><h2>Before you continue</h2><p class="tagline">Please review and accept the Refills policy</p></div></div><div class="card"><p class="muted">${html(DIGIT58_POLICY_TEXT)}</p></div><div class="actions" style="margin-top:16px"><button class="btn full" id="acceptPolicyBtn">I Accept</button><button class="btn secondary full" id="policyLogout">Sign out</button></div></section></main>`;
   $('#acceptPolicyBtn').onclick=async()=>{
     const button=$('#acceptPolicyBtn');button.disabled=true;
     try{
@@ -231,7 +231,7 @@ function renderAccessGate(){
   }else{
     body=accessRequestBlock(status);
   }
-  app.innerHTML=`<main class="screen"><section class="auth-card"><div class="brand"><div class="brand-mark">D</div><div><h2>Digit58</h2><p class="tagline">Store portal access is ${money(SUBSCRIPTION_AMOUNT)}/month.</p></div></div>${body}<div class="actions" style="margin-top:16px"><button class="btn secondary full" id="gateLogout">Sign out</button></div></section></main>`;
+  app.innerHTML=`<main class="screen"><section class="auth-card"><div class="brand"><div class="brand-mark">R</div><div><h2>Refills</h2><p class="tagline">Store portal access is ${money(SUBSCRIPTION_AMOUNT)}/month.</p></div></div>${body}<div class="actions" style="margin-top:16px"><button class="btn secondary full" id="gateLogout">Sign out</button></div></section></main>`;
   $('#requestAccessBtn')?.addEventListener('click',requestStoreAccess);
   $('#gateLogout').onclick=async()=>{stopOwnerRealtime();await api.logout();session=null;renderOwnerAuth()};
 }
@@ -258,11 +258,11 @@ async function requestAdditionalStore(){
     toast('Additional store request sent to the G58 team');
   }catch(error){if(button)button.disabled=false;toast(error.message||'Could not send request')}
 }
-function renderConfigError(){app.innerHTML=`<main class="screen"><section class="auth-card"><div class="brand"><div class="brand-mark">D</div><div><h2>Digit58</h2><p class="tagline">Take any store online</p></div></div><p>Digit58 is temporarily unavailable. Please try again shortly.</p></section></main>`}
+function renderConfigError(){app.innerHTML=`<main class="screen"><section class="auth-card"><div class="brand"><div class="brand-mark">R</div><div><h2>Refills</h2><p class="tagline">Take any store online</p></div></div><p>Refills is temporarily unavailable. Please try again shortly.</p></section></main>`}
 
 function renderOwnerAuth(){
   app.innerHTML=`<main class="screen"><section class="auth-card">
-    <div class="brand"><div class="brand-mark">D</div><div><h2>Digit58</h2><p class="tagline">Turn your store digital — orders, customers and reminders in one place.</p></div></div>
+    <div class="brand"><div class="brand-mark">R</div><div><h2>Refills</h2><p class="tagline">Turn your store digital — orders, customers and reminders in one place.</p></div></div>
     <div class="actions" style="margin-bottom:14px"><button class="btn small" id="tabLogin">Sign in</button><button class="btn small secondary" id="tabSignup">Create store account</button></div>
     <form id="ownerAuthForm">
       <div class="field full-name-field hidden"><label>Your name</label><input name="name"></div>
@@ -305,11 +305,11 @@ async function loadOwnerData(){
 }
 
 function floatingSupportButton(source){return `<a class="floating-support-btn" href="/support/?from=${encodeURIComponent(source)}" title="Support">🛟<span>Support</span></a>`}
-function androidAppFooter(){return `<div class="android-app-footer"><button type="button" class="btn small secondary" id="androidAppBtn">📱 Get the Android App</button></div>`}
+function androidAppFooter(){return `<div class="android-app-footer"><button type="button" class="g58-app-badge" id="androidAppBtn"><span class="g58-app-badge-icon">▶</span><span class="g58-app-badge-text"><small>Coming soon on</small><strong>Get G58 App</strong></span></button></div>`}
 function bindAndroidAppFooter(){$('#androidAppBtn')?.addEventListener('click',()=>toast('Android app coming soon — stay tuned!'))}
 function renderShell(){
   const store=activeStore();
-  app.innerHTML=`<div class="shell"><aside class="sidebar"><div class="brand"><div class="brand-mark">D</div><div><strong>Digit58</strong><small class="muted">Store workspace</small></div></div><nav class="nav">${navButton('dashboard','◉','Dashboard')}${navButton('stores','◫','My Stores')}${navButton('wall','☰','Customer Wall')}${navButton('orders','🧾','Orders')}${navButton('orderHistory','🕘','Order History')}${navButton('subscription','♢','Subscription')}${navButton('settings','⚙','Settings')}<button id="logout">⇥ Logout</button></nav>${androidAppFooter()}</aside><main class="main"><header class="topbar"><div>${state.stores.length?`<select id="storeSwitch">${state.stores.map(row=>`<option value="${html(row.id)}" ${row.id===state.activeStoreId?'selected':''}>${html(row.name)}</option>`).join('')}</select>`:'<strong>No store yet</strong>'}</div><span class="status-pill"><span class="dot"></span>${html(session?.email||'')}</span></header><section class="content" id="page"></section></main></div>${floatingSupportButton('digit58')}`;
+  app.innerHTML=`<div class="shell"><aside class="sidebar"><div class="brand"><div class="brand-mark">R</div><div><strong>Refills</strong><small class="muted">Store workspace</small></div></div><nav class="nav">${navButton('dashboard','◉','Dashboard')}${navButton('stores','◫','My Stores')}${navButton('wall','☰','Customer Wall')}${navButton('orders','🧾','Orders')}${navButton('orderHistory','🕘','Order History')}${navButton('subscription','♢','Subscription')}${navButton('settings','⚙','Settings')}<button id="logout">⇥ Logout</button></nav>${androidAppFooter()}</aside><main class="main"><header class="topbar"><div>${state.stores.length?`<select id="storeSwitch">${state.stores.map(row=>`<option value="${html(row.id)}" ${row.id===state.activeStoreId?'selected':''}>${html(row.name)}</option>`).join('')}</select>`:'<strong>No store yet</strong>'}</div><span class="status-pill"><span class="dot"></span>${html(session?.email||'')}</span></header><section class="content" id="page"></section></main></div>${floatingSupportButton('digit58')}`;
   $$('[data-view]').forEach(button=>button.onclick=()=>{view=button.dataset.view;renderShell()});
   $('#logout').onclick=async()=>{stopOwnerRealtime();await api.logout();session=null;renderOwnerAuth()};
   $('#storeSwitch')?.addEventListener('change',event=>{state.activeStoreId=event.target.value;save();renderShell()});
@@ -331,7 +331,7 @@ function subscriptionView(){
   refreshView=subscriptionView;
   const expiry=entitlement?.lifetime?'Lifetime access':entitlement?.expiresAt?new Date(entitlement.expiresAt).toLocaleDateString('en-IN',{dateStyle:'medium'}):'—';
   const status=entitlement?.paused?'Paused':hasActiveEntitlement()?'Active':'Inactive';
-  $('#page').innerHTML=`<div class="section-head"><div><h1>Subscription</h1><p class="muted">Your Digit58 store portal access.</p></div></div><div class="card" style="max-width:420px"><span class="chip">Digit58 Store Access</span><h2 style="margin:10px 0">${money(SUBSCRIPTION_AMOUNT)}<small class="muted" style="font-size:14px"> /month</small></h2><div class="chips"><span class="chip ${status==='Active'?'delivered':status==='Paused'?'due':''}">${status}</span></div><p class="muted" style="margin-top:12px">${entitlement?.lifetime?'Your subscription never expires.':`Renews / expires: ${expiry}`}</p>${status==='Paused'?'<p class="muted">Contact the G58 team to resume access.</p>':''}</div>`;
+  $('#page').innerHTML=`<div class="section-head"><div><h1>Subscription</h1><p class="muted">Your Refills store portal access.</p></div></div><div class="card" style="max-width:420px"><span class="chip">Refills Store Access</span><h2 style="margin:10px 0">${money(SUBSCRIPTION_AMOUNT)}<small class="muted" style="font-size:14px"> /month</small></h2><div class="chips"><span class="chip ${status==='Active'?'delivered':status==='Paused'?'due':''}">${status}</span></div><p class="muted" style="margin-top:12px">${entitlement?.lifetime?'Your subscription never expires.':`Renews / expires: ${expiry}`}</p>${status==='Paused'?'<p class="muted">Contact the G58 team to resume access.</p>':''}</div>`;
 }
 
 function metric(title,value){return `<article class="card metric"><span>${html(title)}</span><strong>${value}</strong></article>`}

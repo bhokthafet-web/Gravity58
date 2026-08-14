@@ -440,7 +440,7 @@ async function acceptDigit58Policy(call, input, userId) {
   if (!ownerId || ownerId !== userId) { const denied = new Error('Only the store owner can accept this policy.'); denied.code = 403; throw denied; }
   const rowId = digit58EntitlementRowId(ownerId);
   const row = await call(`/tablesdb/${DATABASE_ID}/tables/${TABLE_ID}/rows/${encodeURIComponent(rowId)}`).catch(() => null);
-  if (!row) throw new Error('No active Digit58 subscription found for this account.');
+  if (!row) throw new Error('No active Refills subscription found for this account.');
   const entitlement = cleanRow(row);
   return updateRow(call, rowId, { ...entitlement, policyAcceptedAt: new Date().toISOString() });
 }
@@ -463,7 +463,7 @@ async function setDigit58StoreSuspended(call, input, userId) {
 function buildDigit58UpiUri(upiId, payeeName, amount, refId) {
   if (!upiId) return '';
   const reference = `58${String(refId || Date.now()).replace(/\D/g, '').slice(-30)}`.slice(0, 35);
-  const params = new URLSearchParams({ pa: upiId, pn: payeeName || upiId, tr: reference, tn: `Digit58 order ${refId}`, am: Number(amount || 0).toFixed(2), cu: 'INR' });
+  const params = new URLSearchParams({ pa: upiId, pn: payeeName || upiId, tr: reference, tn: `Refills order ${refId}`, am: Number(amount || 0).toFixed(2), cu: 'INR' });
   return `upi://pay?${params.toString()}`;
 }
 async function createDigit58Card(call, input, userId) {
@@ -492,7 +492,7 @@ async function requestDigit58BuyAgain(call, input, userId) {
   if (!ownerId || !cardId) throw new Error('Card details are missing.');
   const row = await call(`/tablesdb/${DATABASE_ID}/tables/${TABLE_ID}/rows/${encodeURIComponent(cardId)}`);
   const card = cleanRow(row);
-  if (row.kind !== digit58CardKind(ownerId)) throw new Error('This is not a Digit58 reminder card.');
+  if (row.kind !== digit58CardKind(ownerId)) throw new Error('This is not a Refills reminder card.');
   if (card.customerAccountId !== userId) { const denied = new Error("Only this card's customer can request a reorder."); denied.code = 403; throw denied; }
   const changes = { status: 'Buy Requested', buyRequestedAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
   const phone = normalisePhone(input.phone);

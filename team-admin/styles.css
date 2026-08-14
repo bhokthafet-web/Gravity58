@@ -123,3 +123,7 @@ th,td{border-color:var(--line)}
 .ticket-message{padding:10px 12px;border-radius:13px;background:rgba(255,255,255,.045);font-size:13px;max-width:88%;border:1px solid var(--line)}
 .ticket-message.mine{margin-left:auto;background:rgba(109,94,240,.14);border-color:rgba(109,94,240,.28)}
 .ticket-message strong{display:block;font-size:10px;color:var(--muted);margin-bottom:3px;text-transform:uppercase;letter-spacing:.05em}
+button{color:inherit}
+.diner-filter-bar input[type=date],input[type=date]{background:rgba(6,7,11,.75);color:var(--text);color-scheme:dark;border:1px solid var(--line)}
+.admin-action h3,.admin-action p{color:var(--text)}
+.admin-action p{color:var(--muted)}

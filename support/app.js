@@ -3,7 +3,7 @@ const app=$('#app'),api=window.Gravity58Ads;
 const now=()=>new Date().toISOString();
 const html=value=>String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
 const TICKET_KIND='support_tickets';
-const SOURCE_LABELS={digit58:'Digit58',digitalMenu:'Digital Menu','digital-menu':'Digital Menu',pos:'POS'};
+const SOURCE_LABELS={digit58:'Refills',digitalMenu:'Digital Menu','digital-menu':'Digital Menu',pos:'POS'};
 const SOURCE_HOME={digit58:'/digit58/','digital-menu':'/digital-menu/',digitalMenu:'/digital-menu/',pos:'/pos/'};
 function toast(message){const target=$('#toast');if(!target)return alert(message);target.textContent=message;target.classList.add('show');setTimeout(()=>target.classList.remove('show'),2400)}
 function sourceLabel(source){return SOURCE_LABELS[source]||'G58'}

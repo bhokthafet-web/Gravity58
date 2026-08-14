@@ -215,5 +215,10 @@ body{color:var(--text);background:radial-gradient(circle at 10% 10%,#ffe8bd 0,tr
 .floating-support-btn:hover{transform:translateY(-2px) scale(1.03)}
 .floating-support-btn span{font-size:13px}
 .android-app-footer{margin:14px 0 4px}
-.android-app-footer .btn{width:100%}
 @media(max-width:980px){.android-app-footer{display:none}}
+.g58-app-badge{display:flex;align-items:center;gap:10px;width:100%;padding:9px 16px;border-radius:11px;background:#0b0b0b;border:1px solid #3a3a3a;cursor:pointer;color:#fff;transition:.2s transform}
+.g58-app-badge:hover{transform:translateY(-1px);border-color:#5a5a5a}
+.g58-app-badge-icon{font-size:20px;color:var(--gold);flex-shrink:0}
+.g58-app-badge-text{display:flex;flex-direction:column;align-items:flex-start;line-height:1.2;text-align:left}
+.g58-app-badge-text small{font-size:9px;letter-spacing:.03em;color:#c9c9c9;text-transform:uppercase}
+.g58-app-badge-text strong{font-size:15px;font-weight:700}

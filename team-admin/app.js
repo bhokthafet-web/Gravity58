@@ -41,7 +41,7 @@ async function reconcileExpiredCampaigns(){
 }
 function parse(value){try{return Array.isArray(value)?value:JSON.parse(value||'[]')}catch{return[]}}
 function parsePost(value){try{return typeof value==='string'?JSON.parse(value):value}catch{return null}}
-function shell(){app.innerHTML=`<div class="shell"><aside class="sidebar"><div class="brand"><div class="brand-mark">G</div><div><strong>Gravity58</strong><small class="muted">Team Administration</small></div></div><nav class="nav">${nav('overview','◉','Overview')}${nav('bookings','▣','Ad Bookings')}${nav('campaigns','✦','Campaigns')}${nav('digitalMenus','◇','Digital Menu Plans')}${nav('diners','☎','Customer Details')}${nav('digit58','⬡','Digit58')}${nav('support','☏','Support Tickets')}${nav('marketplace','⌘','Public Posts')}${nav('accounts','◎','Accounts')}${nav('slots','▦','Ad Placements')}${nav('system','⌗','System')}<button id="logout">⇥ Logout</button></nav></aside><main class="main"><header class="topbar"><strong>Private Gravity58 Team Portal</strong><span class="status-pill"><span class="dot"></span>${esc(user.email)}</span></header><section class="content" id="page"></section></main></div>`;$$('[data-view]').forEach(button=>button.onclick=()=>{view=button.dataset.view;shell()});$('#logout').onclick=async()=>{await api.logout();user=null;login()};renderView()}
+function shell(){app.innerHTML=`<div class="shell"><aside class="sidebar"><div class="brand"><div class="brand-mark">G</div><div><strong>Gravity58</strong><small class="muted">Team Administration</small></div></div><nav class="nav">${nav('overview','◉','Overview')}${nav('bookings','▣','Ad Bookings')}${nav('campaigns','✦','Campaigns')}${nav('digitalMenus','◇','Digital Menu Plans')}${nav('diners','☎','Customer Details')}${nav('digit58','⬡','Refills')}${nav('support','☏','Support Tickets')}${nav('marketplace','⌘','Public Posts')}${nav('accounts','◎','Accounts')}${nav('slots','▦','Ad Placements')}${nav('system','⌗','System')}<button id="logout">⇥ Logout</button></nav></aside><main class="main"><header class="topbar"><strong>Private Gravity58 Team Portal</strong><span class="status-pill"><span class="dot"></span>${esc(user.email)}</span></header><section class="content" id="page"></section></main></div>`;$$('[data-view]').forEach(button=>button.onclick=()=>{view=button.dataset.view;shell()});$('#logout').onclick=async()=>{await api.logout();user=null;login()};renderView()}
 function nav(key,icon,label){return`<button data-view="${key}" class="${view===key?'active':''}"><span>${icon}</span>${label}</button>`}
 function renderView(){({overview,bookings,campaigns,digitalMenus,diners,digit58,support:supportTicketsView,marketplace,accounts,slots,system:systemView}[view]||overview)()}
 function metric(title,value){return`<article class="metric"><span>${title}</span><strong>${value}</strong></article>`}
@@ -230,13 +230,13 @@ function drawDiners(){
 function digit58PricingConfig(){const row=data.digit58Pricing.find(item=>(item.id||item.$id)==='default')||data.digit58Pricing[0]||{};return {paymentLink:row.paymentLink||''}}
 function editDigit58Pricing(){
   const pricing=digit58PricingConfig();
-  modal('Set Default Digit58 Payment Link',`<form id="digit58PricingForm"><p class="muted">This link is pre-filled whenever you send a payment link for a Digit58 activation or additional-store request (${money(399)}/month). You can still override it per request.</p><div class="field"><label>Default payment link</label><input name="paymentLink" type="url" value="${esc(pricing.paymentLink)}" placeholder="https://rzp.io/..." required></div><button class="btn full">Save Default Link</button></form>`,()=>{
+  modal('Set Default Refills Payment Link',`<form id="digit58PricingForm"><p class="muted">This link is pre-filled whenever you send a payment link for a Refills activation or additional-store request (${money(399)}/month). You can still override it per request.</p><div class="field"><label>Default payment link</label><input name="paymentLink" type="url" value="${esc(pricing.paymentLink)}" placeholder="https://rzp.io/..." required></div><button class="btn full">Save Default Link</button></form>`,()=>{
     $('#digit58PricingForm').onsubmit=async event=>{
       event.preventDefault();
       const values=Object.fromEntries(new FormData(event.target)),payload={paymentLink:values.paymentLink.trim(),updatedAt:now()},existing=data.digit58Pricing.find(row=>(row.id||row.$id)==='default');
       try{
         existing?await api.update('digit58_pricing',existing.id,payload):await api.create('digit58_pricing',payload,'default',api.permissionSet('digit58_pricing',user.$id,true));
-        closeModal();await refresh();toast('Default Digit58 payment link saved');
+        closeModal();await refresh();toast('Default Refills payment link saved');
       }catch(error){toast(error.message||'Could not save payment link')}
     };
   });
@@ -247,14 +247,14 @@ function digit58(){
   const requests=[...data.digit58Requests].filter(row=>!['Activated','Rejected'].includes(row.status)).sort((a,b)=>new Date(b.createdAt||b.$createdAt)-new Date(a.createdAt||a.$createdAt));
   const entitlements=[...data.digit58Entitlements].sort((a,b)=>String(a.ownerEmail||a.ownerId).localeCompare(String(b.ownerEmail||b.ownerId)));
   const pricing=digit58PricingConfig();
-  $('#page').innerHTML=`<div class="section-head"><div><h1>Digit58</h1><p class="muted">Store subscriptions, activation requests, stores and customers across every Digit58 owner.</p></div><button class="btn secondary" id="editDigit58Pricing">${pricing.paymentLink?'Edit':'Set'} Default Payment Link</button></div><div class="grid stats">${metric('Stores',stores.length)}${metric('Store Owners',owners)}${metric('Pending Requests',requests.length)}${metric('Active Subscriptions',entitlements.filter(row=>row.active&&!row.paused).length)}</div>
+  $('#page').innerHTML=`<div class="section-head"><div><h1>Refills</h1><p class="muted">Store subscriptions, activation requests, stores and customers across every Refills owner.</p></div><button class="btn secondary" id="editDigit58Pricing">${pricing.paymentLink?'Edit':'Set'} Default Payment Link</button></div><div class="grid stats">${metric('Stores',stores.length)}${metric('Store Owners',owners)}${metric('Pending Requests',requests.length)}${metric('Active Subscriptions',entitlements.filter(row=>row.active&&!row.paused).length)}</div>
   <div class="section-head"><h2>Store owner requests</h2></div>
-  <div class="card table-wrap"><table><thead><tr><th>Owner</th><th>Amount</th><th>Status</th><th>Actions</th></tr></thead><tbody>${requests.map(digit58RequestRow).join('')||'<tr><td colspan="4">No pending Digit58 requests.</td></tr>'}</tbody></table></div>
+  <div class="card table-wrap"><table><thead><tr><th>Owner</th><th>Amount</th><th>Status</th><th>Actions</th></tr></thead><tbody>${requests.map(digit58RequestRow).join('')||'<tr><td colspan="4">No pending Refills requests.</td></tr>'}</tbody></table></div>
   <div class="section-head"><h2>Store owner subscriptions</h2></div>
-  <div class="card table-wrap"><table><thead><tr><th>Owner</th><th>Status</th><th>Expiry</th><th>Store Slots</th><th>Policy</th><th>Actions</th></tr></thead><tbody>${entitlements.map(digit58EntitlementRow).join('')||'<tr><td colspan="6">No activated Digit58 subscriptions.</td></tr>'}</tbody></table></div>
-  <div class="section-head"><h2>Digit58 stores</h2></div>
-  <div class="admin-filter-bar"><input id="digit58Search" placeholder="Search store, category or owner email"><select id="digit58Category"><option value="All">All categories</option>${[...new Set(stores.map(row=>row.category||'General store'))].map(category=>`<option>${esc(category)}</option>`).join('')}</select></div><div class="card table-wrap"><table><thead><tr><th>Store</th><th>Category</th><th>City</th><th>Owner</th><th>Status</th><th>Created</th><th>Actions</th></tr></thead><tbody id="digit58Rows">${stores.map(digit58Row).join('')||'<tr><td colspan="7">No Digit58 stores yet.</td></tr>'}</tbody></table></div>
-  <div class="section-head"><div><h2>Store customers</h2><p class="muted">Customers signed up across all Digit58 stores, with their last visit.</p></div><button class="btn" id="loadDigit58Customers">${data.digit58CustomersLoaded?'Refresh':'Load Customers'}</button></div>
+  <div class="card table-wrap"><table><thead><tr><th>Owner</th><th>Status</th><th>Expiry</th><th>Store Slots</th><th>Policy</th><th>Actions</th></tr></thead><tbody>${entitlements.map(digit58EntitlementRow).join('')||'<tr><td colspan="6">No activated Refills subscriptions.</td></tr>'}</tbody></table></div>
+  <div class="section-head"><h2>Refills stores</h2></div>
+  <div class="admin-filter-bar"><input id="digit58Search" placeholder="Search store, category or owner email"><select id="digit58Category"><option value="All">All categories</option>${[...new Set(stores.map(row=>row.category||'General store'))].map(category=>`<option>${esc(category)}</option>`).join('')}</select></div><div class="card table-wrap"><table><thead><tr><th>Store</th><th>Category</th><th>City</th><th>Owner</th><th>Status</th><th>Created</th><th>Actions</th></tr></thead><tbody id="digit58Rows">${stores.map(digit58Row).join('')||'<tr><td colspan="7">No Refills stores yet.</td></tr>'}</tbody></table></div>
+  <div class="section-head"><div><h2>Store customers</h2><p class="muted">Customers signed up across all Refills stores, with their last visit.</p></div><button class="btn" id="loadDigit58Customers">${data.digit58CustomersLoaded?'Refresh':'Load Customers'}</button></div>
   <div class="card table-wrap" id="digit58CustomerTable">${data.digit58CustomersLoaded?digit58CustomersTable():'<div class="empty">Click "Load Customers" to fetch customer details across all stores.</div>'}</div>`;
   const draw=()=>{const q=$('#digit58Search').value.toLowerCase(),category=$('#digit58Category').value,rows=stores.filter(row=>(category==='All'||row.category===category)&&`${row.storeName} ${row.category} ${row.ownerEmail}`.toLowerCase().includes(q));$('#digit58Rows').innerHTML=rows.map(digit58Row).join('')||'<tr><td colspan="7">No matching stores.</td></tr>';$$('[data-toggle-digit58-store]').forEach(button=>button.onclick=()=>toggleDigit58Store(button.dataset.toggleDigit58Store,button.dataset.ownerId))};
   $('#digit58Search').oninput=draw;$('#digit58Category').onchange=draw;
@@ -289,7 +289,7 @@ function digit58EntitlementRow(row){
 function sendDigit58PaymentLink(id){
   const row=data.digit58Requests.find(item=>item.id===id);if(!row)return;
   const defaultLink=digit58PricingConfig().paymentLink;
-  modal('Send Digit58 Payment Link',`<form id="sendDigit58LinkForm"><p><strong>${esc(row.ownerEmail||row.ownerId)}</strong> requested Digit58 store access for ${money(row.amount||399)}.</p><div class="field"><label>Payment link</label><input name="paymentLink" type="url" value="${esc(defaultLink)}" required placeholder="Razorpay payment link"></div>${defaultLink?'<p class="muted">Pre-filled from your saved default — edit if this request needs a different link.</p>':''}<button class="btn full">Send to store owner</button></form>`,()=>{
+  modal('Send Refills Payment Link',`<form id="sendDigit58LinkForm"><p><strong>${esc(row.ownerEmail||row.ownerId)}</strong> requested Refills store access for ${money(row.amount||399)}.</p><div class="field"><label>Payment link</label><input name="paymentLink" type="url" value="${esc(defaultLink)}" required placeholder="Razorpay payment link"></div>${defaultLink?'<p class="muted">Pre-filled from your saved default — edit if this request needs a different link.</p>':''}<button class="btn full">Send to store owner</button></form>`,()=>{
     $('#sendDigit58LinkForm').onsubmit=async event=>{event.preventDefault();const values=Object.fromEntries(new FormData(event.target));try{await api.update('digit58_requests',id,{...values,status:'Payment Link Sent',paymentLinkSentAt:now()});closeModal();await refresh();toast('Payment link sent to store owner')}catch(error){toast(error.message||'Could not send payment link')}};
   });
 }
@@ -310,7 +310,7 @@ function activateDigit58Request(id){
     });
     return;
   }
-  modal('Activate Digit58 Store Access',`<form id="activateDigit58Form"><p><strong>${esc(request.ownerEmail||request.ownerId)}</strong> — ${money(request.amount||399)}/month.</p><div class="form-grid"><div class="field"><label>Activation months</label><input name="months" type="number" min="1" max="120" value="1" required></div></div><label class="notice"><input name="lifetime" type="checkbox" ${existing?.lifetime?'checked':''}> Lifetime access — subscription never expires</label><button class="btn green full">Activate Store Access</button></form>`,()=>{
+  modal('Activate Refills Store Access',`<form id="activateDigit58Form"><p><strong>${esc(request.ownerEmail||request.ownerId)}</strong> — ${money(request.amount||399)}/month.</p><div class="form-grid"><div class="field"><label>Activation months</label><input name="months" type="number" min="1" max="120" value="1" required></div></div><label class="notice"><input name="lifetime" type="checkbox" ${existing?.lifetime?'checked':''}> Lifetime access — subscription never expires</label><button class="btn green full">Activate Store Access</button></form>`,()=>{
     $('#activateDigit58Form').onsubmit=async event=>{
       event.preventDefault();
       const fd=new FormData(event.target),months=Number(fd.get('months')),lifetime=fd.has('lifetime'),base=Math.max(Date.now(),new Date(existing?.expiresAt||0).getTime()),expiry=new Date(base);expiry.setMonth(expiry.getMonth()+months);
@@ -319,7 +319,7 @@ function activateDigit58Request(id){
         if(existing)await api.update('digit58_entitlements',existing.id,payload);
         else await api.create('digit58_entitlements',payload,`d58-${String(request.ownerId).slice(0,30)}`,api.managedPermissionSet?.()||api.collaborativePermissionSet(request.ownerId));
         await api.update('digit58_requests',id,{status:'Activated',activatedAt:now()});
-        closeModal();await refresh();toast('Digit58 store access activated');
+        closeModal();await refresh();toast('Refills store access activated');
       }catch(error){toast(error.message||'Could not activate store access')}
     };
   });
@@ -327,7 +327,7 @@ function activateDigit58Request(id){
 async function rejectDigit58Request(id){if(!confirm('Reject this Digit58 activation request?'))return;try{await api.update('digit58_requests',id,{status:'Rejected',rejectedAt:now()});await refresh();toast('Request rejected')}catch(error){toast(error.message||'Could not reject request')}}
 function editDigit58Entitlement(id){
   const row=data.digit58Entitlements.find(item=>item.id===id);if(!row)return;
-  modal('Edit Digit58 Subscription',`<form id="editDigit58Entitlement"><div class="form-grid"><div class="field"><label>Expiry</label><input name="expiresAt" type="date" value="${row.expiresAt?row.expiresAt.slice(0,10):''}"></div></div><label class="notice"><input name="lifetime" type="checkbox" ${row.lifetime?'checked':''}> Lifetime — never expires</label><button class="btn full">Save Subscription</button></form>`,()=>{
+  modal('Edit Refills Subscription',`<form id="editDigit58Entitlement"><div class="form-grid"><div class="field"><label>Expiry</label><input name="expiresAt" type="date" value="${row.expiresAt?row.expiresAt.slice(0,10):''}"></div></div><label class="notice"><input name="lifetime" type="checkbox" ${row.lifetime?'checked':''}> Lifetime — never expires</label><button class="btn full">Save Subscription</button></form>`,()=>{
     $('#editDigit58Entitlement').onsubmit=async event=>{event.preventDefault();const fd=new FormData(event.target),lifetime=fd.has('lifetime');try{await api.update('digit58_entitlements',id,{lifetime,expiresAt:lifetime?'':fd.get('expiresAt')?new Date(`${fd.get('expiresAt')}T23:59:59+05:30`).toISOString():'',updatedAt:now()});closeModal();await refresh();toast('Subscription updated')}catch(error){toast(error.message||'Could not update subscription')}};
   });
 }
@@ -344,14 +344,14 @@ async function loadDigit58Customers(force=false){
 function digit58CustomersTable(){
   const rows=[...data.digit58Customers].sort((a,b)=>new Date(b.lastLoginAt||b.createdAt||0)-new Date(a.lastLoginAt||a.createdAt||0));
   const storeName=storeId=>data.digit58Stores.find(row=>row.storeId===storeId)?.storeName||storeId;
-  return `<table><thead><tr><th>Customer</th><th>Contact</th><th>Store</th><th>Last login</th><th>Signed up</th></tr></thead><tbody>${rows.map(row=>`<tr><td><strong>${esc(row.customerName||'Customer')}</strong><br><small>${esc(row.customerEmail||'')}</small></td><td>${esc(row.phone||'—')}</td><td>${esc(storeName(row.storeId))}</td><td>${row.lastLoginAt?new Date(row.lastLoginAt).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'}):'—'}</td><td>${row.createdAt?new Date(row.createdAt).toLocaleDateString('en-IN',{dateStyle:'medium'}):''}</td></tr>`).join('')||'<tr><td colspan="5">No Digit58 customers found.</td></tr>'}</tbody></table>`;
+  return `<table><thead><tr><th>Customer</th><th>Contact</th><th>Store</th><th>Last login</th><th>Signed up</th></tr></thead><tbody>${rows.map(row=>`<tr><td><strong>${esc(row.customerName||'Customer')}</strong><br><small>${esc(row.customerEmail||'')}</small></td><td>${esc(row.phone||'—')}</td><td>${esc(storeName(row.storeId))}</td><td>${row.lastLoginAt?new Date(row.lastLoginAt).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'}):'—'}</td><td>${row.createdAt?new Date(row.createdAt).toLocaleDateString('en-IN',{dateStyle:'medium'}):''}</td></tr>`).join('')||'<tr><td colspan="5">No Refills customers found.</td></tr>'}</tbody></table>`;
 }
 
-function ticketSourceLabel(source){return {digit58:'Digit58','digital-menu':'Digital Menu',digitalMenu:'Digital Menu',pos:'POS'}[source]||source||'G58'}
+function ticketSourceLabel(source){return {digit58:'Refills','digital-menu':'Digital Menu',digitalMenu:'Digital Menu',pos:'POS'}[source]||source||'G58'}
 function supportTicketsView(){
   const tickets=[...data.supportTickets].sort((a,b)=>new Date(b.updatedAt||b.createdAt)-new Date(a.updatedAt||a.createdAt));
   const statuses=['All','Open','In Progress','Resolved'];
-  $('#page').innerHTML=`<div class="section-head"><div><h1>Support Tickets</h1><p class="muted">Tickets raised by premium Digit58, Digital Menu and POS owners.</p></div><button class="btn" id="refresh">Refresh</button></div><div class="grid stats">${metric('Open',tickets.filter(row=>row.status==='Open').length)}${metric('In Progress',tickets.filter(row=>row.status==='In Progress').length)}${metric('Resolved',tickets.filter(row=>row.status==='Resolved').length)}${metric('Total',tickets.length)}</div><div class="admin-filter-bar"><input id="ticketSearch" placeholder="Search subject or requester email"><select id="ticketStatus">${statuses.map(status=>`<option>${status}</option>`).join('')}</select></div><div class="card table-wrap"><table><thead><tr><th>Subject</th><th>Requester</th><th>Source</th><th>Status</th><th>Updated</th><th>Actions</th></tr></thead><tbody id="ticketRows">${tickets.map(ticketRow).join('')||'<tr><td colspan="6">No support tickets yet.</td></tr>'}</tbody></table></div>`;
+  $('#page').innerHTML=`<div class="section-head"><div><h1>Support Tickets</h1><p class="muted">Tickets raised by premium Refills, Digital Menu and POS owners.</p></div><button class="btn" id="refresh">Refresh</button></div><div class="grid stats">${metric('Open',tickets.filter(row=>row.status==='Open').length)}${metric('In Progress',tickets.filter(row=>row.status==='In Progress').length)}${metric('Resolved',tickets.filter(row=>row.status==='Resolved').length)}${metric('Total',tickets.length)}</div><div class="admin-filter-bar"><input id="ticketSearch" placeholder="Search subject or requester email"><select id="ticketStatus">${statuses.map(status=>`<option>${status}</option>`).join('')}</select></div><div class="card table-wrap"><table><thead><tr><th>Subject</th><th>Requester</th><th>Source</th><th>Status</th><th>Updated</th><th>Actions</th></tr></thead><tbody id="ticketRows">${tickets.map(ticketRow).join('')||'<tr><td colspan="6">No support tickets yet.</td></tr>'}</tbody></table></div>`;
   const draw=()=>{const q=$('#ticketSearch').value.toLowerCase(),status=$('#ticketStatus').value,rows=tickets.filter(row=>(status==='All'||row.status===status)&&`${row.subject} ${row.requesterEmail}`.toLowerCase().includes(q));$('#ticketRows').innerHTML=rows.map(ticketRow).join('')||'<tr><td colspan="6">No matching tickets.</td></tr>';$$('[data-open-ticket]').forEach(button=>button.onclick=()=>openTicketModal(button.dataset.openTicket))};
   $('#ticketSearch').oninput=draw;$('#ticketStatus').onchange=draw;
   $('#refresh').onclick=refresh;
@@ -393,11 +393,11 @@ async function loadPurgeableMenuOrders(){
 }
 const PURGE_TARGETS=[
   {id:'menuOrders',label:'Digital Menu Orders',statuses:['Completed','Rejected','Payment Rejected'],dateField:'createdAt',loader:loadPurgeableMenuOrders,refreshAfter:false,resetCache:()=>{data.dinerOrdersLoaded=false}},
-  {id:'digit58Orders',label:'Digit58 Orders',statuses:['Delivered','Rejected'],dateField:'createdAt',loader:loadPurgeableDigit58Orders,refreshAfter:false,resetCache:()=>{digit58OrdersCache=null}},
+  {id:'digit58Orders',label:'Refills Orders',statuses:['Delivered','Rejected'],dateField:'createdAt',loader:loadPurgeableDigit58Orders,refreshAfter:false,resetCache:()=>{digit58OrdersCache=null}},
   {id:'bookings',label:'Ad Bookings',statuses:['Rejected','Expired'],dateField:'createdAt',loader:async()=>data.bookings.map(row=>({...row,_kind:'bookings'})),refreshAfter:true},
   {id:'advertisements',label:'Advertisements',statuses:['Expired'],dateField:'createdAt',loader:async()=>data.advertisements.map(row=>({...row,_kind:'advertisements'})),refreshAfter:true},
   {id:'menuRequests',label:'Digital Menu Requests',statuses:['Rejected'],dateField:'createdAt',loader:async()=>data.menuRequests.map(row=>({...row,_kind:'digital_menu_requests'})),refreshAfter:true},
-  {id:'digit58Requests',label:'Digit58 Requests',statuses:['Rejected'],dateField:'createdAt',loader:async()=>data.digit58Requests.map(row=>({...row,_kind:'digit58_requests'})),refreshAfter:true},
+  {id:'digit58Requests',label:'Refills Requests',statuses:['Rejected'],dateField:'createdAt',loader:async()=>data.digit58Requests.map(row=>({...row,_kind:'digit58_requests'})),refreshAfter:true},
   {id:'tickets',label:'Support Tickets',statuses:['Resolved'],dateField:'updatedAt',loader:async()=>data.supportTickets.map(row=>({...row,_kind:'support_tickets'})),refreshAfter:true},
 ];
 function systemView(){
