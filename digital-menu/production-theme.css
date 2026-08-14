@@ -5,7 +5,7 @@
   --gold:#e2560a;--green:#1f8a53;--red:#c8402c;
   --shadow:0 20px 48px rgba(52,28,8,.12),0 4px 12px rgba(52,28,8,.06)
 }
-body{background:radial-gradient(circle at 12% 3%,#ffdcae 0,transparent 32%),radial-gradient(circle at 90% 18%,#fff2df 0,transparent 30%),var(--bg);color:var(--text);letter-spacing:-.006em}
+body{background:radial-gradient(circle at 12% 3%,#ffdcae 0,transparent 32%),radial-gradient(circle at 90% 18%,#fff2df 0,transparent 30%),var(--bg);color:var(--text)}
 .glass,.card,.modal{background:rgba(255,254,251,.97);border:1px solid var(--line);box-shadow:var(--shadow)}
 .sidebar{background:#26140a;color:#fff;border:0}.sidebar .muted,.sidebar small{color:#dcbfa6}.nav button{color:#f5ddc8}.nav button.active,.nav button:hover{color:#fff;background:linear-gradient(135deg,#e2560a,#c74600);border-color:rgba(255,255,255,.18)}
 .topbar{background:rgba(255,252,247,.95);border-color:var(--line)}

@@ -1402,6 +1402,7 @@ body{background:
 .nav-link{background:none;border:0;color:var(--ink);font-size:14px;font-weight:600;cursor:pointer;padding:6px 0}
 .topbar.scrolled .nav-link{color:#e7ecf3}
 .nav-mega-wrap{position:relative}
+.nav-mega-wrap::after{content:"";position:absolute;top:100%;left:50%;transform:translateX(-50%);width:300px;height:14px}
 .nav-mega-trigger{display:inline-flex;align-items:center;gap:5px}
 .mega-caret{font-size:11px;transition:.2s}
 .nav-mega-wrap:hover .mega-caret,.nav-mega-wrap:focus-within .mega-caret{transform:rotate(180deg)}
