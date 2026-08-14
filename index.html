@@ -10,7 +10,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/css/style.css?v=9">
+  <link rel="stylesheet" href="/css/style.css?v=10">
   <link rel="stylesheet" href="/css/mobile.css">
   <link rel="canonical" href="https://g58.in/" />
   <meta name="robots" content="index, follow, max-image-preview:large" />
@@ -397,14 +397,32 @@
         <p>Discover requirements posted by customers.</p>
       </div>
       <div class="cw-header-right">
+        <button type="button" class="cw-help-pill" onclick="openBrowseGuide()">? How It Works</button>
         <button type="button" class="cw-location-pill" onclick="openStateSelection(false)">📍 <span id="cwLocationLabel">Select State</span></button>
         <button type="button" class="cw-refresh-pill" onclick="renderWall()" aria-label="Refresh requirements">⟳ Refresh</button>
       </div>
     </div>
 
+    <div class="bw-header">
+      <div class="bw-header-top">
+        <span class="bw-eyebrow">G58 BUSINESS NETWORK</span>
+        <div class="bw-header-right">
+          <button type="button" class="cw-help-pill" onclick="openBrowseGuide()">? How It Works</button>
+          <button type="button" class="cw-location-pill" onclick="openStateSelection(false)">📍 <span id="bwLocationLabel">Select State</span></button>
+          <button type="button" class="btn primary bw-create-btn" id="bwCreateBtn" onclick="openBusinessCardCreator()">+ Create Business Card</button>
+        </div>
+      </div>
+      <h2>Find the right business.<br>Right where you need it.</h2>
+      <p>Discover local businesses, explore their services, check customer ratings and connect directly.</p>
+    </div>
+
     <div class="cw-stats" id="cwStats"></div>
 
+    <div class="bw-results-head" id="bwResultsHead"></div>
+
     <div id="locationNotice" class="location-notice warning">Select your State / UT to view posts.</div>
+
+    <div class="bw-category-chips" id="bwCategoryChips"></div>
 
     <div class="cw-filter-group" id="cwFilterGroup">
       <div class="state-district-filter">
@@ -414,21 +432,26 @@
       <div class="business-national-toggle hidden" id="businessNationalToggle">
         <label class="checkbox-row compact">
           <input id="nationalBusinessOnly" type="checkbox" onchange="toggleNationalBusinessFilter()">
-          <span><strong>National Business Cards</strong><small>Show only businesses marked for nationwide visibility.</small></span>
+          <span><strong>Nationwide</strong><small>Show businesses serving customers nationwide.</small></span>
         </label>
       </div>
       <div class="filters">
       <input id="searchInput" placeholder="Search requirements, services or locations..." oninput="renderWall()">
       <select id="categoryFilter" onchange="renderWall()"><option value="">All categories</option><option>Interior Design</option><option>Modular Kitchen</option><option>Plumbing</option><option>Electrical</option><option>Painting</option><option>Carpentry</option><option>Cleaning</option><option>Pest Control</option><option>Home Repair</option><option>Furniture</option><option>Catering</option><option>Transport</option><option>Packers and Movers</option><option>Vehicle Repair</option><option>Beauty Services</option><option>Fitness Training</option><option>Tuition</option><option>Medical Support</option><option>Pet Care</option><option>Website Development</option><option>Digital Marketing</option><option>Graphic Design</option><option>Printing</option><option>Accounting</option><option>Legal Services</option><option>Photography</option><option>Video Production</option><option>Event Management</option><option>Other</option></select>
       <select id="budgetFilter" onchange="renderWall()"><option value="">Any Budget</option><option value="0-50000">Under ₹50,000</option><option value="50000-100000">₹50,000 – ₹1,00,000</option><option value="100000-300000">₹1,00,000 – ₹3,00,000</option><option value="300000-1000000">₹3,00,000 – ₹10,00,000</option><option value="1000000-999999999">Above ₹10,00,000</option></select>
+      <select id="areaFilter" onchange="renderWall()"><option value="">All Areas</option></select>
+      <select id="ratingFilter" onchange="renderWall()"><option value="0">Any Rating</option><option value="4">4★ &amp; above</option><option value="3">3★ &amp; above</option></select>
+      <select id="experienceFilter" onchange="renderWall()"><option value="0">Any Experience</option><option value="1">1+ Years</option><option value="3">3+ Years</option><option value="5">5+ Years</option><option value="10">10+ Years</option></select>
       <select id="sortFilter" onchange="renderWall()"><option value="nearby">Newest</option><option value="latest">Latest posts</option><option value="low">Budget: Low to High</option><option value="high">Budget: High to Low</option><option value="few">Fewest Offers</option><option value="rated">Highest rated</option><option value="shuffle">Shuffle</option></select>
       <button type="button" class="cw-clear-chip" onclick="clearCustomerWallFilters()">Clear All</button>
+      <button type="button" class="cw-clear-chip bw-only" onclick="clearBusinessWallFilters()">Clear All</button>
     </div>
     </div>
 
     <div class="cw-body">
       <div class="wall" id="wall"></div>
       <aside class="cw-sidebar" id="cwSidebar"></aside>
+      <aside class="bw-sidebar" id="bwSidebar"></aside>
     </div>
   </div>
 </section>
@@ -438,6 +461,38 @@
   <button type="button" class="req-detail-close" onclick="closeRequirementDetail()" aria-label="Close">×</button>
   <div class="req-detail-body" id="reqDetailBody"></div>
 </aside>
+
+<div class="floating-business-wrap" id="floatingBusinessWrap" onclick="closeFloatingBusiness(event)">
+  <div class="floating-stage business-floating-stage">
+    <button class="floating-close" onclick="hideFloatingBusiness()">×</button>
+    <div id="floatingBusinessCard"></div>
+  </div>
+</div>
+
+<div class="bw-compare-bar" id="bizCompareBar">
+  <span id="bizCompareCount">0 businesses selected</span>
+  <div class="bw-compare-bar-actions">
+    <button type="button" class="btn ghost" onclick="clearCompare()">Clear</button>
+    <button type="button" class="btn primary" id="bizCompareBtn" onclick="openCompareModal()" disabled>Compare</button>
+  </div>
+</div>
+<div class="modal" id="bizCompareModal" onclick="closeOnBackdrop(event,'bizCompareModal')">
+  <div class="modal-card biz-compare-card">
+    <button class="close" onclick="closeModal('bizCompareModal')">×</button>
+    <h2>Compare Businesses</h2>
+    <div id="bizCompareBody"></div>
+  </div>
+</div>
+
+<div class="modal" id="businessEditSuccessModal">
+  <div class="modal-card accepted-animation-card">
+    <div class="accepted-check">✓</div>
+    <h2>Business updated.</h2>
+    <p class="bid-success-sub">Your latest information is now visible on G58.</p>
+    <button type="button" class="btn primary" style="width:100%;margin-bottom:10px" onclick="viewEditedBusinessCard()">View Business Card</button>
+    <button type="button" class="btn" style="width:100%" onclick="closeBusinessEditSuccess()">Close</button>
+  </div>
+</div>
 </main>
 <nav class="seo-link-strip hidden" aria-label="SEO pages">
   <a href="/business/telangana/hyderabad/">Hyderabad Businesses</a>
@@ -689,25 +744,58 @@
       <button class="close" type="button" onclick="closeModal('businessEditModal')">×</button>
     </div>
     <input type="hidden" id="editBusinessId">
-    <div class="form-grid">
-      <div class="field"><label>Business Name</label><input id="editBusinessTitle"></div>
-      <div class="field"><label>Category</label><select id="editBusinessCategory"><option value="">Select category</option><option>Interior Design</option><option>Modular Kitchen</option><option>Plumbing</option><option>Electrical</option><option>Painting</option><option>Carpentry</option><option>Cleaning</option><option>Pest Control</option><option>Home Repair</option><option>Furniture</option><option>Catering</option><option>Transport</option><option>Packers and Movers</option><option>Vehicle Repair</option><option>Beauty Services</option><option>Fitness Training</option><option>Tuition</option><option>Medical Support</option><option>Pet Care</option><option>Website Development</option><option>Digital Marketing</option><option>Graphic Design</option><option>Printing</option><option>Accounting</option><option>Legal Services</option><option>Photography</option><option>Video Production</option><option>Event Management</option><option>Other</option></select></div>
-      <div class="field full"><label>Description</label><textarea id="editBusinessDescription"></textarea></div>
-      <div class="field"><label>State / UT</label><input id="editBusinessState"></div>
-      <div class="field"><label>District</label><input id="editBusinessDistrict"></div>
-      <div class="field"><label>Area</label><input id="editBusinessArea"></div>
-      <div class="field full"><label>Full Address</label><textarea id="editBusinessAddress"></textarea></div>
-      <div class="field"><label>Starting Price</label><input id="editBusinessPrice" type="number" min="1"></div>
-      <div class="field"><label>Years of Experience</label><input id="editBusinessExperience" type="number" min="0"></div>
-      <div class="field"><label>Completed Projects</label><input id="editBusinessProjects" type="number" min="0"></div>
-      <div class="field"><label>Contact Person</label><input id="editBusinessName"></div>
-      <div class="field"><label>WhatsApp Number</label><input id="editBusinessWhatsapp" type="tel"></div>
-      <div class="field"><label>Phone Number</label><input id="editBusinessPhone" type="tel"></div>
-      <div class="field"><label>Alternative Phone</label><input id="editBusinessAltPhone" type="tel"></div>
-      <div class="field"><label>Email Address</label><input id="editBusinessEmail" type="email"></div>
-      <div class="field"><label>Website / Social Media Link</label><input id="editBusinessSocial" type="url"></div><div class="field full"><label class="checkbox-row"><input id="editBusinessNational" type="checkbox"><span><strong>National Business Card</strong><small>Show this card when users enable the National Business Cards filter.</small></span></label></div>
-      <div class="field full"><div class="moderation-status" id="editBusinessStatus"></div></div>
-      <div class="field full"><button class="btn green" type="button" style="width:100%" onclick="saveBusinessEdit()">Save Business Card Changes</button></div>
+
+    <div class="edit-section">
+      <h4>1 — Business</h4>
+      <div class="form-grid">
+        <div class="field"><label>Business Name</label><input id="editBusinessTitle"></div>
+        <div class="field"><label>Category</label><select id="editBusinessCategory"><option value="">Select category</option><option>Interior Design</option><option>Modular Kitchen</option><option>Plumbing</option><option>Electrical</option><option>Painting</option><option>Carpentry</option><option>Cleaning</option><option>Pest Control</option><option>Home Repair</option><option>Furniture</option><option>Catering</option><option>Transport</option><option>Packers and Movers</option><option>Vehicle Repair</option><option>Beauty Services</option><option>Fitness Training</option><option>Tuition</option><option>Medical Support</option><option>Pet Care</option><option>Website Development</option><option>Digital Marketing</option><option>Graphic Design</option><option>Printing</option><option>Accounting</option><option>Legal Services</option><option>Photography</option><option>Video Production</option><option>Event Management</option><option>Other</option></select></div>
+        <div class="field full"><label>Description</label><textarea id="editBusinessDescription"></textarea></div>
+      </div>
+    </div>
+
+    <div class="edit-section">
+      <h4>2 — Location</h4>
+      <div class="form-grid">
+        <div class="field"><label>State / UT</label><input id="editBusinessState"></div>
+        <div class="field"><label>District</label><input id="editBusinessDistrict"></div>
+        <div class="field"><label>Area</label><input id="editBusinessArea"></div>
+        <div class="field full"><label>Full Address</label><textarea id="editBusinessAddress"></textarea></div>
+      </div>
+    </div>
+
+    <div class="edit-section">
+      <h4>3 — Experience</h4>
+      <div class="form-grid">
+        <div class="field"><label>Starting Price</label><input id="editBusinessPrice" type="number" min="1"></div>
+        <div class="field"><label>Years of Experience</label><input id="editBusinessExperience" type="number" min="0"></div>
+        <div class="field"><label>Completed Projects</label><input id="editBusinessProjects" type="number" min="0"></div>
+      </div>
+    </div>
+
+    <div class="edit-section">
+      <h4>4 — Contact</h4>
+      <div class="form-grid">
+        <div class="field"><label>Contact Person</label><input id="editBusinessName"></div>
+        <div class="field"><label>WhatsApp Number</label><input id="editBusinessWhatsapp" type="tel"></div>
+        <div class="field"><label>Phone Number</label><input id="editBusinessPhone" type="tel"></div>
+        <div class="field"><label>Alternative Phone</label><input id="editBusinessAltPhone" type="tel"></div>
+        <div class="field"><label>Email Address</label><input id="editBusinessEmail" type="email"></div>
+        <div class="field"><label>Website / Social Media Link</label><input id="editBusinessSocial" type="url"></div>
+      </div>
+    </div>
+
+    <div class="edit-section">
+      <h4>5 — Visibility</h4>
+      <div class="form-grid">
+        <div class="field full"><label class="checkbox-row"><input id="editBusinessNational" type="checkbox"><span><strong>Nationwide Visibility</strong><small>Allow customers across India to discover this business card.</small></span></label></div>
+      </div>
+    </div>
+
+    <div class="field full"><div class="moderation-status" id="editBusinessStatus"></div></div>
+    <div class="edit-sticky-actions">
+      <button class="btn" type="button" onclick="closeModal('businessEditModal')">Cancel</button>
+      <button class="btn primary" type="button" onclick="saveBusinessEdit()">Save Changes</button>
     </div>
   </div>
 </div>
@@ -789,7 +877,7 @@
 <script src="/js/config.js"></script>
 <script src="/js/appwrite-ads.js?v=13"></script>
 <script src="/js/database.js"></script>
-<script src="/js/app.js?v=3"></script>
+<script src="/js/app.js?v=4"></script>
 <script src="/js/site-auth.js?v=2"></script>
 <script>
 (function(){
@@ -972,19 +1060,122 @@
           + '</div></div>'
         : '');
   }
+  function syncBwLocationLabels(){
+    var chip = document.getElementById('activeLocationChip');
+    var text = chip ? chip.textContent : (typeof selectedState !== 'undefined' && selectedState ? '📍 ' + selectedState : '📍 Select State');
+    var label = document.getElementById('bwLocationLabel');
+    if (label) label.textContent = String(text || '').replace(/^📍\s*/, '');
+  }
+  function renderBwResultsHead(list){
+    var el = document.getElementById('bwResultsHead');
+    if (!el) return;
+    if (!selectedState) { el.innerHTML = ''; return; }
+    var locLabel = selectedDistrict || selectedState;
+    el.innerHTML = '<div class="bw-results-left"><strong>Businesses near ' + escapeHtml(locLabel) + '</strong><small>' + list.length + ' ' + (list.length === 1 ? 'business' : 'businesses') + ' found</small></div>';
+  }
+  function bwCategoryCounts(){
+    var scoped = businesses.filter(matchesSelectedLocation);
+    var counts = {};
+    scoped.forEach(function(b){ counts[b.category] = (counts[b.category] || 0) + 1; });
+    return counts;
+  }
+  function renderBwCategoryChips(){
+    var el = document.getElementById('bwCategoryChips');
+    if (!el || typeof businesses === 'undefined') return;
+    if (!selectedState) { el.innerHTML = ''; return; }
+    var counts = bwCategoryCounts();
+    var top = Object.keys(counts).sort(function(a, b){ return counts[b] - counts[a]; }).slice(0, 9);
+    if (!top.length) { el.innerHTML = ''; return; }
+    var activeCat = document.getElementById('categoryFilter')?.value || '';
+    el.innerHTML = '<button type="button" class="bw-chip' + (!activeCat ? ' active' : '') + '" onclick="g58FilterByCategory(\'\')">All</button>'
+      + top.map(function(cat){
+          return '<button type="button" class="bw-chip' + (cat === activeCat ? ' active' : '') + '" onclick="g58FilterByCategory(\'' + cat.replace(/'/g, "\\'") + '\')">' + escapeHtml(cat) + '</button>';
+        }).join('');
+  }
+  function renderBwSidebar(){
+    var el = document.getElementById('bwSidebar');
+    if (!el || typeof businesses === 'undefined') return;
+    if (!selectedState) { el.innerHTML = ''; return; }
+    var counts = bwCategoryCounts();
+    var topCats = Object.keys(counts).sort(function(a, b){ return counts[b] - counts[a]; }).slice(0, 8);
+    el.innerHTML =
+      (topCats.length
+        ? '<div class="cw-sidebar-card"><h4>Explore Categories</h4><div class="cw-cat-list">'
+          + topCats.map(function(cat){
+              return '<button type="button" class="cw-cat-chip" onclick="g58FilterByCategory(\'' + cat.replace(/'/g, "\\'") + '\')">' + escapeHtml(cat) + ' <small>' + counts[cat] + '</small></button>';
+            }).join('')
+          + '</div></div>'
+        : '')
+      + '<div class="cw-sidebar-card bw-cross-link"><h4>Looking for something specific?</h4><p>Post your requirement once and let businesses send offers.</p><button type="button" class="btn primary" style="width:100%" onclick="openCustomerPostCreator()">Post Requirement →</button></div>';
+  }
+  function bwFindOwnedBusinessId(){
+    for (var i = 0; i < sessionStorage.length; i++) {
+      var key = sessionStorage.key(i);
+      if (key && key.indexOf('g58BusinessOwner_') === 0 && sessionStorage.getItem(key) === 'true') {
+        var id = key.slice('g58BusinessOwner_'.length);
+        if (businesses.some(function(b){ return b.id === id; })) return id;
+      }
+    }
+    return null;
+  }
+  function syncBwCreateButton(){
+    var btn = document.getElementById('bwCreateBtn');
+    if (!btn || typeof businesses === 'undefined') return;
+    var ownedId = bwFindOwnedBusinessId();
+    if (ownedId) {
+      btn.textContent = 'Manage My Business';
+      btn.setAttribute('onclick', "showFloatingBusiness('" + ownedId.replace(/'/g, "\\'") + "')");
+    } else {
+      btn.textContent = '+ Create Business Card';
+      btn.setAttribute('onclick', 'openBusinessCardCreator()');
+    }
+  }
+  window.renderCompareBar = function(){
+    var bar = document.getElementById('bizCompareBar');
+    if (!bar || typeof getCompareList !== 'function') return;
+    var list = getCompareList();
+    if (!list.length) { bar.classList.remove('show'); return; }
+    bar.classList.add('show');
+    var countEl = document.getElementById('bizCompareCount');
+    if (countEl) countEl.textContent = list.length + (list.length === 1 ? ' business selected' : ' businesses selected');
+    var btn = document.getElementById('bizCompareBtn');
+    if (btn) btn.disabled = list.length < 2;
+  };
+  var bwSuggestions = ['Interior Designer', 'Electrician', 'Catering', 'Plumber', 'Construction', 'AC Repair', 'Carpenter', 'Photographer'];
+  var bwSuggestionIdx = 0;
+  if (!reduceMotion) {
+    setInterval(function(){
+      if (typeof activeMode === 'undefined' || activeMode !== 'business') return;
+      var input = document.getElementById('searchInput');
+      if (!input || document.activeElement === input || input.value) return;
+      bwSuggestionIdx = (bwSuggestionIdx + 1) % bwSuggestions.length;
+      input.setAttribute('placeholder', 'What service are you looking for? e.g. ' + bwSuggestions[bwSuggestionIdx]);
+    }, 3200);
+  }
   window.afterRenderWall = function(list){
-    if (typeof activeMode === 'undefined' || activeMode !== 'customer') return;
-    renderCwStats();
-    renderCwSidebar();
-    syncCwLocationLabels();
+    if (typeof activeMode === 'undefined') return;
+    if (activeMode === 'customer') {
+      renderCwStats();
+      renderCwSidebar();
+      syncCwLocationLabels();
+    } else if (activeMode === 'business') {
+      renderBwResultsHead(list);
+      renderBwCategoryChips();
+      renderBwSidebar();
+      syncBwLocationLabels();
+      syncBwCreateButton();
+      window.renderCompareBar();
+    }
   };
   if (typeof window.updateStateUI === 'function') {
     var origUpdateStateUI = window.updateStateUI;
     window.updateStateUI = function(){
       origUpdateStateUI.apply(this, arguments);
       syncCwLocationLabels();
+      syncBwLocationLabels();
     };
   }
+  window.renderCompareBar();
 })();
 </script>
 </body>

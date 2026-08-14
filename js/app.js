@@ -356,6 +356,7 @@ function updateStateUI() {
       : "Select your State / UT to view posts.";
   }
   populateDistrictFilter();
+  populateAreaFilter();
 }
 function openStateSelection(force = false) {
   populateStateSelects();
@@ -466,6 +467,9 @@ function selectMode(mode) {
   document
     .getElementById("contentArea")
     ?.classList.toggle("g58-mode-customer", mode === "customer");
+  document
+    .getElementById("contentArea")
+    ?.classList.toggle("g58-mode-business", mode === "business");
   if (mode !== "business") {
     showNationalBusinessesOnly = false;
     const nationalCheckbox = document.getElementById("nationalBusinessOnly");
@@ -483,6 +487,23 @@ function selectMode(mode) {
       mode === "customer"
         ? "? How Browse Jobs Works"
         : "? How Browse Business Works";
+  const sortEl = document.getElementById("sortFilter");
+  if (sortEl) {
+    const current = sortEl.value;
+    sortEl.innerHTML =
+      mode === "customer"
+        ? '<option value="nearby">Newest</option><option value="latest">Latest posts</option><option value="low">Budget: Low to High</option><option value="high">Budget: High to Low</option><option value="few">Fewest Offers</option><option value="rated">Highest rated</option><option value="shuffle">Shuffle</option>'
+        : '<option value="nearby">Most Relevant</option><option value="rated">Highest Rated</option><option value="experience">Most Experienced</option><option value="projects">Most Projects</option><option value="low">Price: Low to High</option><option value="latest">Newest</option>';
+    if ([...sortEl.options].some((o) => o.value === current))
+      sortEl.value = current;
+  }
+  const searchEl = document.getElementById("searchInput");
+  if (searchEl && document.activeElement !== searchEl) {
+    searchEl.placeholder =
+      mode === "customer"
+        ? "Search requirements, services or locations..."
+        : "What service are you looking for?";
+  }
   renderWall();
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
@@ -493,6 +514,11 @@ function renderWall() {
   const cat = document.getElementById("categoryFilter").value;
   const sort = document.getElementById("sortFilter").value;
   const budget = document.getElementById("budgetFilter")?.value || "";
+  const area = document.getElementById("areaFilter")?.value || "";
+  const minRating = Number(document.getElementById("ratingFilter")?.value || 0);
+  const minExperience = Number(
+    document.getElementById("experienceFilter")?.value || 0,
+  );
   let list = (
     activeMode === "customer" ? [...customers] : [...businesses]
   ).filter((item) => item.moderationStatus !== "blocked");
@@ -516,6 +542,15 @@ function renderWall() {
       return hi >= minB && lo <= maxB;
     });
   }
+  if (activeMode === "business" && area) {
+    list = list.filter((i) => normalize(i.area) === normalize(area));
+  }
+  if (activeMode === "business" && minRating) {
+    list = list.filter((i) => businessRatingStats(i).average >= minRating);
+  }
+  if (activeMode === "business" && minExperience) {
+    list = list.filter((i) => Number(i.experience || 0) >= minExperience);
+  }
   if (sort === "nearby") list.sort((a, b) => b.created - a.created);
   if (sort === "latest") list.sort((a, b) => b.created - a.created);
   if (sort === "low") list.sort((a, b) => a.price - b.price);
@@ -528,10 +563,18 @@ function renderWall() {
         businessRatingStats(b).average - businessRatingStats(a).average ||
         businessRatingStats(b).count - businessRatingStats(a).count,
     );
+  if (sort === "experience" && activeMode === "business")
+    list.sort((a, b) => Number(b.experience || 0) - Number(a.experience || 0));
+  if (sort === "projects" && activeMode === "business")
+    list.sort((a, b) => Number(b.projects || 0) - Number(a.projects || 0));
   if (sort === "shuffle") list.sort(() => Math.random() - 0.5);
   const wall = document.getElementById("wall");
-  if (activeMode === "customer" && !gravity58Ready) {
-    wall.innerHTML = customerWallSkeleton();
+  if (
+    (activeMode === "customer" || activeMode === "business") &&
+    !gravity58Ready
+  ) {
+    wall.innerHTML =
+      activeMode === "customer" ? customerWallSkeleton() : businessWallSkeleton();
   } else if (list.length) {
     wall.innerHTML = list
       .map(activeMode === "customer" ? customerCard : businessCard)
@@ -542,9 +585,75 @@ function renderWall() {
       ? `<div class="req-empty"><div class="req-empty-icon">🔍</div><h3>No results for "${escapeHtml(rawQuery)}"</h3><p>Try another keyword or browse nearby requirements.</p><button class="btn" onclick="document.getElementById('searchInput').value='';renderWall()">Clear Search</button></div>`
       : `<div class="req-empty"><div class="req-empty-icon">📭</div><h3>No requirements found here yet.</h3><p>Try another district, category or broaden your filters.</p><div class="req-empty-actions"><button class="btn" onclick="clearCustomerWallFilters()">Clear Filters</button><button class="btn primary" onclick="openStateSelection(true)">Change Location</button></div></div>`;
   } else {
-    wall.innerHTML = `<div class="empty">${activeMode === "business" && showNationalBusinessesOnly ? "No National Business Cards are available in the selected location." : selectedState ? `No posts are available in ${escapeHtml(selectedDistrict || selectedState)} yet.` : "Select your State / UT to view posts."}</div>`;
+    wall.innerHTML = businessWallEmptyState();
   }
   if (typeof window.afterRenderWall === "function") window.afterRenderWall(list);
+}
+function businessWallSkeleton() {
+  return Array.from(
+    { length: 6 },
+    () =>
+      `<article class="biz-card biz-skeleton"><div class="sk-line sk-w40 sk-h20"></div><div class="sk-line sk-w60"></div><div class="sk-line sk-w100"></div><div class="sk-line sk-w100"></div><div class="sk-row"><div class="sk-line sk-w30"></div><div class="sk-line sk-w30"></div><div class="sk-line sk-w30"></div></div></article>`,
+  ).join("");
+}
+function businessWallEmptyState() {
+  if (showNationalBusinessesOnly) {
+    return `<div class="req-empty"><div class="req-empty-icon">🏢</div><h3>No national business cards found.</h3><p>Try clearing filters or browse businesses local to your selected area.</p><div class="req-empty-actions"><button class="btn" onclick="clearBusinessWallFilters()">Clear Filters</button></div></div>`;
+  }
+  return `<div class="req-empty"><div class="req-empty-icon">🏢</div><h3>No businesses found here yet.</h3><p>Try another category, district or expand your search.</p><div class="req-empty-actions"><button class="btn" onclick="clearBusinessWallFilters()">Clear Filters</button><button class="btn primary" onclick="g58ShowNationalBusinesses()">Show National Businesses</button></div></div>`;
+}
+function clearBusinessWallFilters() {
+  document.getElementById("searchInput").value = "";
+  document.getElementById("categoryFilter").value = "";
+  const areaEl = document.getElementById("areaFilter");
+  if (areaEl) areaEl.value = "";
+  const ratingEl = document.getElementById("ratingFilter");
+  if (ratingEl) ratingEl.value = "";
+  const expEl = document.getElementById("experienceFilter");
+  if (expEl) expEl.value = "";
+  showNationalBusinessesOnly = false;
+  const nationalCheckbox = document.getElementById("nationalBusinessOnly");
+  if (nationalCheckbox) nationalCheckbox.checked = false;
+  const districtEl = document.getElementById("districtFilter");
+  if (districtEl) {
+    districtEl.value = "";
+    changeDistrictFilter();
+    return;
+  }
+  renderWall();
+}
+function g58ShowNationalBusinesses() {
+  showNationalBusinessesOnly = true;
+  const cb = document.getElementById("nationalBusinessOnly");
+  if (cb) cb.checked = true;
+  renderWall();
+}
+function availableAreas() {
+  const all = businesses
+    .filter(
+      (item) => normalize(itemState(item)) === normalize(selectedState),
+    )
+    .filter(
+      (item) =>
+        !selectedDistrict ||
+        normalize(itemDistrict(item)) === normalize(selectedDistrict),
+    )
+    .map((item) => (item.area || "").trim())
+    .filter(Boolean);
+  return [...new Set(all)].sort((a, b) => a.localeCompare(b));
+}
+function populateAreaFilter() {
+  const select = document.getElementById("areaFilter");
+  if (!select) return;
+  const current = select.value;
+  const areas = availableAreas();
+  select.innerHTML =
+    '<option value="">All Areas</option>' +
+    areas
+      .map((a) => `<option value="${escapeHtml(a)}">${escapeHtml(a)}</option>`)
+      .join("");
+  if (areas.some((a) => normalize(a) === normalize(current)))
+    select.value = current;
 }
 function customerWallSkeleton() {
   return Array.from(
@@ -958,54 +1067,151 @@ function deleteMyBusinessRating() {
   renderWall();
 }
 
+function businessInitial(b) {
+  return escapeHtml((b.title || "G58").trim().charAt(0).toUpperCase() || "G");
+}
+function avatarHue(seed) {
+  let hash = 0;
+  const s = String(seed || "");
+  for (let i = 0; i < s.length; i++) hash = (hash * 31 + s.charCodeAt(i)) >>> 0;
+  return hash % 360;
+}
+function businessProfileCompleteness(b) {
+  const fields = [
+    b.title,
+    b.category,
+    b.description,
+    b.area,
+    b.experience,
+    b.projects,
+    b.phone,
+    b.whatsapp,
+    b.email,
+    b.socialUrl,
+    b.image,
+  ];
+  const filled = fields.filter(
+    (v) => v !== undefined && v !== null && v !== 0 && String(v).trim() !== "",
+  ).length;
+  return Math.round((filled / fields.length) * 100);
+}
+function getFavoriteBusinesses() {
+  try {
+    return JSON.parse(localStorage.getItem("g58FavoriteBusinesses") || "[]");
+  } catch {
+    return [];
+  }
+}
+function isFavoriteBusiness(id) {
+  return getFavoriteBusinesses().includes(id);
+}
+function toggleFavoriteBusiness(id) {
+  let favs = getFavoriteBusinesses();
+  favs = favs.includes(id) ? favs.filter((x) => x !== id) : [...favs, id];
+  localStorage.setItem("g58FavoriteBusinesses", JSON.stringify(favs));
+  renderWall();
+  refreshFloatingBusinessIfOpen(id);
+}
+function getCompareList() {
+  try {
+    return JSON.parse(sessionStorage.getItem("g58CompareBusinesses") || "[]");
+  } catch {
+    return [];
+  }
+}
+function toggleCompareBusiness(id) {
+  let list = getCompareList();
+  if (list.includes(id)) {
+    list = list.filter((x) => x !== id);
+  } else {
+    if (list.length >= 3) {
+      alert("You can compare up to 3 businesses at a time.");
+      return;
+    }
+    list.push(id);
+  }
+  sessionStorage.setItem("g58CompareBusinesses", JSON.stringify(list));
+  renderWall();
+  if (typeof window.renderCompareBar === "function") window.renderCompareBar();
+}
+function clearCompare() {
+  sessionStorage.removeItem("g58CompareBusinesses");
+  renderWall();
+  if (typeof window.renderCompareBar === "function") window.renderCompareBar();
+}
+function openCompareModal() {
+  const ids = getCompareList();
+  const items = ids.map((id) => businesses.find((b) => b.id === id)).filter(Boolean);
+  if (items.length < 2) return;
+  const body = document.getElementById("bizCompareBody");
+  if (!body) return;
+  body.innerHTML = `<div class="biz-compare-table-wrap"><table class="biz-compare-table">
+<tr><th></th>${items.map((b) => `<th>${escapeHtml(b.title)}</th>`).join("")}</tr>
+<tr><td>Rating</td>${items
+    .map((b) => {
+      const s = businessRatingStats(b);
+      return `<td>${s.count ? s.average.toFixed(1) + " ★ (" + s.count + ")" : "No reviews"}</td>`;
+    })
+    .join("")}</tr>
+<tr><td>Experience</td>${items.map((b) => `<td>${b.experience ? escapeHtml(String(b.experience)) + "+ Years" : "—"}</td>`).join("")}</tr>
+<tr><td>Projects</td>${items.map((b) => `<td>${b.projects ? escapeHtml(String(b.projects)) : "—"}</td>`).join("")}</tr>
+<tr><td>Starting Price</td>${items.map((b) => `<td>${b.price ? formatMoney(b.price) : "—"}</td>`).join("")}</tr>
+<tr><td>Location</td>${items.map((b) => `<td>${escapeHtml(b.area)}, ${escapeHtml(itemDistrict(b))}</td>`).join("")}</tr>
+<tr><td>Contact</td>${items.map((b) => `<td><button type="button" class="btn primary small" onclick="contactBusinessOnWhatsApp('${b.id}')">WhatsApp</button></td>`).join("")}</tr>
+</table></div>`;
+  document.getElementById("bizCompareModal")?.classList.add("show");
+}
 function businessCard(b) {
-  const initials = escapeHtml(
-    (b.title || "G58")
-      .split(/\s+/)
-      .slice(0, 2)
-      .map((x) => x[0] || "")
-      .join("")
-      .toUpperCase(),
-  );
-  return `<article class="business-card" data-post-id="${b.id}">
-    <div class="business-card-top">
-      <div class="business-avatar">${initials}</div>
-      <div class="business-identity"><h3>${escapeHtml(b.title)}</h3><span>${escapeHtml(b.category)}</span></div>
-      <div class="verified-dot">● Available</div>
-    </div>
-    <div class="business-rating-bar">
-      <button type="button" onclick="openBusinessRating('${b.id}')" aria-label="View or add customer rating">${ratingSummaryHtml(b)}<span class="rate-now-label">Rate business</span></button>
-    </div>
-    <div class="business-card-body">
-      <p>${escapeHtml(b.description)}</p>
-      <div class="business-card-actions" style="margin-bottom:14px">
-        <button class="btn orange" onclick="callBusinessPhone('${b.id}')">Call Now</button>
-        <button class="btn" onclick="openBusinessDemo('${b.id}')">Visit Website / Profile</button>
-      </div>
-      <div class="business-details">
-        <span>📍 ${escapeHtml(b.area)}, ${escapeHtml(itemDistrict(b))}</span>
-        <span>💰 From ${formatMoney(b.price)}</span>
-        <span class="copyable-number" onclick="callBusinessPhone('${b.id}')" title="Click to call">📞 ${escapeHtml(b.phone || "Not added")}</span>
-        <span>☎ ${escapeHtml(b.altPhone || "No alternative")}</span>
-        <span>⭐ ${b.experience || 0} Years</span>
-        <span>✅ ${b.projects || 0}+ Projects</span>
-      </div>
-      <div class="business-card-actions">
-        <button class="btn rating-btn" onclick="openBusinessRating('${b.id}')">★ Ratings</button>
-        <button class="btn" onclick="openBusinessQr('${b.id}')">QR Code</button>
-        <button class="btn share-btn" onclick="copyBusinessLink('${b.id}',this)">Copy Link</button>
-        <button class="btn green" onclick="shareBusinessOnWhatsApp('${b.id}')">Share WhatsApp</button>
-      </div>
-      <div class="share-status" id="share-${b.id}"></div>
-      <div class="business-owner-box">
-        <label class="unlock-check-row"><input type="checkbox" onchange="requestCardUnlock('business','${b.id}',this)"><span>Unlock</span></label>
-        <div class="business-owner-actions hidden" id="business-owner-actions-${b.id}">
-          <button class="btn green" type="button" onclick="openBusinessEdit('${b.id}')">Edit Card</button>
-          <button class="btn danger" type="button" onclick="deleteOwnedBusiness('${b.id}')">Delete Card</button>
-        </div>
-      </div>
-    </div>
-  </article>`;
+  const stats = businessRatingStats(b);
+  const isOwner = sessionStorage.getItem(`g58BusinessOwner_${b.id}`) === "true";
+  const hue = avatarHue(b.id || b.title);
+  const favorited = isFavoriteBusiness(b.id);
+  const compared = getCompareList().includes(b.id);
+  const statChips = [];
+  if (Number(b.experience))
+    statChips.push(
+      `<div class="biz-stat"><strong>${escapeHtml(String(b.experience))}+</strong><small>Years Experience</small></div>`,
+    );
+  if (Number(b.projects))
+    statChips.push(
+      `<div class="biz-stat"><strong>${escapeHtml(String(b.projects))}</strong><small>Projects</small></div>`,
+    );
+  if (Number(b.price))
+    statChips.push(
+      `<div class="biz-stat"><strong>${formatMoney(b.price)}</strong><small>Starting From</small></div>`,
+    );
+
+  return `<article class="biz-card${isOwner ? " owner" : ""}" data-post-id="${b.id}">
+<div class="biz-card-tools">
+<button type="button" class="biz-fav-btn${favorited ? " active" : ""}" onclick="toggleFavoriteBusiness('${b.id}')" aria-label="${favorited ? "Remove from saved" : "Save business"}">${favorited ? "♥" : "♡"}</button>
+<label class="biz-compare-check"><input type="checkbox" ${compared ? "checked" : ""} onchange="toggleCompareBusiness('${b.id}')"><span>Compare</span></label>
+</div>
+<div class="biz-top">
+<div class="biz-avatar" style="background:hsl(${hue} 60% 45%)">${b.image ? `<img src="${escapeHtml(b.image)}" alt="${escapeHtml(b.title)}">` : businessInitial(b)}</div>
+<div class="biz-identity">
+<span class="biz-category">${escapeHtml(b.category)}</span>
+<h3>${escapeHtml(b.title)}</h3>
+${
+  stats.count
+    ? `<div class="biz-rating">${ratingStars(stats.average)}<strong>${stats.average.toFixed(1)}</strong><small>${stats.count} ${stats.count === 1 ? "review" : "reviews"}</small></div>`
+    : `<div class="biz-rating biz-rating-new"><small>No reviews yet</small></div>`
+}
+</div>
+</div>
+${isOwner ? '<span class="biz-owner-badge">Your Business</span>' : ""}
+<div class="biz-loc">📍 ${escapeHtml(b.area)}, ${escapeHtml(itemDistrict(b))}</div>
+<p class="biz-desc">${escapeHtml(b.description)}</p>
+${statChips.length ? `<div class="biz-stats-row">${statChips.join("")}</div>` : ""}
+<div class="biz-actions">
+<button type="button" class="btn ghost" onclick="showFloatingBusiness('${b.id}')">View Business <span class="req-arrow">→</span></button>
+${isOwner ? `<button type="button" class="btn primary" onclick="openBusinessEdit('${b.id}')">Edit Profile</button>` : `<button type="button" class="btn primary" onclick="callBusinessPhone('${b.id}')">Contact</button>`}
+</div>
+${
+  isOwner
+    ? ""
+    : `<label class="biz-unlock-row"><input type="checkbox" onchange="requestCardUnlock('business','${b.id}',this)"><span>Own this business? Unlock</span></label>`
+}
+</article>`;
 }
 
 let qrOpenedFromBusinessPopup = false;
@@ -1180,9 +1386,6 @@ function unlockBusinessCard(id, isFloating = false, providedPhone = "") {
   const inputId = isFloating
     ? `business-unlock-floating-${id}`
     : `business-unlock-${id}`;
-  const actionsId = isFloating
-    ? `business-owner-actions-floating-${id}`
-    : `business-owner-actions-${id}`;
   const entered = cleanNumber(
     providedPhone || document.getElementById(inputId)?.value || "",
   );
@@ -1196,15 +1399,8 @@ function unlockBusinessCard(id, isFloating = false, providedPhone = "") {
   }
 
   sessionStorage.setItem(`g58BusinessOwner_${id}`, "true");
-  document.getElementById(actionsId)?.classList.remove("hidden");
-
-  // Reveal owner controls on both normal and floating copies when available.
-  document
-    .getElementById(`business-owner-actions-${id}`)
-    ?.classList.remove("hidden");
-  document
-    .getElementById(`business-owner-actions-floating-${id}`)
-    ?.classList.remove("hidden");
+  renderWall();
+  refreshFloatingBusinessIfOpen(id);
   return true;
 }
 function requireBusinessOwner(id) {
@@ -1339,7 +1535,19 @@ function saveBusinessEdit() {
   renderWall();
   closeModal("businessEditModal");
   hideFloatingBusiness();
-  alert("Business card updated successfully.");
+  showBusinessEditSuccess(id);
+}
+let lastEditedBusinessId = null;
+function showBusinessEditSuccess(id) {
+  lastEditedBusinessId = id;
+  document.getElementById("businessEditSuccessModal")?.classList.add("show");
+}
+function closeBusinessEditSuccess() {
+  document.getElementById("businessEditSuccessModal")?.classList.remove("show");
+}
+function viewEditedBusinessCard() {
+  closeBusinessEditSuccess();
+  if (lastEditedBusinessId) showFloatingBusiness(lastEditedBusinessId);
 }
 function deleteOwnedBusiness(id) {
   if (!requireBusinessOwner(id)) return;
@@ -1377,41 +1585,199 @@ function deleteOwnedBusiness(id) {
   alert("Business card deleted permanently.");
 }
 
-function floatingBusinessMarkup(b) {
-  const initials = escapeHtml(
-    (b.title || "G58")
-      .split(/\s+/)
-      .slice(0, 2)
-      .map((x) => x[0] || "")
-      .join("")
-      .toUpperCase(),
+function ratingDistribution(b) {
+  const reviews = businessReviews(b).filter(
+    (r) => Number(r.rating) >= 1 && Number(r.rating) <= 5,
   );
-  return `<article class="business-card floating-card">
-    <div class="business-card-top"><div class="business-avatar">${initials}</div><div class="business-identity"><h3>${escapeHtml(b.title)}</h3><span>${escapeHtml(b.category)}</span></div><div class="verified-dot">● Available</div></div>
-    <div class="business-card-body"><p>${escapeHtml(b.description)}</p>
-      <div class="business-card-actions" style="margin-bottom:14px"><button class="btn orange" onclick="callBusinessPhone('${b.id}')">Call Now</button><button class="btn" onclick="openBusinessDemo('${b.id}')">Visit Website / Profile</button></div>
-      <div class="business-details"><span>📍 ${escapeHtml(b.area)}, ${escapeHtml(itemDistrict(b))}</span><span>💰 From ${formatMoney(b.price)}</span><span class="copyable-number" onclick="callBusinessPhone('${b.id}')" title="Click to call">📞 ${escapeHtml(b.phone || "Not added")}</span><span>☎ ${escapeHtml(b.altPhone || "No alternative")}</span><span>⭐ ${b.experience || 0} Years</span><span>✅ ${b.projects || 0}+ Projects</span></div>
-      <div class="business-card-actions"><button class="btn" onclick="openBusinessQr('${b.id}')">QR Code</button><button class="btn share-btn" onclick="copyBusinessLink('${b.id}',this)">Copy Link</button><button class="btn green" onclick="shareBusinessOnWhatsApp('${b.id}')">Share WhatsApp</button></div>
-      <div class="business-owner-box">
-        <div class="business-owner-title">🔒 Business Owner Access</div>
-        <input id="business-unlock-floating-${b.id}" type="tel" placeholder="Enter business phone or WhatsApp number">
-        <button class="btn orange" type="button" style="width:100%" onclick="unlockBusinessCard('${b.id}',true)">Unlock Card</button>
-        <div class="business-owner-actions hidden" id="business-owner-actions-floating-${b.id}">
-          <button class="btn green" type="button" onclick="openBusinessEdit('${b.id}')">Edit Card</button>
-          <button class="btn danger" type="button" onclick="deleteOwnedBusiness('${b.id}')">Delete Card</button>
-        </div>
-      </div>
-    </div></article>`;
+  const counts = [5, 4, 3, 2, 1].map(
+    (star) => reviews.filter((r) => Math.round(Number(r.rating)) === star).length,
+  );
+  const max = Math.max(1, ...counts);
+  return [5, 4, 3, 2, 1].map((star, i) => ({
+    star,
+    count: counts[i],
+    pct: Math.round((counts[i] / max) * 100),
+  }));
 }
+function contactBusinessOnWhatsApp(id) {
+  const b = businesses.find((x) => x.id === id);
+  if (!b) return;
+  const number = cleanNumber(b.whatsapp || b.phone || "");
+  if (!number) return alert("WhatsApp number is not available.");
+  const text =
+    "Hi, I found your business on G58 and would like to know more about your services.";
+  window.open(
+    `https://wa.me/${number}?text=${encodeURIComponent(text)}`,
+    "_blank",
+    "noopener",
+  );
+}
+async function shareBusinessProfile(id) {
+  const b = businesses.find((x) => x.id === id);
+  if (!b) return;
+  const link = businessShareUrl(id);
+  if (navigator.share) {
+    try {
+      await navigator.share({
+        title: b.title,
+        text: `${b.title} — ${b.category} on GRAVITY58`,
+        url: link,
+      });
+    } catch (error) {
+      /* user cancelled the native share sheet */
+    }
+  } else {
+    shareBusinessOnWhatsApp(id);
+  }
+}
+function floatingBusinessMarkup(b) {
+  const isOwner = sessionStorage.getItem(`g58BusinessOwner_${b.id}`) === "true";
+  const hue = avatarHue(b.id || b.title);
+  const stats = businessRatingStats(b);
+  const reviews = [...businessReviews(b)].sort(
+    (a, c) => (c.created || 0) - (a.created || 0),
+  );
+  const dist = ratingDistribution(b);
+  const favorited = isFavoriteBusiness(b.id);
+  const websiteUrl = businessDemoUrl(b);
+
+  const quickStats = [];
+  if (Number(b.experience))
+    quickStats.push(
+      `<div class="biz-quick-stat"><strong>${escapeHtml(String(b.experience))}+</strong><small>Years Experience</small></div>`,
+    );
+  if (Number(b.projects))
+    quickStats.push(
+      `<div class="biz-quick-stat"><strong>${escapeHtml(String(b.projects))}</strong><small>Projects Completed</small></div>`,
+    );
+  if (Number(b.price))
+    quickStats.push(
+      `<div class="biz-quick-stat"><strong>${formatMoney(b.price)}</strong><small>Starting Price</small></div>`,
+    );
+
+  const contactRows = [];
+  if (b.whatsapp)
+    contactRows.push(
+      `<button type="button" class="biz-contact-row biz-contact-whatsapp" onclick="contactBusinessOnWhatsApp('${b.id}')"><span>WhatsApp</span><strong>Chat on WhatsApp →</strong></button>`,
+    );
+  if (b.phone)
+    contactRows.push(
+      `<button type="button" class="biz-contact-row" onclick="callBusinessPhone('${b.id}')"><span>Phone</span><strong>Call Business →</strong></button>`,
+    );
+  if (b.altPhone)
+    contactRows.push(
+      `<div class="biz-contact-row biz-contact-static"><span>Alternative Phone</span><strong>${escapeHtml(b.altPhone)}</strong></div>`,
+    );
+  if (b.email)
+    contactRows.push(
+      `<a class="biz-contact-row" href="mailto:${escapeHtml(b.email)}"><span>Email</span><strong>${escapeHtml(b.email)}</strong></a>`,
+    );
+  if (websiteUrl)
+    contactRows.push(
+      `<button type="button" class="biz-contact-row" onclick="openBusinessDemo('${b.id}')"><span>Website / Social</span><strong>Visit →</strong></button>`,
+    );
+
+  const ownerHeaderActions = `<button type="button" class="btn ghost" onclick="openBusinessEdit('${b.id}')">Edit Profile</button><button type="button" class="btn ghost" onclick="shareBusinessProfile('${b.id}')">Share</button><button type="button" class="btn ghost" onclick="openBusinessQr('${b.id}')">QR</button>`;
+  const visitorHeaderActions = `${b.whatsapp ? `<button type="button" class="btn primary" onclick="contactBusinessOnWhatsApp('${b.id}')">WhatsApp</button>` : ""}${b.phone ? `<button type="button" class="btn ghost" onclick="callBusinessPhone('${b.id}')">Call</button>` : ""}<button type="button" class="btn ghost" onclick="shareBusinessProfile('${b.id}')">Share</button>`;
+
+  const ownerDash = isOwner
+    ? `<div class="biz-profile-section biz-owner-dash">
+<h4>Your Business Card</h4>
+<div class="biz-owner-dash-grid">
+<div><strong>${businessProfileCompleteness(b)}%</strong><small>Profile Complete</small></div>
+<div><strong>${stats.count ? stats.average.toFixed(1) + " ★" : "—"}</strong><small>Customer Rating</small></div>
+<div><strong>${stats.count}</strong><small>Reviews</small></div>
+</div>
+<div class="biz-owner-dash-actions"><button type="button" class="btn danger" onclick="deleteOwnedBusiness('${b.id}')">Delete Card</button></div>
+</div>`
+    : "";
+
+  const unlockBlock = isOwner
+    ? ""
+    : `<div class="biz-unlock-block">
+<div class="biz-unlock-icon">🔒</div>
+<strong>Manage your business</strong>
+<p>Enter the phone number used when creating this business card.</p>
+<input id="business-unlock-floating-${b.id}" type="tel" inputmode="numeric" placeholder="Enter business phone or WhatsApp number">
+<button type="button" class="btn primary" style="width:100%" onclick="unlockBusinessCard('${b.id}',true)">Unlock →</button>
+</div>`;
+
+  return `<article class="biz-profile">
+<div class="biz-profile-hero">
+${isOwner ? '<span class="biz-owner-badge">Your Business</span>' : ""}
+<div class="biz-profile-hero-top">
+<div class="biz-avatar biz-avatar-lg" style="background:hsl(${hue} 60% 45%)">${b.image ? `<img src="${escapeHtml(b.image)}" alt="${escapeHtml(b.title)}">` : businessInitial(b)}</div>
+<button type="button" class="biz-fav-btn biz-fav-btn-lg${favorited ? " active" : ""}" onclick="toggleFavoriteBusiness('${b.id}')" aria-label="${favorited ? "Remove from saved" : "Save business"}">${favorited ? "♥" : "♡"}</button>
+</div>
+<span class="biz-category">${escapeHtml(b.category)}</span>
+<h2>${escapeHtml(b.title)}</h2>
+${stats.count ? `<div class="biz-rating">${ratingStars(stats.average)}<strong>${stats.average.toFixed(1)}</strong><small>${stats.count} ${stats.count === 1 ? "Review" : "Reviews"}</small></div>` : `<div class="biz-rating biz-rating-new"><small>No reviews yet</small></div>`}
+<div class="biz-loc">📍 ${escapeHtml(b.area)}, ${escapeHtml(itemDistrict(b))}</div>
+<div class="biz-profile-hero-actions">${isOwner ? ownerHeaderActions : visitorHeaderActions}</div>
+</div>
+
+${quickStats.length ? `<div class="biz-quick-stats">${quickStats.join("")}</div>` : ""}
+${ownerDash}
+
+<div class="biz-profile-section">
+<h4>About</h4>
+<p>${escapeHtml(b.description)}</p>
+</div>
+
+<div class="biz-profile-section">
+<h4>Location</h4>
+<p>${escapeHtml(b.area)}<br>${escapeHtml(itemDistrict(b))}<br>${escapeHtml(itemState(b))}</p>
+</div>
+
+${contactRows.length ? `<div class="biz-profile-section"><h4>Contact Business</h4><div class="biz-contact-list">${contactRows.join("")}</div></div>` : ""}
+
+<div class="biz-profile-section">
+<h4>Share this business</h4>
+<div class="biz-share-actions">
+<button type="button" class="btn ghost" onclick="shareBusinessProfile('${b.id}')">Share</button>
+<button type="button" class="btn ghost" onclick="copyBusinessLink('${b.id}',this)">Copy Link</button>
+<button type="button" class="btn ghost" onclick="openBusinessQr('${b.id}')">QR Code</button>
+</div>
+<div class="share-status" id="share-${b.id}"></div>
+</div>
+
+<div class="biz-profile-section">
+<div class="biz-reviews-head"><h4>Customer Reviews</h4><button type="button" class="btn ghost small" onclick="openBusinessRating('${b.id}')">Rate this business</button></div>
+${
+  stats.count
+    ? `<div class="biz-reviews-summary"><strong>${stats.average.toFixed(1)}</strong>${ratingStars(stats.average)}<small>Based on ${stats.count} ${stats.count === 1 ? "review" : "reviews"}</small></div>
+<div class="biz-rating-breakdown">${dist.map((d) => `<div class="biz-rating-bar-row"><small>${d.star} ★</small><div class="biz-rating-bar-track"><div class="biz-rating-bar-fill" style="width:${d.pct}%"></div></div><small>${d.count}</small></div>`).join("")}</div>`
+    : `<p class="biz-no-reviews">No reviews yet. Be the first customer to rate this business.</p>`
+}
+<div class="biz-review-list">${reviews
+    .slice(0, 6)
+    .map(
+      (r) =>
+        `<article class="biz-review-card">${ratingStars(r.rating)}<strong>${escapeHtml(r.name || "GRAVITY58 User")}</strong>${r.comment ? `<p>${escapeHtml(r.comment)}</p>` : ""}<small>${timeAgoLabel(r.created || Date.now())}</small></article>`,
+    )
+    .join("")}</div>
+</div>
+
+${unlockBlock}
+</article>`;
+}
+let activeFloatingBusinessId = null;
 function showFloatingBusiness(id) {
   const b = businesses.find((x) => x.id === id);
   if (!b) return;
+  activeFloatingBusinessId = id;
   document.getElementById("floatingBusinessCard").innerHTML =
     floatingBusinessMarkup(b);
   document.getElementById("floatingBusinessWrap").classList.add("show");
+  document.body.classList.add("req-detail-lock");
 }
 function hideFloatingBusiness() {
   document.getElementById("floatingBusinessWrap").classList.remove("show");
+  document.body.classList.remove("req-detail-lock");
+  activeFloatingBusinessId = null;
+}
+function refreshFloatingBusinessIfOpen(id) {
+  if (activeFloatingBusinessId === id) showFloatingBusiness(id);
 }
 function closeFloatingBusiness(e) {
   if (e.target.id === "floatingBusinessWrap") hideFloatingBusiness();
@@ -1972,6 +2338,9 @@ function validateAndPublish() {
   document
     .getElementById("contentArea")
     ?.classList.toggle("g58-mode-customer", activeMode === "customer");
+  document
+    .getElementById("contentArea")
+    ?.classList.toggle("g58-mode-business", activeMode === "business");
   updateStateUI();
   renderRecentJobs();
   renderWall();
