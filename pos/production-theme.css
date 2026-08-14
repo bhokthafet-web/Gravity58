@@ -54,10 +54,13 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible{ou
 .g58-floating-support{position:fixed;right:20px;bottom:20px;z-index:600;display:none;align-items:center;gap:8px;padding:13px 18px;border-radius:999px;background:linear-gradient(135deg,var(--orange),var(--orange2));color:#fff;font-weight:800;text-decoration:none;box-shadow:0 16px 34px rgba(232,99,10,.35);transition:.2s transform}
 .g58-floating-support:hover{transform:translateY(-2px) scale(1.03)}
 .g58-floating-support span{font-size:13px}
-.pos-android-footer{margin:18px 0 4px;text-align:center}
-.g58-app-badge{display:inline-flex;align-items:center;gap:10px;width:100%;max-width:280px;padding:9px 16px;border-radius:11px;background:#0b0b0b;border:1px solid #3a3a3a;cursor:pointer;color:#fff;transition:.2s transform}
+.g58-app-badge{display:inline-flex;align-items:center;gap:10px;padding:9px 18px;border-radius:11px;background:#0b0b0b;border:1px solid #3a3a3a;cursor:pointer;color:#fff;transition:.2s transform}
 .g58-app-badge:hover{transform:translateY(-1px);border-color:#5a5a5a}
 .g58-app-badge-icon{font-size:20px;color:var(--orange2);flex-shrink:0}
 .g58-app-badge-text{display:flex;flex-direction:column;align-items:flex-start;line-height:1.2;text-align:left}
 .g58-app-badge-text small{font-size:9px;letter-spacing:.03em;color:#c9c9c9;text-transform:uppercase}
 .g58-app-badge-text strong{font-size:15px;font-weight:700}
+.g58-site-footer{position:relative;margin-top:24px;padding:38px 20px 24px;text-align:center;background:#1c130a;border-radius:0 0 22px 22px}
+.g58-site-footer::before{content:'';position:absolute;top:-9px;left:0;right:0;height:9px;background-image:linear-gradient(-45deg,#1c130a 6px,transparent 0),linear-gradient(45deg,#1c130a 6px,transparent 0);background-position:0 6px,0 6px;background-size:12px 12px;background-repeat:repeat-x;background-color:transparent}
+.g58-site-footer-badge{display:flex;justify-content:center;margin-bottom:14px}
+.g58-site-footer-note{color:#c9b9a2;font-size:12px;margin:0}
