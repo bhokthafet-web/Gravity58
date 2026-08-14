@@ -444,7 +444,7 @@ function openRecentJob(id) {
 }
 
 function showLanding() {
-  document.getElementById("home").style.display = "grid";
+  document.getElementById("home").style.display = "";
   document.getElementById("contentArea").style.display = "";
   document.getElementById("contentArea").classList.remove("show");
   window.scrollTo({ top: 0, behavior: "smooth" });
