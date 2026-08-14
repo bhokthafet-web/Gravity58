@@ -1973,10 +1973,10 @@ body.req-detail-lock{overflow:hidden}
   .biz-owner-dash-grid{grid-template-columns:1fr}
 }
 
-/* Content-area product "visiting card" horizontal scroller (replaces old simple-tabs) */
-.g58-vcard-section{padding:26px 0 30px;background:var(--hero-bg,#F5F4EF);border-bottom:1px solid var(--hero-border,rgba(18,24,31,.1))}
-.g58-vcard-track{overflow:hidden;-webkit-mask-image:linear-gradient(90deg,transparent,#000 6%,#000 94%,transparent);mask-image:linear-gradient(90deg,transparent,#000 6%,#000 94%,transparent)}
-.g58-vcard-track-inner{display:flex;gap:18px;width:max-content;padding:0 20px;animation:vcardScroll 55s linear infinite}
+/* Home landing "visiting card" horizontal scroller for the core products */
+.g58-vcard-section{margin:4px 0 22px}
+.g58-vcard-track{overflow:hidden;-webkit-mask-image:linear-gradient(90deg,transparent,#000 4%,#000 96%,transparent);mask-image:linear-gradient(90deg,transparent,#000 4%,#000 96%,transparent)}
+.g58-vcard-track-inner{display:flex;gap:16px;width:max-content;animation:vcardScroll 55s linear infinite}
 @keyframes vcardScroll{from{transform:translateX(-50%)}to{transform:translateX(0)}}
 .g58-vcard-track:hover .g58-vcard-track-inner{animation-play-state:paused}
 @media(prefers-reduced-motion:reduce){.g58-vcard-track-inner{animation:none}}
