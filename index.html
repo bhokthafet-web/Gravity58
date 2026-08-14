@@ -10,7 +10,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/css/style.css?v=13">
+  <link rel="stylesheet" href="/css/style.css?v=14">
   <link rel="stylesheet" href="/css/mobile.css">
   <link rel="canonical" href="https://g58.in/" />
   <meta name="robots" content="index, follow, max-image-preview:large" />
@@ -143,97 +143,70 @@
     </div>
   </div>
 
-  <div class="shell">
-    <div class="landing-grid">
-
-      <aside class="landing-side left-side">
-        <div class="side-title recent-side-title">
-          <span>Recent Jobs</span>
-        </div>
-        <div class="recent-location-row"><span>Showing</span><small id="recentCityLabel">Nearby</small></div>
-        <div class="recent-jobs" id="recentJobsPanel"></div>
-      </aside>
-
-      <div class="landing-card">
-        <div class="landing-content">
-
-          <div class="g58-vcard-section">
-            <div class="g58-vcard-track">
-              <div class="g58-vcard-track-inner">
-                <article class="g58-vcard g58-vcard-refills">
-                  <div class="g58-vcard-top"><span class="g58-vcard-mark">⬡</span><span class="g58-vcard-badge">Refills</span></div>
-                  <h4>Take Any Store Online</h4>
-                  <p>Repeat orders, reminders and a store link customers can reorder from.</p>
-                  <a href="/digit58/" class="g58-vcard-cta">Explore Refills →</a>
-                </article>
-                <article class="g58-vcard g58-vcard-menu">
-                  <div class="g58-vcard-top"><span class="g58-vcard-mark">☰</span><span class="g58-vcard-badge">Digital Menu</span></div>
-                  <h4>Turn Any Table Digital</h4>
-                  <p>QR ordering, live kitchen tickets and menu management in one place.</p>
-                  <a href="/digital-menu/" class="g58-vcard-cta">Explore Digital Menu →</a>
-                </article>
-                <article class="g58-vcard g58-vcard-pos">
-                  <div class="g58-vcard-top"><span class="g58-vcard-mark">₹</span><span class="g58-vcard-badge">Free POS</span></div>
-                  <h4>Simple Billing, No Setup</h4>
-                  <p>GST-ready billing, UPI QR and daily reports — free to use.</p>
-                  <a href="/pos/" class="g58-vcard-cta">Open Free POS →</a>
-                </article>
-                <article class="g58-vcard g58-vcard-card">
-                  <div class="g58-vcard-top"><span class="g58-vcard-mark">🪪</span><span class="g58-vcard-badge">Business Card</span></div>
-                  <h4>Your Business, Everywhere</h4>
-                  <p>A free digital business card customers can find, save and share.</p>
-                  <button type="button" class="g58-vcard-cta" onclick="openBusinessCardCreator()">Create Your Card →</button>
-                </article>
-                <article class="g58-vcard g58-vcard-ad">
-                  <div class="g58-vcard-top"><span class="g58-vcard-mark">📣</span><span class="g58-vcard-badge">Post Requirement</span></div>
-                  <h4>Post It. Get Offers.</h4>
-                  <p>Tell G58 what you need and let nearby businesses send their offers.</p>
-                  <button type="button" class="g58-vcard-cta" onclick="openCustomerPostCreator()">Post a Requirement →</button>
-                </article>
-                <article class="g58-vcard g58-vcard-refills" aria-hidden="true">
-                  <div class="g58-vcard-top"><span class="g58-vcard-mark">⬡</span><span class="g58-vcard-badge">Refills</span></div>
-                  <h4>Take Any Store Online</h4>
-                  <p>Repeat orders, reminders and a store link customers can reorder from.</p>
-                  <a href="/digit58/" class="g58-vcard-cta" tabindex="-1">Explore Refills →</a>
-                </article>
-                <article class="g58-vcard g58-vcard-menu" aria-hidden="true">
-                  <div class="g58-vcard-top"><span class="g58-vcard-mark">☰</span><span class="g58-vcard-badge">Digital Menu</span></div>
-                  <h4>Turn Any Table Digital</h4>
-                  <p>QR ordering, live kitchen tickets and menu management in one place.</p>
-                  <a href="/digital-menu/" class="g58-vcard-cta" tabindex="-1">Explore Digital Menu →</a>
-                </article>
-                <article class="g58-vcard g58-vcard-pos" aria-hidden="true">
-                  <div class="g58-vcard-top"><span class="g58-vcard-mark">₹</span><span class="g58-vcard-badge">Free POS</span></div>
-                  <h4>Simple Billing, No Setup</h4>
-                  <p>GST-ready billing, UPI QR and daily reports — free to use.</p>
-                  <a href="/pos/" class="g58-vcard-cta" tabindex="-1">Open Free POS →</a>
-                </article>
-                <article class="g58-vcard g58-vcard-card" aria-hidden="true">
-                  <div class="g58-vcard-top"><span class="g58-vcard-mark">🪪</span><span class="g58-vcard-badge">Business Card</span></div>
-                  <h4>Your Business, Everywhere</h4>
-                  <p>A free digital business card customers can find, save and share.</p>
-                  <button type="button" class="g58-vcard-cta" tabindex="-1">Create Your Card →</button>
-                </article>
-                <article class="g58-vcard g58-vcard-ad" aria-hidden="true">
-                  <div class="g58-vcard-top"><span class="g58-vcard-mark">📣</span><span class="g58-vcard-badge">Post Requirement</span></div>
-                  <h4>Post It. Get Offers.</h4>
-                  <p>Tell G58 what you need and let nearby businesses send their offers.</p>
-                  <button type="button" class="g58-vcard-cta" tabindex="-1">Post a Requirement →</button>
-                </article>
-              </div>
-            </div>
-          </div>
-
-<div class="premium-trust-strip" aria-label="GRAVITY58 trust features">
-  <div><span>✓</span><strong>Secure verified posting</strong><small>Browse freely; sign in to post or create a business card</small></div>
-  <div><span>★</span><strong>Customer ratings</strong><small>See local business feedback</small></div>
-  <div><span>₹</span><strong>Free business tools</strong><small>Cards, QR sharing and POS</small></div>
-  <div><span>⌖</span><strong>Location focused</strong><small>State and district discovery</small></div>
-</div>
-
-</div>
+  <div class="g58-vcard-section">
+    <div class="g58-vcard-track">
+      <div class="g58-vcard-track-inner">
+        <article class="g58-vcard g58-vcard-refills">
+          <div class="g58-vcard-top"><span class="g58-vcard-mark">⬡</span><span class="g58-vcard-badge">Refills</span></div>
+          <h4>Take Any Store Online</h4>
+          <p>Repeat orders, reminders and a store link customers can reorder from.</p>
+          <a href="/digit58/" class="g58-vcard-cta">Explore Refills →</a>
+        </article>
+        <article class="g58-vcard g58-vcard-menu">
+          <div class="g58-vcard-top"><span class="g58-vcard-mark">☰</span><span class="g58-vcard-badge">Digital Menu</span></div>
+          <h4>Turn Any Table Digital</h4>
+          <p>QR ordering, live kitchen tickets and menu management in one place.</p>
+          <a href="/digital-menu/" class="g58-vcard-cta">Explore Digital Menu →</a>
+        </article>
+        <article class="g58-vcard g58-vcard-pos">
+          <div class="g58-vcard-top"><span class="g58-vcard-mark">₹</span><span class="g58-vcard-badge">Free POS</span></div>
+          <h4>Simple Billing, No Setup</h4>
+          <p>GST-ready billing, UPI QR and daily reports — free to use.</p>
+          <a href="/pos/" class="g58-vcard-cta">Open Free POS →</a>
+        </article>
+        <article class="g58-vcard g58-vcard-card">
+          <div class="g58-vcard-top"><span class="g58-vcard-mark">🪪</span><span class="g58-vcard-badge">Business Card</span></div>
+          <h4>Your Business, Everywhere</h4>
+          <p>A free digital business card customers can find, save and share.</p>
+          <button type="button" class="g58-vcard-cta" onclick="openBusinessCardCreator()">Create Your Card →</button>
+        </article>
+        <article class="g58-vcard g58-vcard-ad">
+          <div class="g58-vcard-top"><span class="g58-vcard-mark">📣</span><span class="g58-vcard-badge">Post Requirement</span></div>
+          <h4>Post It. Get Offers.</h4>
+          <p>Tell G58 what you need and let nearby businesses send their offers.</p>
+          <button type="button" class="g58-vcard-cta" onclick="openCustomerPostCreator()">Post a Requirement →</button>
+        </article>
+        <article class="g58-vcard g58-vcard-refills" aria-hidden="true">
+          <div class="g58-vcard-top"><span class="g58-vcard-mark">⬡</span><span class="g58-vcard-badge">Refills</span></div>
+          <h4>Take Any Store Online</h4>
+          <p>Repeat orders, reminders and a store link customers can reorder from.</p>
+          <a href="/digit58/" class="g58-vcard-cta" tabindex="-1">Explore Refills →</a>
+        </article>
+        <article class="g58-vcard g58-vcard-menu" aria-hidden="true">
+          <div class="g58-vcard-top"><span class="g58-vcard-mark">☰</span><span class="g58-vcard-badge">Digital Menu</span></div>
+          <h4>Turn Any Table Digital</h4>
+          <p>QR ordering, live kitchen tickets and menu management in one place.</p>
+          <a href="/digital-menu/" class="g58-vcard-cta" tabindex="-1">Explore Digital Menu →</a>
+        </article>
+        <article class="g58-vcard g58-vcard-pos" aria-hidden="true">
+          <div class="g58-vcard-top"><span class="g58-vcard-mark">₹</span><span class="g58-vcard-badge">Free POS</span></div>
+          <h4>Simple Billing, No Setup</h4>
+          <p>GST-ready billing, UPI QR and daily reports — free to use.</p>
+          <a href="/pos/" class="g58-vcard-cta" tabindex="-1">Open Free POS →</a>
+        </article>
+        <article class="g58-vcard g58-vcard-card" aria-hidden="true">
+          <div class="g58-vcard-top"><span class="g58-vcard-mark">🪪</span><span class="g58-vcard-badge">Business Card</span></div>
+          <h4>Your Business, Everywhere</h4>
+          <p>A free digital business card customers can find, save and share.</p>
+          <button type="button" class="g58-vcard-cta" tabindex="-1">Create Your Card →</button>
+        </article>
+        <article class="g58-vcard g58-vcard-ad" aria-hidden="true">
+          <div class="g58-vcard-top"><span class="g58-vcard-mark">📣</span><span class="g58-vcard-badge">Post Requirement</span></div>
+          <h4>Post It. Get Offers.</h4>
+          <p>Tell G58 what you need and let nearby businesses send their offers.</p>
+          <button type="button" class="g58-vcard-cta" tabindex="-1">Post a Requirement →</button>
+        </article>
       </div>
-
     </div>
   </div>
 
