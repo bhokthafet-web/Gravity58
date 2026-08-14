@@ -1112,61 +1112,10 @@ function toggleFavoriteBusiness(id) {
   renderWall();
   refreshFloatingBusinessIfOpen(id);
 }
-function getCompareList() {
-  try {
-    return JSON.parse(sessionStorage.getItem("g58CompareBusinesses") || "[]");
-  } catch {
-    return [];
-  }
-}
-function toggleCompareBusiness(id) {
-  let list = getCompareList();
-  if (list.includes(id)) {
-    list = list.filter((x) => x !== id);
-  } else {
-    if (list.length >= 3) {
-      alert("You can compare up to 3 businesses at a time.");
-      return;
-    }
-    list.push(id);
-  }
-  sessionStorage.setItem("g58CompareBusinesses", JSON.stringify(list));
-  renderWall();
-  if (typeof window.renderCompareBar === "function") window.renderCompareBar();
-}
-function clearCompare() {
-  sessionStorage.removeItem("g58CompareBusinesses");
-  renderWall();
-  if (typeof window.renderCompareBar === "function") window.renderCompareBar();
-}
-function openCompareModal() {
-  const ids = getCompareList();
-  const items = ids.map((id) => businesses.find((b) => b.id === id)).filter(Boolean);
-  if (items.length < 2) return;
-  const body = document.getElementById("bizCompareBody");
-  if (!body) return;
-  body.innerHTML = `<div class="biz-compare-table-wrap"><table class="biz-compare-table">
-<tr><th></th>${items.map((b) => `<th>${escapeHtml(b.title)}</th>`).join("")}</tr>
-<tr><td>Rating</td>${items
-    .map((b) => {
-      const s = businessRatingStats(b);
-      return `<td>${s.count ? s.average.toFixed(1) + " ★ (" + s.count + ")" : "No reviews"}</td>`;
-    })
-    .join("")}</tr>
-<tr><td>Experience</td>${items.map((b) => `<td>${b.experience ? escapeHtml(String(b.experience)) + "+ Years" : "—"}</td>`).join("")}</tr>
-<tr><td>Projects</td>${items.map((b) => `<td>${b.projects ? escapeHtml(String(b.projects)) : "—"}</td>`).join("")}</tr>
-<tr><td>Starting Price</td>${items.map((b) => `<td>${b.price ? formatMoney(b.price) : "—"}</td>`).join("")}</tr>
-<tr><td>Location</td>${items.map((b) => `<td>${escapeHtml(b.area)}, ${escapeHtml(itemDistrict(b))}</td>`).join("")}</tr>
-<tr><td>Contact</td>${items.map((b) => `<td><button type="button" class="btn primary small" onclick="contactBusinessOnWhatsApp('${b.id}')">WhatsApp</button></td>`).join("")}</tr>
-</table></div>`;
-  document.getElementById("bizCompareModal")?.classList.add("show");
-}
 function businessCard(b) {
   const stats = businessRatingStats(b);
   const isOwner = sessionStorage.getItem(`g58BusinessOwner_${b.id}`) === "true";
-  const hue = avatarHue(b.id || b.title);
   const favorited = isFavoriteBusiness(b.id);
-  const compared = getCompareList().includes(b.id);
   const statChips = [];
   if (Number(b.experience))
     statChips.push(
@@ -1184,10 +1133,8 @@ function businessCard(b) {
   return `<article class="biz-card${isOwner ? " owner" : ""}" data-post-id="${b.id}">
 <div class="biz-card-tools">
 <button type="button" class="biz-fav-btn${favorited ? " active" : ""}" onclick="toggleFavoriteBusiness('${b.id}')" aria-label="${favorited ? "Remove from saved" : "Save business"}">${favorited ? "♥" : "♡"}</button>
-<label class="biz-compare-check"><input type="checkbox" ${compared ? "checked" : ""} onchange="toggleCompareBusiness('${b.id}')"><span>Compare</span></label>
 </div>
 <div class="biz-top">
-<div class="biz-avatar" style="background:hsl(${hue} 60% 45%)">${b.image ? `<img src="${escapeHtml(b.image)}" alt="${escapeHtml(b.title)}">` : businessInitial(b)}</div>
 <div class="biz-identity">
 <span class="biz-category">${escapeHtml(b.category)}</span>
 <h3>${escapeHtml(b.title)}</h3>
@@ -1640,6 +1587,10 @@ function floatingBusinessMarkup(b) {
   const dist = ratingDistribution(b);
   const favorited = isFavoriteBusiness(b.id);
   const websiteUrl = businessDemoUrl(b);
+  const shareUrl = businessShareUrl(b.id);
+  const shareQrSrc =
+    "https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=" +
+    encodeURIComponent(shareUrl);
 
   const quickStats = [];
   if (Number(b.experience))
@@ -1733,10 +1684,14 @@ ${contactRows.length ? `<div class="biz-profile-section"><h4>Contact Business</h
 
 <div class="biz-profile-section">
 <h4>Share this business</h4>
+<div class="biz-share-qr-block">
+<img class="biz-share-qr-img" src="${shareQrSrc}" alt="QR code for ${escapeHtml(b.title)}" width="140" height="140" loading="lazy">
+<p>Scan to open this business card on G58</p>
+</div>
 <div class="biz-share-actions">
 <button type="button" class="btn ghost" onclick="shareBusinessProfile('${b.id}')">Share</button>
 <button type="button" class="btn ghost" onclick="copyBusinessLink('${b.id}',this)">Copy Link</button>
-<button type="button" class="btn ghost" onclick="openBusinessQr('${b.id}')">QR Code</button>
+<button type="button" class="btn ghost" onclick="openBusinessQr('${b.id}')">Save QR</button>
 </div>
 <div class="share-status" id="share-${b.id}"></div>
 </div>

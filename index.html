@@ -10,7 +10,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/css/style.css?v=10">
+  <link rel="stylesheet" href="/css/style.css?v=11">
   <link rel="stylesheet" href="/css/mobile.css">
   <link rel="canonical" href="https://g58.in/" />
   <meta name="robots" content="index, follow, max-image-preview:large" />
@@ -42,7 +42,7 @@
 <body>
 <header class="topbar" id="topbar">
   <div class="shell nav nav-v2">
-    <a class="brand gravity-brand" href="#home">
+    <a class="brand gravity-brand" href="#home" onclick="showLanding()">
       <svg class="logo3d" viewBox="0 0 120 120" fill="none" stroke="#F97316" stroke-width="8" aria-hidden="true"><circle cx="60" cy="26" r="15"/><circle cx="28" cy="82" r="15"/><circle cx="92" cy="82" r="15"/></svg>
       <div class="gravity-wordmark">
         <div class="gravity-main">GRAVITY<span>58</span></div>
@@ -469,20 +469,6 @@
   </div>
 </div>
 
-<div class="bw-compare-bar" id="bizCompareBar">
-  <span id="bizCompareCount">0 businesses selected</span>
-  <div class="bw-compare-bar-actions">
-    <button type="button" class="btn ghost" onclick="clearCompare()">Clear</button>
-    <button type="button" class="btn primary" id="bizCompareBtn" onclick="openCompareModal()" disabled>Compare</button>
-  </div>
-</div>
-<div class="modal" id="bizCompareModal" onclick="closeOnBackdrop(event,'bizCompareModal')">
-  <div class="modal-card biz-compare-card">
-    <button class="close" onclick="closeModal('bizCompareModal')">×</button>
-    <h2>Compare Businesses</h2>
-    <div id="bizCompareBody"></div>
-  </div>
-</div>
 
 <div class="modal" id="businessEditSuccessModal">
   <div class="modal-card accepted-animation-card">
@@ -503,7 +489,7 @@
 <footer class="g58-footer-v2">
   <div class="shell g58-footer-grid">
     <div class="footer-brand-col">
-      <a class="brand gravity-brand" href="#home">
+      <a class="brand gravity-brand" href="#home" onclick="showLanding()">
         <svg class="logo3d" viewBox="0 0 120 120" fill="none" stroke="#F97316" stroke-width="8" aria-hidden="true"><circle cx="60" cy="26" r="15"/><circle cx="28" cy="82" r="15"/><circle cx="92" cy="82" r="15"/></svg>
         <div class="gravity-wordmark">
           <div class="gravity-main">GRAVITY<span>58</span></div>
@@ -877,7 +863,7 @@
 <script src="/js/config.js"></script>
 <script src="/js/appwrite-ads.js?v=13"></script>
 <script src="/js/database.js"></script>
-<script src="/js/app.js?v=4"></script>
+<script src="/js/app.js?v=5"></script>
 <script src="/js/site-auth.js?v=2"></script>
 <script>
 (function(){
@@ -1130,17 +1116,6 @@
       btn.setAttribute('onclick', 'openBusinessCardCreator()');
     }
   }
-  window.renderCompareBar = function(){
-    var bar = document.getElementById('bizCompareBar');
-    if (!bar || typeof getCompareList !== 'function') return;
-    var list = getCompareList();
-    if (!list.length) { bar.classList.remove('show'); return; }
-    bar.classList.add('show');
-    var countEl = document.getElementById('bizCompareCount');
-    if (countEl) countEl.textContent = list.length + (list.length === 1 ? ' business selected' : ' businesses selected');
-    var btn = document.getElementById('bizCompareBtn');
-    if (btn) btn.disabled = list.length < 2;
-  };
   var bwSuggestions = ['Interior Designer', 'Electrician', 'Catering', 'Plumber', 'Construction', 'AC Repair', 'Carpenter', 'Photographer'];
   var bwSuggestionIdx = 0;
   if (!reduceMotion) {
@@ -1164,7 +1139,6 @@
       renderBwSidebar();
       syncBwLocationLabels();
       syncBwCreateButton();
-      window.renderCompareBar();
     }
   };
   if (typeof window.updateStateUI === 'function') {
@@ -1175,7 +1149,6 @@
       syncBwLocationLabels();
     };
   }
-  window.renderCompareBar();
 })();
 </script>
 </body>
