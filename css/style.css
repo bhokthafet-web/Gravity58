@@ -1343,3 +1343,47 @@ body{background:
 @media(max-width:800px){
   .landing-side.left-side{background:var(--hero-surface)!important}
 }
+
+
+/* ================================================================
+   Hero v3 — drop the card grid. One bordered strip, plain rows
+   inside separated by hairline dividers, instead of a box per item.
+   ================================================================ */
+.catalogue-ribbons{
+  display:flex!important;flex-wrap:nowrap!important;gap:0!important;
+  border:1px solid var(--hero-border)!important;border-radius:14px!important;
+  background:var(--hero-surface)!important;overflow:hidden!important
+}
+.catalogue-btn,
+.catalogue-btn.jobs,.catalogue-btn.business,.catalogue-btn.digital-menu-ribbon,.catalogue-btn.digit58-ribbon{
+  flex:1!important;min-height:64px!important;border:0!important;border-right:1px solid var(--hero-border)!important;
+  border-radius:0!important;background:transparent!important
+}
+.catalogue-btn.digit58-ribbon{border-right:0!important}
+.catalogue-btn:hover,
+.catalogue-btn.jobs:hover,.catalogue-btn.business:hover,.catalogue-btn.digital-menu-ribbon:hover,.catalogue-btn.digit58-ribbon:hover{
+  background:rgba(18,24,31,.03)!important;border-color:var(--hero-border)!important;transform:none!important
+}
+
+.promo-split{display:block!important;border:1px solid var(--hero-border)!important;border-radius:14px!important;background:var(--hero-surface)!important;overflow:hidden!important}
+.promo-split-card,.free-ad-pop,
+.business-promo-card,.pos-promo-card,.digit58-promo-card,.digital-menu-promo-card,.customer-promo-card{
+  display:grid!important;grid-template-columns:60px minmax(0,1fr)!important;align-items:center!important;gap:16px!important;
+  min-height:0!important;border:0!important;border-bottom:1px solid var(--hero-border)!important;border-radius:0!important;
+  background:transparent!important;padding:20px 24px!important
+}
+.promo-split-card:last-child{border-bottom:0!important}
+.promo-split-card:hover{background:rgba(18,24,31,.025)!important;transform:none!important;box-shadow:none!important}
+.promo-split-card .promo-mini-icon{width:48px!important;height:48px!important;border-radius:11px!important;font-size:9px!important}
+.promo-split-card strong,.free-ad-pop strong{font-size:17px!important}
+.promo-split-card p{font-size:12.5px!important;max-width:44ch!important}
+
+@media(max-width:700px){
+  .catalogue-ribbons{flex-wrap:wrap!important}
+  .catalogue-btn,.catalogue-btn.jobs,.catalogue-btn.business,.catalogue-btn.digital-menu-ribbon{
+    flex:1 1 50%!important;border-bottom:1px solid var(--hero-border)!important
+  }
+  .catalogue-btn.business,.catalogue-btn.digit58-ribbon{border-right:0!important}
+  .promo-split-card{grid-template-columns:44px minmax(0,1fr)!important;padding:16px!important}
+  .promo-split-card .promo-mini-icon{width:40px!important;height:40px!important}
+}
