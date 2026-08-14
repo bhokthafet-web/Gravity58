@@ -457,10 +457,10 @@ function selectMode(mode) {
   document.getElementById("contentArea").classList.add("show");
   document
     .getElementById("customerTab")
-    .classList.toggle("active", mode === "customer");
+    ?.classList.toggle("active", mode === "customer");
   document
     .getElementById("businessTab")
-    .classList.toggle("active", mode === "business");
+    ?.classList.toggle("active", mode === "business");
   document
     .getElementById("businessNationalToggle")
     ?.classList.toggle("hidden", mode !== "business");
