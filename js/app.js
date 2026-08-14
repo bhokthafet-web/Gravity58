@@ -1172,12 +1172,41 @@ function openBusinessQr(id) {
   if (qrOpenedFromBusinessPopup) floatingWrap.classList.add("qr-behind-hidden");
 
   const link = businessShareUrl(id);
-  document.getElementById("businessQrTitle").textContent =
-    business.title + " QR Code";
+  document.getElementById("businessQrTitle").textContent = business.title;
+  const categoryEl = document.getElementById("businessQrCategory");
+  if (categoryEl) categoryEl.textContent = business.category || "";
   document.getElementById("businessQrLink").value = link;
   document.getElementById("businessQrImage").src =
     "https://api.qrserver.com/v1/create-qr-code/?size=280x280&data=" +
     encodeURIComponent(link);
+
+  const avatarEl = document.getElementById("businessQrAvatar");
+  if (avatarEl) {
+    avatarEl.style.background = `hsl(${avatarHue(business.id || business.title)} 60% 45%)`;
+    avatarEl.textContent = businessInitial(business);
+  }
+
+  const waBtn = document.getElementById("businessQrWhatsapp");
+  if (waBtn) {
+    const waNumber = cleanNumber(business.whatsapp || business.phone || "");
+    if (waNumber) {
+      waBtn.href = `https://wa.me/${waNumber}?text=${encodeURIComponent("Hi, I found your business on G58 and would like to know more about your services.")}`;
+      waBtn.hidden = false;
+    } else {
+      waBtn.hidden = true;
+    }
+  }
+  const profileBtn = document.getElementById("businessQrSocial");
+  if (profileBtn) {
+    const profileUrl = businessDemoUrl(business);
+    if (profileUrl) {
+      profileBtn.href = profileUrl;
+      profileBtn.hidden = false;
+    } else {
+      profileBtn.hidden = true;
+    }
+  }
+
   document.getElementById("businessQrModal").classList.add("show");
   document.body.classList.add("qr-modal-open");
 }

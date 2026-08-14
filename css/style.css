@@ -1750,7 +1750,7 @@ body{background:
 body.req-detail-lock{overflow:hidden}
 
 /* Bid modal, success, accept confirm, accepted animation — light premium theme */
-#bidModal .modal-card,#bidSuccessModal .modal-card,#acceptConfirmModal .modal-card,#acceptedAnimationModal .modal-card{background:var(--hero-surface,#fff)!important;border-color:var(--hero-border,rgba(18,24,31,.1))!important;color:var(--ink,#12181F);position:relative}
+#bidModal .modal-card,#bidSuccessModal .modal-card,#acceptConfirmModal .modal-card,#acceptedAnimationModal .modal-card,#businessQrModal .modal-card{background:var(--hero-surface,#fff)!important;border-color:var(--hero-border,rgba(18,24,31,.1))!important;color:var(--ink,#12181F);position:relative}
 #bidModal .modal-card,#acceptConfirmModal .modal-card,#acceptedAnimationModal .modal-card{width:min(520px,100%)}
 .bid-modal-card .close,.accept-confirm-card .close,.accepted-animation-card .close,#bidSuccessModal .close{position:absolute;top:18px;right:18px;color:var(--ink-muted,#5B6472)!important}
 .bid-modal-label{display:block;font-size:11.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--accent,#1D4ED8);margin-bottom:6px}
@@ -1995,3 +1995,22 @@ body.req-detail-lock{overflow:hidden}
 .g58-vcard-card{--vcard-accent:#6d5ef0;background:#ece9fd}
 .g58-vcard-ad{--vcard-accent:#1D4ED8;background:#e1eafd}
 @media(max-width:640px){.g58-vcard{width:240px;min-height:150px;padding:16px 18px}.g58-vcard h4{font-size:16px}}
+
+/* Redesigned business QR share card — brand, big avatar, big QR, WhatsApp + Profile, domain */
+.qr-card-redesign{max-width:380px;padding:32px 26px 26px;text-align:center;position:relative}
+.qr-card-redesign .close{position:absolute;top:16px;right:16px;color:var(--ink-muted,#5B6472)!important}
+.qr-card-brand{display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:20px}
+.qr-card-brand svg{width:22px;height:22px}
+.qr-card-brand span{font-family:Manrope,sans-serif;font-weight:800;font-size:14px;letter-spacing:.03em;color:var(--ink,#12181F)}
+.qr-card-avatar{width:64px;height:64px;margin:0 auto 14px;border-radius:18px;display:flex;align-items:center;justify-content:center;color:#fff;font-family:Manrope,sans-serif;font-weight:800;font-size:26px;box-shadow:0 10px 22px rgba(18,24,31,.16)}
+.qr-card-name{margin:0 0 2px;font-size:19px;color:var(--ink,#12181F)}
+.qr-card-category{margin:0 0 18px;font-size:12px;color:var(--ink-muted,#5B6472);text-transform:uppercase;letter-spacing:.04em;font-weight:700}
+.qr-card-qr-wrap{display:inline-block;padding:14px;background:#fff;border:1px solid var(--hero-border,rgba(18,24,31,.1));border-radius:20px;box-shadow:0 14px 30px rgba(18,24,31,.08);margin-bottom:12px}
+.qr-card-qr-img{display:block;width:200px;height:200px}
+.qr-card-scan-hint{margin:0 0 18px;font-size:12.5px;color:var(--ink-muted,#5B6472)}
+.qr-card-social-row{display:flex;gap:10px;margin-bottom:18px}
+.qr-social-btn{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;padding:11px 8px;border-radius:12px;font-weight:700;font-size:13px;text-decoration:none;color:#fff}
+.qr-social-whatsapp{background:linear-gradient(135deg,#25D366,#1da851)}
+.qr-social-instagram{background:linear-gradient(135deg,#833ab4,#fd1d1d 60%,#fcb045)}
+.qr-social-btn[hidden]{display:none}
+.qr-card-domain{font-family:Manrope,sans-serif;font-weight:800;font-size:13px;letter-spacing:.1em;color:var(--accent,#1D4ED8);margin-bottom:22px}
