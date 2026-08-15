@@ -754,7 +754,7 @@ function customerCard(c) {
 <h3 class="req-title">${escapeHtml(c.title)}</h3>
 <div class="req-meta-row"><span>📍 ${escapeHtml(c.area)}, ${escapeHtml(itemDistrict(c))}</span><span>${timeAgoLabel(c.created)}</span></div>
 <div class="req-bottom-row"><div class="req-budget"><strong>${formatMoney(c.price)}–${formatMoney(c.maxPrice)}</strong><small>Budget</small></div><div class="req-bid-progress">${ring}<small>${bidCount} / 5 Offers</small></div></div>
-<div class="req-actions">${full ? '<button type="button" class="btn" disabled>Bids Full</button>' : `<button type="button" class="btn primary req-bid-btn" onclick="openBidModal('${c.id}')">Bid Amount (${bidCount}) <span class="req-arrow">→</span></button>`}</div>
+<div class="req-actions">${full ? '<button type="button" class="btn" disabled>Bids Full</button>' : `<button type="button" class="btn primary req-bid-btn" onclick="openBidModal('${c.id}')">Bids (${bidCount}) <span class="req-arrow">→</span></button>`}</div>
 ${shareRow}
 </article>`;
   }
@@ -768,7 +768,7 @@ ${shareRow}
 ${bidCount === 4 ? '<div class="req-scarcity">Only 1 offer slot remaining</div>' : ""}
 <div class="req-actions">
 <button type="button" class="btn ghost" onclick="openRequirementDetail('${c.id}')">View Requirement <span class="req-arrow">→</span></button>
-${full ? '<button type="button" class="btn" disabled>Bids Full</button>' : `<button type="button" class="btn primary req-bid-btn" onclick="openBidModal('${c.id}')">Bid Amount (${bidCount})</button>`}
+${full ? '<button type="button" class="btn" disabled>Bids Full</button>' : `<button type="button" class="btn primary req-bid-btn" onclick="openBidModal('${c.id}')">Bids (${bidCount})</button>`}
 </div>
 ${shareRow}
 </article>`;
@@ -821,7 +821,7 @@ function renderRequirementDetailContent(c) {
 <div class="req-detail-sticky">${
     full
       ? '<button type="button" class="btn" style="width:100%" disabled>Offers Full</button><p class="req-detail-sticky-note">This requirement has received the maximum number of offers.</p>'
-      : `<button type="button" class="btn primary" style="width:100%" onclick="openBidModal('${c.id}')">Bid Amount (${bidCount}) <span class="cta-arrow">→</span></button>`
+      : `<button type="button" class="btn primary" style="width:100%" onclick="openBidModal('${c.id}')">Bids (${bidCount}) <span class="cta-arrow">→</span></button>`
   }</div>`;
 }
 function renderOfferComparisonContent(c) {

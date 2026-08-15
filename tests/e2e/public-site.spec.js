@@ -154,7 +154,16 @@ test("Business Wall cards stay compact while the full profile remains available"
   await expect(card.locator(".biz-card-primary-actions")).toBeVisible();
   await expect(card.locator(".biz-card-quickrow")).toBeHidden();
 
-  await card.getByRole("button", { name: "View", exact: true }).click();
+  const viewButton = card.getByRole("button", { name: "View", exact: true });
+  await expect(viewButton).toHaveCSS("font-size", "15px");
+  await expect(viewButton).toHaveCSS("font-weight", "900");
+  expect(
+    await viewButton.evaluate((button) =>
+      getComputedStyle(button, "::before").animationName,
+    ),
+  ).toBe("bizViewLightTravel");
+
+  await viewButton.click();
   await expect(page.locator("#floatingBusinessWrap")).toHaveClass(/show/);
   await expect(page.locator("#floatingBusinessCard .biz-card-quickrow")).toBeHidden();
   await expect(page.locator("#floatingBusinessCard .biz-popup-side-action")).toHaveCount(4);
@@ -212,7 +221,7 @@ test("customer cards expose owner-only unlock, clear bid and readable expiry", a
 
   const ownerCard = page.locator('.req-card[data-post-id="C1001"]');
   await expect(ownerCard.getByRole("button", { name: "Unlock Post" })).toBeVisible();
-  await ownerCard.getByRole("button", { name: "Bid Amount (0) →" }).click();
+  await ownerCard.getByRole("button", { name: "Bids (0) →" }).click();
   await expect(page.locator("#bidModal")).toHaveClass(/show/);
   await expect(page.locator("#bidBusiness")).toHaveValue("DreamSpace Interiors");
   await page.locator("#bidAmount").fill("175000");
@@ -221,9 +230,9 @@ test("customer cards expose owner-only unlock, clear bid and readable expiry", a
   await page.getByRole("button", { name: /Submit Offer/ }).click();
   await expect(page.locator("#bidSuccessModal")).toHaveClass(/show/);
   await page.locator("#bidSuccessModal .close").click();
-  await expect(ownerCard.getByRole("button", { name: "Bid Amount (1) →" })).toBeVisible();
+  await expect(ownerCard.getByRole("button", { name: "Bids (1) →" })).toBeVisible();
   const publicCard = page.locator('.req-card[data-post-id="C1002"]');
-  await expect(publicCard.getByRole("button", { name: "Bid Amount (0)" })).toBeVisible();
+  await expect(publicCard.getByRole("button", { name: "Bids (0)" })).toBeVisible();
   await expect(publicCard.getByRole("button", { name: "Unlock Post" })).toHaveCount(0);
   const [status, expiry] = await Promise.all([
     ownerCard.locator(".req-status").boundingBox(),
