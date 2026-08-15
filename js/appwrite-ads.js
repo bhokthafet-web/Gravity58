@@ -235,7 +235,21 @@
     }
     return user;
   }
-  const forgotPassword = async (email, url) => configured ? account.createRecovery({ email, url }) : Promise.reject(new Error("Account services are temporarily unavailable."));
+  function recoveryUrl(url) {
+    const publicResetUrl = "https://g58.in/reset-password/";
+    if (window.G58PasswordRecoveryUrl) return window.G58PasswordRecoveryUrl;
+    try {
+      const candidate = new URL(url || "/reset-password/", location.href);
+      const packagedProtocol = /^(?:capacitor|file):$/i.test(candidate.protocol);
+      const packagedApp = document.documentElement?.dataset?.g58Platform === "android";
+      return packagedApp || packagedProtocol ? publicResetUrl : candidate.href;
+    } catch {
+      return publicResetUrl;
+    }
+  }
+  const forgotPassword = async (email, url) => configured
+    ? account.createRecovery({ email, url: recoveryUrl(url) })
+    : Promise.reject(new Error("Account services are temporarily unavailable."));
   const completeRecovery = async (userId, secret, password) => configured ? account.updateRecovery({ userId, secret, password }) : Promise.reject(new Error("Account services are temporarily unavailable."));
   const createJWT = async () => {
     if (!configured || !account) throw new Error("Sign in to G58 before uploading media.");
