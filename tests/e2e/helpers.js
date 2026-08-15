@@ -77,7 +77,9 @@ export function mockApiScript({ initialUser = null, admin = false, seed = {} } =
           const orderKind='digit58_order_'+String(payload.ownerId||'').replace(/[^a-zA-Z0-9._-]/g,'-').slice(0,40);
           const card=(store[cardKind]||[]).find(row=>(row.id||row.\$id)===payload.cardId);
           if(!card||card.customerAccountId!==user?.\$id)throw new Error('Only this card customer can request its refill.');
-          if(!card.dueAt||new Date(card.dueAt).getTime()>Date.now())throw new Error('The refill button becomes available after the refill period is completed.');
+          const explicitDueAt=new Date(card.dueAt).getTime(),anchorAt=new Date(card.lastDeliveredAt||card.purchasedAt||card.createdAt||card.$createdAt).getTime();
+          const dueAt=Number.isFinite(explicitDueAt)?explicitDueAt:Number.isFinite(anchorAt)?anchorAt+Math.max(1,Number(card.reminderDays)||30)*86400000:Date.now();
+          if(dueAt>Date.now())throw new Error('The refill button becomes available after the refill period is completed.');
           const existing=(store[orderKind]||[]).find(row=>row.refillCardId===card.id&&!['Delivered','Rejected'].includes(row.status));
           if(existing)return {ok:true,order:clone(existing)};
           const createdAt=new Date().toISOString(),row=clean({id:'refill-order-'+(++serial),ownerId:payload.ownerId,storeId:card.storeId,customerAccountId:user?.\$id,customerName:payload.customerName,customerEmail:payload.customerEmail,phone:String(payload.phone||card.phone||'').replace(/\D/g,''),items:[{name:card.productName,qty:1}],amount:0,previousAmount:Number(card.price)||0,refillCardId:card.id,upiUri:'',status:'Requested',messages:[],createdAt,updatedAt:createdAt});

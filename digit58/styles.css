@@ -60,6 +60,16 @@ th,td{text-align:left;padding:12px;border-bottom:1px solid var(--line);white-spa
 .reminder-progress{height:8px;background:rgba(255,255,255,.08);border-radius:999px;overflow:hidden;margin:10px 0}
 .reminder-progress>span{display:block;height:100%;background:linear-gradient(90deg,var(--violet),var(--violet2))}
 .reminder-progress.due>span{background:linear-gradient(90deg,#f87171,#dc2626)}
+.reminder-section-head>div>p{margin:5px 0 0;font-size:12px}
+.reminder-view-toggle{display:inline-flex;flex:0 0 auto;padding:4px;border:1px solid var(--line);border-radius:13px;background:rgba(8,6,16,.5)}
+.reminder-view-toggle button{min-width:66px;padding:8px 11px;border:0;border-radius:9px;background:transparent;color:var(--muted);font-weight:850;cursor:pointer}
+.reminder-view-toggle button.active{background:linear-gradient(135deg,var(--violet),var(--violet2));color:#04231a;box-shadow:0 6px 16px rgba(45,212,168,.2)}
+.customer-reminder-view{gap:16px}
+.reminder-view-swipe{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;scroll-padding-inline:2px;padding:4px 15% 18px 2px;overscroll-behavior-inline:contain;-webkit-overflow-scrolling:touch;scrollbar-width:thin;scrollbar-color:rgba(127,255,212,.45) transparent}
+.reminder-view-swipe>.reminder-card{flex:0 0 min(84%,440px);scroll-snap-align:start;scroll-snap-stop:always}
+.reminder-view-list{display:grid;grid-template-columns:1fr}
+.refill-card-action{min-height:46px;margin-top:15px;font-size:15px}
+.refill-card-note{margin:8px 0 0;text-align:center;font-size:12px;line-height:1.45}
 .modal-backdrop{position:fixed;inset:0;display:grid;place-items:center;background:rgba(0,0,0,.7);z-index:100;padding:18px}
 .modal{width:min(560px,100%);max-height:90vh;overflow:auto;padding:22px;border-radius:24px;background:#1d1a2e;border:1px solid var(--line);box-shadow:var(--shadow)}
 .form-grid{display:grid;grid-template-columns:1fr 1fr;gap:0 14px}
@@ -177,4 +187,4 @@ th,td{text-align:left;padding:12px;border-bottom:1px solid var(--line);white-spa
 .g58-site-footer-badge{display:flex;justify-content:center;margin-bottom:14px}
 .g58-site-footer-note{color:var(--muted);font-size:12px;margin:0}
 @media(max-width:980px){.shell{grid-template-columns:1fr}.sidebar{position:fixed;left:0;right:0;bottom:0;top:auto;height:auto;z-index:30;padding:8px;background:#171426}.sidebar .brand{display:none}.nav{display:flex;overflow:auto}.nav button{min-width:max-content;font-size:12px}.main{padding-bottom:78px}.stats{grid-template-columns:repeat(2,1fr)}.store-grid,.customer-grid,.card-grid,.promotion-owner-grid{grid-template-columns:repeat(2,1fr)}.floating-support-btn{bottom:86px}.g58-site-footer{margin-bottom:78px}}
-@media(max-width:620px){.content,.topbar{padding:14px}.stats,.store-grid,.customer-grid,.card-grid,.promotion-owner-grid,.form-grid{grid-template-columns:1fr}.promotion-strip-head{align-items:flex-start;flex-direction:column}.customer-ticket{flex-basis:142px;width:142px;padding:14px}.promotion-ticket h3{font-size:15px}.razorpay-return-actions{grid-template-columns:1fr}.razorpay-owner-review{grid-template-columns:1fr}.razorpay-owner-review>strong{text-align:left}.razorpay-owner-review>small{grid-column:1}.date-filter-bar label{flex:1;min-width:125px}.date-filter-bar input[type=date]{width:100%}.date-filter-bar .btn{width:100%}}
+@media(max-width:620px){.content,.topbar{padding:14px}.stats,.store-grid,.customer-grid,.card-grid,.promotion-owner-grid,.form-grid{grid-template-columns:1fr}.promotion-strip-head{align-items:flex-start;flex-direction:column}.reminder-section-head{align-items:flex-start}.reminder-view-toggle button{min-width:58px;padding:8px}.reminder-view-swipe{padding-right:14%}.reminder-view-swipe>.reminder-card{flex-basis:86%}.customer-ticket{flex-basis:142px;width:142px;padding:14px}.promotion-ticket h3{font-size:15px}.razorpay-return-actions{grid-template-columns:1fr}.razorpay-owner-review{grid-template-columns:1fr}.razorpay-owner-review>strong{text-align:left}.razorpay-owner-review>small{grid-column:1}.date-filter-bar label{flex:1;min-width:125px}.date-filter-bar input[type=date]{width:100%}.date-filter-bar .btn{width:100%}}

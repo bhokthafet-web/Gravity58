@@ -219,8 +219,14 @@ function cloudOwnerId(){return session?.$id||''}
 function activeStore(){return state.stores.find(row=>row.id===state.activeStoreId)||state.stores[0]||null}
 function ownerCustomers(storeId=state.activeStoreId){return state.customers.filter(row=>row.storeId===storeId)}
 function customerCards(customerAccountId,storeId=state.activeStoreId){return state.cards.filter(row=>row.storeId===storeId&&row.customerAccountId===customerAccountId)}
-function isCardDue(card){return new Date(card.dueAt).getTime()<=Date.now()}
-function daysRemaining(card){return Math.max(0,Math.ceil((new Date(card.dueAt).getTime()-Date.now())/86400000))}
+function cardDueTime(card){
+  const explicit=new Date(card?.dueAt).getTime();
+  if(Number.isFinite(explicit))return explicit;
+  const anchor=new Date(card?.lastDeliveredAt||card?.purchasedAt||card?.createdAt||card?.$createdAt).getTime();
+  return Number.isFinite(anchor)?anchor+Math.max(1,Number(card?.reminderDays)||30)*86400000:Date.now();
+}
+function isCardDue(card){return cardDueTime(card)<=Date.now()}
+function daysRemaining(card){return Math.max(0,Math.ceil((cardDueTime(card)-Date.now())/86400000))}
 function storeOrders(storeId=state.activeStoreId){return state.orders.filter(row=>row.storeId===storeId)}
 function storePromotions(storeId=state.activeStoreId){return state.promotions.filter(row=>row.storeId===storeId)}
 function customerOrders(customerAccountId,storeId=state.activeStoreId){return state.orders.filter(row=>row.storeId===storeId&&row.customerAccountId===customerAccountId)}
@@ -902,6 +908,7 @@ function closeModal(){$('#modal')?.remove()}
 
 async function renderPublicStore(hashParams){
   const ownerId=hashParams.get('owner')||'',storeId=hashParams.get('store')||'';
+  customerReminderView='swipe';
   if(!ownerId||!storeId){app.innerHTML=`<main class="public-store"><div class="empty">This store link is invalid.</div></main>${siteFooter()}`;bindAndroidAppFooter();return}
   let store;
   try{store=await api.get(storeKind(ownerId),storeId)}
@@ -957,7 +964,7 @@ async function ensureCustomerLink(ownerId,storeId,account){
   const result=await api.executeFunction(api.config.digitalOrderFunctionId,{action:'digit58-link-customer',ownerId,storeId,customerName:account.name||account.email.split('@')[0],customerEmail:account.email});
   return result.customer;
 }
-let customerPromotionQuantities=new Map(),activePromotionStoreId='';
+let customerPromotionQuantities=new Map(),activePromotionStoreId='',customerReminderView='swipe';
 function stopPromotionAutoScroll(){const rail=$('#promotionRail');rail?.classList.remove('is-auto-scrolling')}
 function pausePromotionAutoScroll(){stopPromotionAutoScroll();$('#promotionRail')?.classList.add('is-paused')}
 function startPromotionAutoScroll(){
@@ -998,8 +1005,8 @@ function renderCustomerCards(store,customer,cards,orders=[],promotions=[]){
   ${promotions.length?`<section class="promotion-strip"><div class="promotion-strip-head"><div><span>Store offers</span><h2>Fresh deals for your next order</h2></div><small>Tap Buy to include an offer</small></div><div class="promotion-rail" id="promotionRail"><div class="promotion-track"><div class="promotion-sequence">${marqueePromotions.map((promotion,index)=>customerPromotionTicket(promotion,index>=promotions.length)).join('')}</div><div class="promotion-sequence" aria-hidden="true">${marqueePromotions.map(promotion=>customerPromotionTicket(promotion,true)).join('')}</div></div></div></section>`:''}
   <div class="section-head"><h2>Your orders</h2><button class="btn small" id="placeOrderBtn">+ Place New Order</button></div>
   <div class="grid card-grid">${active.map(order=>customerOrderMarkup(order,store)).join('')||'<div class="empty">No active orders. Place a new order to get started.</div>'}</div>
-  <div class="section-head"><h2>Your reminder cards</h2></div>
-  <div class="grid card-grid" id="customerCardGrid">${cards.map(customerCardCardMarkup).join('')||'<div class="empty">Your store will add reminder cards here after your first purchase.</div>'}</div>
+  <div class="section-head reminder-section-head"><div><h2>Your reminder cards</h2>${cards.length>1?'<p class="muted">Swipe to see the next card or switch to list view.</p>':''}</div>${cards.length>1?`<div class="reminder-view-toggle" role="group" aria-label="Reminder card view"><button type="button" class="${customerReminderView==='swipe'?'active':''}" data-reminder-view="swipe" aria-pressed="${customerReminderView==='swipe'}">Swipe</button><button type="button" class="${customerReminderView==='list'?'active':''}" data-reminder-view="list" aria-pressed="${customerReminderView==='list'}">List</button></div>`:''}</div>
+  <div class="customer-reminder-view reminder-view-${customerReminderView}" id="customerCardGrid">${cards.map(customerCardCardMarkup).join('')||'<div class="empty">Your store will add reminder cards here after your first purchase.</div>'}</div>
   ${history.length?`<div class="section-head"><div><h2>Order History</h2><p class="muted">Today's history is shown by default. Select another date period when needed.</p></div><button class="btn small secondary" id="exportCustomerHistory" ${filteredHistory.length?'':'disabled'}>Export CSV</button></div><div class="date-filter-bar"><label>From<input id="customerHistoryFrom" type="date" value="${html(historyFrom)}" max="${html(historyTo)}"></label><label>To<input id="customerHistoryTo" type="date" value="${html(historyTo)}" min="${html(historyFrom)}"></label><button class="btn small secondary" id="customerHistoryToday" type="button">Today</button></div><div class="card table-wrap"><table><thead><tr><th>Items</th><th>Reorder</th><th>Amount</th><th>Status</th><th>Date</th></tr></thead><tbody>${filteredHistory.map(customerOrderHistoryRow).join('')||'<tr><td colspan="5">No orders in this period.</td></tr>'}</tbody></table></div>`:''}
   <div class="actions" style="margin-top:20px"><button class="btn secondary" id="custLogout">Sign out</button></div></main>${siteFooter()}`;
   active.filter(order=>order.status==='Priced'&&order.upiUri).forEach(order=>{
@@ -1013,6 +1020,13 @@ function renderCustomerCards(store,customer,cards,orders=[],promotions=[]){
   $$('[data-buy-again]').forEach(button=>button.onclick=()=>{
     const card=cards.find(row=>row.id===button.dataset.buyAgain);
     openBuyAgainModal(button.dataset.buyAgain,store,customer,card?.productName);
+  });
+  $$('[data-reminder-view]').forEach(button=>button.onclick=()=>{
+    customerReminderView=button.dataset.reminderView==='list'?'list':'swipe';
+    const grid=$('#customerCardGrid');
+    grid.classList.toggle('reminder-view-swipe',customerReminderView==='swipe');
+    grid.classList.toggle('reminder-view-list',customerReminderView==='list');
+    $$('[data-reminder-view]').forEach(option=>{const active=option.dataset.reminderView===customerReminderView;option.classList.toggle('active',active);option.setAttribute('aria-pressed',String(active))});
   });
   $$('[data-reorder-order]').forEach(button=>button.onclick=()=>{
     const order=filteredHistory.find(row=>row.id===button.dataset.reorderOrder);
@@ -1037,11 +1051,11 @@ function customerCardCardMarkup(card){
   const due=isCardDue(card),remaining=daysRemaining(card),refillPending=['Buy Requested','Refill Requested'].includes(card.status);
   let payBlock='';
   if(refillPending){
-    payBlock='<p class="muted">Your refill order was sent. Follow it under Your orders while the store reviews the amount and processes it.</p>';
+    payBlock='<button class="btn full secondary refill-card-action" type="button" disabled>Refill</button><p class="muted refill-card-note">Your refill order was sent. Follow it under Your orders while the store reviews the amount and processes it.</p>';
   }else if(due){
-    payBlock=`<button class="btn full green" data-buy-again="${html(card.id)}">Refill</button>`;
+    payBlock=`<button class="btn full green refill-card-action" data-buy-again="${html(card.id)}">Refill</button>`;
   }else{
-    payBlock=`<p class="muted" style="text-align:center">Refill becomes available after ${remaining} day(s).</p>`;
+    payBlock=`<button class="btn full secondary refill-card-action" type="button" disabled>Refill</button><p class="muted refill-card-note">Available in ${remaining} day(s).</p>`;
   }
   return `<article class="card reminder-card premium-card vial-card ${due?'due':''}"><div class="vial-card-body"><div class="vial-card-info"><h3>${html(card.productName)}</h3><p class="muted">${money(card.price)} · every ${Number(card.reminderDays)} day(s)</p><div class="chips"><span class="chip ${due?'due':''}">${due?'Due now':`${remaining} day(s) left`}</span>${refillPending?'<span class="chip due">Refill order sent</span>':''}</div></div>${vialMarkup(card)}</div>${payBlock}${cardChatMarkup(card,'customer')}</article>`;
 }

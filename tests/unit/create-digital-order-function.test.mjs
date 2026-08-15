@@ -476,7 +476,7 @@ test('digit58: a due reminder creates one regular refill order and marks the car
   const card = {
     id: 'card_due_1', ownerId, storeId: 'store_1', customerAccountId: customerId,
     productName: 'Thyroid medicine', price: 199, reminderDays: 30,
-    phone: '9999999999', dueAt: new Date(Date.now() - 86400000).toISOString(), status: 'Active',
+    phone: '9999999999', purchasedAt: new Date(Date.now() - 31 * 86400000).toISOString(), status: 'Active',
   };
   const cardKind = `digit58_card_${ownerId}`;
   const orderKind = `digit58_order_${ownerId}`;

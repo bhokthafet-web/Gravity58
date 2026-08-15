@@ -386,7 +386,7 @@ test("Refills becomes available when the reminder period ends and creates a regu
     seed: {
       [`digit58_store_${ownerId}`]: [{ id: storeId, ownerId, name: "Cycle Pharmacy", category: "Pharmacy", city: "Hyderabad", upiId: "cycle@upi" }],
       [`digit58_customer_${ownerId}`]: [{ id: "cycle_customer_link", ownerId, storeId, customerAccountId: customerId, customerName: "Refill Customer", customerEmail: "customer@example.com", phone: "9876543210" }],
-      [cardKind]: [{ id: cardId, ownerId, storeId, customerAccountId: customerId, productName: "Thyroid medicine", price: 199, reminderDays: 30, phone: "9876543210", status: "Active", timesDelivered: 1, dueAt: new Date(Date.now() - 86400000).toISOString() }],
+      [cardKind]: [{ id: cardId, ownerId, storeId, customerAccountId: customerId, productName: "Thyroid medicine", price: 199, reminderDays: 30, phone: "9876543210", status: "Active", timesDelivered: 1, purchasedAt: new Date(Date.now() - 31 * 86400000).toISOString() }],
       [orderKind]: [],
     },
   });
@@ -401,7 +401,7 @@ test("Refills becomes available when the reminder period ends and creates a regu
   await expect(page.locator(".order-item-card")).toContainText("Thyroid medicine");
   await expect(page.locator(".order-item-card")).toContainText("Waiting for the store to review and set the amount");
   await expect(reminder).toContainText("Refill order sent");
-  await expect(reminder.getByRole("button", { name: "Refill" })).toHaveCount(0);
+  await expect(reminder.getByRole("button", { name: "Refill" })).toBeDisabled();
   const result = await page.evaluate(({ orderKind, cardKind, cardId }) => ({
     orders: window.__g58Mock.store[orderKind],
     card: window.__g58Mock.store[cardKind].find((row) => row.id === cardId),
@@ -409,6 +409,52 @@ test("Refills becomes available when the reminder period ends and creates a regu
   expect(result.orders).toHaveLength(1);
   expect(result.orders[0]).toMatchObject({ status: "Requested", refillCardId: cardId, previousAmount: 199, phone: "9888888888", items: [{ name: "Thyroid medicine", qty: 1 }] });
   expect(result.card).toMatchObject({ status: "Refill Requested", activeOrderId: result.orders[0].id });
+  await assertNoErrors();
+});
+
+test("Refills reminder cards default to swipe view and can switch temporarily to a list", async ({ page }) => {
+  const ownerId = "view_owner", customerId = "view_customer", storeId = "view_store", cardKind = `digit58_card_${ownerId}`;
+  const purchasedAt = new Date().toISOString();
+  await prepareMockApi(page, {
+    state: null,
+    initialUser: { $id: customerId, email: "customer@example.com", name: "View Customer" },
+    seed: {
+      [`digit58_store_${ownerId}`]: [{ id: storeId, ownerId, name: "Swipe Pharmacy", category: "Pharmacy", city: "Hyderabad" }],
+      [`digit58_customer_${ownerId}`]: [{ id: "view_customer_link", ownerId, storeId, customerAccountId: customerId, customerName: "View Customer", customerEmail: "customer@example.com", phone: "9876543210" }],
+      [cardKind]: [
+        { id: "view_card_1", ownerId, storeId, customerAccountId: customerId, productName: "Vitamin tablets", price: 99, reminderDays: 30, purchasedAt, status: "Active" },
+        { id: "view_card_2", ownerId, storeId, customerAccountId: customerId, productName: "Protein powder", price: 499, reminderDays: 20, purchasedAt, status: "Active" },
+        { id: "view_card_3", ownerId, storeId, customerAccountId: customerId, productName: "Health drink", price: 149, reminderDays: 15, purchasedAt, status: "Active" },
+      ],
+    },
+  });
+  const assertNoErrors = monitorPageErrors(page);
+  await page.goto(`/digit58/#store&owner=${ownerId}&store=${storeId}`);
+  const grid = page.locator("#customerCardGrid"), cards = grid.locator(".reminder-card");
+  await expect(grid).toHaveClass(/reminder-view-swipe/);
+  await expect(page.getByRole("button", { name: "Swipe", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect(cards).toHaveCount(3);
+  await expect(cards.getByRole("button", { name: "Refill" })).toHaveCount(3);
+  for (const button of await cards.getByRole("button", { name: "Refill" }).all()) await expect(button).toBeDisabled();
+  const swipeGeometry = await page.evaluate(() => {
+    const grid = document.querySelector("#customerCardGrid"), items = [...grid.querySelectorAll(".reminder-card")];
+    const rail = grid.getBoundingClientRect(), first = items[0].getBoundingClientRect(), second = items[1].getBoundingClientRect();
+    return { railRight: rail.right, firstWidth: first.width, railWidth: rail.width, secondLeft: second.left, secondRight: second.right };
+  });
+  expect(swipeGeometry.firstWidth).toBeLessThan(swipeGeometry.railWidth);
+  expect(swipeGeometry.secondLeft).toBeLessThan(swipeGeometry.railRight);
+  expect(swipeGeometry.secondRight).toBeGreaterThan(swipeGeometry.railRight);
+
+  await page.getByRole("button", { name: "List", exact: true }).click();
+  await expect(grid).toHaveClass(/reminder-view-list/);
+  await expect(page.getByRole("button", { name: "List", exact: true })).toHaveAttribute("aria-pressed", "true");
+  const listGeometry = await page.evaluate(() => [...document.querySelectorAll("#customerCardGrid .reminder-card")].map((card) => ({ x: card.getBoundingClientRect().x, y: card.getBoundingClientRect().y })));
+  expect(listGeometry[1].y).toBeGreaterThan(listGeometry[0].y);
+  expect(Math.abs(listGeometry[1].x - listGeometry[0].x)).toBeLessThan(2);
+
+  await page.reload();
+  await expect(page.locator("#customerCardGrid")).toHaveClass(/reminder-view-swipe/);
+  await expect(page.getByRole("button", { name: "Swipe", exact: true })).toHaveAttribute("aria-pressed", "true");
   await assertNoErrors();
 });
 

@@ -698,7 +698,12 @@ async function createDigit58RefillOrder(call, input, userId) {
   const card = cleanRow(row);
   if (row.kind !== digit58CardKind(ownerId)) throw new Error('This is not a Refills reminder card.');
   if (card.customerAccountId !== userId) { const denied = new Error("Only this card's customer can request its refill."); denied.code = 403; throw denied; }
-  if (!card.dueAt || new Date(card.dueAt).getTime() > Date.now()) throw new Error('The refill button becomes available after the refill period is completed.');
+  const explicitDueAt = new Date(card.dueAt).getTime();
+  const anchorAt = new Date(card.lastDeliveredAt || card.purchasedAt || card.createdAt || row.$createdAt).getTime();
+  const dueAt = Number.isFinite(explicitDueAt)
+    ? explicitDueAt
+    : Number.isFinite(anchorAt) ? anchorAt + Math.max(1, finite(card.reminderDays, 30)) * 86400000 : Date.now();
+  if (dueAt > Date.now()) throw new Error('The refill button becomes available after the refill period is completed.');
   const existingRows = await listRowsByKind(call, digit58OrderKind(ownerId));
   const existing = existingRows.map(cleanRow).find(order => order.refillCardId === cardId && !['Delivered', 'Rejected'].includes(order.status));
   if (existing) return existing;
