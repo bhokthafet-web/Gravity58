@@ -132,3 +132,24 @@ test("business QR, rating and customer bid workflows persist", async ({ page }) 
   expect(bids[0].whatsapp).toBe("919876543210");
   await assertNoErrors();
 });
+
+test("Business Wall cards stay compact while the full profile remains available", async ({ page }) => {
+  await prepareOffline(page, { blockSiteAuth: true });
+  const assertNoErrors = monitorPageErrors(page);
+  await page.goto("/");
+  await page.evaluate(() => selectMode("business"));
+
+  const card = page.locator(".biz-card-wall-item .biz-card-glass").first();
+  await expect(card).toBeVisible();
+  const bounds = await card.boundingBox();
+  expect(bounds).not.toBeNull();
+  expect(bounds.height).toBeLessThan(410);
+  await expect(card.locator(".biz-card-qr-img")).toBeVisible();
+  await expect(card.locator(".biz-card-primary-actions")).toBeVisible();
+  await expect(card.locator(".biz-card-quickrow")).toBeHidden();
+
+  await card.getByRole("button", { name: "View", exact: true }).click();
+  await expect(page.locator("#floatingBusinessWrap")).toHaveClass(/show/);
+  await expect(page.locator("#floatingBusinessCard .biz-card-quickrow")).toBeVisible();
+  await assertNoErrors();
+});

@@ -1880,6 +1880,33 @@ body.req-detail-lock{overflow:hidden}
 .biz-card-wall-item{display:flex;justify-content:center}
 .biz-card-wall-item .biz-card-glass{width:100%;max-width:420px}
 
+/* Keep Business Wall cards short and scannable. The expanded profile retains
+   the full contact, save, location and share controls after the user taps View. */
+.biz-card-wall-item .biz-card-glass{padding:16px 16px 14px;border-radius:22px;box-shadow:0 16px 38px rgba(18,24,31,.12)}
+.biz-card-wall-item .biz-card-glass::before{border-radius:23px}
+.biz-card-wall-item .biz-card-glass-head{margin-bottom:6px}
+.biz-card-wall-item .biz-card-nfc-label{font-size:9.5px}
+.biz-card-wall-item .biz-fav-btn-glass{width:30px;height:30px}
+.biz-card-wall-item .biz-card-view-pill{margin:0 auto 8px;padding:4px 15px;font-size:9.5px;letter-spacing:.25em}
+.biz-card-wall-item .biz-card-profile{margin-bottom:10px}
+.biz-card-wall-item .biz-card-name{font-size:20px}
+.biz-card-wall-item .biz-card-category{margin-bottom:6px;font-size:10px}
+.biz-card-wall-item .biz-card-tagline-pill{display:none}
+.biz-card-wall-item .biz-card-rating{gap:4px}
+.biz-card-wall-item .biz-card-qr-block{margin-bottom:10px}
+.biz-card-wall-item .biz-card-qr-label,
+.biz-card-wall-item .biz-card-qr-caption{display:none}
+.biz-card-wall-item .biz-card-qr-wrap{padding:8px;border-radius:14px;box-shadow:0 8px 20px rgba(18,24,31,.08)}
+.biz-card-wall-item .biz-card-qr-img{width:112px;height:112px}
+.biz-card-wall-item .biz-card-qr-logo{width:25px;height:25px;border-radius:7px}
+.biz-card-wall-item .biz-card-qr-logo svg{width:15px;height:15px}
+.biz-card-wall-item .biz-card-primary-actions{gap:8px;margin-bottom:0}
+.biz-card-wall-item .biz-card-cta{padding:10px 8px;font-size:12px}
+.biz-card-wall-item .biz-card-quickrow,
+.biz-card-wall-item .biz-card-footer,
+.biz-card-wall-item .biz-card-tagline,
+.biz-card-wall-item .share-status{display:none}
+
 /* Business skeleton reuses .sk-line etc from Customer Wall */
 .biz-skeleton{pointer-events:none}
 
