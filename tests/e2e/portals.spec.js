@@ -485,7 +485,7 @@ test("Refills minimum criteria supports customer approval, owner rejection reaso
     initialUser: owner,
     seed: {
       digit58_entitlements: [{ id: "minimum_entitlement", ownerId, active: true, paused: false, lifetime: true, policyAcceptedAt: new Date().toISOString() }],
-      [`digit58_store_${ownerId}`]: [{ id: storeId, ownerId, name: "Minimum Medicals", category: "Medical store", city: "Hyderabad", minimumOrderEnabled: true, minimumOrderValue: 500 }],
+      [`digit58_store_${ownerId}`]: [{ id: storeId, ownerId, name: "Minimum Medicals", category: "Medical store", city: "Hyderabad", phone: "9876543210", minimumOrderEnabled: true, minimumOrderValue: 500 }],
       [`digit58_customer_${ownerId}`]: [{ id: "minimum_link", ownerId, storeId, customerAccountId: customerId, customerName: customer.name, customerEmail: customer.email, phone: "9876543210" }],
       [orderKind]: [],
     },
@@ -551,15 +551,18 @@ test("Refills minimum criteria supports customer approval, owner rejection reaso
   }, { ownerId, storeId });
   await expect(page.getByRole("heading", { name: "Order Rejected" })).toBeVisible();
   await expect(page.locator(".rejection-reason")).toContainText("Requested product is unavailable today.");
-  await page.getByRole("button", { name: "Understood" }).click();
+  await expect(page.getByRole("button", { name: "View Order History" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Call Minimum Medicals" })).toHaveAttribute("href", "tel:9876543210");
+  await page.getByRole("button", { name: "Revise & Resubmit" }).click();
+  await expect(page.getByRole("heading", { name: "Revise Rejected Order" })).toBeVisible();
+  await expect(page.locator('#placeOrderForm input[name="itemName[]"]')).toHaveValue("Monthly health products");
   await expect(page.locator(".rejection-history-reason")).toContainText("Requested product is unavailable today.");
   await expect(page.locator(".store-minimum-order")).toHaveCount(0);
 
-  await page.getByRole("button", { name: "+ Place New Order" }).click();
   await expect(page.locator("#customerOrderValue")).toHaveCount(0);
-  await page.locator('#placeOrderForm input[name="itemName[]"]').fill("Small urgent order");
+  await page.locator('#placeOrderForm input[name="itemName[]"]').fill("Small urgent replacement");
   await page.locator('#placeOrderForm input[name="phone"]').fill("9876543210");
-  await page.getByRole("button", { name: "Submit Order", exact: true }).click();
+  await page.getByRole("button", { name: "Resubmit Order", exact: true }).click();
   await expect(page.locator("#toast")).toContainText("Order sent to the store");
   orders = await page.evaluate((kind) => window.__g58Mock.store[kind], orderKind);
   expect(orders[0]).toMatchObject({ status: "Requested", customerOrderValue: 0 });
