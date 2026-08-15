@@ -10,7 +10,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/css/style.css?v=26">
+  <link rel="stylesheet" href="/css/style.css?v=27">
   <link rel="stylesheet" href="/css/mobile.css">
   <link rel="canonical" href="https://g58.in/" />
   <meta name="robots" content="index, follow, max-image-preview:large" />
@@ -546,7 +546,7 @@
       <div class="popup-visual-steps">
         <article class="popup-visual-step"><span class="step-number">01</span><img src="assets/how-it-works/customer-post.svg" alt="Customer creates a requirement"><div><h4>Create your requirement</h4><p>Select Create Post, choose Customer Requirement, enter the work details, location, expected budget and your contact number.</p></div></article>
         <article class="popup-visual-step"><span class="step-number">02</span><img src="assets/how-it-works/business-bid.svg" alt="Businesses submit quotations"><div><h4>Receive up to five bids</h4><p>Local business owners can view the public requirement and submit their quotation, completion time and proposal.</p></div></article>
-        <article class="popup-visual-step"><span class="step-number">03</span><img src="assets/how-it-works/customer-unlock.svg" alt="Customer unlocks their post"><div><h4>Unlock your own post</h4><p>Open your requirement and enter the same phone number used while publishing. Only then can you view the received bids.</p></div></article>
+        <article class="popup-visual-step"><span class="step-number">03</span><img src="assets/how-it-works/customer-unlock.svg" alt="Customer unlocks their post"><div><h4>Unlock your own post</h4><p>Sign in with the account that published the requirement. Your owner access is recognised automatically and the Unlock Post link appears beside Share.</p></div></article>
         <article class="popup-visual-step"><span class="step-number">04</span><img src="assets/how-it-works/customer-compare.svg" alt="Customer compares quotations"><div><h4>Compare the quotations</h4><p>Check the business name, quoted price, proposed completion time and message before making your selection.</p></div></article>
         <article class="popup-visual-step"><span class="step-number">05</span><img src="assets/how-it-works/customer-accept.svg" alt="Customer accepts a business"><div><h4>Accept and connect</h4><p>Accept your preferred business. WhatsApp opens for direct communication and the requirement disappears from Browse Jobs.</p></div></article>
       </div>
@@ -574,13 +574,19 @@
     <div class="modal-head"><h3>Create a GRAVITY58 Post</h3><button class="close" onclick="closeModal('createModal')">×</button></div>
     <div class="form-grid">
       <div class="field full"><label>Post Type</label><select id="postType" onchange="updateFormType()"><option value="customer">Customer Requirement</option><option value="business">Business Advertisement</option></select></div>
+      <div class="field full business-only hidden visiting-card-scan">
+        <div class="visiting-card-scan-copy"><span class="scan-kicker">Quick card setup</span><strong>Scan your visiting card</strong><small>Use your camera or choose a photo. GRAVITY58 reads the card and fills the business details for you to review.</small></div>
+        <input id="businessCardCameraInput" class="visiting-card-file" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onchange="scanBusinessVisitingCard(this.files && this.files[0])">
+        <button class="btn visiting-card-camera-btn" type="button" onclick="document.getElementById('businessCardCameraInput').click()"><span aria-hidden="true">📷</span> Take or choose card photo</button>
+        <div class="visiting-card-scan-result hidden" id="visitingCardScanResult"><img id="visitingCardPreview" alt="Selected visiting card preview"><div><strong id="visitingCardScanTitle">Reading card…</strong><span id="visitingCardScanStatus">Preparing secure in-browser text recognition.</span></div></div>
+      </div>
       <div class="field"><label id="titleLabel">Requirement Title</label><input id="postTitle"></div>
       <div class="field"><label>Category</label><select id="postCategory"><option value="">Select category</option><option>Interior Design</option><option>Modular Kitchen</option><option>Plumbing</option><option>Electrical</option><option>Painting</option><option>Carpentry</option><option>Cleaning</option><option>Pest Control</option><option>Home Repair</option><option>Furniture</option><option>Catering</option><option>Transport</option><option>Packers and Movers</option><option>Vehicle Repair</option><option>Beauty Services</option><option>Fitness Training</option><option>Tuition</option><option>Medical Support</option><option>Pet Care</option><option>Website Development</option><option>Digital Marketing</option><option>Graphic Design</option><option>Printing</option><option>Accounting</option><option>Legal Services</option><option>Photography</option><option>Video Production</option><option>Event Management</option><option>Other</option></select></div>
       <div class="field full"><label>Description</label><textarea id="postDescription"></textarea></div>
       <div class="field"><label>State / UT</label><select id="postState" disabled></select></div>
       <div class="field"><label>District</label><input id="postDistrict" placeholder="Example: Hyderabad"></div>
       <div class="field"><label>Area</label><input id="postArea" placeholder="Example: Manikonda"></div>
-      <div class="field full"><label>Full Address</label><textarea id="postFullAddress" placeholder="Enter complete address"></textarea></div>
+      <div class="field full business-only hidden"><label>Full Business Address</label><textarea id="postFullAddress" placeholder="Enter complete business address"></textarea></div>
       <div class="field"><label id="priceLabel">Expected Minimum Price</label><input id="postPrice" type="number" min="0"></div>
       <div class="field customer-only"><label>Expected Maximum Price</label><input id="postMaxPrice" type="number" min="0"></div>
       <div class="field business-only hidden"><label>Years of Experience</label><input id="postExperience" type="number" min="0"></div>
@@ -863,7 +869,7 @@
 <script src="/js/config.js"></script>
 <script src="/js/appwrite-ads.js?v=13"></script>
 <script src="/js/database.js"></script>
-<script src="/js/app.js?v=16"></script>
+<script src="/js/app.js?v=17"></script>
 <script src="/js/site-auth.js?v=2"></script>
 <script>
 (function(){

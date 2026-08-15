@@ -684,9 +684,55 @@ function timeAgoLabel(ts) {
   const days = Math.floor(hrs / 24);
   return days + (days === 1 ? " day ago" : " days ago");
 }
+function currentAccountOwns(item) {
+  const user = window.G58SiteUser;
+  if (!user || !item) return false;
+  if (item.userId && String(item.userId) === String(user.id)) return true;
+  if (
+    item.accountEmail &&
+    user.email &&
+    normalize(item.accountEmail) === normalize(user.email)
+  )
+    return true;
+  const itemPhone = cleanNumber(item.accountPhone || "").slice(-10);
+  const userPhone = cleanNumber(user.phone || "").slice(-10);
+  return Boolean(itemPhone && userPhone && itemPhone === userPhone);
+}
+function isCustomerPostOwner(c) {
+  const accountOwner = currentAccountOwns(c);
+  if (accountOwner)
+    sessionStorage.setItem(`g58OwnerUnlocked_${c.id}`, "true");
+  return (
+    accountOwner ||
+    sessionStorage.getItem(`g58OwnerUnlocked_${c.id}`) === "true"
+  );
+}
+function isBusinessCardOwner(b) {
+  const accountOwner = currentAccountOwns(b);
+  if (accountOwner)
+    sessionStorage.setItem(`g58BusinessOwner_${b.id}`, "true");
+  return (
+    accountOwner ||
+    sessionStorage.getItem(`g58BusinessOwner_${b.id}`) === "true"
+  );
+}
+function ownedBusinessForBid() {
+  return businesses.find((business) => isBusinessCardOwner(business)) || null;
+}
+function unlockOwnedCustomerPost(id) {
+  const post = customers.find((item) => item.id === id);
+  if (!post || !currentAccountOwns(post)) {
+    alert("Only the signed-in account that created this post can unlock it.");
+    return;
+  }
+  sessionStorage.setItem(`g58OwnerUnlocked_${id}`, "true");
+  renderWall();
+  openRequirementDetail(id);
+}
 function customerCard(c) {
   const bidCount = (c.bids || []).length;
-  const isOwner = sessionStorage.getItem(`g58OwnerUnlocked_${c.id}`) === "true";
+  const accountOwner = currentAccountOwns(c);
+  const isOwner = isCustomerPostOwner(c);
   const full = bidCount >= 5;
   const almost = bidCount >= 4 && !full;
   const statusClass = full ? "full" : almost ? "almost" : "open";
@@ -698,12 +744,14 @@ function customerCard(c) {
   const ring = `<div class="req-ring" style="--pct:${(bidCount / 5) * 100}"><span>${bidCount}/5</span></div>`;
   const daysLeftVal = daysLeft(c);
   const expiryBadge = `<span class="req-expiry-badge${daysLeftVal <= 5 ? " urgent" : ""}">${daysLeftVal}d left</span>`;
-  const shareRow = `<div class="req-share-row"><button type="button" class="req-link-btn" onclick="copyCustomerLink('${c.id}',this)">Copy Link</button><button type="button" class="req-link-btn" onclick="shareCustomerOnWhatsApp('${c.id}')">Share</button></div><div class="share-status" id="customer-share-${c.id}"></div>`;
+  const ownerUnlockLink = accountOwner
+    ? `<button type="button" class="req-link-btn req-owner-unlock-link" onclick="unlockOwnedCustomerPost('${c.id}')">Unlock Post</button>`
+    : "";
+  const shareRow = `<div class="req-share-row"><button type="button" class="req-link-btn" onclick="copyCustomerLink('${c.id}',this)">Copy Link</button><button type="button" class="req-link-btn" onclick="shareCustomerOnWhatsApp('${c.id}')">Share</button>${ownerUnlockLink}</div><div class="share-status" id="customer-share-${c.id}"></div>`;
 
   if (isOwner) {
     return `<article class="req-card owner" data-post-id="${c.id}">
-${expiryBadge}
-<div class="req-top"><span class="req-owner-badge">Your Requirement</span><span class="req-status ${statusClass}"><i></i>${statusLabel}</span></div>
+<div class="req-top"><span class="req-owner-badge">Your Requirement</span><span class="req-status-stack"><span class="req-status ${statusClass}"><i></i>${statusLabel}</span>${expiryBadge}</span></div>
 <h3 class="req-title">${escapeHtml(c.title)}</h3>
 <div class="req-meta-row"><span>📍 ${escapeHtml(c.area)}, ${escapeHtml(itemDistrict(c))}</span><span>${timeAgoLabel(c.created)}</span></div>
 <div class="req-bottom-row"><div class="req-budget"><strong>${formatMoney(c.price)}–${formatMoney(c.maxPrice)}</strong><small>Budget</small></div><div class="req-bid-progress">${ring}<small>${bidCount} / 5 Offers</small></div></div>
@@ -713,8 +761,7 @@ ${shareRow}
   }
 
   return `<article class="req-card" data-post-id="${c.id}">
-${expiryBadge}
-<div class="req-top"><span class="req-category">${escapeHtml(c.category)}</span><span class="req-status ${statusClass}"><i></i>${statusLabel}</span></div>
+<div class="req-top"><span class="req-category">${escapeHtml(c.category)}</span><span class="req-status-stack"><span class="req-status ${statusClass}"><i></i>${statusLabel}</span>${expiryBadge}</span></div>
 <h3 class="req-title">${escapeHtml(c.title)}</h3>
 <div class="req-meta-row"><span>📍 ${escapeHtml(c.area)}, ${escapeHtml(itemDistrict(c))}</span><span>${timeAgoLabel(c.created)}</span></div>
 <p class="req-desc">${escapeHtml(c.description)}</p>
@@ -722,9 +769,8 @@ ${expiryBadge}
 ${bidCount === 4 ? '<div class="req-scarcity">Only 1 offer slot remaining</div>' : ""}
 <div class="req-actions">
 <button type="button" class="btn ghost" onclick="openRequirementDetail('${c.id}')">View Requirement <span class="req-arrow">→</span></button>
-${full ? '<button type="button" class="btn" disabled>Offers Full</button>' : `<button type="button" class="btn primary" onclick="openBidModal('${c.id}')">Submit Bid</button>`}
+${full ? '<button type="button" class="btn" disabled>Offers Full</button>' : `<button type="button" class="btn primary req-bid-btn" onclick="openBidModal('${c.id}')">Bid</button>`}
 </div>
-<label class="req-unlock-row"><input type="checkbox" onchange="requestCardUnlock('customer','${c.id}',this)"><span>Is this your post? Unlock</span></label>
 ${shareRow}
 </article>`;
 }
@@ -734,7 +780,7 @@ function openRequirementDetail(id) {
   const c = customers.find((x) => x.id === id);
   if (!c) return;
   activeRequirementDetailId = id;
-  const isOwner = sessionStorage.getItem(`g58OwnerUnlocked_${id}`) === "true";
+  const isOwner = isCustomerPostOwner(c);
   const body = document.getElementById("reqDetailBody");
   if (body)
     body.innerHTML = isOwner
@@ -776,7 +822,7 @@ function renderRequirementDetailContent(c) {
 <div class="req-detail-sticky">${
     full
       ? '<button type="button" class="btn" style="width:100%" disabled>Offers Full</button><p class="req-detail-sticky-note">This requirement has received the maximum number of offers.</p>'
-      : `<button type="button" class="btn primary" style="width:100%" onclick="openBidModal('${c.id}')">Submit Your Offer <span class="cta-arrow">→</span></button>`
+      : `<button type="button" class="btn primary" style="width:100%" onclick="openBidModal('${c.id}')">Bid <span class="cta-arrow">→</span></button>`
   }</div>`;
 }
 function renderOfferComparisonContent(c) {
@@ -1621,7 +1667,7 @@ function digitalBusinessCardMarkup(
   viewLabel = "View",
   options = {},
 ) {
-  const isOwner = sessionStorage.getItem(`g58BusinessOwner_${b.id}`) === "true";
+  const isOwner = isBusinessCardOwner(b);
   const stats = businessRatingStats(b);
   const favorited = isFavoriteBusiness(b.id);
   const websiteUrl = businessDemoUrl(b);
@@ -1657,12 +1703,16 @@ function digitalBusinessCardMarkup(
 ${isOwner ? '<span class="biz-owner-badge">Your Business</span>' : ""}
 <div class="biz-card-glass-head">
 <span class="biz-card-nfc-label"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 9a9 9 0 0 1 9-7"/><path d="M3 9a6 6 0 0 1 6-5"/><circle cx="5" cy="9" r="1.4" fill="currentColor" stroke="none"/></svg>Digital Business Card</span>
-<button type="button" class="biz-fav-btn biz-fav-btn-glass${favorited ? " active" : ""}" onclick="toggleFavoriteBusiness('${b.id}')" aria-label="${favorited ? "Remove from saved" : "Save business"}">${favorited ? "♥" : "♡"}</button>
+${
+  options.popup
+    ? '<button type="button" class="biz-popup-card-close" onclick="hideFloatingBusiness()" aria-label="Close business card">×</button>'
+    : `<button type="button" class="biz-fav-btn biz-fav-btn-glass${favorited ? " active" : ""}" onclick="toggleFavoriteBusiness('${b.id}')" aria-label="${favorited ? "Remove from saved" : "Save business"}">${favorited ? "♥" : "♡"}</button>`
+}
 </div>
 
 ${
   options.popup
-    ? `<div class="biz-popup-lock-art" aria-hidden="true"><span class="biz-popup-lock-shackle"></span><span class="biz-popup-lock-body"><span class="biz-popup-lock-keyhole"></span></span></div>`
+    ? `<button type="button" class="biz-popup-lock-art" onclick="${viewAction}" aria-label="${escapeHtml(viewLabel)}"><span class="biz-popup-lock-shackle"></span><span class="biz-popup-lock-body"><span class="biz-popup-lock-keyhole"></span></span></button>`
     : ""
 }
 <button type="button" class="biz-card-view-pill" onclick="${viewAction}">${escapeHtml(viewLabel)}</button>
@@ -1704,7 +1754,7 @@ ${websiteUrl ? `<a class="biz-card-cta biz-card-cta-instagram" href="${websiteUr
 </div>`;
 }
 function floatingBusinessMarkup(b) {
-  const isOwner = sessionStorage.getItem(`g58BusinessOwner_${b.id}`) === "true";
+  const isOwner = isBusinessCardOwner(b);
   const ownerAction = isOwner
     ? `openBusinessEdit('${b.id}')`
     : `requestBusinessCardUnlock('${b.id}')`;
@@ -2220,6 +2270,172 @@ function readFile(f) {
     x.readAsDataURL(f);
   });
 }
+let visitingCardOcrLoader = null;
+let visitingCardPreviewUrl = "";
+function ensureVisitingCardOcr() {
+  if (window.Tesseract?.recognize) return Promise.resolve(window.Tesseract);
+  if (visitingCardOcrLoader) return visitingCardOcrLoader;
+  visitingCardOcrLoader = new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src =
+      "https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js";
+    script.async = true;
+    script.onload = () =>
+      window.Tesseract?.recognize
+        ? resolve(window.Tesseract)
+        : reject(new Error("Text scanner did not initialise."));
+    script.onerror = () => reject(new Error("Text scanner could not load."));
+    document.head.appendChild(script);
+  });
+  return visitingCardOcrLoader;
+}
+function setVisitingCardScanStatus(title, message) {
+  const result = document.getElementById("visitingCardScanResult");
+  const heading = document.getElementById("visitingCardScanTitle");
+  const status = document.getElementById("visitingCardScanStatus");
+  result?.classList.remove("hidden");
+  if (heading) heading.textContent = title;
+  if (status) status.textContent = message;
+}
+function normaliseScannedUrl(value) {
+  const url = String(value || "").trim().replace(/[),.;]+$/, "");
+  if (!url) return "";
+  return /^https?:\/\//i.test(url) ? url : "https://" + url;
+}
+function applyScannedBusinessCardText(rawText) {
+  const lines = String(rawText || "")
+    .split(/\r?\n/)
+    .map((line) => line.replace(/\s+/g, " ").trim())
+    .filter((line) => line.length > 1);
+  const joined = lines.join("\n");
+  const email = joined.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i)?.[0] || "";
+  const phoneMatches = [
+    ...new Set(
+      (joined.match(/(?:\+?\d[\d\s().-]{8,}\d)/g) || [])
+        .map((value) => value.trim())
+        .filter((value) => cleanNumber(value).length >= 10),
+    ),
+  ];
+  const urls = joined.match(/(?:https?:\/\/|www\.)[^\s]+/gi) || [];
+  const socialLine =
+    lines.find((line) => /instagram|facebook|linkedin/i.test(line)) || "";
+  const instagramHandle = joined.match(/@[a-z0-9._]{3,}/i)?.[0] || "";
+  const excluded = (line) =>
+    /@|https?:|www\.|\+?\d[\d\s().-]{8,}\d|email|phone|mobile|website/i.test(
+      line,
+    );
+  const identityLines = lines.filter(
+    (line) => !excluded(line) && /[a-z]{3}/i.test(line) && line.length <= 70,
+  );
+  const businessLine =
+    identityLines.find((line) =>
+      /services|solutions|studio|store|cafe|restaurant|enterprises|associates|company|pvt|ltd|llp|traders|catering|interiors/i.test(
+        line,
+      ),
+    ) || identityLines[0] || "";
+  const personLine =
+    identityLines.find(
+      (line) =>
+        line !== businessLine &&
+        !/address|road|street|nagar|colony|india|telangana|hyderabad/i.test(
+          line,
+        ),
+    ) || "";
+  const addressLines = lines.filter((line) =>
+    /road|street|lane|nagar|colony|sector|plot|floor|hyderabad|telangana|india|\b\d{6}\b/i.test(
+      line,
+    ),
+  );
+  const categoryRules = [
+    ["Catering", /cater|food|restaurant|cafe/i],
+    ["Interior Design", /interior|decor/i],
+    ["Plumbing", /plumb|pipe/i],
+    ["Electrical", /electric/i],
+    ["Photography", /photo|studio/i],
+    ["Digital Marketing", /marketing|advertis/i],
+    ["Website Development", /web|software|technology|digital solution/i],
+    ["Event Management", /event/i],
+  ];
+  const category = categoryRules.find(([, rule]) => rule.test(joined))?.[0];
+  const website = urls.find((url) => !/instagram|facebook|linkedin/i.test(url));
+  const socialUrl =
+    urls.find((url) => /instagram|facebook|linkedin/i.test(url)) ||
+    (/instagram/i.test(socialLine) && instagramHandle
+      ? `https://instagram.com/${instagramHandle.slice(1)}`
+      : "");
+  const setValue = (id, value) => {
+    const element = document.getElementById(id);
+    if (element && value) element.value = value;
+  };
+  setValue("postTitle", businessLine);
+  setValue("postName", personLine);
+  setValue("postPhone", phoneMatches[0]);
+  setValue("postWhatsapp", phoneMatches[0]);
+  setValue("postAltPhone", phoneMatches[1]);
+  setValue("postEmail", email);
+  setValue("postWebsiteUrl", normaliseScannedUrl(website));
+  setValue("postSocialUrl", normaliseScannedUrl(socialUrl));
+  setValue("postFullAddress", addressLines.join(", "));
+  setValue("postCategory", category || "Other");
+  return [
+    businessLine && "business name",
+    phoneMatches[0] && "phone",
+    email && "email",
+    (website || socialUrl) && "web profile",
+    addressLines.length && "address",
+  ].filter(Boolean);
+}
+async function scanBusinessVisitingCard(file) {
+  if (!file) return;
+  if (!/^image\/(jpeg|png|webp)$/i.test(file.type || "")) {
+    setVisitingCardScanStatus(
+      "Unsupported photo",
+      "Choose a JPG, PNG or WebP visiting-card image.",
+    );
+    return;
+  }
+  if (file.size > 12 * 1024 * 1024) {
+    setVisitingCardScanStatus(
+      "Photo is too large",
+      "Choose an image smaller than 12 MB.",
+    );
+    return;
+  }
+  if (visitingCardPreviewUrl) URL.revokeObjectURL(visitingCardPreviewUrl);
+  visitingCardPreviewUrl = URL.createObjectURL(file);
+  const preview = document.getElementById("visitingCardPreview");
+  if (preview) preview.src = visitingCardPreviewUrl;
+  setVisitingCardScanStatus(
+    "Reading visiting card…",
+    "Loading private in-browser text recognition.",
+  );
+  try {
+    const tesseract = await ensureVisitingCardOcr();
+    const result = await tesseract.recognize(file, "eng", {
+      logger: (event) => {
+        if (event?.status === "recognizing text") {
+          const percent = Math.round(Number(event.progress || 0) * 100);
+          setVisitingCardScanStatus(
+            "Reading visiting card…",
+            `Recognising text ${percent}%`,
+          );
+        }
+      },
+    });
+    const filled = applyScannedBusinessCardText(result?.data?.text || "");
+    if (!filled.length)
+      throw new Error("No clear business details were detected.");
+    setVisitingCardScanStatus(
+      "Business details filled",
+      `Detected ${filled.join(", ")}. Review the fields, add any missing details and publish your card.`,
+    );
+  } catch (error) {
+    setVisitingCardScanStatus(
+      "Card could not be read",
+      `${error?.message || "Text recognition failed."} You can still complete the fields manually.`,
+    );
+  }
+}
 function validateAndPublish() {
   const type = document.getElementById("postType").value,
     title = document.getElementById("postTitle").value.trim(),
@@ -2247,7 +2463,7 @@ function validateAndPublish() {
   if (!state) missing.push("state");
   if (!district) missing.push("district");
   if (!area) missing.push("area");
-  if (!fullAddress) missing.push("full address");
+  if (type === "business" && !fullAddress) missing.push("full address");
   if (!price || price <= 0) missing.push("price");
   if (!name) missing.push("name");
   if (!whatsapp) missing.push("WhatsApp number");
@@ -2282,7 +2498,8 @@ function validateAndPublish() {
     district,
     city: district,
     area,
-    fullAddress,
+    fullAddress:
+      fullAddress || [area, district, state].filter(Boolean).join(", "),
     price,
     image,
     name,
@@ -2345,15 +2562,30 @@ function resetBidForm() {
   ["bidBusiness", "bidAmount", "bidTime", "bidWhatsapp", "bidProposal"].forEach(
     (id) => {
       const el = document.getElementById(id);
-      if (el) el.value = "";
+      if (el) {
+        el.value = "";
+        el.readOnly = false;
+      }
     },
   );
 }
 function openBidModal(id) {
   const p = customers.find((c) => c.id === id);
   if (!p) return;
+  if (currentAccountOwns(p)) {
+    unlockOwnedCustomerPost(id);
+    return;
+  }
   if ((p.bids || []).length >= 5) {
     alert("This post already received the maximum 5 active bids.");
+    return;
+  }
+  const ownedBusiness = ownedBusinessForBid();
+  if (!ownedBusiness) {
+    alert(
+      "Create or unlock your GRAVITY58 Business Card before submitting a bid.",
+    );
+    openBusinessCardCreator();
     return;
   }
 
@@ -2364,6 +2596,18 @@ function openBidModal(id) {
 
   resetBidForm();
   document.getElementById("bidPostId").value = id;
+  const bidModal = document.getElementById("bidModal");
+  if (bidModal) bidModal.dataset.businessId = ownedBusiness.id;
+  const businessInput = document.getElementById("bidBusiness");
+  if (businessInput) {
+    businessInput.value = ownedBusiness.title || "";
+    businessInput.readOnly = true;
+  }
+  const whatsappInput = document.getElementById("bidWhatsapp");
+  if (whatsappInput) {
+    whatsappInput.value = ownedBusiness.whatsapp || ownedBusiness.phone || "";
+    whatsappInput.readOnly = true;
+  }
   const summaryTitle = document.getElementById("bidSummaryTitle");
   if (summaryTitle) summaryTitle.textContent = p.title;
   const summaryLoc = document.getElementById("bidSummaryLocation");
@@ -2382,7 +2626,7 @@ function openBidModal(id) {
   const proposalCount = document.getElementById("bidProposalCount");
   if (proposalInput && proposalCount) proposalCount.textContent = "0 / 400";
   document.getElementById("bidModal").classList.add("show");
-  setTimeout(() => document.getElementById("bidBusiness")?.focus(), 100);
+  setTimeout(() => document.getElementById("bidAmount")?.focus(), 100);
 }
 function handleSubmitBidClick() {
   const btn = document.getElementById("bidSubmitBtn");
@@ -2457,6 +2701,7 @@ function submitBid() {
   const bid = {
     id: "BID" + Date.now() + Math.floor(Math.random() * 1000),
     business,
+    businessId: document.getElementById("bidModal")?.dataset.businessId || "",
     amount,
     time,
     whatsapp,
