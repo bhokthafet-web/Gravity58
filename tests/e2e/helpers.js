@@ -52,6 +52,23 @@ export function mockApiScript({ initialUser = null, admin = false, seed = {} } =
       logout:async()=>{user=null;return true},
       currentUser:async()=>user?clone(user):null,
       ensureUser:async()=>{if(!user)user={\$id:'anon-'+(++serial),email:'',name:'Guest'};return clone(user)},
+      executeFunction:async(functionId,payload={})=>{
+        const action=payload.action||'';
+        if(action==='digit58-link-customer'){
+          const kind='digit58_customer_'+String(payload.ownerId||'').replace(/[^a-zA-Z0-9._-]/g,'-').slice(0,36);
+          let customer=(store[kind]||[]).find(row=>row.storeId===payload.storeId&&row.customerAccountId===user?.\$id);
+          if(!customer){customer=clean({id:'customer-'+(++serial),ownerId:payload.ownerId,storeId:payload.storeId,customerAccountId:user?.\$id,customerName:payload.customerName,customerEmail:payload.customerEmail,phone:''});(store[kind]||=[]).unshift(customer)}
+          return {ok:true,customer:clone(customer)};
+        }
+        if(action==='digit58-reorder'){
+          const kind='digit58_order_'+String(payload.ownerId||'').replace(/[^a-zA-Z0-9._-]/g,'-').slice(0,40);
+          const source=(store[kind]||[]).find(row=>(row.id||row.\$id)===payload.orderId);
+          if(!source||source.customerAccountId!==user?.\$id)throw new Error('Only this order customer can reorder these items.');
+          const row=clean({...clone(source),id:'reorder-'+(++serial),status:'Requested',amount:0,upiId:'',upiUri:'',reorderedFrom:source.id,phone:String(payload.phone||source.phone||'').replace(/\D/g,''),createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()});
+          (store[kind]||=[]).unshift(row);notify(kind,row);return {ok:true,order:clone(row)};
+        }
+        throw new Error('Unsupported secure test action: '+action);
+      },
       forgotPassword:async(email,url)=>{window.__g58Mock.recoveries.push({email,url});return true},
       completeRecovery:async()=>true,
       createJWT:async()=>"mock-g58-jwt",

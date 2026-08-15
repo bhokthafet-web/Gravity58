@@ -432,6 +432,66 @@ test('digit58: a customer can create an order with an item list, granting owner+
   }
 });
 
+test('digit58: customer reorders a history item into a fresh owner-priced order', async () => {
+  const previousFetch = globalThis.fetch;
+  const requests = [];
+  const previousOrder = {
+    id: 'order_history_1', ownerId, storeId: 'store_1', customerAccountId: customerId,
+    customerName: 'Test Customer', customerEmail: 'customer@example.test', phone: '9999999999',
+    items: [{ name: 'Monthly medicine', qty: 2 }], amount: 480, status: 'Delivered',
+  };
+  const row = { $id: previousOrder.id, kind: `digit58_order_${ownerId}`, payload: JSON.stringify(previousOrder) };
+  globalThis.fetch = async (url, options = {}) => {
+    const method = options.method || 'GET', body = options.body ? JSON.parse(options.body) : null;
+    requests.push({ url: String(url), method, body });
+    if (method === 'GET') return new Response(JSON.stringify(row), { status: 200 });
+    if (method === 'POST') return new Response(JSON.stringify({ $id: body.rowId, ...body.data }), { status: 201 });
+    throw new Error(`Unexpected request ${url}`);
+  };
+  process.env.APPWRITE_FUNCTION_PROJECT_ID = 'project_1';
+  try {
+    const response = await createDigitalOrder({
+      req: {
+        method: 'POST', headers: { 'x-appwrite-key': 'dynamic-key', 'x-appwrite-user-id': customerId },
+        bodyJson: { action: 'digit58-reorder', ownerId, orderId: previousOrder.id, phone: '9888888888' },
+      },
+      res: { json: (body, status = 200) => ({ body, status }) }, error: () => {},
+    });
+    assert.equal(response.status, 201);
+    assert.equal(response.body.order.status, 'Requested');
+    assert.equal(response.body.order.amount, 0);
+    assert.equal(response.body.order.reorderedFrom, previousOrder.id);
+    assert.deepEqual(response.body.order.items, previousOrder.items);
+    assert.equal(response.body.order.phone, '9888888888');
+    assert.ok(requests.some(request => request.method === 'POST'));
+  } finally {
+    globalThis.fetch = previousFetch;
+  }
+});
+
+test('digit58: a different customer cannot reorder another customer history', async () => {
+  const previousFetch = globalThis.fetch;
+  const previousOrder = {
+    id: 'order_history_2', ownerId, storeId: 'store_1', customerAccountId: customerId,
+    items: [{ name: 'Monthly medicine', qty: 1 }], status: 'Delivered',
+  };
+  const row = { $id: previousOrder.id, kind: `digit58_order_${ownerId}`, payload: JSON.stringify(previousOrder) };
+  globalThis.fetch = async () => new Response(JSON.stringify(row), { status: 200 });
+  process.env.APPWRITE_FUNCTION_PROJECT_ID = 'project_1';
+  try {
+    const response = await createDigitalOrder({
+      req: {
+        method: 'POST', headers: { 'x-appwrite-key': 'dynamic-key', 'x-appwrite-user-id': 'different_customer' },
+        bodyJson: { action: 'digit58-reorder', ownerId, orderId: previousOrder.id },
+      },
+      res: { json: (body, status = 200) => ({ body, status }) }, error: () => {},
+    });
+    assert.equal(response.status, 403);
+  } finally {
+    globalThis.fetch = previousFetch;
+  }
+});
+
 test('digit58: an order requires at least one named item', async () => {
   const response = await createDigitalOrder({
     req: { method: 'POST', headers: { 'x-appwrite-key': 'dynamic-key', 'x-appwrite-user-id': customerId }, bodyJson: { action: 'digit58-create-order', ownerId, storeId: 'store_1', items: [] } },
@@ -585,6 +645,84 @@ test('business card popup view refreshes its secure 30-day retention window', as
     const savedCard = JSON.parse(savedEnvelope.payload);
     assert.equal(savedCard.id, card.id);
     assert.ok(savedCard.lastPopupOpenedAt > 0);
+  } finally {
+    globalThis.fetch = previousFetch;
+  }
+});
+
+test('business card ratings are securely created, updated and deleted by the same visitor', async () => {
+  const previousFetch = globalThis.fetch;
+  const card = {
+    id: 'B9010', type: 'business', title: 'Rated Business', userId: ownerId,
+    reviews: [], popupExpiresAt: Date.now() + 30 * 86400000,
+  };
+  const envelope = {
+    recordKey: card.id, postType: 'business', userId: ownerId,
+    payload: JSON.stringify(card), updatedAt: new Date().toISOString(),
+  };
+  let row = { $id: card.id, kind: 'posts', payload: JSON.stringify(envelope) };
+  globalThis.fetch = async (url, options = {}) => {
+    const method = options.method || 'GET';
+    if (method === 'GET') return new Response(JSON.stringify(row), { status: 200 });
+    if (method === 'PATCH') {
+      const body = JSON.parse(options.body);
+      row = { ...row, payload: body.data.payload };
+      return new Response(JSON.stringify(row), { status: 200 });
+    }
+    throw new Error(`Unexpected request ${url}`);
+  };
+  process.env.APPWRITE_FUNCTION_PROJECT_ID = 'project_1';
+  const run = bodyJson => createDigitalOrder({
+    req: {
+      method: 'POST', headers: { 'x-appwrite-key': 'dynamic-key', 'x-appwrite-user-id': customerId }, bodyJson,
+    },
+    res: { json: (body, status = 200) => ({ body, status }) }, error: () => {},
+  });
+  try {
+    const created = await run({
+      action: 'rate-business-card', cardId: card.id, rating: 5,
+      name: 'Test Customer', comment: 'Excellent service.',
+    });
+    assert.equal(created.status, 200);
+    assert.equal(created.body.updated, false);
+    assert.equal(created.body.business.reviews.length, 1);
+    assert.equal(created.body.business.reviews[0].raterId, customerId);
+
+    const updated = await run({
+      action: 'rate-business-card', cardId: card.id, rating: 4,
+      name: 'Test Customer', comment: 'Very good service.',
+    });
+    assert.equal(updated.body.updated, true);
+    assert.equal(updated.body.business.reviews.length, 1);
+    assert.equal(updated.body.business.reviews[0].rating, 4);
+
+    const deleted = await run({ action: 'delete-business-rating', cardId: card.id });
+    assert.equal(deleted.status, 200);
+    assert.equal(deleted.body.business.reviews.length, 0);
+  } finally {
+    globalThis.fetch = previousFetch;
+  }
+});
+
+test('business card owners cannot rate their own card', async () => {
+  const previousFetch = globalThis.fetch;
+  const card = { id: 'B9011', type: 'business', title: 'Owner Business', userId: ownerId, reviews: [] };
+  const row = {
+    $id: card.id, kind: 'posts',
+    payload: JSON.stringify({ recordKey: card.id, postType: 'business', userId: ownerId, payload: JSON.stringify(card) }),
+  };
+  globalThis.fetch = async () => new Response(JSON.stringify(row), { status: 200 });
+  process.env.APPWRITE_FUNCTION_PROJECT_ID = 'project_1';
+  try {
+    const response = await createDigitalOrder({
+      req: {
+        method: 'POST', headers: { 'x-appwrite-key': 'dynamic-key', 'x-appwrite-user-id': ownerId },
+        bodyJson: { action: 'rate-business-card', cardId: card.id, rating: 5, name: 'Owner' },
+      },
+      res: { json: (body, status = 200) => ({ body, status }) }, error: () => {},
+    });
+    assert.equal(response.status, 403);
+    assert.match(response.body.error, /cannot rate their own/i);
   } finally {
     globalThis.fetch = previousFetch;
   }

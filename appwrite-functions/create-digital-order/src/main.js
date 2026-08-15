@@ -301,6 +301,66 @@ async function touchBusinessCard(call, input) {
   return post;
 }
 
+function sanitiseBusinessReview(input, raterId, existing) {
+  const requestedRating = finite(input.rating, 0);
+  const rating = Math.max(1, Math.min(5, Math.round(requestedRating)));
+  const name = text(input.name, 40).replace(/\s+/g, ' ');
+  const comment = text(input.comment, 280).replace(/\s+/g, ' ');
+  if (requestedRating < 1 || requestedRating > 5 || name.length < 2) {
+    throw new Error('Choose 1 to 5 stars and enter your name.');
+  }
+  if (/(https?:\/\/|www\.|@\w+)/i.test(comment)) {
+    throw new Error('Links and promotional contact details are not allowed in reviews.');
+  }
+  const now = Date.now();
+  return {
+    id: existing?.id || `review-${now.toString(36)}`,
+    raterId,
+    name,
+    rating,
+    comment,
+    created: finite(existing?.created, now),
+    ...(existing ? { updated: now } : {}),
+  };
+}
+
+async function rateBusinessCard(call, input, userId) {
+  const cardId = text(input.cardId, 36);
+  if (!cardId) throw new Error('Business card details are missing.');
+  const row = await call(`/tablesdb/${DATABASE_ID}/tables/${TABLE_ID}/rows/${encodeURIComponent(cardId)}`);
+  if (row.kind !== PUBLIC_POSTS_KIND) throw new Error('This is not a public business card.');
+  const { envelope, post } = parsePublicPostRow(row);
+  if (!isBusinessPost(envelope, post)) throw new Error('This is not a public business card.');
+  if ((envelope.userId || post.userId) === userId) {
+    const denied = new Error('Business owners cannot rate their own card.');
+    denied.code = 403;
+    throw denied;
+  }
+  const reviews = Array.isArray(post.reviews) ? post.reviews.slice(0, 499) : [];
+  const index = reviews.findIndex(review => review?.raterId === userId);
+  const updated = index >= 0;
+  const review = sanitiseBusinessReview(input, userId, updated ? reviews[index] : null);
+  if (updated) reviews[index] = review;
+  else reviews.push(review);
+  post.reviews = reviews;
+  await updatePublicPostRow(call, row, envelope, post);
+  return { business: post, updated };
+}
+
+async function deleteBusinessRating(call, input, userId) {
+  const cardId = text(input.cardId, 36);
+  if (!cardId) throw new Error('Business card details are missing.');
+  const row = await call(`/tablesdb/${DATABASE_ID}/tables/${TABLE_ID}/rows/${encodeURIComponent(cardId)}`);
+  if (row.kind !== PUBLIC_POSTS_KIND) throw new Error('This is not a public business card.');
+  const { envelope, post } = parsePublicPostRow(row);
+  if (!isBusinessPost(envelope, post)) throw new Error('This is not a public business card.');
+  const reviews = Array.isArray(post.reviews) ? post.reviews : [];
+  post.reviews = reviews.filter(review => review?.raterId !== userId);
+  if (post.reviews.length === reviews.length) throw new Error('Your rating was not found.');
+  await updatePublicPostRow(call, row, envelope, post);
+  return post;
+}
+
 async function confirmPayment(call, orderId, ownerId, userId) {
   const row = await call(`/tablesdb/${DATABASE_ID}/tables/${TABLE_ID}/rows/${encodeURIComponent(orderId)}`);
   const order = cleanRow(row);
@@ -599,12 +659,40 @@ async function createDigit58Order(call, input, userId) {
     locationLat: hasLocation ? lat : '', locationLng: hasLocation ? lng : '',
     locationUrl: hasLocation ? `https://www.google.com/maps?q=${lat},${lng}` : '',
     items: cleanItems, amount: 0, upiUri: '',
+    reorderedFrom: text(input.reorderedFrom, 36),
     prescriptionUrl: text(input.prescriptionUrl, 1000), prescriptionFileId: text(input.prescriptionFileId, 80),
     prescriptionName: text(input.prescriptionName, 200), prescriptionType: text(input.prescriptionType, 100),
     status: 'Requested', messages: [], createdAt, updatedAt: createdAt,
   };
   const created = await createRow(call, record.id, digit58OrderKind(ownerId), record, rowPermissionsFor([ownerId, userId]));
   return cleanRow(created);
+}
+
+async function createDigit58Reorder(call, input, userId) {
+  const ownerId = text(input.ownerId, 64), sourceOrderId = text(input.orderId, 36);
+  if (!ownerId || !sourceOrderId) throw new Error('Previous order details are missing.');
+  const row = await call(`/tablesdb/${DATABASE_ID}/tables/${TABLE_ID}/rows/${encodeURIComponent(sourceOrderId)}`);
+  if (row.kind !== digit58OrderKind(ownerId)) throw new Error('This is not a Refills order.');
+  const previous = cleanRow(row);
+  if (previous.customerAccountId !== userId) {
+    const denied = new Error('Only this order customer can reorder these items.');
+    denied.code = 403;
+    throw denied;
+  }
+  if (!['Delivered', 'Rejected'].includes(previous.status)) {
+    throw new Error('Only an order from your history can be reordered.');
+  }
+  return createDigit58Order(call, {
+    ownerId,
+    storeId: previous.storeId,
+    customerName: previous.customerName,
+    customerEmail: previous.customerEmail,
+    phone: text(input.phone, 20) || previous.phone,
+    locationLat: input.locationLat,
+    locationLng: input.locationLng,
+    items: previous.items,
+    reorderedFrom: previous.id || sourceOrderId,
+  }, userId);
 }
 
 export default async ({ req, res, error }) => {
@@ -662,6 +750,10 @@ export default async ({ req, res, error }) => {
       const call = appwriteClient(req);
       return res.json({ ok: true, order: await createDigit58Order(call, requestBody, userId) }, 201);
     }
+    if (requestBody?.action === 'digit58-reorder') {
+      const call = appwriteClient(req);
+      return res.json({ ok: true, order: await createDigit58Reorder(call, requestBody, userId) }, 201);
+    }
     if (requestBody?.action === 'raise-support-ticket') {
       const call = appwriteClient(req);
       return res.json({ ok: true, ticket: await raiseSupportTicket(call, requestBody, userId) }, 201);
@@ -677,6 +769,15 @@ export default async ({ req, res, error }) => {
     if (requestBody?.action === 'touch-business-card') {
       const call = appwriteClient(req);
       return res.json({ ok: true, business: await touchBusinessCard(call, requestBody) });
+    }
+    if (requestBody?.action === 'rate-business-card') {
+      const call = appwriteClient(req);
+      const result = await rateBusinessCard(call, requestBody, userId);
+      return res.json({ ok: true, ...result });
+    }
+    if (requestBody?.action === 'delete-business-rating') {
+      const call = appwriteClient(req);
+      return res.json({ ok: true, business: await deleteBusinessRating(call, requestBody, userId) });
     }
     const input = requestBody?.order || requestBody || {};
     const ownerId = text(input.cloudOwnerId || input.ownerId, 64);

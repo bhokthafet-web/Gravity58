@@ -306,3 +306,66 @@ test("team admin login can request its own password reset link", async ({ page }
   expect(recoveries).toEqual([{ email: "admin@g58.in", url: "http://127.0.0.1:4173/reset-password/" }]);
   await assertNoErrors();
 });
+
+test("Refills customer reorders from history into a fresh store-owner request", async ({ page }) => {
+  const ownerId = "refill_owner";
+  const customerId = "refill_customer";
+  const storeId = "refill_store";
+  const orderKind = `digit58_order_${ownerId}`;
+  await prepareMockApi(page, {
+    state: null,
+    initialUser: { $id: customerId, email: "customer@example.com", name: "Refill Customer" },
+    seed: {
+      [`digit58_store_${ownerId}`]: [{ id: storeId, ownerId, name: "Health Refills", category: "Pharmacy", city: "Hyderabad", upiId: "health@upi" }],
+      [`digit58_customer_${ownerId}`]: [{ id: "customer_link", ownerId, storeId, customerAccountId: customerId, customerName: "Refill Customer", customerEmail: "customer@example.com", phone: "9876543210" }],
+      [orderKind]: [{ id: "history_order", ownerId, storeId, customerAccountId: customerId, customerName: "Refill Customer", customerEmail: "customer@example.com", phone: "9876543210", items: [{ name: "Monthly medicine", qty: 2 }], amount: 480, status: "Delivered", createdAt: "2026-08-01T08:00:00.000Z", updatedAt: "2026-08-01T09:00:00.000Z" }],
+    },
+  });
+  const assertNoErrors = monitorPageErrors(page);
+  await page.goto(`/digit58/#store&owner=${ownerId}&store=${storeId}`);
+  const history = page.getByRole("heading", { name: "Order History" }).locator("..");
+  await expect(history).toBeVisible();
+  await page.getByRole("button", { name: "Reorder" }).click();
+  await expect(page.getByRole("heading", { name: "Reorder Previous Items" })).toBeVisible();
+  await expect(page.locator("#reorderForm")).toContainText("Monthly medicine");
+  await page.locator('#reorderForm input[name="phone"]').fill("9888888888");
+  await page.getByRole("button", { name: "Send Reorder Request" }).click();
+  await expect(page.locator("#toast")).toContainText("store will review the amount");
+  await expect(page.getByText("Waiting for the store to review and set the amount.")).toBeVisible();
+  const orders = await page.evaluate((kind) => window.__g58Mock.store[kind], orderKind);
+  expect(orders).toHaveLength(2);
+  expect(orders[0]).toMatchObject({ status: "Requested", amount: 0, reorderedFrom: "history_order", phone: "9888888888" });
+  await assertNoErrors();
+});
+
+test("Refills owner reviews a reordered request and sends the normal payment QR", async ({ page }) => {
+  const ownerId = "refill_owner";
+  const storeId = "refill_store";
+  const orderKind = `digit58_order_${ownerId}`;
+  await prepareMockApi(page, {
+    state: null,
+    initialUser: { $id: ownerId, email: "owner@example.com", name: "Store Owner" },
+    seed: {
+      digit58_entitlements: [{ id: "entitlement_1", ownerId, active: true, paused: false, lifetime: true, policyAcceptedAt: "2026-08-01T08:00:00.000Z" }],
+      [`digit58_store_${ownerId}`]: [{ id: storeId, ownerId, name: "Health Refills", category: "Pharmacy", city: "Hyderabad", upiId: "health@upi" }],
+      [`digit58_customer_${ownerId}`]: [{ id: "customer_link", ownerId, storeId, customerAccountId: "refill_customer", customerName: "Refill Customer", phone: "9888888888" }],
+      [orderKind]: [{ id: "reorder_1", ownerId, storeId, customerAccountId: "refill_customer", customerName: "Refill Customer", phone: "9888888888", items: [{ name: "Monthly medicine", qty: 2 }], amount: 0, upiUri: "", reorderedFrom: "history_order", status: "Requested", messages: [], createdAt: "2026-08-15T08:00:00.000Z", updatedAt: "2026-08-15T08:00:00.000Z" }],
+    },
+  });
+  const assertNoErrors = monitorPageErrors(page);
+  await page.goto("/digit58/");
+  await page.getByRole("button", { name: /Orders/ }).click();
+  await expect(page.locator(".order-item-card")).toContainText("Monthly medicine");
+  await page.getByRole("button", { name: "Set Amount" }).click();
+  await page.locator("#amountInput").fill("525");
+  await page.locator("#upiIdInput").fill("health@upi");
+  await expect(page.locator("#amountQrPreview [data-testid='qr-rendered']")).toBeVisible();
+  await page.locator("#setAmountForm").getByRole("button", { name: "Set Amount" }).click();
+  await expect(page.locator(".order-item-card")).toContainText("Priced");
+  const order = await page.evaluate((kind) => window.__g58Mock.store[kind][0], orderKind);
+  expect(order.status).toBe("Priced");
+  expect(order.amount).toBe(525);
+  expect(order.upiUri).toContain("pa=health%40upi");
+  expect(order.upiUri).toContain("am=525.00");
+  await assertNoErrors();
+});

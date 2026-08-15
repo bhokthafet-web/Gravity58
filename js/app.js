@@ -951,11 +951,14 @@ function openBusinessDemo(id) {
 }
 
 const G58_RATER_ID_KEY = "g58AnonymousRaterIdV1";
+const G58_CLOUD_RATER_ID_KEY = "g58CloudRaterIdV1";
 let activeRatingBusinessId = "";
 let selectedRatingValue = 0;
 
 function anonymousRaterId() {
-  let id = localStorage.getItem(G58_RATER_ID_KEY);
+  let id =
+    localStorage.getItem(G58_CLOUD_RATER_ID_KEY) ||
+    localStorage.getItem(G58_RATER_ID_KEY);
   if (!id) {
     id =
       "rater-" +
@@ -1078,7 +1081,12 @@ function refreshRatingModal() {
         .join("")
     : '<div class="empty rating-empty">No reviews yet. Be the first customer to rate this business.</div>';
 }
-function submitBusinessRating() {
+function mergeBusinessFromSecureResponse(business, updated) {
+  if (!business || !updated) return;
+  Object.assign(business, updated);
+  localStorage.setItem("g58BusinessesV3", JSON.stringify(businesses));
+}
+async function submitBusinessRating() {
   const business = businesses.find(
     (item) => item.id === activeRatingBusinessId,
   );
@@ -1105,57 +1113,110 @@ function submitBusinessRating() {
       "Links and promotional contact details are not allowed in reviews.";
     return;
   }
-  business.reviews = businessReviews(business);
-  const raterId = anonymousRaterId();
-  const existing = business.reviews.find((r) => r.raterId === raterId);
-  if (existing) {
-    existing.rating = selectedRatingValue;
-    existing.name = name;
-    existing.comment = comment;
-    existing.updated = Date.now();
-  } else {
-    business.reviews.push({
-      id: "review-" + Date.now().toString(36),
-      raterId,
-      name,
-      rating: selectedRatingValue,
-      comment,
-      created: Date.now(),
-    });
+  const submitButton = document.getElementById("submitBusinessRatingBtn");
+  submitButton?.setAttribute("disabled", "disabled");
+  status.className = "moderation-status";
+  status.textContent = "Saving your rating…";
+  try {
+    const functionId = Gravity58Ads?.config?.digitalOrderFunctionId;
+    if (Gravity58Ads?.configured && functionId) {
+      const user = await Gravity58Ads.ensureUser();
+      if (!user?.$id)
+        throw new Error("A secure rating session could not be started.");
+      localStorage.setItem(G58_CLOUD_RATER_ID_KEY, user.$id);
+      const result = await Gravity58Ads.executeFunction(functionId, {
+        action: "rate-business-card",
+        cardId: business.id,
+        rating: selectedRatingValue,
+        name,
+        comment,
+      });
+      mergeBusinessFromSecureResponse(business, result?.business);
+      status.textContent = result?.updated
+        ? "Your rating was updated."
+        : "Thank you. Your rating was submitted.";
+    } else {
+      business.reviews = businessReviews(business);
+      const raterId = anonymousRaterId();
+      const existing = business.reviews.find((r) => r.raterId === raterId);
+      if (existing) {
+        existing.rating = selectedRatingValue;
+        existing.name = name;
+        existing.comment = comment;
+        existing.updated = Date.now();
+      } else {
+        business.reviews.push({
+          id: "review-" + Date.now().toString(36),
+          raterId,
+          name,
+          rating: selectedRatingValue,
+          comment,
+          created: Date.now(),
+        });
+      }
+      saveData();
+      status.textContent = existing
+        ? "Your rating was updated."
+        : "Thank you. Your rating was submitted.";
+    }
+    localStorage.setItem("g58ReviewerName", name);
+    status.className = "moderation-status success";
+    document.getElementById("deleteMyRatingBtn").classList.remove("hidden");
+    refreshRatingModal();
+    renderWall();
+  } catch (error) {
+    status.className = "moderation-status error";
+    status.textContent =
+      error?.message || "Your rating could not be saved. Please try again.";
+  } finally {
+    submitButton?.removeAttribute("disabled");
   }
-  localStorage.setItem("g58ReviewerName", name);
-  saveData();
-  status.className = "moderation-status success";
-  status.textContent = existing
-    ? "Your rating was updated."
-    : "Thank you. Your rating was submitted.";
-  document.getElementById("deleteMyRatingBtn").classList.remove("hidden");
-  refreshRatingModal();
-  renderWall();
 }
-function deleteMyBusinessRating() {
+async function deleteMyBusinessRating() {
   const business = businesses.find(
     (item) => item.id === activeRatingBusinessId,
   );
   if (!business) return;
-  const raterId = anonymousRaterId();
-  const before = businessReviews(business).length;
-  business.reviews = businessReviews(business).filter(
-    (r) => r.raterId !== raterId,
-  );
-  if (business.reviews.length === before) return;
-  saveData();
-  selectedRatingValue = 0;
-  document.getElementById("ratingName").value =
-    localStorage.getItem("g58ReviewerName") || "";
-  document.getElementById("ratingComment").value = "";
-  document.getElementById("deleteMyRatingBtn").classList.add("hidden");
-  document.getElementById("ratingFormStatus").className =
-    "moderation-status success";
-  document.getElementById("ratingFormStatus").textContent =
-    "Your rating was deleted.";
-  refreshRatingModal();
-  renderWall();
+  const deleteButton = document.getElementById("deleteMyRatingBtn");
+  const status = document.getElementById("ratingFormStatus");
+  deleteButton?.setAttribute("disabled", "disabled");
+  try {
+    const functionId = Gravity58Ads?.config?.digitalOrderFunctionId;
+    if (Gravity58Ads?.configured && functionId) {
+      const user = await Gravity58Ads.ensureUser();
+      if (!user?.$id)
+        throw new Error("A secure rating session could not be started.");
+      localStorage.setItem(G58_CLOUD_RATER_ID_KEY, user.$id);
+      const result = await Gravity58Ads.executeFunction(functionId, {
+        action: "delete-business-rating",
+        cardId: business.id,
+      });
+      mergeBusinessFromSecureResponse(business, result?.business);
+    } else {
+      const raterId = anonymousRaterId();
+      const before = businessReviews(business).length;
+      business.reviews = businessReviews(business).filter(
+        (r) => r.raterId !== raterId,
+      );
+      if (business.reviews.length === before) return;
+      saveData();
+    }
+    selectedRatingValue = 0;
+    document.getElementById("ratingName").value =
+      localStorage.getItem("g58ReviewerName") || "";
+    document.getElementById("ratingComment").value = "";
+    deleteButton?.classList.add("hidden");
+    status.className = "moderation-status success";
+    status.textContent = "Your rating was deleted.";
+    refreshRatingModal();
+    renderWall();
+  } catch (error) {
+    status.className = "moderation-status error";
+    status.textContent =
+      error?.message || "Your rating could not be deleted. Please try again.";
+  } finally {
+    deleteButton?.removeAttribute("disabled");
+  }
 }
 
 function businessInitial(b) {
@@ -1732,7 +1793,7 @@ function digitalBusinessCardMarkup(
     '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="m8.6 13.5 6.8 3.9M15.4 6.6 8.6 10.5"/></svg>';
 
   const ratingRow = stats.count
-    ? `<div class="biz-card-rating">${ratingStars(stats.average)}<strong>${stats.average.toFixed(1)}</strong><small>(${stats.count} ${stats.count === 1 ? "Review" : "Reviews"})</small></div>`
+    ? `<button type="button" class="biz-card-rating biz-card-rating-action" onclick="openBusinessRating('${b.id}')" aria-label="Rate ${escapeHtml(b.title)} or read ${stats.count} ${stats.count === 1 ? "review" : "reviews"}">${ratingStars(stats.average)}<strong>${stats.average.toFixed(1)}</strong><small>(${stats.count} ${stats.count === 1 ? "Review" : "Reviews"})</small></button>`
     : `<button type="button" class="biz-card-rating biz-card-rating-empty" onclick="openBusinessRating('${b.id}')">☆☆☆☆☆ <small>Be the first to review</small></button>`;
 
   return `<div class="biz-card-glass">
@@ -1746,11 +1807,6 @@ ${
 }
 </div>
 
-${
-  options.popup
-    ? `<button type="button" class="biz-popup-lock-art" onclick="${viewAction}" aria-label="${escapeHtml(viewLabel)}"><span class="biz-popup-lock-shackle"></span><span class="biz-popup-lock-body"><span class="biz-popup-lock-keyhole"></span></span></button>`
-    : ""
-}
 <button type="button" class="biz-card-view-pill" onclick="${viewAction}">${escapeHtml(viewLabel)}</button>
 
 <div class="biz-card-profile">

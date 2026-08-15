@@ -152,11 +152,18 @@ test("business QR, rating and customer bid workflows persist", async ({ page }) 
   await page.locator("#businessQrModal").getByRole("button", { name: "×" }).click();
   await expect(page.locator("#businessQrModal")).not.toHaveClass(/show/);
 
-  await page.evaluate(() => openBusinessRating("B2001"));
+  await page.evaluate(() => selectMode("business"));
+  await page
+    .locator('.biz-card-wall-item[data-post-id="B2001"] .biz-card-rating')
+    .click();
+  await expect(page.locator("#businessRatingModal")).toHaveClass(/show/);
   await page.locator('[data-rating="5"]').click();
   await page.locator("#ratingName").fill("Test Reviewer");
   await page.locator("#ratingComment").fill("Excellent service and quality.");
   await page.getByRole("button", { name: "Submit Rating" }).click();
+  await expect(page.locator("#ratingFormStatus")).toContainText(
+    "rating was submitted",
+  );
   const ratingCount = await page.evaluate(() => window.G58GetPostState().businesses.find((row) => row.id === "B2001").reviews.length);
   expect(ratingCount).toBe(1);
   await page.locator("#businessRatingModal .close").click();
@@ -239,7 +246,7 @@ test("Business Wall cards stay compact while the full profile remains available"
   expect(popupBounds.y + popupBounds.height).toBeLessThanOrEqual(
     page.viewportSize().height,
   );
-  await expect(page.locator("#floatingBusinessCard .biz-popup-lock-art")).toBeVisible();
+  await expect(page.locator("#floatingBusinessCard .biz-popup-lock-art")).toHaveCount(0);
   await expect(page.locator("#floatingBusinessCard .biz-fav-btn-glass")).toHaveCount(0);
   const popupClose = page.locator("#floatingBusinessCard .biz-popup-card-close");
   await expect(popupClose).toBeVisible();
@@ -251,16 +258,58 @@ test("Business Wall cards stay compact while the full profile remains available"
     "rgb(248, 250, 252)",
   );
   await expect(page.locator("#floatingBusinessCard .biz-profile-more")).toHaveCount(0);
-  const ownerUnlock = page.locator("#floatingBusinessCard .biz-popup-lock-art");
+  const ownerUnlock = page
+    .locator("#floatingBusinessCard")
+    .getByRole("button", { name: "Unlock if you're the owner" });
   await expect(ownerUnlock).toBeVisible();
   await ownerUnlock.click();
   await expect(page.locator("#cardUnlockModal")).toHaveClass(/open/);
+  await page.evaluate(() => {
+    closeCardUnlockModal();
+    sessionStorage.setItem("g58BusinessOwner_B2001", "true");
+    hideFloatingBusiness();
+    renderWall();
+    showFloatingBusiness("B2001");
+  });
+  const manageButton = page
+    .locator("#floatingBusinessCard")
+    .getByRole("button", { name: "Manage your business" });
+  await manageButton.click();
+  await expect(page.locator("#businessEditModal")).toHaveClass(/show/);
+  const editLayer = await page.locator("#businessEditModal").evaluate((element) =>
+    Number(getComputedStyle(element).zIndex),
+  );
+  const popupLayer = await page.locator("#floatingBusinessWrap").evaluate((element) =>
+    Number(getComputedStyle(element).zIndex),
+  );
+  expect(editLayer).toBeGreaterThan(popupLayer);
+  await page.evaluate(() => closeModal("businessEditModal"));
+  await page.locator("#floatingBusinessCard .biz-card-rating").click();
+  await expect(page.locator("#businessRatingModal")).toHaveClass(/show/);
+  const ratingLayer = await page.locator("#businessRatingModal").evaluate((element) =>
+    Number(getComputedStyle(element).zIndex),
+  );
+  expect(ratingLayer).toBeGreaterThan(popupLayer);
+  await page.evaluate(() => closeBusinessRating());
   await page.evaluate(() => {
     const expired = window.G58GetPostState().businesses.find((item) => item.id === "B2002");
     expired.popupExpiresAt = Date.now() - 1;
     renderWall();
   });
   await expect(page.locator('.biz-card-wall-item[data-post-id="B2002"]')).toHaveCount(0);
+  await assertNoErrors();
+});
+
+test("landing explains Refills and Digital Menu with matching visual workflows", async ({ page }) => {
+  await prepareOffline(page, { blockSiteAuth: true });
+  const assertNoErrors = monitorPageErrors(page);
+  await page.goto("/");
+  const section = page.locator(".product-workflow-section");
+  await expect(section.getByRole("heading", { name: "See how G58 products work" })).toBeVisible();
+  await expect(section.locator(".workflow-refills .product-flow-node")).toHaveCount(3);
+  await expect(section.locator(".workflow-menu .product-flow-node")).toHaveCount(3);
+  await expect(section.getByRole("link", { name: /Explore Refills/ })).toHaveAttribute("href", "/digit58/");
+  await expect(section.getByRole("link", { name: /Explore Digital Menu/ })).toHaveAttribute("href", "/digital-menu/");
   await assertNoErrors();
 });
 

@@ -10,7 +10,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/css/style.css?v=31">
+  <link rel="stylesheet" href="/css/style.css?v=32">
   <link rel="stylesheet" href="/css/mobile.css">
   <link rel="canonical" href="https://g58.in/" />
   <meta name="robots" content="index, follow, max-image-preview:large" />
@@ -141,6 +141,51 @@
       <span class="hero-float-badge float-badge-4" aria-hidden="true">📍 Nearby</span>
     </div>
   </div>
+
+  <section class="product-workflow-section shell reveal" aria-labelledby="productWorkflowTitle">
+    <div class="product-workflow-heading">
+      <span class="product-workflow-kicker">Built for everyday business</span>
+      <h2 id="productWorkflowTitle">See how G58 products work</h2>
+      <p>Simple customer journeys that turn repeat needs and table visits into trackable orders.</p>
+    </div>
+    <div class="product-workflow-grid">
+      <article class="product-workflow-card workflow-refills">
+        <div class="product-workflow-copy">
+          <span class="product-workflow-product">G58 Refills</span>
+          <h3>Bring repeat customers back automatically</h3>
+          <p>Create a store link, remind customers when essentials are due and receive their repeat-order request.</p>
+          <a href="/digit58/" class="product-workflow-cta">Explore Refills <span aria-hidden="true">→</span></a>
+        </div>
+        <div class="product-workflow-demo" aria-label="Refills process: store link, refill reminder and repeat order">
+          <span class="product-workflow-line line-one" aria-hidden="true"></span>
+          <span class="product-workflow-line line-two" aria-hidden="true"></span>
+          <div class="product-flow-node node-one"><span>Store Link</span><strong>Monthly Essentials</strong><small>Customer opens your catalogue</small></div>
+          <div class="product-flow-node node-two"><span>Refill Reminder</span><strong>3 items due</strong><small>Reminder sent on time</small></div>
+          <div class="product-flow-node node-three success"><i aria-hidden="true"></i><strong>Repeat Order</strong><small>Order #R-104 received</small></div>
+          <span class="product-flow-badge badge-one">Reminder sent</span>
+          <span class="product-flow-badge badge-two">Buy again</span>
+        </div>
+      </article>
+
+      <article class="product-workflow-card workflow-menu">
+        <div class="product-workflow-copy">
+          <span class="product-workflow-product">G58 Digital Menu</span>
+          <h3>Move every table order from scan to kitchen</h3>
+          <p>Customers scan the table QR, choose dishes and receive a live token while the restaurant manages the order.</p>
+          <a href="/digital-menu/" class="product-workflow-cta">Explore Digital Menu <span aria-hidden="true">→</span></a>
+        </div>
+        <div class="product-workflow-demo" aria-label="Digital Menu process: table QR, customer order and kitchen acceptance">
+          <span class="product-workflow-line line-one" aria-hidden="true"></span>
+          <span class="product-workflow-line line-two" aria-hidden="true"></span>
+          <div class="product-flow-node node-one"><span>Table QR</span><strong>Table 08</strong><small>Scan to open the live menu</small></div>
+          <div class="product-flow-node node-two"><span>Customer Order</span><strong>2 items · ₹398</strong><small>Sent directly to the kitchen</small></div>
+          <div class="product-flow-node node-three success"><i aria-hidden="true"></i><strong>Kitchen Accepted</strong><small>Token 024 · preparing</small></div>
+          <span class="product-flow-badge badge-one">Live order</span>
+          <span class="product-flow-badge badge-two">Ready in 18 min</span>
+        </div>
+      </article>
+    </div>
+  </section>
 
   <div class="shell dual-path-shell reveal">
     <div class="dual-path-grid">
@@ -806,7 +851,7 @@
       </div>
       <p class="rating-privacy-note">Browsing and business-card creation remain open. Secure sign-in is required for customer requirements. Please post only genuine customer experiences.</p>
       <div class="rating-form-actions">
-        <button class="btn orange" type="button" onclick="submitBusinessRating()">Submit Rating</button>
+        <button class="btn orange" id="submitBusinessRatingBtn" type="button" onclick="submitBusinessRating()">Submit Rating</button>
         <button class="btn danger hidden" id="deleteMyRatingBtn" type="button" onclick="deleteMyBusinessRating()">Delete My Rating</button>
       </div>
       <div class="moderation-status" id="ratingFormStatus"></div>
@@ -869,7 +914,7 @@
 <script src="/js/config.js"></script>
 <script src="/js/appwrite-ads.js?v=13"></script>
 <script src="/js/database.js"></script>
-<script src="/js/app.js?v=21"></script>
+<script src="/js/app.js?v=22"></script>
 <script src="/js/site-auth.js?v=3"></script>
 <script>
 (function(){

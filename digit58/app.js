@@ -633,6 +633,7 @@ function setOrderAmount(orderId){
       event.preventDefault();
       const amount=Number($('#amountInput').value),upiId=$('#upiIdInput').value.trim(),button=event.submitter;
       if(!amount||amount<=0)return toast('Enter a valid amount');
+      if(!/^[a-zA-Z0-9._-]{2,}@[a-zA-Z0-9.-]{2,}$/.test(upiId))return toast('Enter a valid UPI ID to generate the customer payment QR');
       button.disabled=true;
       const upiUri=buildUpiUri(upiId,store?.name,amount,order.id);
       try{
@@ -812,7 +813,7 @@ function renderCustomerCards(store,customer,cards,orders=[]){
   <div class="grid card-grid">${active.map(customerOrderMarkup).join('')||'<div class="empty">No active orders. Place a new order to get started.</div>'}</div>
   <div class="section-head"><h2>Your reminder cards</h2></div>
   <div class="grid card-grid" id="customerCardGrid">${cards.map(customerCardCardMarkup).join('')||'<div class="empty">Your store will add reminder cards here after your first purchase.</div>'}</div>
-  ${history.length?`<div class="section-head"><h2>Order History</h2></div><div class="card table-wrap"><table><thead><tr><th>Items</th><th>Amount</th><th>Status</th><th>Date</th></tr></thead><tbody>${history.map(customerOrderHistoryRow).join('')}</tbody></table></div>`:''}
+  ${history.length?`<div class="section-head"><h2>Order History</h2></div><div class="card table-wrap"><table><thead><tr><th>Items</th><th>Amount</th><th>Status</th><th>Date</th><th>Action</th></tr></thead><tbody>${history.map(customerOrderHistoryRow).join('')}</tbody></table></div>`:''}
   <div class="actions" style="margin-top:20px"><button class="btn secondary" id="custLogout">Sign out</button></div></main>${siteFooter()}`;
   active.filter(order=>order.status==='Priced'&&order.upiUri).forEach(order=>{
     const target=document.getElementById(`qr-${order.id}`);
@@ -826,6 +827,10 @@ function renderCustomerCards(store,customer,cards,orders=[]){
   $$('[data-buy-again]').forEach(button=>button.onclick=()=>{
     const card=cards.find(row=>row.id===button.dataset.buyAgain);
     openBuyAgainModal(button.dataset.buyAgain,store,customer,card?.productName);
+  });
+  $$('[data-reorder-order]').forEach(button=>button.onclick=()=>{
+    const order=history.find(row=>row.id===button.dataset.reorderOrder);
+    if(order)openReorderOrderModal(order,store,customer);
   });
   bindOrderChatForms(active,'customer',()=>loadAndRenderCustomerView(store,customer));
   bindCardChatForms(cards,'customer',()=>loadAndRenderCustomerView(store,customer));
@@ -876,7 +881,25 @@ function customerOrderMarkup(order){
   return `<article class="card order-item-card premium-card"><div class="section-head"><h3>Order #${html(order.id.slice(-6).toUpperCase())}</h3><span class="chip">${html(order.status)}</span></div>${bigStatusMarkup(order.status)}${orderStepperMarkup(order.status)}<div class="order-items-list">${order.items.map(item=>`<div class="order-line-item"><span>${item.qty} ×</span><span>${html(item.name)}</span></div>`).join('')}</div>${order.prescriptionUrl?`<a class="link-btn" href="${html(order.prescriptionUrl)}" target="_blank" rel="noopener">📄 View your prescription</a>`:''}${paymentBlock}${orderChatMarkup(order,'customer')}</article>`;
 }
 function customerOrderHistoryRow(order){
-  return `<tr><td>${order.items.map(item=>`${item.qty}×${html(item.name)}`).join(', ')}</td><td>${money(order.amount)}</td><td>${html(order.status)}</td><td>${new Date(order.updatedAt||order.createdAt).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'})}</td></tr>`;
+  return `<tr><td>${order.items.map(item=>`${item.qty}×${html(item.name)}`).join(', ')}</td><td>${money(order.amount)}</td><td>${html(order.status)}</td><td>${new Date(order.updatedAt||order.createdAt).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'})}</td><td><button type="button" class="btn small green" data-reorder-order="${html(order.id)}">Reorder</button></td></tr>`;
+}
+function openReorderOrderModal(order,store,customer){
+  let capturedLocation=null;
+  const itemSummary=order.items.map(item=>`<li>${Number(item.qty)||1} × ${html(item.name)}</li>`).join('');
+  modal('Reorder Previous Items',`<form id="reorderForm"><p class="muted">A fresh order request will be sent to ${html(store.name)}. The store reviews the current amount and then sends your payment QR.</p><div class="card" style="margin:12px 0"><strong>Items</strong><ul style="margin:8px 0 0;padding-left:20px">${itemSummary}</ul></div><div class="field"><label>Contact number</label><input name="phone" type="tel" value="${html(customer.phone||order.phone||'')}" placeholder="10-digit mobile number" required></div><div class="field"><button type="button" class="btn small secondary" id="shareLocationBtn">📍 Share My Location</button><p class="muted" id="locationStatus" style="margin-top:6px">Optional — helps the store guide your delivery.</p></div><button class="btn full green" type="submit" style="margin-top:10px">Send Reorder Request</button></form>`,()=>{
+    bindShareLocationButton($('#shareLocationBtn'),$('#locationStatus'),point=>{capturedLocation=point});
+    $('#reorderForm').onsubmit=async event=>{
+      event.preventDefault();
+      const phone=$('input[name="phone"]',event.target).value.trim();
+      const button=event.submitter;button.disabled=true;
+      try{
+        await api.executeFunction(api.config.digitalOrderFunctionId,{action:'digit58-reorder',ownerId:store.ownerId,orderId:order.id,phone,locationLat:capturedLocation?.lat,locationLng:capturedLocation?.lng});
+        if(phone&&phone!==customer.phone){await api.update(customerKind(store.ownerId),customer.id,{phone}).catch(()=>{});customer.phone=phone}
+        closeModal();toast('Reorder sent — the store will review the amount and send your payment QR');
+        await loadAndRenderCustomerView(store,customer);
+      }catch(error){button.disabled=false;toast(error.message||'Could not send reorder request')}
+    };
+  });
 }
 function orderItemRowMarkup(){return `<div class="order-item-row"><input name="itemName[]" placeholder="Item name" required><input name="itemQty[]" type="number" min="1" value="1" aria-label="Quantity"><button type="button" class="btn small secondary remove-item-row" aria-label="Remove item">✕</button></div>`}
 function openPlaceOrderModal(store,customer){
