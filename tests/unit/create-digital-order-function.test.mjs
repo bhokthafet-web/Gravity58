@@ -346,6 +346,41 @@ test('digit58: linking a customer to a store grants owner+customer permissions a
   }
 });
 
+test('digit58: a signed-in customer securely discovers all stores linked to the same account', async () => {
+  const previousFetch = globalThis.fetch;
+  const secondOwner = 'owner_2';
+  const customerRows = {
+    [ownerId]: { id: 'cust_store_1', ownerId, storeId: 'store_1', customerAccountId: customerId, customerName: 'Shared Customer' },
+    [secondOwner]: { id: 'cust_store_2', ownerId: secondOwner, storeId: 'store_2', customerAccountId: customerId, customerName: 'Shared Customer' },
+  };
+  globalThis.fetch = async (url, options = {}) => {
+    const target = decodeURIComponent(String(url)), method = options.method || 'GET';
+    if (method !== 'GET') throw new Error(`Unexpected request ${url}`);
+    if (target.includes('digit58_owners')) return new Response(JSON.stringify({ rows: [
+      { $id: 'owner-store-1', kind: 'digit58_owners', payload: JSON.stringify({ ownerId, storeId: 'store_1' }) },
+      { $id: 'owner-store-2', kind: 'digit58_owners', payload: JSON.stringify({ ownerId: secondOwner, storeId: 'store_2' }) },
+    ] }), { status: 200 });
+    if (target.includes('digit58_entitlements')) return new Response(JSON.stringify({ rows: [] }), { status: 200 });
+    if (target.includes(`digit58_customer_${ownerId}`)) return new Response(JSON.stringify({ rows: [{ $id: customerRows[ownerId].id, kind: `digit58_customer_${ownerId}`, payload: JSON.stringify(customerRows[ownerId]) }] }), { status: 200 });
+    if (target.includes(`digit58_customer_${secondOwner}`)) return new Response(JSON.stringify({ rows: [{ $id: customerRows[secondOwner].id, kind: `digit58_customer_${secondOwner}`, payload: JSON.stringify(customerRows[secondOwner]) }] }), { status: 200 });
+    if (target.endsWith('/rows/store_1')) return new Response(JSON.stringify({ $id: 'store_1', kind: `digit58_store_${ownerId}`, payload: JSON.stringify({ id: 'store_1', ownerId, name: 'Amruth Medicals', city: 'Hyderabad' }) }), { status: 200 });
+    if (target.endsWith('/rows/store_2')) return new Response(JSON.stringify({ $id: 'store_2', kind: `digit58_store_${secondOwner}`, payload: JSON.stringify({ id: 'store_2', ownerId: secondOwner, name: 'test2', city: 'Hyderabad' }) }), { status: 200 });
+    throw new Error(`Unexpected request ${url}`);
+  };
+  process.env.APPWRITE_FUNCTION_PROJECT_ID = 'project_1';
+  try {
+    const response = await createDigitalOrder({
+      req: { method: 'POST', headers: { 'x-appwrite-key': 'dynamic-key', 'x-appwrite-user-id': customerId }, bodyJson: { action: 'digit58-list-customer-stores' } },
+      res: { json: (body, status = 200) => ({ body, status }) }, error: () => {},
+    });
+    assert.equal(response.status, 200);
+    assert.deepEqual(response.body.stores.map(store => store.storeName), ['Amruth Medicals', 'test2']);
+    assert.ok(response.body.stores.every(store => !('customerAccountId' in store)));
+  } finally {
+    globalThis.fetch = previousFetch;
+  }
+});
+
 test('digit58: only the store owner can create a reminder card for a customer', async () => {
   const response = await createDigitalOrder({
     req: { method: 'POST', headers: { 'x-appwrite-key': 'dynamic-key', 'x-appwrite-user-id': customerId }, bodyJson: { action: 'digit58-create-card', ownerId, storeId: 'store_1', customerAccountId: customerId, productName: 'Thyroid medicine', price: 199, reminderDays: 30 } },
@@ -519,14 +554,25 @@ test('digit58: a due reminder creates one regular refill order and marks the car
   }
 });
 
-test('digit58: a reminder cannot be refilled before its due date', async () => {
+test('digit58: a customer can start a refill order before the reminder due date', async () => {
   const previousFetch = globalThis.fetch;
+  const requests = [];
   const card = {
     id: 'card_not_due', ownerId, storeId: 'store_1', customerAccountId: customerId,
     productName: 'Vitamin tablets', price: 99, reminderDays: 30,
     dueAt: new Date(Date.now() + 86400000).toISOString(), status: 'Active',
   };
-  globalThis.fetch = async () => new Response(JSON.stringify({ $id: card.id, kind: `digit58_card_${ownerId}`, payload: JSON.stringify(card) }), { status: 200 });
+  const cardKind = `digit58_card_${ownerId}`;
+  const cardRow = { $id: card.id, kind: cardKind, payload: JSON.stringify(card) };
+  globalThis.fetch = async (url, options = {}) => {
+    const method = options.method || 'GET', target = String(url), body = options.body ? JSON.parse(options.body) : null;
+    requests.push({ url: target, method, body });
+    if (method === 'GET' && target.includes('/rows?')) return new Response(JSON.stringify({ rows: [] }), { status: 200 });
+    if (method === 'GET' && target.endsWith(`/rows/${card.id}`)) return new Response(JSON.stringify(cardRow), { status: 200 });
+    if (method === 'POST') return new Response(JSON.stringify({ $id: body.rowId, ...body.data }), { status: 201 });
+    if (method === 'PATCH') return new Response(JSON.stringify({ $id: card.id, kind: cardKind, ...body.data }), { status: 200 });
+    throw new Error(`Unexpected request ${url}`);
+  };
   process.env.APPWRITE_FUNCTION_PROJECT_ID = 'project_1';
   try {
     const response = await createDigitalOrder({
@@ -536,8 +582,11 @@ test('digit58: a reminder cannot be refilled before its due date', async () => {
       },
       res: { json: (body, status = 200) => ({ body, status }) }, error: () => {},
     });
-    assert.equal(response.status, 400);
-    assert.match(response.body.error, /after the refill period/i);
+    assert.equal(response.status, 201);
+    assert.equal(response.body.order.status, 'Requested');
+    assert.equal(response.body.order.refillCardId, card.id);
+    assert.equal(response.body.order.previousAmount, 99);
+    assert.ok(requests.some(request => request.method === 'POST'));
   } finally {
     globalThis.fetch = previousFetch;
   }

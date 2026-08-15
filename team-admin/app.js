@@ -22,10 +22,11 @@ function accessDenied(){app.innerHTML=`<main class="screen auth"><section class=
 async function loadData(){
   const [bookings,advertisements,profiles,slots,posts,menuPricing,menuEntitlements,menuRequests,digit58Stores,digit58Requests,digit58Entitlements,digit58Pricing,supportTickets]=await Promise.all([api.list('bookings'),api.list('advertisements'),api.list('profiles'),api.list('slots'),api.list('posts'),api.list('digital_menu_pricing').catch(()=>[]),api.list('digital_menu_entitlements').catch(()=>[]),api.list('digital_menu_requests').catch(()=>[]),api.list('digit58_owners').catch(()=>[]),api.list('digit58_requests').catch(()=>[]),api.list('digit58_entitlements').catch(()=>[]),api.list('digit58_pricing').catch(()=>[]),api.list('support_tickets').catch(()=>[])]);
   const uniqueStoreSummaries=[...new Map(digit58Stores.filter(row=>row.ownerId&&(row.storeId||row.id)).map(row=>[`${row.ownerId}:${row.storeId||row.id}`,row])).values()];
-  const hydratedDigit58Stores=await Promise.all(uniqueStoreSummaries.map(async summary=>{
-    const storeId=summary.storeId||summary.id,live=await api.get(digit58StoreKind(summary.ownerId),storeId).catch(()=>null);
-    return {...summary,...(live||{}),registryId:summary.id,storeId,storeName:live?.name||summary.storeName||'Store',ownerEmail:summary.ownerEmail||live?.ownerEmail||''};
-  }));
+  const ownerIds=[...new Set([...uniqueStoreSummaries.map(row=>row.ownerId),...digit58Entitlements.map(row=>row.ownerId),...digit58Requests.map(row=>row.ownerId)].filter(Boolean))];
+  const liveStoresByOwner=await Promise.all(ownerIds.map(async ownerId=>({ownerId,rows:await api.list(digit58StoreKind(ownerId)).catch(()=>[])})));
+  const storeMap=new Map(uniqueStoreSummaries.map(summary=>{const storeId=summary.storeId||summary.id;return [`${summary.ownerId}:${storeId}`,{...summary,registryId:summary.id,storeId,storeName:summary.storeName||'Store'}]}));
+  liveStoresByOwner.forEach(({ownerId,rows})=>rows.forEach(live=>{const storeId=live.id||live.$id,key=`${ownerId}:${storeId}`,summary=storeMap.get(key)||{};storeMap.set(key,{...summary,...live,ownerId,storeId,storeName:live.name||summary.storeName||'Store',ownerEmail:summary.ownerEmail||live.ownerEmail||digit58Entitlements.find(row=>row.ownerId===ownerId)?.ownerEmail||''})}));
+  const hydratedDigit58Stores=[...storeMap.values()];
   const legacy=posts.find(row=>row.recordKey==='global'&&(row.customers||row.businesses));
   const postRows=posts.filter(row=>row.recordKey!=='global'),customers=[],businesses=[];
   postRows.forEach(row=>{const post=parsePost(row.payload);if(!post)return;post.userId||=row.userId||'';(row.postType==='business'?businesses:customers).push(post)});
@@ -308,7 +309,8 @@ function digit58RequestRow(row){
 }
 function digit58EntitlementRow(row){
   const policy=row.policyAcceptedAt?new Date(row.policyAcceptedAt).toLocaleDateString('en-IN',{dateStyle:'medium'}):'Not accepted yet';
-  return `<tr><td>${esc(row.ownerEmail||row.ownerId)}</td><td>${row.paused?'Paused':row.active?'Active':'Inactive'}</td><td>${timeLeft(row.expiresAt,row.lifetime)}</td><td>${Math.max(1,Number(row.storeSlots)||1)}</td><td>${esc(policy)}</td><td><div class="actions"><button class="btn small" data-edit-digit58-entitlement="${esc(row.id)}">Edit</button><button class="btn small green" data-extend-digit58="${esc(row.id)}">+30 days</button><button class="btn small ${row.paused?'green':'secondary'}" data-pause-digit58="${esc(row.id)}">${row.paused?'Resume':'Pause'}</button></div></td></tr>`;
+  const stores=data.digit58Stores.filter(store=>store.ownerId===row.ownerId),storeButtons=stores.map(store=>`<button class="entitlement-store-btn ${store.suspended?'paused':''}" data-manage-digit58-store="${esc(store.storeId||store.id)}" data-owner-id="${esc(store.ownerId)}" type="button"><strong>${esc(store.storeName||store.name||'Store')}</strong><small>${store.suspended?'Paused':'Active'} · Manage</small></button>`).join('');
+  return `<tr><td>${esc(row.ownerEmail||row.ownerId)}</td><td>${row.paused?'Paused':row.active?'Active':'Inactive'}</td><td>${timeLeft(row.expiresAt,row.lifetime)}</td><td><strong>${Math.max(1,Number(row.storeSlots)||1)} paid slot(s)</strong><div class="entitlement-store-list">${storeButtons||'<small class="muted">No live stores found</small>'}</div></td><td>${esc(policy)}</td><td><div class="actions"><button class="btn small" data-edit-digit58-entitlement="${esc(row.id)}">Edit</button><button class="btn small green" data-extend-digit58="${esc(row.id)}">+30 days</button><button class="btn small ${row.paused?'green':'secondary'}" data-pause-digit58="${esc(row.id)}">${row.paused?'Resume':'Pause'}</button></div></td></tr>`;
 }
 function sendDigit58PaymentLink(id){
   const row=data.digit58Requests.find(item=>item.id===id);if(!row)return;

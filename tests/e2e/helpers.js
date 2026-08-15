@@ -58,7 +58,9 @@ export function mockApiScript({ initialUser = null, admin = false, seed = {} } =
           const kind='digit58_customer_'+String(payload.ownerId||'').replace(/[^a-zA-Z0-9._-]/g,'-').slice(0,36);
           let customer=(store[kind]||[]).find(row=>row.storeId===payload.storeId&&row.customerAccountId===user?.\$id);
           if(!customer){customer=clean({id:'customer-'+(++serial),ownerId:payload.ownerId,storeId:payload.storeId,customerAccountId:user?.\$id,customerName:payload.customerName,customerEmail:payload.customerEmail,phone:''});(store[kind]||=[]).unshift(customer)}
-          return {ok:true,customer:clone(customer)};
+          const links=Object.entries(store).filter(([candidateKind])=>candidateKind.startsWith('digit58_customer_')).flatMap(([,rows])=>rows.filter(row=>row.customerAccountId===user?.\$id&&row.storeId).map(row=>({ownerId:row.ownerId,storeId:row.storeId,customerId:row.id})));
+          const stores=[...new Map(links.map(link=>[link.ownerId+':'+link.storeId,link])).values()].map(link=>{const storeKind='digit58_store_'+String(link.ownerId||'').replace(/[^a-zA-Z0-9._-]/g,'-').slice(0,40),live=(store[storeKind]||[]).find(row=>(row.id||row.\$id)===link.storeId);return live?{ownerId:link.ownerId,storeId:link.storeId,storeName:live.name||'Store',category:live.category||'',city:live.city||'',suspended:Boolean(live.suspended),customerId:link.customerId}:null}).filter(Boolean).sort((a,b)=>a.storeName.localeCompare(b.storeName));
+          return {ok:true,customer:clone(customer),stores:clone(stores)};
         }
         if(action==='digit58-reorder'){
           const kind='digit58_order_'+String(payload.ownerId||'').replace(/[^a-zA-Z0-9._-]/g,'-').slice(0,40);
@@ -77,9 +79,6 @@ export function mockApiScript({ initialUser = null, admin = false, seed = {} } =
           const orderKind='digit58_order_'+String(payload.ownerId||'').replace(/[^a-zA-Z0-9._-]/g,'-').slice(0,40);
           const card=(store[cardKind]||[]).find(row=>(row.id||row.\$id)===payload.cardId);
           if(!card||card.customerAccountId!==user?.\$id)throw new Error('Only this card customer can request its refill.');
-          const explicitDueAt=new Date(card.dueAt).getTime(),anchorAt=new Date(card.lastDeliveredAt||card.purchasedAt||card.createdAt||card.$createdAt).getTime();
-          const dueAt=Number.isFinite(explicitDueAt)?explicitDueAt:Number.isFinite(anchorAt)?anchorAt+Math.max(1,Number(card.reminderDays)||30)*86400000:Date.now();
-          if(dueAt>Date.now())throw new Error('The refill button becomes available after the refill period is completed.');
           const existing=(store[orderKind]||[]).find(row=>row.refillCardId===card.id&&!['Delivered','Rejected'].includes(row.status));
           if(existing)return {ok:true,order:clone(existing)};
           const createdAt=new Date().toISOString(),row=clean({id:'refill-order-'+(++serial),ownerId:payload.ownerId,storeId:card.storeId,customerAccountId:user?.\$id,customerName:payload.customerName,customerEmail:payload.customerEmail,phone:String(payload.phone||card.phone||'').replace(/\D/g,''),items:[{name:card.productName,qty:1}],amount:0,previousAmount:Number(card.price)||0,refillCardId:card.id,upiUri:'',status:'Requested',messages:[],createdAt,updatedAt:createdAt});

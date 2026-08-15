@@ -11,6 +11,7 @@ const DIGIT58_ORDER_KIND_PREFIX = 'digit58_order_';
 const DIGIT58_STORE_KIND_PREFIX = 'digit58_store_';
 const DIGIT58_PROMOTION_KIND_PREFIX = 'digit58_promo_';
 const DIGIT58_OWNER_KIND = 'digit58_owners';
+const DIGIT58_ENTITLEMENT_KIND = 'digit58_entitlements';
 const ADMIN_TEAM_ID = '6a776960001ca2fb66bf';
 const SUPPORT_KIND = 'support_tickets';
 const PUBLIC_POSTS_KIND = 'posts';
@@ -569,6 +570,36 @@ async function linkDigit58Customer(call, input, userId) {
   return cleanRow(created);
 }
 
+async function listDigit58CustomerPortalStores(call, userId) {
+  const [ownerRows, entitlementRows] = await Promise.all([
+    listRowsByKind(call, DIGIT58_OWNER_KIND).catch(() => []),
+    listRowsByKind(call, DIGIT58_ENTITLEMENT_KIND).catch(() => []),
+  ]);
+  const ownerIds = [...new Set([
+    ...ownerRows.map(row => text(cleanRow(row).ownerId, 64)),
+    ...entitlementRows.map(row => text(cleanRow(row).ownerId, 64)),
+  ].filter(Boolean))];
+  const customerRowsByOwner = await Promise.all(ownerIds.map(async ownerId => ({
+    ownerId,
+    rows: await listRowsByKind(call, digit58CustomerKind(ownerId)).catch(() => []),
+  })));
+  const linked = customerRowsByOwner.flatMap(({ ownerId, rows }) => rows.map(cleanRow)
+    .filter(customer => customer.customerAccountId === userId && customer.storeId)
+    .map(customer => ({ ownerId, storeId: customer.storeId, customer })));
+  const unique = [...new Map(linked.map(link => [`${link.ownerId}:${link.storeId}`, link])).values()];
+  const stores = await Promise.all(unique.map(async link => {
+    const row = await call(`/tablesdb/${DATABASE_ID}/tables/${TABLE_ID}/rows/${encodeURIComponent(link.storeId)}`).catch(() => null);
+    if (!row || row.kind !== digit58StoreKind(link.ownerId)) return null;
+    const store = cleanRow(row);
+    return {
+      ownerId: link.ownerId, storeId: link.storeId, storeName: text(store.name, 160) || 'Store',
+      category: text(store.category, 120), city: text(store.city, 120), suspended: !!store.suspended,
+      customerId: link.customer.id, lastLoginAt: link.customer.lastLoginAt || '',
+    };
+  }));
+  return stores.filter(Boolean).sort((a, b) => a.storeName.localeCompare(b.storeName));
+}
+
 function ticketPermissions(requesterId) {
   return [...new Set([
     `read("user:${requesterId}")`, `update("user:${requesterId}")`,
@@ -698,12 +729,6 @@ async function createDigit58RefillOrder(call, input, userId) {
   const card = cleanRow(row);
   if (row.kind !== digit58CardKind(ownerId)) throw new Error('This is not a Refills reminder card.');
   if (card.customerAccountId !== userId) { const denied = new Error("Only this card's customer can request its refill."); denied.code = 403; throw denied; }
-  const explicitDueAt = new Date(card.dueAt).getTime();
-  const anchorAt = new Date(card.lastDeliveredAt || card.purchasedAt || card.createdAt || row.$createdAt).getTime();
-  const dueAt = Number.isFinite(explicitDueAt)
-    ? explicitDueAt
-    : Number.isFinite(anchorAt) ? anchorAt + Math.max(1, finite(card.reminderDays, 30)) * 86400000 : Date.now();
-  if (dueAt > Date.now()) throw new Error('The refill button becomes available after the refill period is completed.');
   const existingRows = await listRowsByKind(call, digit58OrderKind(ownerId));
   const existing = existingRows.map(cleanRow).find(order => order.refillCardId === cardId && !['Delivered', 'Rejected'].includes(order.status));
   if (existing) return existing;
@@ -790,7 +815,12 @@ export default async ({ req, res, error }) => {
     }
     if (requestBody?.action === 'digit58-link-customer') {
       const call = appwriteClient(req);
-      return res.json({ ok: true, customer: await linkDigit58Customer(call, requestBody, userId) });
+      const customer = await linkDigit58Customer(call, requestBody, userId);
+      return res.json({ ok: true, customer, stores: await listDigit58CustomerPortalStores(call, userId) });
+    }
+    if (requestBody?.action === 'digit58-list-customer-stores') {
+      const call = appwriteClient(req);
+      return res.json({ ok: true, stores: await listDigit58CustomerPortalStores(call, userId) });
     }
     if (requestBody?.action === 'digit58-create-card') {
       const call = appwriteClient(req);

@@ -374,7 +374,15 @@ async function loadOwnerData(){
   save();
 }
 
-function floatingSupportButton(source){return `<a class="floating-support-btn" href="/support/?from=${encodeURIComponent(source)}" title="Support">🛟<span>Support</span></a>`}
+function floatingSupportButton(source){return `<button type="button" class="floating-support-btn" data-support-source="${html(source)}" title="Support">🛟<span>Support</span></button>`}
+function bindFloatingSupportButton(){
+  $('.floating-support-btn')?.addEventListener('click',event=>{
+    const source=event.currentTarget.dataset.supportSource||'digit58';
+    $('#supportPopup')?.remove();
+    document.body.insertAdjacentHTML('beforeend',`<aside class="support-popup" id="supportPopup" role="dialog" aria-modal="false" aria-labelledby="supportPopupTitle"><button class="support-popup-close" id="supportPopupClose" type="button" aria-label="Close support">✕</button><span class="chip">G58 Support</span><h3 id="supportPopupTitle">How can we help?</h3><p>Open your secure support centre to raise a ticket or read replies from the G58 team.</p><a class="btn full" href="/support/?from=${encodeURIComponent(source)}">Open Support Centre</a></aside>`);
+    $('#supportPopupClose').onclick=()=>$('#supportPopup')?.remove();
+  });
+}
 function siteFooter(){return `<footer class="g58-site-footer"><div class="g58-site-footer-badge"><button type="button" class="g58-app-badge" id="androidAppBtn"><span class="g58-app-badge-icon">▶</span><span class="g58-app-badge-text"><small>Coming soon on</small><strong>Get G58 App</strong></span></button></div><p class="g58-site-footer-note">© ${new Date().getFullYear()} Gravity58 · Refills</p></footer>`}
 function bindAndroidAppFooter(){$('#androidAppBtn')?.addEventListener('click',()=>toast('Android app coming soon — stay tuned!'))}
 function renderShell(){
@@ -384,6 +392,7 @@ function renderShell(){
   $('#logout').onclick=async()=>{stopOwnerRealtime();await api.logout();session=null;renderOwnerAuth()};
   $('#storeSwitch')?.addEventListener('change',event=>{state.activeStoreId=event.target.value;save();renderShell()});
   bindAndroidAppFooter();
+  bindFloatingSupportButton();
   renderView();
 }
 function navButton(key,icon,label){return `<button data-view="${key}" class="${view===key?'active':''}"><span>${icon}</span>${label}</button>`}
@@ -916,9 +925,10 @@ async function renderPublicStore(hashParams){
   if(store.suspended){app.innerHTML=`<main class="public-store"><section class="store-hero"><h1>${html(store.name)}</h1></section><div class="empty">This store is temporarily unavailable. Please check back later.</div></main>${siteFooter()}`;bindAndroidAppFooter();return}
   const account=await api.currentUser().catch(()=>null);
   if(!account)return renderCustomerAuth(store,ownerId,storeId);
-  const customer=await ensureCustomerLink(ownerId,storeId,account);
-  await loadAndRenderCustomerView(store,customer);
-  startCustomerRealtime(store,customer);
+  const linked=await ensureCustomerLink(ownerId,storeId,account);
+  customerStoreLinks=linked.stores?.length?linked.stores:[{ownerId,storeId,storeName:store.name,category:store.category,city:store.city}];
+  await loadAndRenderCustomerView(store,linked.customer);
+  startCustomerRealtime(store,linked.customer);
 }
 async function loadAndRenderCustomerView(store,customer){
   const [cards,orders,promotions]=await Promise.all([
@@ -961,10 +971,21 @@ function renderCustomerAuth(store,ownerId,storeId){
   };
 }
 async function ensureCustomerLink(ownerId,storeId,account){
-  const result=await api.executeFunction(api.config.digitalOrderFunctionId,{action:'digit58-link-customer',ownerId,storeId,customerName:account.name||account.email.split('@')[0],customerEmail:account.email});
-  return result.customer;
+  return api.executeFunction(api.config.digitalOrderFunctionId,{action:'digit58-link-customer',ownerId,storeId,customerName:account.name||account.email.split('@')[0],customerEmail:account.email});
 }
-let customerPromotionQuantities=new Map(),activePromotionStoreId='',customerReminderView='swipe';
+let customerPromotionQuantities=new Map(),activePromotionStoreId='',customerReminderView='swipe',customerStoreLinks=[];
+function customerStoreHub(store){
+  const links=customerStoreLinks.length?customerStoreLinks:[{ownerId:store.ownerId,storeId:store.id,storeName:store.name,city:store.city}];
+  return `<nav class="customer-store-hub" aria-label="My linked stores"><div><span>My Stores</span><strong>${links.length} linked store${links.length===1?'':'s'}</strong></div><select id="customerStoreSwitch" aria-label="Switch store">${links.map(link=>`<option value="${html(`${link.ownerId}:${link.storeId}`)}" ${link.ownerId===store.ownerId&&link.storeId===store.id?'selected':''}>${html(link.storeName||'Store')}${link.city?` · ${html(link.city)}`:''}</option>`).join('')}</select></nav>`;
+}
+function bindCustomerStoreHub(store){
+  $('#customerStoreSwitch')?.addEventListener('change',event=>{
+    const selected=customerStoreLinks.find(link=>`${link.ownerId}:${link.storeId}`===event.target.value);if(!selected)return;
+    stopCustomerRealtime();customerPromotionQuantities.clear();activePromotionStoreId='';
+    location.hash=`store&owner=${encodeURIComponent(selected.ownerId)}&store=${encodeURIComponent(selected.storeId)}`;
+    renderPublicStore(new URLSearchParams(`owner=${encodeURIComponent(selected.ownerId)}&store=${encodeURIComponent(selected.storeId)}`));
+  });
+}
 function stopPromotionAutoScroll(){const rail=$('#promotionRail');rail?.classList.remove('is-auto-scrolling')}
 function pausePromotionAutoScroll(){stopPromotionAutoScroll();$('#promotionRail')?.classList.add('is-paused')}
 function startPromotionAutoScroll(){
@@ -1001,19 +1022,21 @@ function renderCustomerCards(store,customer,cards,orders=[],promotions=[]){
   const today=indiaDateValue(),historyFrom=$('#customerHistoryFrom')?.value||today,historyTo=$('#customerHistoryTo')?.value||today;
   const filteredHistory=filterOrdersByIndiaDate(history,historyFrom,historyTo).sort((a,b)=>new Date(orderHistoryTimestamp(b))-new Date(orderHistoryTimestamp(a)));
   const marqueePromotions=promotions.length?Array.from({length:Math.max(1,Math.ceil(6/promotions.length))},()=>promotions).flat():[];
-  app.innerHTML=`<main class="public-store"><section class="store-hero"><span class="chip">${html(store.category||'Store')}</span>${store.highlightText?`<strong class="store-highlight-text">${html(store.highlightText)}</strong>`:''}<h1>${html(store.name)}</h1><p class="muted">${html(store.description||'')}${store.city?' · '+html(store.city):''}</p></section>
+  app.innerHTML=`<main class="public-store">${customerStoreHub(store)}<section class="store-hero"><span class="chip">${html(store.category||'Store')}</span>${store.highlightText?`<strong class="store-highlight-text">${html(store.highlightText)}</strong>`:''}<h1>${html(store.name)}</h1><p class="muted">${html(store.description||'')}${store.city?' · '+html(store.city):''}</p></section>
   ${promotions.length?`<section class="promotion-strip"><div class="promotion-strip-head"><div><span>Store offers</span><h2>Fresh deals for your next order</h2></div><small>Tap Buy to include an offer</small></div><div class="promotion-rail" id="promotionRail"><div class="promotion-track"><div class="promotion-sequence">${marqueePromotions.map((promotion,index)=>customerPromotionTicket(promotion,index>=promotions.length)).join('')}</div><div class="promotion-sequence" aria-hidden="true">${marqueePromotions.map(promotion=>customerPromotionTicket(promotion,true)).join('')}</div></div></div></section>`:''}
   <div class="section-head"><h2>Your orders</h2><button class="btn small" id="placeOrderBtn">+ Place New Order</button></div>
   <div class="grid card-grid">${active.map(order=>customerOrderMarkup(order,store)).join('')||'<div class="empty">No active orders. Place a new order to get started.</div>'}</div>
   <div class="section-head reminder-section-head"><div><h2>Your reminder cards</h2>${cards.length>1?'<p class="muted">Swipe to see the next card or switch to list view.</p>':''}</div>${cards.length>1?`<div class="reminder-view-toggle" role="group" aria-label="Reminder card view"><button type="button" class="${customerReminderView==='swipe'?'active':''}" data-reminder-view="swipe" aria-pressed="${customerReminderView==='swipe'}">Swipe</button><button type="button" class="${customerReminderView==='list'?'active':''}" data-reminder-view="list" aria-pressed="${customerReminderView==='list'}">List</button></div>`:''}</div>
   <div class="customer-reminder-view reminder-view-${customerReminderView}" id="customerCardGrid">${cards.map(customerCardCardMarkup).join('')||'<div class="empty">Your store will add reminder cards here after your first purchase.</div>'}</div>
   ${history.length?`<div class="section-head"><div><h2>Order History</h2><p class="muted">Today's history is shown by default. Select another date period when needed.</p></div><button class="btn small secondary" id="exportCustomerHistory" ${filteredHistory.length?'':'disabled'}>Export CSV</button></div><div class="date-filter-bar"><label>From<input id="customerHistoryFrom" type="date" value="${html(historyFrom)}" max="${html(historyTo)}"></label><label>To<input id="customerHistoryTo" type="date" value="${html(historyTo)}" min="${html(historyFrom)}"></label><button class="btn small secondary" id="customerHistoryToday" type="button">Today</button></div><div class="card table-wrap"><table><thead><tr><th>Items</th><th>Reorder</th><th>Amount</th><th>Status</th><th>Date</th></tr></thead><tbody>${filteredHistory.map(customerOrderHistoryRow).join('')||'<tr><td colspan="5">No orders in this period.</td></tr>'}</tbody></table></div>`:''}
-  <div class="actions" style="margin-top:20px"><button class="btn secondary" id="custLogout">Sign out</button></div></main>${siteFooter()}`;
+  <div class="actions" style="margin-top:20px"><button class="btn secondary" id="custLogout">Sign out</button></div></main>${siteFooter()}${floatingSupportButton('digit58')}`;
   active.filter(order=>order.status==='Priced'&&order.upiUri).forEach(order=>{
     const target=document.getElementById(`qr-${order.id}`);
     if(target&&window.QRCode)new QRCode(target,{text:order.upiUri,width:180,height:180});
   });
   bindCustomerPromotionActions(promotions);
+  bindCustomerStoreHub(store);
+  bindFloatingSupportButton();
   startPromotionAutoScroll();
   bindRazorpayPaymentActions(active,store,customer);
   $('#placeOrderBtn').onclick=()=>openPlaceOrderModal(store,customer,promotions);
@@ -1040,7 +1063,7 @@ function renderCustomerCards(store,customer,cards,orders=[],promotions=[]){
   bindCardChatForms(cards,'customer',()=>loadAndRenderCustomerView(store,customer));
   initShakeDetection();
   bindAndroidAppFooter();
-  $('#custLogout').onclick=async()=>{stopCustomerRealtime();customerPromotionQuantities.clear();activePromotionStoreId='';await api.logout();location.hash=`store&owner=${encodeURIComponent(store.ownerId)}&store=${encodeURIComponent(store.id)}`;boot()};
+  $('#custLogout').onclick=async()=>{stopCustomerRealtime();customerPromotionQuantities.clear();activePromotionStoreId='';customerStoreLinks=[];await api.logout();location.hash=`store&owner=${encodeURIComponent(store.ownerId)}&store=${encodeURIComponent(store.id)}`;boot()};
 }
 function vialMarkup(card){
   const remaining=daysRemaining(card),total=Math.max(1,Number(card.reminderDays)||1),due=isCardDue(card);
@@ -1052,10 +1075,8 @@ function customerCardCardMarkup(card){
   let payBlock='';
   if(refillPending){
     payBlock='<button class="btn full secondary refill-card-action" type="button" disabled>Refill</button><p class="muted refill-card-note">Your refill order was sent. Follow it under Your orders while the store reviews the amount and processes it.</p>';
-  }else if(due){
-    payBlock=`<button class="btn full green refill-card-action" data-buy-again="${html(card.id)}">Refill</button>`;
   }else{
-    payBlock=`<button class="btn full secondary refill-card-action" type="button" disabled>Refill</button><p class="muted refill-card-note">Available in ${remaining} day(s).</p>`;
+    payBlock=`<button class="btn full green refill-card-action" data-buy-again="${html(card.id)}">Refill</button><p class="muted refill-card-note">Refill anytime — the store will review the request and start a new order.</p>`;
   }
   return `<article class="card reminder-card premium-card vial-card ${due?'due':''}"><div class="vial-card-body"><div class="vial-card-info"><h3>${html(card.productName)}</h3><p class="muted">${money(card.price)} · every ${Number(card.reminderDays)} day(s)</p><div class="chips"><span class="chip ${due?'due':''}">${due?'Due now':`${remaining} day(s) left`}</span>${refillPending?'<span class="chip due">Refill order sent</span>':''}</div></div>${vialMarkup(card)}</div>${payBlock}${cardChatMarkup(card,'customer')}</article>`;
 }

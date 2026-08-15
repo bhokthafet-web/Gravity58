@@ -7,6 +7,9 @@ const SOURCE_LABELS={digit58:'Refills',digitalMenu:'Digital Menu','digital-menu'
 const SOURCE_HOME={digit58:'/digit58/','digital-menu':'/digital-menu/',digitalMenu:'/digital-menu/',pos:'/pos/'};
 function toast(message){const target=$('#toast');if(!target)return alert(message);target.textContent=message;target.classList.add('show');setTimeout(()=>target.classList.remove('show'),2400)}
 function sourceLabel(source){return SOURCE_LABELS[source]||'G58'}
+function closeSupport(){const home=SOURCE_HOME[source]||'/';if(history.length>1)history.back();else location.href=home}
+function closeButton(){return '<button class="support-close" id="supportClose" type="button" aria-label="Close support">✕</button>'}
+function bindCloseButton(){$('#supportClose')?.addEventListener('click',closeSupport)}
 
 let session=null,tickets=[],source='';
 
@@ -19,11 +22,11 @@ async function boot(){
   renderApp();
 }
 function renderConfigError(){
-  app.innerHTML=`<main class="screen"><section class="auth-card"><h2>G58 Support</h2><p class="muted">Support is temporarily unavailable. Please try again shortly.</p></section></main>`;
+  app.innerHTML=`<main class="screen"><section class="auth-card support-close-container">${closeButton()}<h2>G58 Support</h2><p class="muted">Support is temporarily unavailable. Please try again shortly.</p></section></main>`;bindCloseButton();
 }
 function renderSignedOut(){
   const home=SOURCE_HOME[source]||'/';
-  app.innerHTML=`<main class="screen"><section class="auth-card"><div class="brand"><a href="/" aria-label="G58 home"><svg class="brand-mark" viewBox="0 0 120 120" fill="none" stroke="#F97316" stroke-width="8" aria-hidden="true"><circle cx="60" cy="26" r="15"/><circle cx="28" cy="82" r="15"/><circle cx="92" cy="82" r="15"/></svg></a><div><h2>G58 Support</h2><p class="tagline">Sign in to raise or view support tickets</p></div></div><p class="muted">Please sign in to your ${html(sourceLabel(source))} account first, then come back to Support.</p><a class="btn full" href="${html(home)}" style="margin-top:14px;display:block;text-align:center;text-decoration:none">Go to ${html(sourceLabel(source))}</a></section></main>`;
+  app.innerHTML=`<main class="screen"><section class="auth-card support-close-container">${closeButton()}<div class="brand"><a href="/" aria-label="G58 home"><svg class="brand-mark" viewBox="0 0 120 120" fill="none" stroke="#F97316" stroke-width="8" aria-hidden="true"><circle cx="60" cy="26" r="15"/><circle cx="28" cy="82" r="15"/><circle cx="92" cy="82" r="15"/></svg></a><div><h2>G58 Support</h2><p class="tagline">Sign in to raise or view support tickets</p></div></div><p class="muted">Please sign in to your ${html(sourceLabel(source))} account first, then come back to Support.</p><a class="btn full" href="${html(home)}" style="margin-top:14px;display:block;text-align:center;text-decoration:none">Go to ${html(sourceLabel(source))}</a></section></main>`;bindCloseButton();
 }
 async function loadTickets(){
   tickets=await api.list(TICKET_KIND).catch(()=>[]);
@@ -35,12 +38,12 @@ function ticketMarkup(ticket){
   return `<article class="card ticket-card"><div class="section-head"><h3>${html(ticket.subject)}</h3><span class="chip ${statusChipClass(ticket.status)}">${html(ticket.status)}</span></div><p class="muted" style="margin:0 0 10px">${html(sourceLabel(ticket.source))} · ${new Date(ticket.createdAt).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'})}</p><div class="ticket-thread">${messages.map(message=>`<div class="ticket-message ${message.senderRole==='requester'?'mine':''}"><strong>${html(message.senderRole==='admin'?'G58 Support':message.senderName||'You')}</strong><span>${html(message.text)}</span></div>`).join('')}</div>${ticket.status!=='Resolved'?`<form class="ticket-reply-form" data-ticket-reply="${html(ticket.id)}"><input name="message" maxlength="1000" placeholder="Add a reply…"><button class="btn small" type="submit">Send</button></form>`:''}</article>`;
 }
 function renderApp(){
-  app.innerHTML=`<main class="support-shell"><header class="support-header"><div class="brand"><a href="/" aria-label="G58 home"><svg class="brand-mark" viewBox="0 0 120 120" fill="none" stroke="#F97316" stroke-width="8" aria-hidden="true"><circle cx="60" cy="26" r="15"/><circle cx="28" cy="82" r="15"/><circle cx="92" cy="82" r="15"/></svg></a><div><h2>G58 Support</h2><p class="tagline">Signed in as ${html(session.email||'')}</p></div></div><button class="btn secondary small" id="supportLogout">Sign out</button></header>
+  app.innerHTML=`<main class="support-shell"><header class="support-header"><div class="brand"><a href="/" aria-label="G58 home"><svg class="brand-mark" viewBox="0 0 120 120" fill="none" stroke="#F97316" stroke-width="8" aria-hidden="true"><circle cx="60" cy="26" r="15"/><circle cx="28" cy="82" r="15"/><circle cx="92" cy="82" r="15"/></svg></a><div><h2>G58 Support</h2><p class="tagline">Signed in as ${html(session.email||'')}</p></div></div><div class="support-header-actions"><button class="btn secondary small" id="supportLogout">Sign out</button>${closeButton()}</div></header>
   <section class="card" style="max-width:640px;margin:0 auto 24px"><h3 style="margin-top:0">Raise a Ticket</h3>${source?`<p class="muted">Regarding: <strong>${html(sourceLabel(source))}</strong></p>`:''}<form id="raiseTicketForm"><div class="field"><label>Subject</label><input name="subject" maxlength="160" required></div><div class="field"><label>Message</label><textarea name="message" maxlength="2000" required></textarea></div><button class="btn full" type="submit">Submit Ticket</button></form></section>
   <div class="section-head" style="max-width:640px;margin:0 auto"><h3>Your Tickets</h3></div>
   <div class="grid" style="max-width:640px;margin:0 auto;gap:14px">${tickets.map(ticketMarkup).join('')||'<div class="empty">No tickets yet.</div>'}</div>
   </main>`;
-  $('#supportLogout').onclick=async()=>{await api.logout();session=null;renderSignedOut()};
+  bindCloseButton();$('#supportLogout').onclick=async()=>{await api.logout();session=null;renderSignedOut()};
   $('#raiseTicketForm').onsubmit=async event=>{
     event.preventDefault();
     const values=Object.fromEntries(new FormData(event.target)),button=event.submitter;

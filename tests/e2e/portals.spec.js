@@ -221,9 +221,9 @@ test("G58 admin manages Refills stores independently for the same owner", async 
     admin: true,
     state: null,
     seed: {
+      digit58_entitlements: [{ id: "shared-entitlement", ownerId, ownerEmail: "owner@example.com", active: true, paused: false, lifetime: true, storeSlots: 2, policyAcceptedAt: "2026-08-14T08:00:00.000Z" }],
       digit58_owners: [
         { id: "owner-test2", ownerId, ownerEmail: "owner@example.com", storeId: "test2", storeName: "test2", category: "Medical store", city: "Hyderabad", createdAt: "2026-08-14T08:00:00.000Z" },
-        { id: "owner-amruth", ownerId, ownerEmail: "owner@example.com", storeId: "amruth", storeName: "Amruth Medicals", category: "Medical store", city: "Hyderabad", createdAt: "2026-08-15T08:00:00.000Z" },
       ],
       [`digit58_store_${ownerId}`]: [
         { id: "test2", ownerId, name: "test2", category: "Medical store", city: "Hyderabad", suspended: false, createdAt: "2026-08-14T08:00:00.000Z" },
@@ -243,6 +243,8 @@ test("G58 admin manages Refills stores independently for the same owner", async 
   await expect(test2Row).toContainText("test2");
   await expect(amruthRow).toContainText("Amruth Medicals");
   await expect(amruthRow).toContainText("20% Off");
+  await expect(page.locator(".entitlement-store-list").getByRole("button", { name: /test2/ })).toBeVisible();
+  await expect(page.locator(".entitlement-store-list").getByRole("button", { name: /Amruth Medicals/ })).toBeVisible();
   await amruthRow.getByRole("button", { name: "Manage" }).click();
   await expect(page.getByRole("heading", { name: "Manage Amruth Medicals" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Open Customer Store" })).toHaveAttribute("href", /owner=shared_refills_owner&store=amruth/);
@@ -416,6 +418,50 @@ test("Refills owner header links to G58 and stores a customer highlight message"
   await assertNoErrors();
 });
 
+test("one Refills customer portal switches between every linked store and keeps chat Send visible", async ({ page }) => {
+  const customerId = "shared_customer", firstOwner = "owner_a", secondOwner = "owner_b", firstStore = "amruth", secondStore = "test2";
+  await page.setViewportSize({ width: 390, height: 844 });
+  await prepareMockApi(page, {
+    state: null,
+    initialUser: { $id: customerId, email: "shared@example.com", name: "Shared Customer" },
+    seed: {
+      [`digit58_store_${firstOwner}`]: [{ id: firstStore, ownerId: firstOwner, name: "Amruth Medicals", category: "Medical store", city: "Hyderabad" }],
+      [`digit58_store_${secondOwner}`]: [{ id: secondStore, ownerId: secondOwner, name: "test2", category: "General store", city: "Hyderabad" }],
+      [`digit58_customer_${firstOwner}`]: [{ id: "customer_a", ownerId: firstOwner, storeId: firstStore, customerAccountId: customerId, customerName: "Shared Customer", customerEmail: "shared@example.com", phone: "9876543210" }],
+      [`digit58_customer_${secondOwner}`]: [{ id: "customer_b", ownerId: secondOwner, storeId: secondStore, customerAccountId: customerId, customerName: "Shared Customer", customerEmail: "shared@example.com", phone: "9876543210" }],
+      [`digit58_order_${firstOwner}`]: [{ id: "refill_chat_order", ownerId: firstOwner, storeId: firstStore, customerAccountId: customerId, customerName: "Shared Customer", phone: "9876543210", items: [{ name: "Monthly tablets", qty: 1 }], amount: 0, status: "Requested", messages: [], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }],
+      [`digit58_card_${firstOwner}`]: [{ id: "anytime_card", ownerId: firstOwner, storeId: firstStore, customerAccountId: customerId, productName: "Vitamin tablets", price: 99, reminderDays: 30, dueAt: new Date(Date.now() + 20 * 86400000).toISOString(), status: "Active" }],
+    },
+  });
+  const assertNoErrors = monitorPageErrors(page);
+  await page.goto(`/digit58/#store&owner=${firstOwner}&store=${firstStore}`);
+  await expect(page.locator("#customerStoreSwitch option")).toHaveCount(2);
+  await expect(page.locator(".customer-store-hub")).toContainText("2 linked stores");
+  const chatForm = page.locator('[data-order-chat="refill_chat_order"]');
+  await expect(chatForm.getByRole("button", { name: "Send" })).toBeVisible();
+  const sendBox = await chatForm.getByRole("button", { name: "Send" }).boundingBox();
+  expect(sendBox.x + sendBox.width).toBeLessThanOrEqual(390);
+  await chatForm.locator('input[name="message"]').fill("Please confirm availability");
+  await chatForm.getByRole("button", { name: "Send" }).click();
+  await expect(page.locator(".order-item-card", { hasText: "Monthly tablets" }).locator(".order-chat-log")).toContainText("Please confirm availability");
+
+  const reminder = page.locator("#customerCardGrid .reminder-card");
+  await expect(reminder).toContainText("20 day(s) left");
+  await reminder.getByRole("button", { name: "Refill" }).click();
+  await page.getByRole("button", { name: "Send Refill Request" }).click();
+  await expect(page.locator("#toast")).toContainText("Refill order sent");
+
+  await page.locator("#customerStoreSwitch").selectOption(`${secondOwner}:${secondStore}`);
+  await expect(page.locator(".store-hero")).toContainText("test2");
+  await expect(page).toHaveURL(new RegExp(`owner=${secondOwner}&store=${secondStore}`));
+
+  await page.locator(".floating-support-btn").click();
+  await expect(page.locator("#supportPopup")).toBeVisible();
+  await page.locator("#supportPopupClose").click();
+  await expect(page.locator("#supportPopup")).toHaveCount(0);
+  await assertNoErrors();
+});
+
 test("Refills owner reviews a reordered request and sends the normal payment QR", async ({ page }) => {
   const ownerId = "refill_owner";
   const storeId = "refill_store";
@@ -509,7 +555,7 @@ test("Refills reminder cards default to swipe view and can switch temporarily to
   await expect(page.getByRole("button", { name: "Swipe", exact: true })).toHaveAttribute("aria-pressed", "true");
   await expect(cards).toHaveCount(3);
   await expect(cards.getByRole("button", { name: "Refill" })).toHaveCount(3);
-  for (const button of await cards.getByRole("button", { name: "Refill" }).all()) await expect(button).toBeDisabled();
+  for (const button of await cards.getByRole("button", { name: "Refill" }).all()) await expect(button).toBeEnabled();
   const swipeGeometry = await page.evaluate(() => {
     const grid = document.querySelector("#customerCardGrid"), items = [...grid.querySelectorAll(".reminder-card")];
     const rail = grid.getBoundingClientRect(), first = items[0].getBoundingClientRect(), second = items[1].getBoundingClientRect();
