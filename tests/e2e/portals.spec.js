@@ -9,6 +9,22 @@ const indiaDate = (value = new Date()) => {
   return `${parts.year}-${parts.month}-${parts.day}`;
 };
 
+test("every G58 page reports a backend outage and recovers after retry", async ({ page }) => {
+  let serverAvailable = false;
+  await page.addInitScript(() => { window.__G58_TEST_SERVER_STATUS__ = true; });
+  await page.route(/sgp\.cloud\.appwrite\.io\/v1\/account\?g58-status=/, (route) => {
+    if (!serverAvailable) return route.abort("failed");
+    return route.fulfill({ status: 401, contentType: "application/json", body: JSON.stringify({ message: "Authentication required" }) });
+  });
+  await page.goto("/about/");
+  const status = page.locator("#g58ServerStatus");
+  await expect(status).toBeVisible();
+  await expect(status).toContainText("G58 server is temporarily unavailable");
+  serverAvailable = true;
+  await status.getByRole("button", { name: "Retry" }).click();
+  await expect(status).toBeHidden();
+});
+
 test("advertising user can register, book a timed placement and view the request", async ({ page }) => {
   await prepareMockApi(page, { seed: { slots } });
   const assertNoErrors = monitorPageErrors(page);
@@ -400,6 +416,7 @@ test("Refills owner header links to G58 and stores a customer highlight message"
   await expect(homeLink).toHaveText("www.g58.in");
   await expect(homeLink).toHaveAttribute("href", "https://www.g58.in/");
   expect(await homeLink.evaluate((node) => getComputedStyle(node).animationName)).toBe("g58TopbarBlink");
+  await expect(page.locator(".floating-support-btn")).toBeVisible();
 
   await page.getByRole("button", { name: /My Stores/ }).click();
   await page.getByRole("button", { name: "Edit" }).click();
@@ -455,10 +472,7 @@ test("one Refills customer portal switches between every linked store and keeps 
   await expect(page.locator(".store-hero")).toContainText("test2");
   await expect(page).toHaveURL(new RegExp(`owner=${secondOwner}&store=${secondStore}`));
 
-  await page.locator(".floating-support-btn").click();
-  await expect(page.locator("#supportPopup")).toBeVisible();
-  await page.locator("#supportPopupClose").click();
-  await expect(page.locator("#supportPopup")).toHaveCount(0);
+  await expect(page.locator(".floating-support-btn")).toHaveCount(0);
   await assertNoErrors();
 });
 
