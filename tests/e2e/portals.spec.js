@@ -442,7 +442,7 @@ test("one Refills customer portal switches between every linked store and keeps 
     state: null,
     initialUser: { $id: customerId, email: "shared@example.com", name: "Shared Customer" },
     seed: {
-      [`digit58_store_${firstOwner}`]: [{ id: firstStore, ownerId: firstOwner, name: "Amruth Medicals", category: "Medical store", city: "Hyderabad" }],
+      [`digit58_store_${firstOwner}`]: [{ id: firstStore, ownerId: firstOwner, name: "Amruth Medicals", category: "Medical store", city: "Hyderabad", minimumOrderEnabled: true, minimumOrderValue: 500 }],
       [`digit58_store_${secondOwner}`]: [{ id: secondStore, ownerId: secondOwner, name: "test2", category: "General store", city: "Hyderabad" }],
       [`digit58_customer_${firstOwner}`]: [{ id: "customer_a", ownerId: firstOwner, storeId: firstStore, customerAccountId: customerId, customerName: "Shared Customer", customerEmail: "shared@example.com", phone: "9876543210" }],
       [`digit58_customer_${secondOwner}`]: [{ id: "customer_b", ownerId: secondOwner, storeId: secondStore, customerAccountId: customerId, customerName: "Shared Customer", customerEmail: "shared@example.com", phone: "9876543210" }],
@@ -473,6 +473,96 @@ test("one Refills customer portal switches between every linked store and keeps 
   await expect(page).toHaveURL(new RegExp(`owner=${secondOwner}&store=${secondStore}`));
 
   await expect(page.locator(".floating-support-btn")).toHaveCount(0);
+  await assertNoErrors();
+});
+
+test("Refills minimum criteria supports customer approval, owner rejection reasons and an owner off switch", async ({ page }) => {
+  const ownerId = "minimum_owner", storeId = "minimum_store", customerId = "minimum_customer", orderKind = `digit58_order_${ownerId}`;
+  const owner = { $id: ownerId, email: "minimum-owner@example.com", name: "Minimum Store Owner" };
+  const customer = { $id: customerId, email: "minimum-customer@example.com", name: "Minimum Customer" };
+  await prepareMockApi(page, {
+    state: null,
+    initialUser: owner,
+    seed: {
+      digit58_entitlements: [{ id: "minimum_entitlement", ownerId, active: true, paused: false, lifetime: true, policyAcceptedAt: new Date().toISOString() }],
+      [`digit58_store_${ownerId}`]: [{ id: storeId, ownerId, name: "Minimum Medicals", category: "Medical store", city: "Hyderabad", minimumOrderEnabled: true, minimumOrderValue: 500 }],
+      [`digit58_customer_${ownerId}`]: [{ id: "minimum_link", ownerId, storeId, customerAccountId: customerId, customerName: customer.name, customerEmail: customer.email, phone: "9876543210" }],
+      [orderKind]: [],
+    },
+  });
+  const assertNoErrors = monitorPageErrors(page);
+  await page.goto("/digit58/");
+  await page.getByRole("button", { name: /My Stores/ }).click();
+  await page.getByRole("button", { name: "Edit" }).click();
+  await expect(page.locator("#minimumOrderEnabled")).toBeChecked();
+  await page.locator('#storeForm input[name="minimumOrderValue"]').fill("600");
+  await page.getByRole("button", { name: "Save Store" }).click();
+  await page.getByRole("button", { name: /Logout/ }).click();
+  await expect(page.locator("#ownerAuthForm")).toBeVisible();
+
+  await page.evaluate((nextUser) => window.__g58Mock.setUser(nextUser), customer);
+  await page.evaluate(({ ownerId: nextOwnerId, storeId: nextStoreId }) => {
+    location.hash = `store&owner=${encodeURIComponent(nextOwnerId)}&store=${encodeURIComponent(nextStoreId)}`;
+  }, { ownerId, storeId });
+  await expect(page.locator(".store-minimum-order")).toContainText("₹600");
+  await page.getByRole("button", { name: "+ Place New Order" }).click();
+  await page.locator('#placeOrderForm input[name="itemName[]"]').fill("Monthly health products");
+  await page.locator("#customerOrderValue").fill("300");
+  await page.locator('#placeOrderForm input[name="phone"]').fill("9876543210");
+  await page.getByRole("button", { name: "Submit Order", exact: true }).click();
+  await expect(page.locator("#toast")).toContainText("Minimum new order value is ₹600");
+  await page.getByRole("button", { name: "Request Owner Approval" }).click();
+  await expect(page.locator("#toast")).toContainText("approval requested");
+  let orders = await page.evaluate((kind) => window.__g58Mock.store[kind], orderKind);
+  expect(orders).toHaveLength(1);
+  expect(orders[0]).toMatchObject({ status: "Minimum Approval Requested", customerOrderValue: 300, minimumOrderValueAtOrder: 600 });
+
+  await page.getByRole("button", { name: "Sign out" }).click();
+  await expect(page.locator("#customerAuthForm")).toBeVisible();
+  await page.evaluate((nextUser) => window.__g58Mock.setUser(nextUser), owner);
+  await page.evaluate(() => { location.hash = ""; });
+  orders = await page.evaluate((kind) => window.__g58Mock.store[kind] || [], orderKind);
+  expect(orders, "the approval request must remain in the shared mock cloud after switching accounts").toHaveLength(1);
+  await page.getByRole("button", { name: /Orders/ }).click();
+  const approvalCard = page.locator(".order-item-card", { hasText: "Below-minimum approval requested" });
+  await expect(approvalCard).toContainText("Customer estimate ₹300");
+  await approvalCard.getByRole("button", { name: "Approve Below-Minimum Order" }).click();
+  await expect(page.locator("#toast")).toContainText("Below-minimum order approved");
+  orders = await page.evaluate((kind) => window.__g58Mock.store[kind], orderKind);
+  expect(orders[0]).toMatchObject({ status: "Requested", minimumApprovalStatus: "Approved" });
+
+  const approvedCard = page.locator(".order-item-card", { hasText: "Monthly health products" });
+  await approvedCard.getByRole("button", { name: "Reject" }).click();
+  await page.locator('#rejectOrderForm textarea[name="rejectionReason"]').fill("Requested product is unavailable today.");
+  await page.getByRole("button", { name: "Reject Order" }).click();
+  orders = await page.evaluate((kind) => window.__g58Mock.store[kind], orderKind);
+  expect(orders[0]).toMatchObject({ status: "Rejected", rejectionReason: "Requested product is unavailable today." });
+
+  await page.getByRole("button", { name: /My Stores/ }).click();
+  await page.getByRole("button", { name: "Edit" }).click();
+  await page.locator("#minimumOrderEnabled").uncheck();
+  await page.getByRole("button", { name: "Save Store" }).click();
+  await page.getByRole("button", { name: /Logout/ }).click();
+  await expect(page.locator("#ownerAuthForm")).toBeVisible();
+
+  await page.evaluate((nextUser) => window.__g58Mock.setUser(nextUser), customer);
+  await page.evaluate(({ ownerId: nextOwnerId, storeId: nextStoreId }) => {
+    location.hash = `store&owner=${encodeURIComponent(nextOwnerId)}&store=${encodeURIComponent(nextStoreId)}`;
+  }, { ownerId, storeId });
+  await expect(page.getByRole("heading", { name: "Order Rejected" })).toBeVisible();
+  await expect(page.locator(".rejection-reason")).toContainText("Requested product is unavailable today.");
+  await page.getByRole("button", { name: "Understood" }).click();
+  await expect(page.locator(".rejection-history-reason")).toContainText("Requested product is unavailable today.");
+  await expect(page.locator(".store-minimum-order")).toHaveCount(0);
+
+  await page.getByRole("button", { name: "+ Place New Order" }).click();
+  await expect(page.locator("#customerOrderValue")).toHaveCount(0);
+  await page.locator('#placeOrderForm input[name="itemName[]"]').fill("Small urgent order");
+  await page.locator('#placeOrderForm input[name="phone"]').fill("9876543210");
+  await page.getByRole("button", { name: "Submit Order", exact: true }).click();
+  await expect(page.locator("#toast")).toContainText("Order sent to the store");
+  orders = await page.evaluate((kind) => window.__g58Mock.store[kind], orderKind);
+  expect(orders[0]).toMatchObject({ status: "Requested", customerOrderValue: 0 });
   await assertNoErrors();
 });
 

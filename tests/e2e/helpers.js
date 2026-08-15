@@ -38,7 +38,7 @@ export function mockApiScript({ initialUser = null, admin = false, seed = {} } =
     let serial=0;
     const clean=row=>({...row,id:row.id||row.$id,$id:row.$id||row.id});
     const notify=(kind,row)=>window.dispatchEvent(new CustomEvent('g58-ad-data-changed',{detail:{kind,row}}));
-    window.__g58Mock={store,get user(){return user},recoveries:[],permissionCalls:[],createAttempts:[],removedMedia:[]};
+    window.__g58Mock={store,get user(){return user},setUser(next){user=next?clone(next):null},recoveries:[],permissionCalls:[],createAttempts:[],removedMedia:[]};
     window.Gravity58Ads={
       configured:true,config:{adminTeamId:'test-team'},collections:{},client:null,account:null,databases:null,tables:null,
       list:async(kind,filters={})=>(store[kind]||[]).filter(row=>Object.entries(filters).every(([key,value])=>value===''||value===undefined||row[key]===value)).map(clean),
@@ -71,7 +71,12 @@ export function mockApiScript({ initialUser = null, admin = false, seed = {} } =
         }
         if(action==='digit58-create-order'){
           const kind='digit58_order_'+String(payload.ownerId||'').replace(/[^a-zA-Z0-9._-]/g,'-').slice(0,40);
-          const row=clean({id:'order-'+(++serial),ownerId:payload.ownerId,storeId:payload.storeId,customerAccountId:user?.\$id,customerName:payload.customerName,customerEmail:payload.customerEmail,phone:String(payload.phone||'').replace(/\D/g,''),items:clone(payload.items||[]),amount:0,previousAmount:0,upiUri:'',status:'Requested',messages:[],createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()});
+          const storeKind='digit58_store_'+String(payload.ownerId||'').replace(/[^a-zA-Z0-9._-]/g,'-').slice(0,40),selectedStore=(store[storeKind]||[]).find(row=>(row.id||row.\$id)===payload.storeId);
+          if(!selectedStore)throw new Error('Store details are missing.');
+          const minimum=selectedStore.minimumOrderEnabled===false?0:Math.max(0,Number(selectedStore.minimumOrderValue)||0),customerOrderValue=Math.max(0,Number(payload.customerOrderValue)||0),belowMinimum=minimum>0&&customerOrderValue<minimum;
+          if(belowMinimum&&!payload.requestMinimumApproval)throw new Error('Minimum new order value is ₹'+minimum.toLocaleString('en-IN')+'. Ask the store owner for approval if needed.');
+          const status=belowMinimum?'Minimum Approval Requested':'Requested';
+          const row=clean({id:'order-'+(++serial),ownerId:payload.ownerId,storeId:payload.storeId,customerAccountId:user?.\$id,customerName:payload.customerName,customerEmail:payload.customerEmail,phone:String(payload.phone||'').replace(/\D/g,''),items:clone(payload.items||[]),customerOrderValue,minimumOrderValueAtOrder:minimum,minimumApprovalStatus:belowMinimum?'Requested':'',amount:0,previousAmount:0,upiUri:'',status,messages:[],createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()});
           (store[kind]||=[]).unshift(row);notify(kind,row);return {ok:true,order:clone(row)};
         }
         if(action==='digit58-create-refill-order'){

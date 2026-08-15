@@ -701,6 +701,23 @@ async function createDigit58Order(call, input, userId, options = {}) {
     name: text(item.name, 160), qty: Math.max(1, Math.min(99, Math.floor(finite(item.qty, 1)))),
   })).filter(item => item.name);
   if (!cleanItems.length) throw new Error('Enter at least one item name.');
+  const enforceMinimum = options.enforceMinimum !== false;
+  const customerOrderValue = Math.max(0, finite(input.customerOrderValue));
+  let minimumOrderValueAtOrder = 0, status = 'Requested', minimumApprovalStatus = '';
+  if (enforceMinimum) {
+    const storeRow = await call(`/tablesdb/${DATABASE_ID}/tables/${TABLE_ID}/rows/${encodeURIComponent(storeId)}`);
+    if (storeRow.kind !== digit58StoreKind(ownerId)) throw new Error('This order does not belong to the selected Refills store.');
+    const store = cleanRow(storeRow);
+    const minimumEnabled = store.minimumOrderEnabled !== false && finite(store.minimumOrderValue) > 0;
+    minimumOrderValueAtOrder = minimumEnabled ? Math.max(0, finite(store.minimumOrderValue)) : 0;
+    if (minimumOrderValueAtOrder && customerOrderValue < minimumOrderValueAtOrder) {
+      if (!input.requestMinimumApproval) {
+        throw new Error(`Minimum new order value is ₹${minimumOrderValueAtOrder.toLocaleString('en-IN')}. Ask the store owner for approval if needed.`);
+      }
+      status = 'Minimum Approval Requested';
+      minimumApprovalStatus = 'Requested';
+    }
+  }
   const phone = normalisePhone(input.phone);
   const lat = Number(input.locationLat), lng = Number(input.locationLng), hasLocation = Number.isFinite(lat) && Number.isFinite(lng);
   const createdAt = new Date().toISOString();
@@ -710,13 +727,14 @@ async function createDigit58Order(call, input, userId, options = {}) {
     phone: phone.slice(0, 15),
     locationLat: hasLocation ? lat : '', locationLng: hasLocation ? lng : '',
     locationUrl: hasLocation ? `https://www.google.com/maps?q=${lat},${lng}` : '',
-    items: cleanItems, amount: 0, upiUri: '',
+    items: cleanItems, amount: 0, upiUri: '', customerOrderValue,
+    minimumOrderValueAtOrder, minimumApprovalStatus,
     previousAmount: Math.max(0, finite(options.previousAmount)),
     reorderedFrom: text(input.reorderedFrom, 36),
     refillCardId: text(options.refillCardId, 40),
     prescriptionUrl: text(input.prescriptionUrl, 1000), prescriptionFileId: text(input.prescriptionFileId, 80),
     prescriptionName: text(input.prescriptionName, 200), prescriptionType: text(input.prescriptionType, 100),
-    status: 'Requested', messages: [], createdAt, updatedAt: createdAt,
+    status, messages: [], createdAt, updatedAt: createdAt,
   };
   const created = await createRow(call, record.id, digit58OrderKind(ownerId), record, rowPermissionsFor([ownerId, userId]));
   return cleanRow(created);
@@ -737,7 +755,7 @@ async function createDigit58RefillOrder(call, input, userId) {
     ownerId, storeId: card.storeId, customerName: text(input.customerName, 120), customerEmail: text(input.customerEmail, 250),
     phone, locationLat: input.locationLat, locationLng: input.locationLng,
     items: [{ name: card.productName, qty: 1 }],
-  }, userId, { previousAmount: card.price, refillCardId: cardId });
+  }, userId, { previousAmount: card.price, refillCardId: cardId, enforceMinimum: false });
   await updateRow(call, cardId, {
     ...card, status: 'Refill Requested', refillRequestedAt: new Date().toISOString(), activeOrderId: order.id,
     phone: phone.slice(0, 15), updatedAt: new Date().toISOString(),
@@ -769,7 +787,7 @@ async function createDigit58Reorder(call, input, userId) {
     locationLng: input.locationLng,
     items: previous.items,
     reorderedFrom: previous.id || sourceOrderId,
-  }, userId, { previousAmount: previous.amount });
+  }, userId, { previousAmount: previous.amount, enforceMinimum: false });
 }
 
 export default async ({ req, res, error }) => {

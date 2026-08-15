@@ -445,13 +445,14 @@ test('digit58: a customer can create an order with an item list, granting owner+
   globalThis.fetch = async (url, options = {}) => {
     const method = options.method || 'GET', body = options.body ? JSON.parse(options.body) : null;
     requests.push({ url: String(url), method, body });
+    if (method === 'GET') return new Response(JSON.stringify({ $id: 'store_1', kind: `digit58_store_${ownerId}`, payload: JSON.stringify({ id: 'store_1', ownerId, minimumOrderEnabled: true, minimumOrderValue: 200 }) }), { status: 200 });
     if (method === 'POST') return new Response(JSON.stringify({ $id: body.rowId, ...body.data }), { status: 201 });
     throw new Error(`Unexpected request ${url}`);
   };
   process.env.APPWRITE_FUNCTION_PROJECT_ID = 'project_1';
   try {
     const response = await createDigitalOrder({
-      req: { method: 'POST', headers: { 'x-appwrite-key': 'dynamic-key', 'x-appwrite-user-id': customerId }, bodyJson: { action: 'digit58-create-order', ownerId, storeId: 'store_1', customerName: 'Test Customer', customerEmail: 'customer@example.test', items: [{ name: 'Paracetamol 500mg', qty: 2 }, { name: '  ', qty: 1 }] } },
+      req: { method: 'POST', headers: { 'x-appwrite-key': 'dynamic-key', 'x-appwrite-user-id': customerId }, bodyJson: { action: 'digit58-create-order', ownerId, storeId: 'store_1', customerName: 'Test Customer', customerEmail: 'customer@example.test', customerOrderValue: 250, items: [{ name: 'Paracetamol 500mg', qty: 2 }, { name: '  ', qty: 1 }] } },
       res: { json: (body, status = 200) => ({ body, status }) }, error: () => {},
     });
     assert.equal(response.status, 201);
@@ -459,9 +460,43 @@ test('digit58: a customer can create an order with an item list, granting owner+
     assert.equal(response.body.order.items.length, 1);
     assert.equal(response.body.order.items[0].name, 'Paracetamol 500mg');
     assert.equal(response.body.order.amount, 0);
+    assert.equal(response.body.order.customerOrderValue, 250);
+    assert.equal(response.body.order.minimumOrderValueAtOrder, 200);
     const createRequest = requests.find(request => request.method === 'POST');
     assert.ok(createRequest.body.permissions.includes(`read(\"user:${ownerId}\")`));
     assert.ok(createRequest.body.permissions.includes(`read(\"user:${customerId}\")`));
+  } finally {
+    globalThis.fetch = previousFetch;
+  }
+});
+
+test('digit58: a below-minimum new order requires owner approval', async () => {
+  const previousFetch = globalThis.fetch;
+  const requests = [];
+  globalThis.fetch = async (url, options = {}) => {
+    const method = options.method || 'GET', body = options.body ? JSON.parse(options.body) : null;
+    requests.push({ url: String(url), method, body });
+    if (method === 'GET') return new Response(JSON.stringify({ $id: 'store_1', kind: `digit58_store_${ownerId}`, payload: JSON.stringify({ id: 'store_1', ownerId, minimumOrderEnabled: true, minimumOrderValue: 500 }) }), { status: 200 });
+    if (method === 'POST') return new Response(JSON.stringify({ $id: body.rowId, ...body.data }), { status: 201 });
+    throw new Error(`Unexpected request ${url}`);
+  };
+  process.env.APPWRITE_FUNCTION_PROJECT_ID = 'project_1';
+  try {
+    const denied = await createDigitalOrder({
+      req: { method: 'POST', headers: { 'x-appwrite-key': 'dynamic-key', 'x-appwrite-user-id': customerId }, bodyJson: { action: 'digit58-create-order', ownerId, storeId: 'store_1', customerOrderValue: 300, items: [{ name: 'Health products', qty: 1 }] } },
+      res: { json: (body, status = 200) => ({ body, status }) }, error: () => {},
+    });
+    assert.equal(denied.status, 400);
+    assert.match(denied.body.error, /Minimum new order value is ₹500/);
+    const requested = await createDigitalOrder({
+      req: { method: 'POST', headers: { 'x-appwrite-key': 'dynamic-key', 'x-appwrite-user-id': customerId }, bodyJson: { action: 'digit58-create-order', ownerId, storeId: 'store_1', customerOrderValue: 300, requestMinimumApproval: true, items: [{ name: 'Health products', qty: 1 }] } },
+      res: { json: (body, status = 200) => ({ body, status }) }, error: () => {},
+    });
+    assert.equal(requested.status, 201);
+    assert.equal(requested.body.order.status, 'Minimum Approval Requested');
+    assert.equal(requested.body.order.minimumApprovalStatus, 'Requested');
+    assert.equal(requested.body.order.customerOrderValue, 300);
+    assert.equal(requested.body.order.minimumOrderValueAtOrder, 500);
   } finally {
     globalThis.fetch = previousFetch;
   }

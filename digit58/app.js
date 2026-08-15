@@ -5,6 +5,8 @@ const id=(prefix='d58')=>`${prefix}-${Date.now().toString(36)}-${Math.random().t
 const html=value=>String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
 const money=value=>`₹${Number(value||0).toLocaleString('en-IN')}`;
 const offerPrice=value=>`${money(value)}/- only`;
+const configuredStoreMinimum=value=>Math.max(0,Number(value?.minimumOrderValue)||0);
+const storeMinimum=value=>value?.minimumOrderEnabled===false?0:configuredStoreMinimum(value);
 function indiaDateValue(value=new Date()){
   const date=value instanceof Date?value:new Date(value);
   if(Number.isNaN(date.getTime()))return '';
@@ -142,7 +144,7 @@ function orderAlertBeep(duration=.18,frequency=880){
 }
 function updateOrderAlertSound(){
   [...ringingIds].forEach(id=>{
-    const stillRinging=state.orders.some(row=>row.id===id&&row.status==='Requested')||state.cards.some(row=>row.id===id&&row.status==='Buy Requested');
+    const stillRinging=state.orders.some(row=>row.id===id&&['Requested','Minimum Approval Requested'].includes(row.status))||state.cards.some(row=>row.id===id&&row.status==='Buy Requested');
     if(!stillRinging)ringingIds.delete(id);
   });
   if(!ringingIds.size){if(orderAlertTimer)clearInterval(orderAlertTimer);orderAlertTimer=null;return}
@@ -190,10 +192,10 @@ async function refreshOwnerOrdersRealtime(){
   const orders=await api.list(orderKind(ownerId)).catch(()=>null);
   if(!orders)return;
   let isNew=false;
-  orders.forEach(order=>{if(order.status==='Requested'&&!knownOrderIds.has(order.id)){ringingIds.add(order.id);isNew=true}knownOrderIds.add(order.id)});
+  orders.forEach(order=>{if(['Requested','Minimum Approval Requested'].includes(order.status)&&!knownOrderIds.has(order.id)){ringingIds.add(order.id);isNew=true}knownOrderIds.add(order.id)});
   state.orders=orders;save();
   updateOrderAlertSound();
-  if(isNew)toast('🔔 New order received');
+  if(isNew)toast('🔔 New order or minimum approval request received');
   if(!$('.modal-backdrop'))refreshView();
 }
 async function refreshOwnerCardsRealtime(){
@@ -400,8 +402,9 @@ function renderView(){if(!activeStore()&&view!=='stores'&&view!=='settings'&&vie
 function ordersView(){
   refreshView=ordersView;
   const orders=activeOrders(state.orders).sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
+  const approvalCount=orders.filter(order=>order.status==='Minimum Approval Requested').length;
   const multiStore=state.stores.length>1;
-  $('#page').innerHTML=`<div class="section-head"><div><h1>Orders</h1><p class="muted">All active orders from every customer${multiStore?', across every store':''}.</p></div></div><div class="grid card-grid">${orders.map(order=>ownerOrderMarkup(order,true,multiStore)).join('')||'<div class="empty">No active orders right now.</div>'}</div>`;
+  $('#page').innerHTML=`<div class="section-head"><div><h1>Orders</h1><p class="muted">All active orders from every customer${multiStore?', across every store':''}.</p></div>${approvalCount?`<span class="chip due">${approvalCount} minimum approval request${approvalCount===1?'':'s'}</span>`:''}</div><div class="grid card-grid">${orders.map(order=>ownerOrderMarkup(order,true,multiStore)).join('')||'<div class="empty">No active orders right now.</div>'}</div>`;
   bindOwnerOrderActions();
   bindOrderChatForms(orders,'owner',refreshView);
   bindDeliveryShareButtons(orders);
@@ -463,7 +466,7 @@ function dashboardView(){
   const cards=state.cards.filter(row=>row.storeId===store?.id);
   const orders=activeOrders(storeOrders(store?.id));
   const due=cards.filter(isCardDue).length;
-  const needsAttention=orders.filter(row=>['Requested','Priced'].includes(row.status));
+  const needsAttention=orders.filter(row=>['Requested','Priced','Minimum Approval Requested'].includes(row.status));
   const bounds=periodBounds();
   const allOrders=state.orders;
   const thisWeek=dateRangeStats(allOrders,bounds.weekStart,bounds.nextWeekStart),lastWeek=dateRangeStats(allOrders,bounds.lastWeekStart,bounds.weekStart);
@@ -508,20 +511,24 @@ function storesView(){
 }
 function storeCard(store){
   const link=publicStoreLink(store);
-  return `<article class="card"><h3>${html(store.name)}</h3><p class="muted">${html(store.category)}${store.city?' · '+html(store.city):''}</p>${store.highlightText?`<p class="store-highlight-text">${html(store.highlightText)}</p>`:''}<p>${html(store.description||'')}</p><div class="chips"><span class="chip">${ownerCustomers(store.id).length} customers</span>${store.razorpayEnabled&&validRazorpayLink(store.razorpayLink)?'<span class="chip delivered">Razorpay enabled</span>':''}${store.suspended?'<span class="chip due">Paused by G58 admin</span>':''}</div><div class="actions"><button class="btn small" data-share-store="${html(store.id)}">Share Link / QR</button><button class="btn small secondary" data-edit-store="${html(store.id)}">Edit</button></div></article>`;
+  return `<article class="card"><h3>${html(store.name)}</h3>${storeMinimum(store)?`<p class="store-minimum-order">Minimum new order ${money(storeMinimum(store))}</p>`:''}<p class="muted">${html(store.category)}${store.city?' · '+html(store.city):''}</p>${store.highlightText?`<p class="store-highlight-text">${html(store.highlightText)}</p>`:''}<p>${html(store.description||'')}</p><div class="chips"><span class="chip">${ownerCustomers(store.id).length} customers</span>${store.razorpayEnabled&&validRazorpayLink(store.razorpayLink)?'<span class="chip delivered">Razorpay enabled</span>':''}${store.suspended?'<span class="chip due">Paused by G58 admin</span>':''}</div><div class="actions"><button class="btn small" data-share-store="${html(store.id)}">Share Link / QR</button><button class="btn small secondary" data-edit-store="${html(store.id)}">Edit</button></div></article>`;
 }
 function publicStoreLink(store){return `${location.origin}${location.pathname.replace(/index\.html$/,'')}#store&owner=${encodeURIComponent(store.ownerId)}&store=${encodeURIComponent(store.id)}`}
 function openStoreForm(storeId=''){
   const store=state.stores.find(row=>row.id===storeId)||{};
-  modal(storeId?'Edit Store':'Create Store',`<form id="storeForm"><div class="field"><label>Store name</label><input name="name" value="${html(store.name||'')}" required></div><div class="form-grid"><div class="field"><label>Category</label><input name="category" value="${html(store.category||'')}" placeholder="Example: Pharmacy"></div><div class="field"><label>City</label><input name="city" value="${html(store.city||'')}"></div></div><div class="field"><label>Customer highlight text <small>(optional)</small></label><input name="highlightText" maxlength="40" value="${html(store.highlightText||'')}" placeholder="Example: 20% Off"><small class="muted">Shown as bold orange text on this store's customer page.</small></div><div class="field"><label>Phone</label><input name="phone" value="${html(store.phone||'')}"></div><div class="field"><label>UPI ID <small>(for order payment QR codes)</small></label><input name="upiId" value="${html(store.upiId||'')}" placeholder="yourstore@upi"></div><label class="option-toggle"><input id="razorpayEnabled" name="razorpayEnabled" type="checkbox" ${store.razorpayEnabled?'checked':''}><span><strong>Enable Razorpay payment link</strong><small>Optional — customers can open your Razorpay page after you set the order amount.</small></span></label><div class="field ${store.razorpayEnabled?'':'hidden'}" id="razorpayLinkField"><label>Razorpay payment link</label><input name="razorpayLink" type="text" inputmode="url" value="${html(store.razorpayLink||'')}" placeholder="razorpay.me/@yourstore"><small class="muted">Only razorpay.me or rzp.io secure links are accepted. https:// is added automatically.</small><div class="razorpay-link-note"><strong>How reusable Razorpay.me links work</strong><small>Razorpay.me has no return-URL setting. After paying, the customer returns to the G58 tab and taps Payment completed. Always verify the payment in Razorpay before accepting the order.</small></div></div><div class="field"><label>Description</label><textarea name="description">${html(store.description||'')}</textarea></div><button class="btn full">${storeId?'Save Store':'Create Store'}</button></form>`,()=>{
-    const razorpayToggle=$('#razorpayEnabled'),razorpayField=$('#razorpayLinkField');
+  const minimumEnabled=store.minimumOrderEnabled===true||(store.minimumOrderEnabled!==false&&configuredStoreMinimum(store)>0);
+  modal(storeId?'Edit Store':'Create Store',`<form id="storeForm"><div class="field"><label>Store name</label><input name="name" value="${html(store.name||'')}" required></div><label class="option-toggle"><input id="minimumOrderEnabled" name="minimumOrderEnabled" type="checkbox" ${minimumEnabled?'checked':''}><span><strong>Enable minimum new order criteria</strong><small>Switch this off anytime. Refills and history Reorders never use this limit.</small></span></label><div class="field ${minimumEnabled?'':'hidden'}" id="minimumOrderValueField"><label>Minimum new order value (₹)</label><input name="minimumOrderValue" type="number" min="1" step="1" value="${configuredStoreMinimum(store)||''}" placeholder="Example: 500"><small class="muted">A customer below this value can request a one-order approval from you.</small></div><div class="form-grid"><div class="field"><label>Category</label><input name="category" value="${html(store.category||'')}" placeholder="Example: Pharmacy"></div><div class="field"><label>City</label><input name="city" value="${html(store.city||'')}"></div></div><div class="field"><label>Customer highlight text <small>(optional)</small></label><input name="highlightText" maxlength="40" value="${html(store.highlightText||'')}" placeholder="Example: 20% Off"><small class="muted">Shown as bold orange text on this store's customer page.</small></div><div class="field"><label>Phone</label><input name="phone" value="${html(store.phone||'')}"></div><div class="field"><label>UPI ID <small>(for order payment QR codes)</small></label><input name="upiId" value="${html(store.upiId||'')}" placeholder="yourstore@upi"></div><label class="option-toggle"><input id="razorpayEnabled" name="razorpayEnabled" type="checkbox" ${store.razorpayEnabled?'checked':''}><span><strong>Enable Razorpay payment link</strong><small>Optional — customers can open your Razorpay page after you set the order amount.</small></span></label><div class="field ${store.razorpayEnabled?'':'hidden'}" id="razorpayLinkField"><label>Razorpay payment link</label><input name="razorpayLink" type="text" inputmode="url" value="${html(store.razorpayLink||'')}" placeholder="razorpay.me/@yourstore"><small class="muted">Only razorpay.me or rzp.io secure links are accepted. https:// is added automatically.</small><div class="razorpay-link-note"><strong>How reusable Razorpay.me links work</strong><small>Razorpay.me has no return-URL setting. After paying, the customer returns to the G58 tab and taps Payment completed. Always verify the payment in Razorpay before accepting the order.</small></div></div><div class="field"><label>Description</label><textarea name="description">${html(store.description||'')}</textarea></div><button class="btn full">${storeId?'Save Store':'Create Store'}</button></form>`,()=>{
+    const minimumToggle=$('#minimumOrderEnabled'),minimumField=$('#minimumOrderValueField'),razorpayToggle=$('#razorpayEnabled'),razorpayField=$('#razorpayLinkField');
+    minimumToggle.onchange=()=>minimumField.classList.toggle('hidden',!minimumToggle.checked);
     razorpayToggle.onchange=()=>razorpayField.classList.toggle('hidden',!razorpayToggle.checked);
     $('#storeForm').onsubmit=async event=>{
       event.preventDefault();
       const raw=Object.fromEntries(new FormData(event.target)),ownerId=cloudOwnerId(),button=event.submitter;
       const razorpayEnabled=razorpayToggle.checked,razorpayLink=normaliseRazorpayLink(raw.razorpayLink);
       if(razorpayEnabled&&!validRazorpayLink(razorpayLink))return toast('Enter a valid razorpay.me or rzp.io payment link');
-      const values={name:raw.name.trim(),category:raw.category.trim()||'General store',city:raw.city.trim(),highlightText:raw.highlightText.trim(),phone:raw.phone.trim(),upiId:raw.upiId.trim(),razorpayEnabled,razorpayLink:razorpayEnabled?razorpayLink:'',description:raw.description.trim()};
+      const minimumOrderEnabled=minimumToggle.checked,minimumOrderValue=Math.max(0,Number(raw.minimumOrderValue)||0);
+      if(minimumOrderEnabled&&!minimumOrderValue)return toast('Enter the minimum new order value or switch the criteria off');
+      const values={name:raw.name.trim(),minimumOrderEnabled,minimumOrderValue,category:raw.category.trim()||'General store',city:raw.city.trim(),highlightText:raw.highlightText.trim(),phone:raw.phone.trim(),upiId:raw.upiId.trim(),razorpayEnabled,razorpayLink:razorpayEnabled?razorpayLink:'',description:raw.description.trim()};
       button.disabled=true;
       try{
         if(storeId){
@@ -660,6 +667,7 @@ function customerDetailView(customerId){
   bindDeliveryShareButtons(cards);
 }
 const BIG_STATUS_SUB={
+  'Minimum Approval Requested':'Waiting for the store to approve this below-minimum order',
   Requested:'Your order has been received by the store',
   Priced:'Review the amount below and pay to continue',
   'Payment Verification':'Payment submitted — waiting for the store to verify it',
@@ -679,6 +687,7 @@ function bigStatusMarkup(status){
 }
 function orderStepperMarkup(status){
   if(status==='Rejected')return `<div class="order-stepper"><div class="order-step current"><span class="order-step-icon">🚫</span><small>Rejected</small></div></div>`;
+  if(status==='Minimum Approval Requested')return `<div class="order-stepper"><div class="order-step current"><span class="order-step-icon">⏳</span><small>Owner approval</small></div></div>`;
   const currentIndex=ORDER_STEPS.findIndex(step=>step.key===status);
   return `<div class="order-stepper">${ORDER_STEPS.map((step,index)=>`<div class="order-step ${index<=currentIndex?'done':''} ${index===currentIndex?'current':''}"><span class="order-step-icon">${step.icon}</span><small>${step.label}</small></div>`).join('')}</div>`;
 }
@@ -736,10 +745,11 @@ function ownerOrderMarkup(order,showCustomer,showStore){
   const store=showStore?state.stores.find(s=>s.id===order.storeId):null;
   const paymentReview=order.paymentMarkedAt?`<div class="razorpay-owner-review"><span>Razorpay payment submitted</span><strong>Verify payment before accepting</strong><small>Customer marked this payment completed ${new Date(order.paymentMarkedAt).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'})}.</small></div>`:'';
   const visibleStatus=order.paymentMarkedAt&&order.status==='Priced'?'Payment Verification':order.status;
-  return `<article class="card order-item-card ${ringing?'incoming-order':''} ${order.paymentMarkedAt?'payment-awaiting':''}">${ringing?'<span class="incoming-order-beacon" aria-label="New order" title="New order"></span>':''}<div class="section-head"><h3>Order #${html(order.id.slice(-6).toUpperCase())}</h3><span class="chip ${['Requested','Priced'].includes(order.status)?'due':''}">${html(visibleStatus)}</span></div>${showStore?`<p class="muted" style="margin:-8px 0 0"><strong>${html(store?.name||'Store')}</strong></p>`:''}${showCustomer?`<p class="muted" style="margin:-4px 0 4px">${html(customer?.customerName||order.customerName||'Customer')}</p>`:''}${order.refillCardId?'<span class="chip delivered">Refill order</span>':''}${orderStepperMarkup(order.status)}<div class="order-items-list">${order.items.map(item=>`<div class="order-line-item"><span>${item.qty} ×</span><span>${html(item.name)}</span></div>`).join('')}</div>${(order.reorderedFrom||order.refillCardId)&&Number(order.previousAmount)>0?`<div class="previous-price-note"><span>${order.refillCardId?'Previous refill price':'Previous order amount'}</span><strong>${money(order.previousAmount)}</strong></div>`:''}${order.prescriptionUrl?`<a class="link-btn" href="${html(order.prescriptionUrl)}" target="_blank" rel="noopener">📄 View prescription</a>`:''}${order.amount?`<h3 style="margin:10px 0">${money(order.amount)}</h3>`:'<p class="muted">Amount not set yet.</p>'}${paymentReview}${deliveryContactMarkup(order)}<div class="actions">${orderOwnerActions(order)}</div>${orderChatMarkup(order,'owner')}</article>`;
+  return `<article class="card order-item-card ${ringing?'incoming-order':''} ${order.paymentMarkedAt?'payment-awaiting':''}">${ringing?'<span class="incoming-order-beacon" aria-label="New order" title="New order"></span>':''}<div class="section-head"><h3>Order #${html(order.id.slice(-6).toUpperCase())}</h3><span class="chip ${['Requested','Priced','Minimum Approval Requested'].includes(order.status)?'due':''}">${html(visibleStatus)}</span></div>${showStore?`<p class="muted" style="margin:-8px 0 0"><strong>${html(store?.name||'Store')}</strong></p>`:''}${showCustomer?`<p class="muted" style="margin:-4px 0 4px">${html(customer?.customerName||order.customerName||'Customer')}</p>`:''}${order.refillCardId?'<span class="chip delivered">Refill order</span>':''}${order.status==='Minimum Approval Requested'?`<div class="minimum-approval-owner"><strong>Below-minimum approval requested</strong><span>Customer estimate ${money(order.customerOrderValue)} · Store minimum ${money(order.minimumOrderValueAtOrder)}</span></div>`:''}${orderStepperMarkup(order.status)}<div class="order-items-list">${order.items.map(item=>`<div class="order-line-item"><span>${item.qty} ×</span><span>${html(item.name)}</span></div>`).join('')}</div>${Number(order.customerOrderValue)>0?`<div class="customer-order-value"><span>Customer estimated order value</span><strong>${money(order.customerOrderValue)}</strong></div>`:''}${(order.reorderedFrom||order.refillCardId)&&Number(order.previousAmount)>0?`<div class="previous-price-note"><span>${order.refillCardId?'Previous refill price':'Previous order amount'}</span><strong>${money(order.previousAmount)}</strong></div>`:''}${order.prescriptionUrl?`<a class="link-btn" href="${html(order.prescriptionUrl)}" target="_blank" rel="noopener">📄 View prescription</a>`:''}${order.amount?`<h3 style="margin:10px 0">${money(order.amount)}</h3>`:'<p class="muted">Amount not set yet.</p>'}${paymentReview}${deliveryContactMarkup(order)}<div class="actions">${orderOwnerActions(order)}</div>${orderChatMarkup(order,'owner')}</article>`;
 }
 function orderOwnerActions(order){
   const map={
+    'Minimum Approval Requested':`<button class="btn small green" data-approve-minimum-order="${html(order.id)}">Approve Below-Minimum Order</button><button class="btn small red" data-reject-order="${html(order.id)}">Reject</button>`,
     Requested:`<button class="btn small" data-set-amount="${html(order.id)}">Set Amount</button><button class="btn small red" data-reject-order="${html(order.id)}">Reject</button>`,
     Priced:order.paymentMarkedAt?`<button class="btn small green" data-accept-order="${html(order.id)}">Payment Received — Accept</button><button class="btn small secondary" data-reopen-payment="${html(order.id)}">Payment Not Received</button>`:`<button class="btn small green" data-accept-order="${html(order.id)}">Accept Order</button><button class="btn small red" data-reject-order="${html(order.id)}">Reject</button>`,
     Accepted:`<button class="btn small green" data-advance-order="${html(order.id)}" data-next="Preparing">Start Preparing</button>`,
@@ -749,11 +759,18 @@ function orderOwnerActions(order){
   return map[order.status]||'';
 }
 function bindOwnerOrderActions(){
+  $$('[data-approve-minimum-order]').forEach(button=>button.onclick=()=>approveMinimumOrder(button.dataset.approveMinimumOrder));
   $$('[data-set-amount]').forEach(button=>button.onclick=()=>setOrderAmount(button.dataset.setAmount));
   $$('[data-accept-order]').forEach(button=>button.onclick=()=>advanceOrder(button.dataset.acceptOrder,'Accepted'));
   $$('[data-advance-order]').forEach(button=>button.onclick=()=>advanceOrder(button.dataset.advanceOrder,button.dataset.next));
   $$('[data-reject-order]').forEach(button=>button.onclick=()=>rejectOrder(button.dataset.rejectOrder));
   $$('[data-reopen-payment]').forEach(button=>button.onclick=()=>reopenRazorpayPayment(button.dataset.reopenPayment));
+}
+async function approveMinimumOrder(orderId){
+  const order=state.orders.find(row=>row.id===orderId);if(!order||order.status!=='Minimum Approval Requested')return;
+  const approvedAt=now(),changes={status:'Requested',minimumApprovalStatus:'Approved',minimumApprovedAt:approvedAt,updatedAt:approvedAt};
+  try{await api.update(orderKind(order.ownerId),orderId,changes);Object.assign(order,changes);ringingIds.delete(orderId);refreshView();toast('Below-minimum order approved — continue with the normal order process')}
+  catch(error){toast(error.message||'Could not approve this order')}
 }
 async function reopenRazorpayPayment(orderId){
   const order=state.orders.find(row=>row.id===orderId);if(!order)return;
@@ -818,14 +835,18 @@ async function advanceOrder(orderId,next){
   }catch(error){toast(error.message||'Could not update order')}
 }
 async function rejectOrder(orderId){
-  const order=state.orders.find(row=>row.id===orderId);if(!order||!confirm('Reject this order?'))return;
-  try{
-    await api.update(orderKind(order.ownerId),orderId,{status:'Rejected',rejectedAt:now()});
-    Object.assign(order,{status:'Rejected',rejectedAt:now()});
-    if(order.refillCardId){try{await resetRefillCardAfterOrder(order,false)}catch{}}
-    ringingIds.delete(orderId);updateOrderAlertSound();
-    refreshView();toast('Order rejected');
-  }catch(error){toast(error.message||'Could not reject order')}
+  const order=state.orders.find(row=>row.id===orderId);if(!order)return;
+  modal('Reject Order',`<form id="rejectOrderForm"><p class="muted">The customer will immediately see your reason in a popup and in their order history.</p><div class="field"><label>Reason for rejection</label><textarea name="rejectionReason" maxlength="500" placeholder="Example: Requested item is currently unavailable" required></textarea></div><button class="btn full red" type="submit">Reject Order</button></form>`,()=>{
+    $('#rejectOrderForm').onsubmit=async event=>{
+      event.preventDefault();const reason=$('textarea[name="rejectionReason"]',event.target).value.trim(),button=event.submitter;if(!reason)return toast('Enter the rejection reason');button.disabled=true;
+      const rejectedAt=now(),changes={status:'Rejected',rejectionReason:reason,rejectedAt,updatedAt:rejectedAt};
+      try{
+        await api.update(orderKind(order.ownerId),orderId,changes);Object.assign(order,changes);
+        if(order.refillCardId){try{await resetRefillCardAfterOrder(order,false)}catch{}}
+        ringingIds.delete(orderId);updateOrderAlertSound();closeModal();refreshView();toast('Order rejected — the customer has been notified');
+      }catch(error){button.disabled=false;toast(error.message||'Could not reject order')}
+    };
+  });
 }
 async function resetRefillCardAfterOrder(order,delivered){
   const card=state.cards.find(row=>row.id===order.refillCardId);if(!card)return;
@@ -953,7 +974,7 @@ function startCustomerRealtime(store,customer){
 }
 function stopCustomerRealtime(){customerOrdersUnsubscribe?.();customerCardsUnsubscribe?.();customerPromotionsUnsubscribe?.();customerOrdersUnsubscribe=customerCardsUnsubscribe=customerPromotionsUnsubscribe=null;stopPromotionAutoScroll()}
 function renderCustomerAuth(store,ownerId,storeId){
-  app.innerHTML=`<main class="public-store"><section class="store-hero"><span class="chip">${html(store.category||'Store')}</span>${store.highlightText?`<strong class="store-highlight-text">${html(store.highlightText)}</strong>`:''}<h1>${html(store.name)}</h1><p class="muted">${html(store.description||'')}${store.city?' · '+html(store.city):''}</p></section><div class="card"><div class="actions" style="margin-bottom:14px"><button class="btn small" id="custTabLogin">Sign in</button><button class="btn small secondary" id="custTabSignup">Sign up</button></div><form id="customerAuthForm"><div class="field full-name-field hidden"><label>Your name</label><input name="name"></div><div class="field"><label>Email</label><input name="email" type="email" required></div><div class="field"><label>Password</label><input name="password" type="password" minlength="8" required></div><button class="btn full" id="custAuthSubmit" type="submit">Sign In</button></form></div></main>${siteFooter()}`;
+  app.innerHTML=`<main class="public-store"><section class="store-hero"><span class="chip">${html(store.category||'Store')}</span>${store.highlightText?`<strong class="store-highlight-text">${html(store.highlightText)}</strong>`:''}<h1>${html(store.name)}</h1>${storeMinimum(store)?`<p class="store-minimum-order">Minimum new order ${money(storeMinimum(store))}</p>`:''}<p class="muted">${html(store.description||'')}${store.city?' · '+html(store.city):''}</p></section><div class="card"><div class="actions" style="margin-bottom:14px"><button class="btn small" id="custTabLogin">Sign in</button><button class="btn small secondary" id="custTabSignup">Sign up</button></div><form id="customerAuthForm"><div class="field full-name-field hidden"><label>Your name</label><input name="name"></div><div class="field"><label>Email</label><input name="email" type="email" required></div><div class="field"><label>Password</label><input name="password" type="password" minlength="8" required></div><button class="btn full" id="custAuthSubmit" type="submit">Sign In</button></form></div></main>${siteFooter()}`;
   bindAndroidAppFooter();
   let mode='login';
   const syncMode=()=>{$('.full-name-field').classList.toggle('hidden',mode!=='signup');$('#custAuthSubmit').textContent=mode==='signup'?'Create Account':'Sign In';$('#custTabLogin').className=mode==='login'?'btn small':'btn small secondary';$('#custTabSignup').className=mode==='signup'?'btn small':'btn small secondary'};
@@ -974,6 +995,19 @@ async function ensureCustomerLink(ownerId,storeId,account){
   return api.executeFunction(api.config.digitalOrderFunctionId,{action:'digit58-link-customer',ownerId,storeId,customerName:account.name||account.email.split('@')[0],customerEmail:account.email});
 }
 let customerPromotionQuantities=new Map(),activePromotionStoreId='',customerReminderView='swipe',customerStoreLinks=[];
+const shownRejectedOrderIds=new Set();
+function rejectedOrderSeenKey(order,customer){return `g58-rejected-order:${customer.customerAccountId}:${order.id}:${order.rejectedAt||order.updatedAt||''}`}
+function rejectionWasSeen(order,customer){try{return localStorage.getItem(rejectedOrderSeenKey(order,customer))==='1'}catch{return false}}
+function markRejectionSeen(order,customer){try{localStorage.setItem(rejectedOrderSeenKey(order,customer),'1')}catch{}}
+function showNextRejectedOrder(orders,store,customer){
+  if($('.modal-backdrop'))return;
+  const order=[...orders].filter(row=>row.status==='Rejected'&&!rejectionWasSeen(row,customer)&&!shownRejectedOrderIds.has(row.id)).sort((a,b)=>new Date(b.rejectedAt||b.updatedAt||0)-new Date(a.rejectedAt||a.updatedAt||0))[0];
+  if(!order)return;shownRejectedOrderIds.add(order.id);
+  const reason=order.rejectionReason||'The store could not process this order. Contact the store if you need more information.';
+  modal('Order Rejected',`<div class="rejection-popup"><span class="rejection-popup-icon" aria-hidden="true">!</span><p>Your order from <strong>${html(store.name)}</strong> was rejected.</p><div class="rejection-reason"><small>Reason</small><strong>${html(reason)}</strong></div><p class="muted">Order #${html(order.id.slice(-6).toUpperCase())}</p><button class="btn full" id="ackRejectedOrder" type="button">Understood</button></div>`,()=>{
+    $('#ackRejectedOrder').onclick=()=>{markRejectionSeen(order,customer);closeModal();setTimeout(()=>showNextRejectedOrder(orders,store,customer),0)};
+  });
+}
 function customerStoreHub(store){
   const links=customerStoreLinks.length?customerStoreLinks:[{ownerId:store.ownerId,storeId:store.id,storeName:store.name,city:store.city}];
   return `<nav class="customer-store-hub" aria-label="My linked stores"><div><span>My Stores</span><strong>${links.length} linked store${links.length===1?'':'s'}</strong></div><select id="customerStoreSwitch" aria-label="Switch store">${links.map(link=>`<option value="${html(`${link.ownerId}:${link.storeId}`)}" ${link.ownerId===store.ownerId&&link.storeId===store.id?'selected':''}>${html(link.storeName||'Store')}${link.city?` · ${html(link.city)}`:''}</option>`).join('')}</select></nav>`;
@@ -1022,9 +1056,9 @@ function renderCustomerCards(store,customer,cards,orders=[],promotions=[]){
   const today=indiaDateValue(),historyFrom=$('#customerHistoryFrom')?.value||today,historyTo=$('#customerHistoryTo')?.value||today;
   const filteredHistory=filterOrdersByIndiaDate(history,historyFrom,historyTo).sort((a,b)=>new Date(orderHistoryTimestamp(b))-new Date(orderHistoryTimestamp(a)));
   const marqueePromotions=promotions.length?Array.from({length:Math.max(1,Math.ceil(6/promotions.length))},()=>promotions).flat():[];
-  app.innerHTML=`<main class="public-store">${customerStoreHub(store)}<section class="store-hero"><span class="chip">${html(store.category||'Store')}</span>${store.highlightText?`<strong class="store-highlight-text">${html(store.highlightText)}</strong>`:''}<h1>${html(store.name)}</h1><p class="muted">${html(store.description||'')}${store.city?' · '+html(store.city):''}</p></section>
+  app.innerHTML=`<main class="public-store">${customerStoreHub(store)}<section class="store-hero"><span class="chip">${html(store.category||'Store')}</span>${store.highlightText?`<strong class="store-highlight-text">${html(store.highlightText)}</strong>`:''}<h1>${html(store.name)}</h1>${storeMinimum(store)?`<p class="store-minimum-order">Minimum new order ${money(storeMinimum(store))}</p>`:''}<p class="muted">${html(store.description||'')}${store.city?' · '+html(store.city):''}</p></section>
   ${promotions.length?`<section class="promotion-strip"><div class="promotion-strip-head"><div><span>Store offers</span><h2>Fresh deals for your next order</h2></div><small>Tap Buy to include an offer</small></div><div class="promotion-rail" id="promotionRail"><div class="promotion-track"><div class="promotion-sequence">${marqueePromotions.map((promotion,index)=>customerPromotionTicket(promotion,index>=promotions.length)).join('')}</div><div class="promotion-sequence" aria-hidden="true">${marqueePromotions.map(promotion=>customerPromotionTicket(promotion,true)).join('')}</div></div></div></section>`:''}
-  <div class="section-head"><h2>Your orders</h2><button class="btn small" id="placeOrderBtn">+ Place New Order</button></div>
+  <div class="section-head"><div><h2>Your orders</h2>${storeMinimum(store)?`<p class="muted">New orders must be at least ${money(storeMinimum(store))}. Refills and Reorders are exempt.</p>`:''}</div><button class="btn small" id="placeOrderBtn">+ Place New Order</button></div>
   <div class="grid card-grid">${active.map(order=>customerOrderMarkup(order,store)).join('')||'<div class="empty">No active orders. Place a new order to get started.</div>'}</div>
   <div class="section-head reminder-section-head"><div><h2>Your reminder cards</h2>${cards.length>1?'<p class="muted">Swipe to see the next card or switch to list view.</p>':''}</div>${cards.length>1?`<div class="reminder-view-toggle" role="group" aria-label="Reminder card view"><button type="button" class="${customerReminderView==='swipe'?'active':''}" data-reminder-view="swipe" aria-pressed="${customerReminderView==='swipe'}">Swipe</button><button type="button" class="${customerReminderView==='list'?'active':''}" data-reminder-view="list" aria-pressed="${customerReminderView==='list'}">List</button></div>`:''}</div>
   <div class="customer-reminder-view reminder-view-${customerReminderView}" id="customerCardGrid">${cards.map(customerCardCardMarkup).join('')||'<div class="empty">Your store will add reminder cards here after your first purchase.</div>'}</div>
@@ -1063,6 +1097,7 @@ function renderCustomerCards(store,customer,cards,orders=[],promotions=[]){
   bindCardChatForms(cards,'customer',()=>loadAndRenderCustomerView(store,customer));
   initShakeDetection();
   bindAndroidAppFooter();
+  setTimeout(()=>showNextRejectedOrder(orders,store,customer),0);
   $('#custLogout').onclick=async()=>{stopCustomerRealtime();customerPromotionQuantities.clear();activePromotionStoreId='';customerStoreLinks=[];await api.logout();location.hash=`store&owner=${encodeURIComponent(store.ownerId)}&store=${encodeURIComponent(store.id)}`;boot()};
 }
 function vialMarkup(card){
@@ -1106,7 +1141,7 @@ function customerOrderMarkup(order,store){
       :`<div class="qr-wrap" id="qr-${html(order.id)}"></div><h3 style="margin:10px 0;text-align:center">${money(order.amount)}</h3><p class="muted" style="text-align:center">Scan to pay via UPI${razorpayEnabled?' or use the secure Razorpay option below':''}. The store will accept your order once payment is received.</p>${razorpayEnabled?`<a class="btn full razorpay-pay-btn" data-open-razorpay="${html(order.id)}" href="${html(normaliseRazorpayLink(store.razorpayLink))}" target="_blank" rel="noopener noreferrer">Open Razorpay & Pay ↗</a><p class="razorpay-window-note">Razorpay opens securely in another tab. Keep this G58 page open.</p><div class="razorpay-return-step ${razorpayReturnOpen?'':'is-hidden'}" data-razorpay-return="${html(order.id)}"><strong>Returned from Razorpay?</strong><p>Choose the correct option so your order can move to the next step.</p><div class="razorpay-return-actions"><button type="button" class="btn green" data-confirm-razorpay-payment="${html(order.id)}">Payment completed</button><button type="button" class="btn secondary" data-razorpay-not-paid="${html(order.id)}">Payment not completed</button></div></div>`:''}`
     :order.amount?`<h3 style="margin:10px 0">${money(order.amount)}</h3>`:'<p class="muted">Waiting for the store to review and set the amount.</p>';
   const visibleStatus=order.paymentMarkedAt&&order.status==='Priced'?'Payment Verification':order.status;
-  return `<article class="card order-item-card premium-card"><div class="section-head"><h3>Order #${html(order.id.slice(-6).toUpperCase())}</h3><span class="chip">${html(visibleStatus)}</span></div>${bigStatusMarkup(visibleStatus)}${orderStepperMarkup(order.status)}<div class="order-items-list">${order.items.map(item=>`<div class="order-line-item"><span>${item.qty} ×</span><span>${html(item.name)}</span></div>`).join('')}</div>${order.prescriptionUrl?`<a class="link-btn" href="${html(order.prescriptionUrl)}" target="_blank" rel="noopener">📄 View your prescription</a>`:''}${paymentBlock}${orderChatMarkup(order,'customer')}</article>`;
+  return `<article class="card order-item-card premium-card"><div class="section-head"><h3>Order #${html(order.id.slice(-6).toUpperCase())}</h3><span class="chip">${html(visibleStatus)}</span></div>${bigStatusMarkup(visibleStatus)}${orderStepperMarkup(order.status)}<div class="order-items-list">${order.items.map(item=>`<div class="order-line-item"><span>${item.qty} ×</span><span>${html(item.name)}</span></div>`).join('')}</div>${Number(order.customerOrderValue)>0?`<div class="customer-order-value"><span>Your estimated order value</span><strong>${money(order.customerOrderValue)}</strong></div>`:''}${order.prescriptionUrl?`<a class="link-btn" href="${html(order.prescriptionUrl)}" target="_blank" rel="noopener">📄 View your prescription</a>`:''}${paymentBlock}${orderChatMarkup(order,'customer')}</article>`;
 }
 function razorpayPaymentKey(orderId){return `g58-razorpay-open-${orderId}`}
 function razorpayPendingKey(ownerId,storeId){return `g58-razorpay-pending-${ownerId}-${storeId}`}
@@ -1157,7 +1192,7 @@ function bindRazorpayPaymentActions(orders,store,customer){
   processSuccessfulRazorpayReturn(orders,store,customer);
 }
 function customerOrderHistoryRow(order){
-  return `<tr><td>${order.items.map(item=>`${item.qty}×${html(item.name)}`).join(', ')}</td><td><button type="button" class="btn small reorder-btn" data-reorder-order="${html(order.id)}">Reorder</button></td><td>${money(order.amount)}</td><td>${html(order.status)}</td><td>${new Date(orderHistoryTimestamp(order)).toLocaleString('en-IN',{timeZone:'Asia/Kolkata',dateStyle:'medium',timeStyle:'short'})}</td></tr>`;
+  return `<tr><td>${order.items.map(item=>`${item.qty}×${html(item.name)}`).join(', ')}</td><td><button type="button" class="btn small reorder-btn" data-reorder-order="${html(order.id)}">Reorder</button></td><td>${money(order.amount)}</td><td>${html(order.status)}${order.status==='Rejected'&&order.rejectionReason?`<small class="rejection-history-reason">${html(order.rejectionReason)}</small>`:''}</td><td>${new Date(orderHistoryTimestamp(order)).toLocaleString('en-IN',{timeZone:'Asia/Kolkata',dateStyle:'medium',timeStyle:'short'})}</td></tr>`;
 }
 function openReorderOrderModal(order,store,customer){
   let capturedLocation=null;
@@ -1182,7 +1217,9 @@ function openPlaceOrderModal(store,customer,promotions=[]){
   let capturedLocation=null;
   const selectedPromotions=promotions.filter(promotion=>customerPromotionQuantities.has(promotion.id)).map(promotion=>({name:promotion.name,qty:customerPromotionQuantities.get(promotion.id)}));
   const startingItems=selectedPromotions.length?selectedPromotions:[{}];
-  modal('Place New Order',`<form id="placeOrderForm">${selectedPromotions.length?`<div class="selected-offer-note">${selectedPromotions.length} promotional item${selectedPromotions.length===1?'':'s'} added. You can change quantities below.</div>`:''}<div id="orderItemRows">${startingItems.map(orderItemRowMarkup).join('')}</div><button type="button" class="btn small secondary" id="addItemRow" style="margin-top:8px">+ Add another item</button><div class="field" style="margin-top:14px"><label>Contact number</label><input name="phone" type="tel" value="${html(customer.phone||'')}" placeholder="10-digit mobile number" required></div><div class="field"><button type="button" class="btn small secondary" id="shareLocationBtn">📍 Share My Location</button><p class="muted" id="locationStatus" style="margin-top:6px">Optional — helps the store guide your delivery.</p></div><div class="field"><label>Prescription image <small>(optional)</small></label><input id="prescriptionFile" type="file" accept="image/jpeg,image/png,image/webp"></div><button class="btn full" type="submit" style="margin-top:14px">Submit Order</button></form>`,()=>{
+  const minimum=storeMinimum(store),selectedPromotionValue=promotions.reduce((total,promotion)=>total+(customerPromotionQuantities.get(promotion.id)||0)*(Number(promotion.price)||0),0);
+  const minimumBlock=minimum?`<div class="minimum-order-notice"><strong>Minimum new order: ${money(minimum)}</strong><p>Enter the estimated value of these items. If it is lower, you can request one-order approval from the store.</p><div class="field"><label>Estimated order value (₹)</label><input id="customerOrderValue" name="customerOrderValue" type="number" min="0" step="0.01" value="${selectedPromotionValue||''}" placeholder="${minimum}" required></div></div>`:'';
+  modal('Place New Order',`<form id="placeOrderForm">${selectedPromotions.length?`<div class="selected-offer-note">${selectedPromotions.length} promotional item${selectedPromotions.length===1?'':'s'} added. You can change quantities below.</div>`:''}${minimumBlock}<div id="orderItemRows">${startingItems.map(orderItemRowMarkup).join('')}</div><button type="button" class="btn small secondary" id="addItemRow" style="margin-top:8px">+ Add another item</button><div class="field" style="margin-top:14px"><label>Contact number</label><input name="phone" type="tel" value="${html(customer.phone||'')}" placeholder="10-digit mobile number" required></div><div class="field"><button type="button" class="btn small secondary" id="shareLocationBtn">📍 Share My Location</button><p class="muted" id="locationStatus" style="margin-top:6px">Optional — helps the store guide your delivery.</p></div><div class="field"><label>Prescription image <small>(optional)</small></label><input id="prescriptionFile" type="file" accept="image/jpeg,image/png,image/webp"></div><div class="minimum-order-actions"><button class="btn full" type="submit" style="margin-top:14px">Submit Order</button>${minimum?'<button class="btn full secondary" type="submit" data-request-minimum-approval="true">Request Owner Approval</button>':''}</div></form>`,()=>{
     $('#addItemRow').onclick=()=>$('#orderItemRows').insertAdjacentHTML('beforeend',orderItemRowMarkup());
     $('#orderItemRows').addEventListener('click',event=>{const row=event.target.closest('.remove-item-row');if(row&&$$('.order-item-row').length>1)row.closest('.order-item-row').remove()});
     bindShareLocationButton($('#shareLocationBtn'),$('#locationStatus'),point=>{capturedLocation=point});
@@ -1192,6 +1229,10 @@ function openPlaceOrderModal(store,customer,promotions=[]){
       const qtys=$$('input[name="itemQty[]"]').map(input=>Math.max(1,Number(input.value)||1));
       const items=names.map((name,index)=>({name,qty:qtys[index]})).filter(item=>item.name);
       if(!items.length)return toast('Add at least one item');
+      const customerOrderValue=minimum?Math.max(0,Number($('#customerOrderValue').value)||0):0;
+      const requestMinimumApproval=event.submitter?.dataset.requestMinimumApproval==='true';
+      if(minimum&&customerOrderValue<minimum&&!requestMinimumApproval){$('#customerOrderValue').focus();return toast(`Minimum new order value is ${money(minimum)} — or request owner approval`)}
+      if(requestMinimumApproval&&customerOrderValue>=minimum)return toast('This order already meets the minimum. Use Submit Order.');
       const phone=$('input[name="phone"]',event.target).value.trim();
       const button=event.submitter;button.disabled=true;
       try{
@@ -1201,10 +1242,10 @@ function openPlaceOrderModal(store,customer,promotions=[]){
           const uploaded=await api.uploadAdMedia(file);
           prescription={prescriptionUrl:uploaded.mediaUrl,prescriptionFileId:uploaded.fileId,prescriptionName:uploaded.mediaName,prescriptionType:uploaded.mediaType};
         }
-        await api.executeFunction(api.config.digitalOrderFunctionId,{action:'digit58-create-order',ownerId:store.ownerId,storeId:store.id,customerName:customer.customerName,customerEmail:customer.customerEmail,items,phone,locationLat:capturedLocation?.lat,locationLng:capturedLocation?.lng,...prescription});
+        await api.executeFunction(api.config.digitalOrderFunctionId,{action:'digit58-create-order',ownerId:store.ownerId,storeId:store.id,customerName:customer.customerName,customerEmail:customer.customerEmail,items,customerOrderValue,requestMinimumApproval,phone,locationLat:capturedLocation?.lat,locationLng:capturedLocation?.lng,...prescription});
         if(phone&&phone!==customer.phone){await api.update(customerKind(store.ownerId),customer.id,{phone}).catch(()=>{});customer.phone=phone}
         customerPromotionQuantities.clear();
-        closeModal();toast('Order sent to the store');
+        closeModal();toast(requestMinimumApproval?'Minimum-order approval requested from the store':'Order sent to the store');
         await loadAndRenderCustomerView(store,customer);
       }catch(error){button.disabled=false;toast(error.message||'Could not place order')}
     };
