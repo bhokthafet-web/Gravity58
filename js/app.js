@@ -1646,14 +1646,6 @@ function openBusinessLocation(id) {
     "noopener",
   );
 }
-function openBusinessPhoto(id) {
-  const b = businesses.find((x) => x.id === id);
-  if (b && b.image) {
-    window.open(b.image, "_blank", "noopener");
-    return;
-  }
-  scrollToBusinessAbout();
-}
 function scrollToBusinessAbout() {
   const target = document.querySelector(
     "#floatingBusinessCard .biz-profile-section",
@@ -1662,7 +1654,6 @@ function scrollToBusinessAbout() {
 }
 function floatingBusinessMarkup(b) {
   const isOwner = sessionStorage.getItem(`g58BusinessOwner_${b.id}`) === "true";
-  const hue = avatarHue(b.id || b.title);
   const stats = businessRatingStats(b);
   const reviews = [...businessReviews(b)].sort(
     (a, c) => (c.created || 0) - (a.created || 0),
@@ -1672,7 +1663,7 @@ function floatingBusinessMarkup(b) {
   const websiteUrl = businessDemoUrl(b);
   const shareUrl = businessShareUrl(b.id);
   const shareQrSrc =
-    "https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=" +
+    "https://api.qrserver.com/v1/create-qr-code/?size=220x220&ecc=H&margin=8&data=" +
     encodeURIComponent(shareUrl);
 
   const quickStats = [];
@@ -1714,22 +1705,18 @@ function floatingBusinessMarkup(b) {
   const locationQuery = [b.area, itemDistrict(b), itemState(b)]
     .filter(Boolean)
     .join(", ");
+  const isInstagram = /instagram\.com/i.test(websiteUrl);
+  const socialLabel = isInstagram ? "Instagram" : "Profile";
+  const socialIcon = isInstagram ? "📷" : "🔗";
 
-  const glassAction = (icon, label, handler, enabled = true) =>
-    `<button type="button" class="biz-glass-action"${enabled ? "" : " disabled"} onclick="${enabled ? handler : ""}"><span class="biz-glass-action-ic" aria-hidden="true">${icon}</span><span>${label}</span></button>`;
-  const leftActions =
-    glassAction("⚡", "Instant Connect", `callBusinessPhone('${b.id}')`) +
-    glassAction("💾", "Save Contact", `downloadBusinessVCard('${b.id}')`) +
-    glassAction(
-      "📍",
-      "Find Location",
-      `openBusinessLocation('${b.id}')`,
-      !!locationQuery,
-    );
-  const rightActions =
-    glassAction("🍽", "View Services", "scrollToBusinessAbout()") +
-    glassAction("▧", "Photos & Info", `openBusinessPhoto('${b.id}')`) +
-    glassAction("↗", "Share Easily", `shareBusinessProfile('${b.id}')`);
+  const icPhone =
+    '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92Z"/></svg>';
+  const icSave =
+    '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15V3"/><path d="m7 10 5 5 5-5"/><path d="M20 21H4"/></svg>';
+  const icPin =
+    '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>';
+  const icShare =
+    '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="m8.6 13.5 6.8 3.9M15.4 6.6 8.6 10.5"/></svg>';
 
   const ownerDash = isOwner
     ? `<div class="biz-profile-section biz-owner-dash">
@@ -1753,21 +1740,11 @@ function floatingBusinessMarkup(b) {
 <button type="button" class="btn primary" style="width:100%" onclick="unlockBusinessCard('${b.id}',true)">Unlock →</button>
 </div>`;
 
-  const avatarInner = b.image
-    ? `<img src="${escapeHtml(b.image)}" alt="${escapeHtml(b.title)}">`
-    : `<span style="background:hsl(${hue} 60% 45%)">${businessInitial(b)}</span>`;
   const ratingRow = stats.count
     ? `<div class="biz-card-rating">${ratingStars(stats.average)}<strong>${stats.average.toFixed(1)}</strong><small>(${stats.count} ${stats.count === 1 ? "Review" : "Reviews"})</small></div>`
     : `<button type="button" class="biz-card-rating biz-card-rating-empty" onclick="openBusinessRating('${b.id}')">☆☆☆☆☆ <small>Be the first to review</small></button>`;
 
   return `<article class="biz-profile">
-<div class="biz-card-brandbar">
-<svg viewBox="0 0 120 120" fill="none" stroke="#F97316" stroke-width="8" aria-hidden="true"><circle cx="60" cy="26" r="15"/><circle cx="28" cy="82" r="15"/><circle cx="92" cy="82" r="15"/></svg>
-<span>g58.in</span>
-<small>POST · BID · CONNECT</small>
-</div>
-
-<div class="biz-card-shell">
 <div class="biz-card-glass">
 ${isOwner ? '<span class="biz-owner-badge">Your Business</span>' : ""}
 <div class="biz-card-glass-head">
@@ -1775,46 +1752,45 @@ ${isOwner ? '<span class="biz-owner-badge">Your Business</span>' : ""}
 <button type="button" class="biz-fav-btn biz-fav-btn-glass${favorited ? " active" : ""}" onclick="toggleFavoriteBusiness('${b.id}')" aria-label="${favorited ? "Remove from saved" : "Save business"}">${favorited ? "♥" : "♡"}</button>
 </div>
 
+<button type="button" class="biz-card-view-pill" onclick="scrollToBusinessAbout()">View</button>
+
 <div class="biz-card-profile">
-<div class="biz-card-avatar-ring"><div class="biz-card-avatar">${avatarInner}</div></div>
 <h2 class="biz-card-name">${escapeHtml(b.title)}</h2>
 <p class="biz-card-category">${escapeHtml(b.category)}</p>
+${b.tagline ? `<p class="biz-card-tagline-pill">— ${escapeHtml(b.tagline)} —</p>` : ""}
 ${ratingRow}
 </div>
 
 <div class="biz-card-qr-block">
 <p class="biz-card-qr-label">Scan to Open</p>
-<div class="biz-card-qr-wrap"><img src="${shareQrSrc}" alt="QR code for ${escapeHtml(b.title)}" class="biz-card-qr-img" loading="lazy"></div>
+<div class="biz-card-qr-wrap">
+<img src="${shareQrSrc}" alt="QR code for ${escapeHtml(b.title)}" class="biz-card-qr-img" loading="lazy">
+<span class="biz-card-qr-logo" aria-hidden="true"><svg viewBox="0 0 120 120" fill="none" stroke="#F97316" stroke-width="10"><circle cx="60" cy="26" r="15"/><circle cx="28" cy="82" r="15"/><circle cx="92" cy="82" r="15"/></svg></span>
+</div>
 <p class="biz-card-qr-caption">View our complete digital business card</p>
 </div>
 
 <div class="biz-card-primary-actions">
 ${waNumber ? `<a class="biz-card-cta biz-card-cta-whatsapp" href="${waHref}" target="_blank" rel="noopener">💬 WhatsApp</a>` : `<span class="biz-card-cta biz-card-cta-whatsapp biz-card-cta-disabled">💬 WhatsApp</span>`}
-<button type="button" class="biz-card-cta biz-card-cta-profile" onclick="scrollToBusinessAbout()">Profile ↓</button>
+${websiteUrl ? `<a class="biz-card-cta biz-card-cta-instagram" href="${websiteUrl}" target="_blank" rel="noopener">${socialIcon} ${socialLabel}</a>` : `<span class="biz-card-cta biz-card-cta-instagram biz-card-cta-disabled">${socialIcon} ${socialLabel}</span>`}
 </div>
 
 <div class="biz-card-quickrow">
-<button type="button" class="biz-quick-ic" onclick="callBusinessPhone('${b.id}')" title="Call" aria-label="Call">☎</button>
-<button type="button" class="biz-quick-ic" onclick="downloadBusinessVCard('${b.id}')" title="Save Contact" aria-label="Save Contact">💾</button>
-<button type="button" class="biz-quick-ic"${locationQuery ? "" : " disabled"} onclick="openBusinessLocation('${b.id}')" title="Location" aria-label="Location">📍</button>
-<button type="button" class="biz-quick-ic" onclick="scrollToBusinessAbout()" title="Services" aria-label="Services">🍽</button>
-<button type="button" class="biz-quick-ic" onclick="openBusinessPhoto('${b.id}')" title="Photos" aria-label="Photos">▧</button>
-<button type="button" class="biz-quick-ic" onclick="shareBusinessProfile('${b.id}')" title="Share" aria-label="Share">↗</button>
+<button type="button" class="biz-quick-ic biz-quick-ic-call" onclick="callBusinessPhone('${b.id}')" aria-label="Call"><span class="biz-quick-ic-ic">${icPhone}</span><span class="biz-quick-ic-label">Call</span></button>
+<button type="button" class="biz-quick-ic biz-quick-ic-save" onclick="downloadBusinessVCard('${b.id}')" aria-label="Save Contact"><span class="biz-quick-ic-ic">${icSave}</span><span class="biz-quick-ic-label">Save Contact</span></button>
+<button type="button" class="biz-quick-ic biz-quick-ic-loc"${locationQuery ? "" : " disabled"} onclick="openBusinessLocation('${b.id}')" aria-label="Location"><span class="biz-quick-ic-ic">${icPin}</span><span class="biz-quick-ic-label">Location</span></button>
+<button type="button" class="biz-quick-ic biz-quick-ic-share" onclick="shareBusinessProfile('${b.id}')" aria-label="Share"><span class="biz-quick-ic-ic">${icShare}</span><span class="biz-quick-ic-label">Share</span></button>
 </div>
 
 <div class="biz-card-footer">
 <svg viewBox="0 0 120 120" fill="none" stroke="#F97316" stroke-width="8" aria-hidden="true"><circle cx="60" cy="26" r="15"/><circle cx="28" cy="82" r="15"/><circle cx="92" cy="82" r="15"/></svg>
 <span>g58.in</span>
 </div>
+<p class="biz-card-tagline">Your Business. Always One Scan Away.</p>
 <div class="share-status" id="share-${b.id}"></div>
 </div>
 
-<div class="biz-glass-actions biz-glass-actions-left">${leftActions}</div>
-<div class="biz-glass-actions biz-glass-actions-right">${rightActions}</div>
-</div>
-
-<p class="biz-card-tagline">Your Business. Always One Scan Away.</p>
-
+<div class="biz-profile-more">
 ${quickStats.length ? `<div class="biz-quick-stats">${quickStats.join("")}</div>` : ""}
 ${ownerDash}
 
@@ -1848,6 +1824,7 @@ ${
 </div>
 
 ${unlockBlock}
+</div>
 </article>`;
 }
 let activeFloatingBusinessId = null;
