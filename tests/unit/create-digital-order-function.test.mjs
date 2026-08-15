@@ -470,6 +470,79 @@ test('digit58: customer reorders a history item into a fresh owner-priced order'
   }
 });
 
+test('digit58: a due reminder creates one regular refill order and marks the card as processing', async () => {
+  const previousFetch = globalThis.fetch;
+  const requests = [];
+  const card = {
+    id: 'card_due_1', ownerId, storeId: 'store_1', customerAccountId: customerId,
+    productName: 'Thyroid medicine', price: 199, reminderDays: 30,
+    phone: '9999999999', dueAt: new Date(Date.now() - 86400000).toISOString(), status: 'Active',
+  };
+  const cardKind = `digit58_card_${ownerId}`;
+  const orderKind = `digit58_order_${ownerId}`;
+  const cardRow = { $id: card.id, kind: cardKind, payload: JSON.stringify(card) };
+  globalThis.fetch = async (url, options = {}) => {
+    const method = options.method || 'GET', target = String(url);
+    const body = options.body ? JSON.parse(options.body) : null;
+    requests.push({ url: target, method, body });
+    if (method === 'GET' && target.includes('/rows?')) return new Response(JSON.stringify({ rows: [] }), { status: 200 });
+    if (method === 'GET' && target.endsWith(`/rows/${card.id}`)) return new Response(JSON.stringify(cardRow), { status: 200 });
+    if (method === 'POST') return new Response(JSON.stringify({ $id: body.rowId, ...body.data }), { status: 201 });
+    if (method === 'PATCH') return new Response(JSON.stringify({ $id: card.id, kind: cardKind, ...body.data }), { status: 200 });
+    throw new Error(`Unexpected request ${url}`);
+  };
+  process.env.APPWRITE_FUNCTION_PROJECT_ID = 'project_1';
+  try {
+    const response = await createDigitalOrder({
+      req: {
+        method: 'POST', headers: { 'x-appwrite-key': 'dynamic-key', 'x-appwrite-user-id': customerId },
+        bodyJson: { action: 'digit58-create-refill-order', ownerId, cardId: card.id, customerName: 'Test Customer', customerEmail: 'customer@example.test', phone: '9888888888' },
+      },
+      res: { json: (body, status = 200) => ({ body, status }) }, error: () => {},
+    });
+    assert.equal(response.status, 201);
+    assert.equal(response.body.order.status, 'Requested');
+    assert.equal(response.body.order.refillCardId, card.id);
+    assert.equal(response.body.order.previousAmount, 199);
+    assert.equal(response.body.order.phone, '9888888888');
+    assert.deepEqual(response.body.order.items, [{ name: 'Thyroid medicine', qty: 1 }]);
+    const createdOrder = requests.find(request => request.method === 'POST');
+    assert.equal(createdOrder.body.data.kind, orderKind);
+    assert.ok(createdOrder.body.permissions.includes(`read(\"user:${customerId}\")`));
+    assert.ok(createdOrder.body.permissions.includes(`read(\"user:${ownerId}\")`));
+    const updatedCard = requests.find(request => request.method === 'PATCH');
+    const savedCard = JSON.parse(updatedCard.body.data.payload);
+    assert.equal(savedCard.status, 'Refill Requested');
+    assert.equal(savedCard.activeOrderId, response.body.order.id);
+  } finally {
+    globalThis.fetch = previousFetch;
+  }
+});
+
+test('digit58: a reminder cannot be refilled before its due date', async () => {
+  const previousFetch = globalThis.fetch;
+  const card = {
+    id: 'card_not_due', ownerId, storeId: 'store_1', customerAccountId: customerId,
+    productName: 'Vitamin tablets', price: 99, reminderDays: 30,
+    dueAt: new Date(Date.now() + 86400000).toISOString(), status: 'Active',
+  };
+  globalThis.fetch = async () => new Response(JSON.stringify({ $id: card.id, kind: `digit58_card_${ownerId}`, payload: JSON.stringify(card) }), { status: 200 });
+  process.env.APPWRITE_FUNCTION_PROJECT_ID = 'project_1';
+  try {
+    const response = await createDigitalOrder({
+      req: {
+        method: 'POST', headers: { 'x-appwrite-key': 'dynamic-key', 'x-appwrite-user-id': customerId },
+        bodyJson: { action: 'digit58-create-refill-order', ownerId, cardId: card.id, phone: '9999999999' },
+      },
+      res: { json: (body, status = 200) => ({ body, status }) }, error: () => {},
+    });
+    assert.equal(response.status, 400);
+    assert.match(response.body.error, /after the refill period/i);
+  } finally {
+    globalThis.fetch = previousFetch;
+  }
+});
+
 test('digit58: a different customer cannot reorder another customer history', async () => {
   const previousFetch = globalThis.fetch;
   const previousOrder = {
@@ -767,6 +840,38 @@ test('business card cleanup migrates legacy cards and permanently deletes expire
     const migratedEnvelope = JSON.parse(migration.body.data.payload);
     const migratedCard = JSON.parse(migratedEnvelope.payload);
     assert.ok(migratedCard.popupExpiresAt > Date.now() + 29 * 86400000);
+  } finally {
+    globalThis.fetch = previousFetch;
+  }
+});
+
+test('scheduled cleanup permanently deletes expired Refills promotions', async () => {
+  const previousFetch = globalThis.fetch;
+  const requests = [];
+  const expiredPromotion = { id: 'promo_expired', ownerId, storeId: 'store_1', name: 'Old Offer', endsOn: '2000-01-01' };
+  const activePromotion = { id: 'promo_active', ownerId, storeId: 'store_1', name: 'Current Offer', endsOn: '2999-12-31' };
+  const row = (kind, payload) => ({ $id: payload.id, kind, payload: JSON.stringify(payload) });
+  globalThis.fetch = async (url, options = {}) => {
+    const method = options.method || 'GET', target = String(url);
+    requests.push({ url: target, method });
+    if (method === 'GET' && target.includes('/rows?')) {
+      if (target.includes('digit58_owners')) return new Response(JSON.stringify({ rows: [row('digit58_owners', { id: 'owner-store_1', ownerId, storeId: 'store_1' })] }), { status: 200 });
+      if (target.includes(`digit58_promo_${ownerId}`)) return new Response(JSON.stringify({ rows: [row(`digit58_promo_${ownerId}`, expiredPromotion), row(`digit58_promo_${ownerId}`, activePromotion)] }), { status: 200 });
+      return new Response(JSON.stringify({ rows: [] }), { status: 200 });
+    }
+    if (method === 'DELETE') return new Response(null, { status: 204 });
+    throw new Error(`Unexpected request ${url}`);
+  };
+  process.env.APPWRITE_FUNCTION_PROJECT_ID = 'project_1';
+  try {
+    const response = await createDigitalOrder({
+      req: { method: 'POST', headers: { 'x-appwrite-key': 'dynamic-key', 'x-appwrite-trigger': 'schedule' }, bodyJson: {} },
+      res: { json: (body, status = 200) => ({ body, status }) }, error: () => {},
+    });
+    assert.equal(response.status, 200);
+    assert.deepEqual(response.body.promotions.removedIds, [expiredPromotion.id]);
+    assert.ok(requests.some(request => request.method === 'DELETE' && request.url.endsWith(`/rows/${expiredPromotion.id}`)));
+    assert.ok(!requests.some(request => request.method === 'DELETE' && request.url.endsWith(`/rows/${activePromotion.id}`)));
   } finally {
     globalThis.fetch = previousFetch;
   }

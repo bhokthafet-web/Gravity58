@@ -72,6 +72,17 @@ export function mockApiScript({ initialUser = null, admin = false, seed = {} } =
           const row=clean({id:'order-'+(++serial),ownerId:payload.ownerId,storeId:payload.storeId,customerAccountId:user?.\$id,customerName:payload.customerName,customerEmail:payload.customerEmail,phone:String(payload.phone||'').replace(/\D/g,''),items:clone(payload.items||[]),amount:0,previousAmount:0,upiUri:'',status:'Requested',messages:[],createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()});
           (store[kind]||=[]).unshift(row);notify(kind,row);return {ok:true,order:clone(row)};
         }
+        if(action==='digit58-create-refill-order'){
+          const cardKind='digit58_card_'+String(payload.ownerId||'').replace(/[^a-zA-Z0-9._-]/g,'-').slice(0,40);
+          const orderKind='digit58_order_'+String(payload.ownerId||'').replace(/[^a-zA-Z0-9._-]/g,'-').slice(0,40);
+          const card=(store[cardKind]||[]).find(row=>(row.id||row.\$id)===payload.cardId);
+          if(!card||card.customerAccountId!==user?.\$id)throw new Error('Only this card customer can request its refill.');
+          if(!card.dueAt||new Date(card.dueAt).getTime()>Date.now())throw new Error('The refill button becomes available after the refill period is completed.');
+          const existing=(store[orderKind]||[]).find(row=>row.refillCardId===card.id&&!['Delivered','Rejected'].includes(row.status));
+          if(existing)return {ok:true,order:clone(existing)};
+          const createdAt=new Date().toISOString(),row=clean({id:'refill-order-'+(++serial),ownerId:payload.ownerId,storeId:card.storeId,customerAccountId:user?.\$id,customerName:payload.customerName,customerEmail:payload.customerEmail,phone:String(payload.phone||card.phone||'').replace(/\D/g,''),items:[{name:card.productName,qty:1}],amount:0,previousAmount:Number(card.price)||0,refillCardId:card.id,upiUri:'',status:'Requested',messages:[],createdAt,updatedAt:createdAt});
+          (store[orderKind]||=[]).unshift(row);Object.assign(card,{status:'Refill Requested',refillRequestedAt:createdAt,activeOrderId:row.id,phone:row.phone,updatedAt:createdAt});notify(orderKind,row);notify(cardKind,card);return {ok:true,order:clone(row)};
+        }
         throw new Error('Unsupported secure test action: '+action);
       },
       forgotPassword:async(email,url)=>{window.__g58Mock.recoveries.push({email,url});return true},

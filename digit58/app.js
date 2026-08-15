@@ -4,13 +4,42 @@ const now=()=>new Date().toISOString();
 const id=(prefix='d58')=>`${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2,7)}`;
 const html=value=>String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
 const money=value=>`₹${Number(value||0).toLocaleString('en-IN')}`;
+const offerPrice=value=>`${money(value)}/- only`;
+function indiaDateValue(value=new Date()){
+  const date=value instanceof Date?value:new Date(value);
+  if(Number.isNaN(date.getTime()))return '';
+  const parts=Object.fromEntries(new Intl.DateTimeFormat('en-IN',{timeZone:'Asia/Kolkata',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(date).filter(part=>part.type!=='literal').map(part=>[part.type,part.value]));
+  return `${parts.year}-${parts.month}-${parts.day}`;
+}
+function orderHistoryTimestamp(order){return order.deliveredAt||order.rejectedAt||order.updatedAt||order.createdAt}
+function filterOrdersByIndiaDate(orders,fromDate,toDate){
+  return orders.filter(order=>{
+    const day=indiaDateValue(orderHistoryTimestamp(order));
+    return (!fromDate||day>=fromDate)&&(!toDate||day<=toDate);
+  });
+}
+function csvCell(value){const text=String(value??'');return /[",\r\n]/.test(text)?`"${text.replace(/"/g,'""')}"`:text}
+function downloadOrderHistoryCsv(orders,{filePrefix='order-history',includeCustomer=false,storeName='' }={}){
+  const headers=['Order ID',...(includeCustomer?['Customer','Phone']:['Store']),'Items','Amount (INR)','Status','Order Date'];
+  const rows=orders.map(order=>[
+    order.id,
+    ...(includeCustomer?[customerNameFor(order),order.phone||'']:[storeName||'']),
+    order.items.map(item=>`${Number(item.qty)||1} x ${item.name}`).join(' | '),
+    Number(order.amount)||0,
+    order.status||'',
+    new Date(orderHistoryTimestamp(order)).toLocaleString('en-IN',{timeZone:'Asia/Kolkata',dateStyle:'medium',timeStyle:'short'}),
+  ]);
+  const csv='\ufeff'+[headers,...rows].map(row=>row.map(csvCell).join(',')).join('\r\n');
+  const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'})),link=document.createElement('a');
+  link.href=url;link.download=`${filePrefix}-${indiaDateValue()}.csv`;document.body.appendChild(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
 const safeId=(prefix,ownerId,max)=>`${prefix}${String(ownerId||'public').replace(/[^a-zA-Z0-9._-]/g,'-').slice(0,max)}`;
 const storeKind=(ownerId)=>safeId('digit58_store_',ownerId,40);
 const customerKind=(ownerId)=>safeId('digit58_customer_',ownerId,36);
 const cardKind=(ownerId)=>safeId('digit58_card_',ownerId,40);
 const orderKind=(ownerId)=>safeId('digit58_order_',ownerId,40);
 const promotionKind=(ownerId)=>safeId('digit58_promo_',ownerId,40);
-const REQUEST_KIND='digit58_requests',ENTITLEMENT_KIND='digit58_entitlements',SUBSCRIPTION_AMOUNT=399,QR_REVEAL_DAYS=5;
+const REQUEST_KIND='digit58_requests',ENTITLEMENT_KIND='digit58_entitlements',SUBSCRIPTION_AMOUNT=399;
 const ORDER_STEPS=[
   {key:'Requested',icon:'📝',label:'Requested'},
   {key:'Priced',icon:'💳',label:'Payment'},
@@ -182,7 +211,7 @@ async function refreshOwnerPromotionsRealtime(){
   const ownerId=cloudOwnerId();if(!ownerId)return;
   const promotions=await api.list(promotionKind(ownerId)).catch(()=>null);
   if(!promotions)return;
-  state.promotions=promotions;save();
+  state.promotions=await cleanupExpiredOwnerPromotions(ownerId,promotions);save();
   if(!$('.modal-backdrop'))refreshView();
 }
 
@@ -334,7 +363,7 @@ async function loadOwnerData(){
     api.list(orderKind(ownerId)).catch(()=>[]),
     api.list(promotionKind(ownerId)).catch(()=>[]),
   ]);
-  state.stores=stores;state.customers=customers;state.cards=cards;state.orders=orders;state.promotions=promotions;
+  state.stores=stores;state.customers=customers;state.cards=cards;state.orders=orders;state.promotions=await cleanupExpiredOwnerPromotions(ownerId,promotions);
   if(!state.activeStoreId||!stores.some(row=>row.id===state.activeStoreId))state.activeStoreId=stores[0]?.id||'';
   save();
 }
@@ -467,14 +496,11 @@ function storeCard(store){
   return `<article class="card"><h3>${html(store.name)}</h3><p class="muted">${html(store.category)}${store.city?' · '+html(store.city):''}</p><p>${html(store.description||'')}</p><div class="chips"><span class="chip">${ownerCustomers(store.id).length} customers</span>${store.razorpayEnabled&&validRazorpayLink(store.razorpayLink)?'<span class="chip delivered">Razorpay enabled</span>':''}${store.suspended?'<span class="chip due">Paused by G58 admin</span>':''}</div><div class="actions"><button class="btn small" data-share-store="${html(store.id)}">Share Link / QR</button><button class="btn small secondary" data-edit-store="${html(store.id)}">Edit</button></div></article>`;
 }
 function publicStoreLink(store){return `${location.origin}${location.pathname.replace(/index\.html$/,'')}#store&owner=${encodeURIComponent(store.ownerId)}&store=${encodeURIComponent(store.id)}`}
-function razorpaySuccessReturnUrl(ownerId,storeId){return `${location.origin}${location.pathname.replace(/index\.html$/,'')}?razorpay_return=success&owner=${encodeURIComponent(ownerId)}&store=${encodeURIComponent(storeId)}`}
 function openStoreForm(storeId=''){
   const store=state.stores.find(row=>row.id===storeId)||{};
-  const returnUrl=storeId?razorpaySuccessReturnUrl(store.ownerId||cloudOwnerId(),storeId):'';
-  modal(storeId?'Edit Store':'Create Store',`<form id="storeForm"><div class="field"><label>Store name</label><input name="name" value="${html(store.name||'')}" required></div><div class="form-grid"><div class="field"><label>Category</label><input name="category" value="${html(store.category||'')}" placeholder="Example: Pharmacy"></div><div class="field"><label>City</label><input name="city" value="${html(store.city||'')}"></div></div><div class="field"><label>Phone</label><input name="phone" value="${html(store.phone||'')}"></div><div class="field"><label>UPI ID <small>(for order payment QR codes)</small></label><input name="upiId" value="${html(store.upiId||'')}" placeholder="yourstore@upi"></div><label class="option-toggle"><input id="razorpayEnabled" name="razorpayEnabled" type="checkbox" ${store.razorpayEnabled?'checked':''}><span><strong>Enable Razorpay payment link</strong><small>Optional — customers can open your Razorpay page after you set the order amount.</small></span></label><div class="field ${store.razorpayEnabled?'':'hidden'}" id="razorpayLinkField"><label>Razorpay payment link</label><input name="razorpayLink" type="text" inputmode="url" value="${html(store.razorpayLink||'')}" placeholder="razorpay.me/@yourstore"><small class="muted">Only razorpay.me or rzp.io secure links are accepted. https:// is added automatically.</small>${returnUrl?`<div class="razorpay-redirect-setup"><strong>Automatic return after successful payment</strong><small>In Razorpay Payment Page settings, choose Action after successful payment → Redirect to your website, then paste this URL.</small><input id="razorpayReturnUrl" value="${html(returnUrl)}" readonly><button class="btn small secondary" id="copyRazorpayReturn" type="button">Copy Success URL</button></div>`:'<small class="muted">Save this store, then edit it again to get its automatic success-return URL.</small>'}</div><div class="field"><label>Description</label><textarea name="description">${html(store.description||'')}</textarea></div><button class="btn full">${storeId?'Save Store':'Create Store'}</button></form>`,()=>{
+  modal(storeId?'Edit Store':'Create Store',`<form id="storeForm"><div class="field"><label>Store name</label><input name="name" value="${html(store.name||'')}" required></div><div class="form-grid"><div class="field"><label>Category</label><input name="category" value="${html(store.category||'')}" placeholder="Example: Pharmacy"></div><div class="field"><label>City</label><input name="city" value="${html(store.city||'')}"></div></div><div class="field"><label>Phone</label><input name="phone" value="${html(store.phone||'')}"></div><div class="field"><label>UPI ID <small>(for order payment QR codes)</small></label><input name="upiId" value="${html(store.upiId||'')}" placeholder="yourstore@upi"></div><label class="option-toggle"><input id="razorpayEnabled" name="razorpayEnabled" type="checkbox" ${store.razorpayEnabled?'checked':''}><span><strong>Enable Razorpay payment link</strong><small>Optional — customers can open your Razorpay page after you set the order amount.</small></span></label><div class="field ${store.razorpayEnabled?'':'hidden'}" id="razorpayLinkField"><label>Razorpay payment link</label><input name="razorpayLink" type="text" inputmode="url" value="${html(store.razorpayLink||'')}" placeholder="razorpay.me/@yourstore"><small class="muted">Only razorpay.me or rzp.io secure links are accepted. https:// is added automatically.</small><div class="razorpay-link-note"><strong>How reusable Razorpay.me links work</strong><small>Razorpay.me has no return-URL setting. After paying, the customer returns to the G58 tab and taps Payment completed. Always verify the payment in Razorpay before accepting the order.</small></div></div><div class="field"><label>Description</label><textarea name="description">${html(store.description||'')}</textarea></div><button class="btn full">${storeId?'Save Store':'Create Store'}</button></form>`,()=>{
     const razorpayToggle=$('#razorpayEnabled'),razorpayField=$('#razorpayLinkField');
     razorpayToggle.onchange=()=>razorpayField.classList.toggle('hidden',!razorpayToggle.checked);
-    $('#copyRazorpayReturn')?.addEventListener('click',async()=>{try{await navigator.clipboard.writeText(returnUrl);toast('Razorpay success URL copied')}catch{toast('Select and copy the success URL above')}});
     $('#storeForm').onsubmit=async event=>{
       event.preventDefault();
       const raw=Object.fromEntries(new FormData(event.target)),ownerId=cloudOwnerId(),button=event.submitter;
@@ -513,8 +539,12 @@ function promotionsView(){
 }
 function promotionIsExpired(promotion){
   if(!promotion?.endsOn)return false;
-  const end=new Date(`${promotion.endsOn}T23:59:59`).getTime();
-  return Number.isFinite(end)&&end<Date.now();
+  return promotion.endsOn<indiaDateValue();
+}
+async function cleanupExpiredOwnerPromotions(ownerId,promotions){
+  const expired=promotions.filter(promotionIsExpired);
+  if(expired.length)await Promise.allSettled(expired.map(promotion=>api.remove(promotionKind(ownerId),promotion.id)));
+  return promotions.filter(promotion=>!promotionIsExpired(promotion));
 }
 function formatPromotionEnd(value){
   const date=new Date(`${value}T00:00:00`);
@@ -522,16 +552,16 @@ function formatPromotionEnd(value){
 }
 function promotionOwnerCard(promotion){
   const expired=promotionIsExpired(promotion);
-  return `<article class="promotion-ticket owner-ticket ${promotion.active===false||expired?'promotion-disabled':''}"><span class="promotion-ticket-badge">Offer Price</span><h3>${html(promotion.name)}</h3><p>${html(promotion.offerText||'Limited-time store offer')}</p>${Number(promotion.price)>0?`<strong class="promotion-offer-price">MRP ${money(promotion.price)}</strong>`:''}${promotion.endsOn?`<small class="promotion-end-date">Offer ends ${html(formatPromotionEnd(promotion.endsOn))}</small>`:''}<div class="chips"><span class="chip ${promotion.active===false||expired?'due':'delivered'}">${expired?'Expired':promotion.active===false?'Paused':'Visible to customers'}</span></div><div class="actions"><button class="btn small" data-edit-promotion="${html(promotion.id)}">Edit</button><button class="btn small secondary" data-toggle-promotion="${html(promotion.id)}">${promotion.active===false?'Enable':'Pause'}</button><button class="btn small red" data-delete-promotion="${html(promotion.id)}">Delete</button></div></article>`;
+  return `<article class="promotion-ticket owner-ticket ${promotion.active===false||expired?'promotion-disabled':''}"><span class="promotion-ticket-badge">Special Offer</span><h3>${html(promotion.name)}</h3><p>${html(promotion.offerText||'Limited-time store offer')}</p>${Number(promotion.price)>0?`<strong class="promotion-offer-price">${offerPrice(promotion.price)}</strong>`:''}${promotion.endsOn?`<small class="promotion-end-date">Offer ends ${html(formatPromotionEnd(promotion.endsOn))}</small>`:''}<div class="chips"><span class="chip ${promotion.active===false||expired?'due':'delivered'}">${expired?'Expired':promotion.active===false?'Paused':'Visible to customers'}</span></div><div class="actions"><button class="btn small" data-edit-promotion="${html(promotion.id)}">Edit</button><button class="btn small secondary" data-toggle-promotion="${html(promotion.id)}">${promotion.active===false?'Enable':'Pause'}</button><button class="btn small red" data-delete-promotion="${html(promotion.id)}">Delete</button></div></article>`;
 }
 function openPromotionForm(promotionId=''){
   const store=activeStore(),promotion=state.promotions.find(row=>row.id===promotionId)||{};if(!store)return;
-  const defaultEnd=new Date(Date.now()+7*86400000).toISOString().slice(0,10),today=new Date().toISOString().slice(0,10);
+  const defaultEnd=indiaDateValue(new Date(Date.now()+7*86400000)),today=indiaDateValue();
   modal(promotionId?'Edit Promotion':'Create Promotion',`<form id="promotionForm"><div class="field"><label>Product name</label><input name="name" value="${html(promotion.name||'')}" placeholder="Organic Honey" maxlength="80" required></div><div class="field"><label>Offer line</label><input name="offerText" value="${html(promotion.offerText||'')}" placeholder="Pure 500g jar · limited stock" maxlength="120"></div><div class="form-grid"><div class="field"><label>Offer price</label><input name="price" type="number" min="0" step="0.01" value="${Number(promotion.price)||''}" placeholder="299" required></div><div class="field"><label>Offer ends</label><input name="endsOn" type="date" min="${today}" value="${html(promotion.endsOn||defaultEnd)}" required></div></div><label class="option-toggle"><input name="active" type="checkbox" ${promotion.active===false?'':'checked'}><span><strong>Show to customers</strong><small>Paused promotions remain saved but disappear from the customer portal.</small></span></label><button class="btn full" style="margin-top:14px">${promotionId?'Save Promotion':'Publish Promotion'}</button></form>`,()=>{
     $('#promotionForm').onsubmit=async event=>{
       event.preventDefault();
       const raw=Object.fromEntries(new FormData(event.target)),button=event.submitter,ownerId=cloudOwnerId();
-      const values={name:raw.name.trim(),offerText:raw.offerText.trim(),price:Math.max(0,Number(raw.price)||0),endsOn:raw.endsOn,badge:'Offer Price',active:$('input[name="active"]',event.target).checked,updatedAt:now()};
+      const values={name:raw.name.trim(),offerText:raw.offerText.trim(),price:Math.max(0,Number(raw.price)||0),endsOn:raw.endsOn,badge:'Special Offer',active:$('input[name="active"]',event.target).checked,updatedAt:now()};
       if(!values.name)return toast('Enter a product name');
       if(!values.endsOn||values.endsOn<today)return toast('Choose today or a future offer end date');
       button.disabled=true;
@@ -691,7 +721,7 @@ function ownerOrderMarkup(order,showCustomer,showStore){
   const store=showStore?state.stores.find(s=>s.id===order.storeId):null;
   const paymentReview=order.paymentMarkedAt?`<div class="razorpay-owner-review"><span>Razorpay payment submitted</span><strong>Verify payment before accepting</strong><small>Customer marked this payment completed ${new Date(order.paymentMarkedAt).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'})}.</small></div>`:'';
   const visibleStatus=order.paymentMarkedAt&&order.status==='Priced'?'Payment Verification':order.status;
-  return `<article class="card order-item-card ${ringing?'incoming-order':''} ${order.paymentMarkedAt?'payment-awaiting':''}">${ringing?'<span class="incoming-order-beacon" aria-label="New order" title="New order"></span>':''}<div class="section-head"><h3>Order #${html(order.id.slice(-6).toUpperCase())}</h3><span class="chip ${['Requested','Priced'].includes(order.status)?'due':''}">${html(visibleStatus)}</span></div>${showStore?`<p class="muted" style="margin:-8px 0 0"><strong>${html(store?.name||'Store')}</strong></p>`:''}${showCustomer?`<p class="muted" style="margin:-4px 0 4px">${html(customer?.customerName||order.customerName||'Customer')}</p>`:''}${orderStepperMarkup(order.status)}<div class="order-items-list">${order.items.map(item=>`<div class="order-line-item"><span>${item.qty} ×</span><span>${html(item.name)}</span></div>`).join('')}</div>${order.reorderedFrom&&Number(order.previousAmount)>0?`<div class="previous-price-note"><span>Previous order amount</span><strong>${money(order.previousAmount)}</strong></div>`:''}${order.prescriptionUrl?`<a class="link-btn" href="${html(order.prescriptionUrl)}" target="_blank" rel="noopener">📄 View prescription</a>`:''}${order.amount?`<h3 style="margin:10px 0">${money(order.amount)}</h3>`:'<p class="muted">Amount not set yet.</p>'}${paymentReview}${deliveryContactMarkup(order)}<div class="actions">${orderOwnerActions(order)}</div>${orderChatMarkup(order,'owner')}</article>`;
+  return `<article class="card order-item-card ${ringing?'incoming-order':''} ${order.paymentMarkedAt?'payment-awaiting':''}">${ringing?'<span class="incoming-order-beacon" aria-label="New order" title="New order"></span>':''}<div class="section-head"><h3>Order #${html(order.id.slice(-6).toUpperCase())}</h3><span class="chip ${['Requested','Priced'].includes(order.status)?'due':''}">${html(visibleStatus)}</span></div>${showStore?`<p class="muted" style="margin:-8px 0 0"><strong>${html(store?.name||'Store')}</strong></p>`:''}${showCustomer?`<p class="muted" style="margin:-4px 0 4px">${html(customer?.customerName||order.customerName||'Customer')}</p>`:''}${order.refillCardId?'<span class="chip delivered">Refill order</span>':''}${orderStepperMarkup(order.status)}<div class="order-items-list">${order.items.map(item=>`<div class="order-line-item"><span>${item.qty} ×</span><span>${html(item.name)}</span></div>`).join('')}</div>${(order.reorderedFrom||order.refillCardId)&&Number(order.previousAmount)>0?`<div class="previous-price-note"><span>${order.refillCardId?'Previous refill price':'Previous order amount'}</span><strong>${money(order.previousAmount)}</strong></div>`:''}${order.prescriptionUrl?`<a class="link-btn" href="${html(order.prescriptionUrl)}" target="_blank" rel="noopener">📄 View prescription</a>`:''}${order.amount?`<h3 style="margin:10px 0">${money(order.amount)}</h3>`:'<p class="muted">Amount not set yet.</p>'}${paymentReview}${deliveryContactMarkup(order)}<div class="actions">${orderOwnerActions(order)}</div>${orderChatMarkup(order,'owner')}</article>`;
 }
 function orderOwnerActions(order){
   const map={
@@ -737,7 +767,7 @@ function setOrderAmount(orderId){
   const order=state.orders.find(row=>row.id===orderId);if(!order)return;
   const store=state.stores.find(row=>row.id===order.storeId);
   const suggestedAmount=Number(order.amount)||Number(order.previousAmount)||0;
-  modal('Review Order Amount',`<form id="setAmountForm">${order.reorderedFrom&&Number(order.previousAmount)>0?`<div class="previous-price-review"><span>Previous order price</span><strong>${money(order.previousAmount)}</strong><small>Approve this price as-is or enter the updated amount below.</small></div>`:''}<div class="form-grid"><div class="field"><label>Amount (₹)</label><input id="amountInput" name="amount" type="number" min="1" step="0.01" value="${suggestedAmount||''}" required></div><div class="field"><label>UPI ID</label><input id="upiIdInput" name="upiId" value="${html(order.upiId||store?.upiId||'')}" placeholder="yourstore@upi"></div></div><div class="qr-wrap" id="amountQrPreview"></div><button class="btn full" style="margin-top:14px">Approve Amount & Send Payment</button></form>`,()=>{
+  modal('Review Order Amount',`<form id="setAmountForm">${(order.reorderedFrom||order.refillCardId)&&Number(order.previousAmount)>0?`<div class="previous-price-review"><span>${order.refillCardId?'Previous refill price':'Previous order price'}</span><strong>${money(order.previousAmount)}</strong><small>Approve this price as-is or enter the updated amount below.</small></div>`:''}<div class="form-grid"><div class="field"><label>Amount (₹)</label><input id="amountInput" name="amount" type="number" min="1" step="0.01" value="${suggestedAmount||''}" required></div><div class="field"><label>UPI ID</label><input id="upiIdInput" name="upiId" value="${html(order.upiId||store?.upiId||'')}" placeholder="yourstore@upi"></div></div><div class="qr-wrap" id="amountQrPreview"></div><button class="btn full" style="margin-top:14px">Approve Amount & Send Payment</button></form>`,()=>{
     bindLiveQrPreview({amountInput:$('#amountInput'),upiInput:$('#upiIdInput'),previewEl:$('#amountQrPreview'),payeeName:store?.name,refId:order.id});
     $('#setAmountForm').onsubmit=async event=>{
       event.preventDefault();
@@ -765,9 +795,11 @@ async function advanceOrder(orderId,next){
   try{
     await api.update(orderKind(order.ownerId),orderId,changes);
     Object.assign(order,changes);
+    let reminderResetFailed=false;
+    if(next==='Delivered'&&order.refillCardId){try{await resetRefillCardAfterOrder(order,true)}catch{reminderResetFailed=true}}
     ringingIds.delete(orderId);updateOrderAlertSound();
     refreshView();
-    toast(next==='Delivered'?'Order delivered':`Order status: ${next}`);
+    toast(reminderResetFailed?'Order delivered, but the reminder card could not be reset':next==='Delivered'?'Order delivered':`Order status: ${next}`);
   }catch(error){toast(error.message||'Could not update order')}
 }
 async function rejectOrder(orderId){
@@ -775,31 +807,35 @@ async function rejectOrder(orderId){
   try{
     await api.update(orderKind(order.ownerId),orderId,{status:'Rejected',rejectedAt:now()});
     Object.assign(order,{status:'Rejected',rejectedAt:now()});
+    if(order.refillCardId){try{await resetRefillCardAfterOrder(order,false)}catch{}}
     ringingIds.delete(orderId);updateOrderAlertSound();
     refreshView();toast('Order rejected');
   }catch(error){toast(error.message||'Could not reject order')}
 }
+async function resetRefillCardAfterOrder(order,delivered){
+  const card=state.cards.find(row=>row.id===order.refillCardId);if(!card)return;
+  const completedAt=now(),changes={status:'Active',activeOrderId:'',refillRequestedAt:'',updatedAt:completedAt};
+  if(delivered){changes.purchasedAt=completedAt;changes.lastDeliveredAt=completedAt;changes.dueAt=new Date(Date.now()+Math.max(1,Number(card.reminderDays)||30)*86400000).toISOString();changes.timesDelivered=Number(card.timesDelivered||0)+1}
+  await api.update(cardKind(order.ownerId),card.id,changes);Object.assign(card,changes);save();
+}
 function orderHistoryView(){
   refreshView=orderHistoryView;
   const store=activeStore();
-  const fromInput=$('#historyFrom')?.value||'',toInput=$('#historyTo')?.value||'';
+  const today=indiaDateValue(),fromInput=$('#historyFrom')?.value||today,toInput=$('#historyTo')?.value||today;
   const all=orderHistoryOrders(storeOrders(store?.id));
-  const filtered=all.filter(order=>{
-    const day=new Date(order.deliveredAt||order.updatedAt||order.createdAt).toISOString().slice(0,10);
-    if(fromInput&&day<fromInput)return false;
-    if(toInput&&day>toInput)return false;
-    return true;
-  }).sort((a,b)=>new Date(b.deliveredAt||b.updatedAt||b.createdAt)-new Date(a.deliveredAt||a.updatedAt||a.createdAt));
-  $('#page').innerHTML=`<div class="section-head"><div><h1>Order History</h1><p class="muted">Completed and rejected orders for ${html(store?.name||'this store')}.</p></div></div><div class="date-filter-bar"><label>From<input id="historyFrom" type="date" value="${html(fromInput)}"></label><label>To<input id="historyTo" type="date" value="${html(toInput)}"></label></div><div class="grid stats">${metric('Orders',filtered.length)}${metric('Revenue',money(filtered.filter(o=>o.status==='Delivered').reduce((sum,o)=>sum+Number(o.amount||0),0)))}</div><div class="card table-wrap"><table><thead><tr><th>Customer</th><th>Items</th><th>Amount</th><th>Status</th><th>Date</th></tr></thead><tbody>${filtered.map(orderHistoryRow).join('')||'<tr><td colspan="5">No orders in this period.</td></tr>'}</tbody></table></div>`;
+  const filtered=filterOrdersByIndiaDate(all,fromInput,toInput).sort((a,b)=>new Date(orderHistoryTimestamp(b))-new Date(orderHistoryTimestamp(a)));
+  $('#page').innerHTML=`<div class="section-head"><div><h1>Order History</h1><p class="muted">Today's completed and rejected orders are shown by default. Select a From and To date for another period.</p></div><button class="btn small secondary" id="exportOwnerHistory" ${filtered.length?'':'disabled'}>Export CSV</button></div><div class="date-filter-bar"><label>From<input id="historyFrom" type="date" value="${html(fromInput)}" max="${html(toInput)}"></label><label>To<input id="historyTo" type="date" value="${html(toInput)}" min="${html(fromInput)}"></label><button class="btn small secondary" id="ownerHistoryToday" type="button">Today</button></div><div class="grid stats">${metric('Orders',filtered.length)}${metric('Revenue',money(filtered.filter(o=>o.status==='Delivered').reduce((sum,o)=>sum+Number(o.amount||0),0)))}</div><div class="card table-wrap"><table><thead><tr><th>Customer</th><th>Items</th><th>Amount</th><th>Status</th><th>Date</th></tr></thead><tbody>${filtered.map(orderHistoryRow).join('')||'<tr><td colspan="5">No orders in this period.</td></tr>'}</tbody></table></div>`;
   $('#historyFrom').onchange=orderHistoryView;$('#historyTo').onchange=orderHistoryView;
+  $('#ownerHistoryToday').onclick=()=>{$('#historyFrom').value=today;$('#historyTo').value=today;orderHistoryView()};
+  $('#exportOwnerHistory').onclick=()=>downloadOrderHistoryCsv(filtered,{filePrefix:`${store?.name||'store'}-orders`.toLowerCase().replace(/[^a-z0-9]+/g,'-'),includeCustomer:true});
 }
 function orderHistoryRow(order){
   const customer=state.customers.find(c=>c.customerAccountId===order.customerAccountId&&c.storeId===order.storeId);
-  return `<tr><td>${html(customer?.customerName||order.customerName||'Customer')}</td><td>${order.items.map(i=>`${i.qty}×${html(i.name)}`).join(', ')}</td><td>${money(order.amount)}</td><td>${html(order.status)}</td><td>${new Date(order.deliveredAt||order.updatedAt||order.createdAt).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'})}</td></tr>`;
+  return `<tr><td>${html(customer?.customerName||order.customerName||'Customer')}</td><td>${order.items.map(i=>`${i.qty}×${html(i.name)}`).join(', ')}</td><td>${money(order.amount)}</td><td>${html(order.status)}</td><td>${new Date(orderHistoryTimestamp(order)).toLocaleString('en-IN',{timeZone:'Asia/Kolkata',dateStyle:'medium',timeStyle:'short'})}</td></tr>`;
 }
 function ownerCardMarkup(card){
-  const due=isCardDue(card),remaining=daysRemaining(card),pct=Math.min(100,Math.round((1-remaining/Math.max(1,Number(card.reminderDays)||1))*100)),ringing=ringingIds.has(card.id);
-  return `<article class="card reminder-card ${due||card.status==='Buy Requested'?'due':''} ${ringing?'incoming-order':''}">${ringing?'<span class="incoming-order-beacon" aria-label="Buy again request" title="Buy again request"></span>':''}<h3>${html(card.productName)}</h3><p class="muted">${money(card.price)} · every ${Number(card.reminderDays)} day(s)</p><div class="reminder-progress ${due?'due':''}"><span style="width:${pct}%"></span></div><div class="chips"><span class="chip ${due?'due':''}">${due?'Due now':`${remaining} day(s) left`}</span>${card.status==='Buy Requested'?'<span class="chip due">Buy requested</span>':''}${Number(card.timesDelivered)?`<span class="chip delivered">${Number(card.timesDelivered)} delivered</span>`:''}</div>${deliveryContactMarkup(card)}<div class="actions">${card.status==='Buy Requested'?`<button class="btn small green" data-deliver="${html(card.id)}">Mark Delivered</button>`:''}<button class="btn small secondary" data-edit-card="${html(card.id)}">Edit</button><button class="btn small red" data-remove-card="${html(card.id)}">Remove</button></div>${cardChatMarkup(card,'owner')}</article>`;
+  const due=isCardDue(card),remaining=daysRemaining(card),pct=Math.min(100,Math.round((1-remaining/Math.max(1,Number(card.reminderDays)||1))*100)),ringing=ringingIds.has(card.id),regularRefill=card.status==='Refill Requested';
+  return `<article class="card reminder-card ${due||['Buy Requested','Refill Requested'].includes(card.status)?'due':''} ${ringing?'incoming-order':''}">${ringing?'<span class="incoming-order-beacon" aria-label="Buy again request" title="Buy again request"></span>':''}<h3>${html(card.productName)}</h3><p class="muted">${money(card.price)} · every ${Number(card.reminderDays)} day(s)</p><div class="reminder-progress ${due?'due':''}"><span style="width:${pct}%"></span></div><div class="chips"><span class="chip ${due?'due':''}">${due?'Due now':`${remaining} day(s) left`}</span>${card.status==='Buy Requested'?'<span class="chip due">Buy requested</span>':''}${regularRefill?'<span class="chip due">Processing in Orders</span>':''}${Number(card.timesDelivered)?`<span class="chip delivered">${Number(card.timesDelivered)} delivered</span>`:''}</div>${deliveryContactMarkup(card)}<div class="actions">${card.status==='Buy Requested'?`<button class="btn small green" data-deliver="${html(card.id)}">Mark Delivered</button>`:''}<button class="btn small secondary" data-edit-card="${html(card.id)}">Edit</button><button class="btn small red" data-remove-card="${html(card.id)}">Remove</button></div>${cardChatMarkup(card,'owner')}</article>`;
 }
 function bindOwnerCardActions(){
   $$('[data-deliver]').forEach(button=>button.onclick=()=>deliverCard(button.dataset.deliver));
@@ -936,7 +972,7 @@ function promotionQuantityControl(promotionId){
   return qty>0?`<div class="promotion-stepper" aria-label="Selected quantity"><button type="button" data-promotion-minus="${html(promotionId)}" aria-label="Remove one">−</button><strong>${qty}</strong><button type="button" data-promotion-plus="${html(promotionId)}" aria-label="Add one">+</button></div>`:`<button type="button" class="promotion-add" data-promotion-add="${html(promotionId)}">Buy</button>`;
 }
 function customerPromotionTicket(promotion,decorative=false){
-  return `<article class="promotion-ticket customer-ticket" ${decorative?'aria-hidden="true"':''}><span class="promotion-ticket-badge">Offer Price</span><h3>${html(promotion.name)}</h3><p>${html(promotion.offerText||'Limited-time store offer')}</p>${Number(promotion.price)>0?`<strong class="promotion-offer-price">MRP ${money(promotion.price)}</strong>`:''}${promotion.endsOn?`<small class="promotion-end-date">Offer ends ${html(formatPromotionEnd(promotion.endsOn))}</small>`:''}<div class="promotion-ticket-foot"><div class="promotion-control" data-promotion-control="${html(promotion.id)}">${promotionQuantityControl(promotion.id)}</div></div></article>`;
+  return `<article class="promotion-ticket customer-ticket" ${decorative?'aria-hidden="true"':''}><span class="promotion-ticket-badge">Special Offer</span><h3>${html(promotion.name)}</h3><p>${html(promotion.offerText||'Limited-time store offer')}</p>${Number(promotion.price)>0?`<strong class="promotion-offer-price">${offerPrice(promotion.price)}</strong>`:''}${promotion.endsOn?`<small class="promotion-end-date">Offer ends ${html(formatPromotionEnd(promotion.endsOn))}</small>`:''}<div class="promotion-ticket-foot"><div class="promotion-control" data-promotion-control="${html(promotion.id)}">${promotionQuantityControl(promotion.id)}</div></div></article>`;
 }
 function bindCustomerPromotionActions(promotions){
   const update=(promotionId,delta)=>{
@@ -955,6 +991,8 @@ function renderCustomerCards(store,customer,cards,orders=[],promotions=[]){
   if(activePromotionStoreId!==store.id){activePromotionStoreId=store.id;customerPromotionQuantities.clear()}
   const active=activeOrders(orders).sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
   const history=orderHistoryOrders(orders).sort((a,b)=>new Date(b.updatedAt||b.createdAt)-new Date(a.updatedAt||a.createdAt));
+  const today=indiaDateValue(),historyFrom=$('#customerHistoryFrom')?.value||today,historyTo=$('#customerHistoryTo')?.value||today;
+  const filteredHistory=filterOrdersByIndiaDate(history,historyFrom,historyTo).sort((a,b)=>new Date(orderHistoryTimestamp(b))-new Date(orderHistoryTimestamp(a)));
   const marqueePromotions=promotions.length?Array.from({length:Math.max(1,Math.ceil(6/promotions.length))},()=>promotions).flat():[];
   app.innerHTML=`<main class="public-store"><section class="store-hero"><span class="chip">${html(store.category||'Store')}</span><h1>${html(store.name)}</h1><p class="muted">${html(store.description||'')}${store.city?' · '+html(store.city):''}</p></section>
   ${promotions.length?`<section class="promotion-strip"><div class="promotion-strip-head"><div><span>Store offers</span><h2>Fresh deals for your next order</h2></div><small>Tap Buy to include an offer</small></div><div class="promotion-rail" id="promotionRail"><div class="promotion-track"><div class="promotion-sequence">${marqueePromotions.map((promotion,index)=>customerPromotionTicket(promotion,index>=promotions.length)).join('')}</div><div class="promotion-sequence" aria-hidden="true">${marqueePromotions.map(promotion=>customerPromotionTicket(promotion,true)).join('')}</div></div></div></section>`:''}
@@ -962,15 +1000,11 @@ function renderCustomerCards(store,customer,cards,orders=[],promotions=[]){
   <div class="grid card-grid">${active.map(order=>customerOrderMarkup(order,store)).join('')||'<div class="empty">No active orders. Place a new order to get started.</div>'}</div>
   <div class="section-head"><h2>Your reminder cards</h2></div>
   <div class="grid card-grid" id="customerCardGrid">${cards.map(customerCardCardMarkup).join('')||'<div class="empty">Your store will add reminder cards here after your first purchase.</div>'}</div>
-  ${history.length?`<div class="section-head"><h2>Order History</h2></div><div class="card table-wrap"><table><thead><tr><th>Items</th><th>Amount</th><th>Status</th><th>Date</th><th>Action</th></tr></thead><tbody>${history.map(customerOrderHistoryRow).join('')}</tbody></table></div>`:''}
+  ${history.length?`<div class="section-head"><div><h2>Order History</h2><p class="muted">Today's history is shown by default. Select another date period when needed.</p></div><button class="btn small secondary" id="exportCustomerHistory" ${filteredHistory.length?'':'disabled'}>Export CSV</button></div><div class="date-filter-bar"><label>From<input id="customerHistoryFrom" type="date" value="${html(historyFrom)}" max="${html(historyTo)}"></label><label>To<input id="customerHistoryTo" type="date" value="${html(historyTo)}" min="${html(historyFrom)}"></label><button class="btn small secondary" id="customerHistoryToday" type="button">Today</button></div><div class="card table-wrap"><table><thead><tr><th>Items</th><th>Reorder</th><th>Amount</th><th>Status</th><th>Date</th></tr></thead><tbody>${filteredHistory.map(customerOrderHistoryRow).join('')||'<tr><td colspan="5">No orders in this period.</td></tr>'}</tbody></table></div>`:''}
   <div class="actions" style="margin-top:20px"><button class="btn secondary" id="custLogout">Sign out</button></div></main>${siteFooter()}`;
   active.filter(order=>order.status==='Priced'&&order.upiUri).forEach(order=>{
     const target=document.getElementById(`qr-${order.id}`);
     if(target&&window.QRCode)new QRCode(target,{text:order.upiUri,width:180,height:180});
-  });
-  cards.filter(card=>card.status!=='Buy Requested'&&card.upiUri&&(isCardDue(card)||daysRemaining(card)<=QR_REVEAL_DAYS)).forEach(card=>{
-    const target=document.getElementById(`card-qr-${card.id}`);
-    if(target&&window.QRCode)new QRCode(target,{text:card.upiUri,width:160,height:160});
   });
   bindCustomerPromotionActions(promotions);
   startPromotionAutoScroll();
@@ -981,9 +1015,13 @@ function renderCustomerCards(store,customer,cards,orders=[],promotions=[]){
     openBuyAgainModal(button.dataset.buyAgain,store,customer,card?.productName);
   });
   $$('[data-reorder-order]').forEach(button=>button.onclick=()=>{
-    const order=history.find(row=>row.id===button.dataset.reorderOrder);
+    const order=filteredHistory.find(row=>row.id===button.dataset.reorderOrder);
     if(order)openReorderOrderModal(order,store,customer);
   });
+  $('#customerHistoryFrom')?.addEventListener('change',()=>renderCustomerCards(store,customer,cards,orders,promotions));
+  $('#customerHistoryTo')?.addEventListener('change',()=>renderCustomerCards(store,customer,cards,orders,promotions));
+  $('#customerHistoryToday')?.addEventListener('click',()=>{$('#customerHistoryFrom').value=today;$('#customerHistoryTo').value=today;renderCustomerCards(store,customer,cards,orders,promotions)});
+  $('#exportCustomerHistory')?.addEventListener('click',()=>downloadOrderHistoryCsv(filteredHistory,{filePrefix:`${store.name||'store'}-my-orders`.toLowerCase().replace(/[^a-z0-9]+/g,'-'),storeName:store.name||'Store'}));
   bindOrderChatForms(active,'customer',()=>loadAndRenderCustomerView(store,customer));
   bindCardChatForms(cards,'customer',()=>loadAndRenderCustomerView(store,customer));
   initShakeDetection();
@@ -996,18 +1034,16 @@ function vialMarkup(card){
   return `<div class="vial ${due?'vial-empty':''}"><div class="vial-cap"></div><div class="vial-glass"><div class="vial-liquid" style="height:${pct}%"></div></div><div class="vial-label"><strong>${due?'Due':`${remaining}d`}</strong><small>left</small></div></div>`;
 }
 function customerCardCardMarkup(card){
-  const due=isCardDue(card),remaining=daysRemaining(card),showQr=(due||remaining<=QR_REVEAL_DAYS)&&card.status!=='Buy Requested';
+  const due=isCardDue(card),remaining=daysRemaining(card),refillPending=['Buy Requested','Refill Requested'].includes(card.status);
   let payBlock='';
-  if(card.status==='Buy Requested'){
-    payBlock='<p class="muted">Waiting for the store to confirm and deliver.</p>';
-  }else if(showQr&&card.upiUri){
-    payBlock=`<div class="qr-wrap" id="card-qr-${html(card.id)}"></div><p class="muted" style="text-align:center;margin:8px 0">${due?'Scan to pay for your refill.':`Scan to pay — refill due in ${remaining} day(s).`}</p><button class="btn full green" data-buy-again="${html(card.id)}">Buy Again</button>`;
-  }else if(showQr){
-    payBlock=`<button class="btn full green" data-buy-again="${html(card.id)}">Buy Again</button>`;
+  if(refillPending){
+    payBlock='<p class="muted">Your refill order was sent. Follow it under Your orders while the store reviews the amount and processes it.</p>';
+  }else if(due){
+    payBlock=`<button class="btn full green" data-buy-again="${html(card.id)}">Refill</button>`;
   }else{
-    payBlock=`<p class="muted" style="text-align:center">Payment QR unlocks ${remaining-QR_REVEAL_DAYS} day(s) before refill.</p>`;
+    payBlock=`<p class="muted" style="text-align:center">Refill becomes available after ${remaining} day(s).</p>`;
   }
-  return `<article class="card reminder-card premium-card vial-card ${due?'due':''}"><div class="vial-card-body"><div class="vial-card-info"><h3>${html(card.productName)}</h3><p class="muted">${money(card.price)} · every ${Number(card.reminderDays)} day(s)</p><div class="chips"><span class="chip ${due?'due':''}">${due?'Due now':`${remaining} day(s) left`}</span>${card.status==='Buy Requested'?'<span class="chip due">Request sent</span>':''}</div></div>${vialMarkup(card)}</div>${payBlock}${cardChatMarkup(card,'customer')}</article>`;
+  return `<article class="card reminder-card premium-card vial-card ${due?'due':''}"><div class="vial-card-body"><div class="vial-card-info"><h3>${html(card.productName)}</h3><p class="muted">${money(card.price)} · every ${Number(card.reminderDays)} day(s)</p><div class="chips"><span class="chip ${due?'due':''}">${due?'Due now':`${remaining} day(s) left`}</span>${refillPending?'<span class="chip due">Refill order sent</span>':''}</div></div>${vialMarkup(card)}</div>${payBlock}${cardChatMarkup(card,'customer')}</article>`;
 }
 function openBuyAgainModal(cardId,store,customer,productName){
   let capturedLocation=null;
@@ -1018,9 +1054,9 @@ function openBuyAgainModal(cardId,store,customer,productName){
       const phone=$('input[name="phone"]',event.target).value.trim();
       const button=event.submitter;button.disabled=true;
       try{
-        await api.executeFunction(api.config.digitalOrderFunctionId,{action:'digit58-request-buy-again',ownerId:store.ownerId,cardId,phone,locationLat:capturedLocation?.lat,locationLng:capturedLocation?.lng});
+        await api.executeFunction(api.config.digitalOrderFunctionId,{action:'digit58-create-refill-order',ownerId:store.ownerId,cardId,customerName:customer.customerName,customerEmail:customer.customerEmail,phone,locationLat:capturedLocation?.lat,locationLng:capturedLocation?.lng});
         if(phone&&phone!==customer.phone){await api.update(customerKind(store.ownerId),customer.id,{phone}).catch(()=>{});customer.phone=phone}
-        closeModal();toast('Request sent — the store will confirm and deliver soon');
+        closeModal();toast('Refill order sent — the store can now review and process it');
         await loadAndRenderCustomerView(store,customer);
       }catch(error){button.disabled=false;toast(error.message||'Could not send request')}
     };
@@ -1086,7 +1122,7 @@ function bindRazorpayPaymentActions(orders,store,customer){
   processSuccessfulRazorpayReturn(orders,store,customer);
 }
 function customerOrderHistoryRow(order){
-  return `<tr><td>${order.items.map(item=>`${item.qty}×${html(item.name)}`).join(', ')}</td><td>${money(order.amount)}</td><td>${html(order.status)}</td><td>${new Date(order.updatedAt||order.createdAt).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'})}</td><td><button type="button" class="btn small green" data-reorder-order="${html(order.id)}">Reorder</button></td></tr>`;
+  return `<tr><td>${order.items.map(item=>`${item.qty}×${html(item.name)}`).join(', ')}</td><td><button type="button" class="btn small reorder-btn" data-reorder-order="${html(order.id)}">Reorder</button></td><td>${money(order.amount)}</td><td>${html(order.status)}</td><td>${new Date(orderHistoryTimestamp(order)).toLocaleString('en-IN',{timeZone:'Asia/Kolkata',dateStyle:'medium',timeStyle:'short'})}</td></tr>`;
 }
 function openReorderOrderModal(order,store,customer){
   let capturedLocation=null;

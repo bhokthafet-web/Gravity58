@@ -19,6 +19,7 @@ h1,h2,h3,p{margin-top:0}
 .btn.secondary{color:var(--text);background:rgba(255,255,255,.08);border:1px solid var(--line)}
 .btn.green{background:linear-gradient(135deg,#22c55e,#4ade80);color:#052e12}
 .btn.red{background:linear-gradient(135deg,#dc2626,#f87171);color:#2b0808}
+.btn.reorder-btn{background:linear-gradient(135deg,#ff9f1c,#ff5a00);color:#160b02;border:1px solid rgba(255,193,94,.7);box-shadow:0 6px 16px rgba(255,103,0,.28)}
 .btn.small{padding:8px 12px;border-radius:11px;font-size:13px}
 .btn.full{width:100%}
 .link-btn{border:0;background:none;color:var(--violet);cursor:pointer;padding:6px;font-weight:700}
@@ -92,8 +93,8 @@ th,td{text-align:left;padding:12px;border-bottom:1px solid var(--line);white-spa
 .selected-offer-note{margin-bottom:13px;padding:10px 12px;border-radius:13px;background:rgba(127,255,212,.1);border:1px solid rgba(127,255,212,.25);color:#c9fff0;font-size:12px;font-weight:750}
 .razorpay-pay-btn{display:block;text-align:center;text-decoration:none;margin-top:10px;background:linear-gradient(135deg,#2d64ff,#6338f0);color:#fff;box-shadow:0 12px 28px rgba(57,82,255,.28)}
 .razorpay-window-note{margin:9px 0 0;text-align:center;color:#b9b5d0;font-size:11px}
-.razorpay-redirect-setup{display:grid;gap:8px;margin-top:12px;padding:13px;border-radius:15px;background:rgba(45,100,255,.1);border:1px solid rgba(111,122,255,.3)}
-.razorpay-redirect-setup>strong{color:#dfe4ff;font-size:13px}.razorpay-redirect-setup>small{color:var(--muted);line-height:1.45}.razorpay-redirect-setup input{font-size:11px}
+.razorpay-link-note{display:grid;gap:5px;margin-top:12px;padding:13px;border-radius:15px;background:rgba(45,100,255,.1);border:1px solid rgba(111,122,255,.3)}
+.razorpay-link-note>strong{color:#dfe4ff;font-size:13px}.razorpay-link-note>small{color:var(--muted);line-height:1.5}
 .razorpay-return-step{margin-top:13px;padding:15px;border-radius:16px;background:linear-gradient(145deg,rgba(45,100,255,.17),rgba(99,56,240,.12));border:1px solid rgba(111,122,255,.38);box-shadow:inset 0 1px 0 rgba(255,255,255,.06)}
 .razorpay-return-step.is-hidden{display:none}.razorpay-return-step>strong{display:block;color:#fff;font-size:14px}.razorpay-return-step>p{margin:5px 0 12px;color:var(--muted);font-size:12px;line-height:1.45}
 .razorpay-return-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px}.razorpay-return-actions .btn{min-height:44px;padding:10px 12px;font-size:12px}
@@ -132,7 +133,7 @@ th,td{text-align:left;padding:12px;border-bottom:1px solid var(--line);white-spa
 .order-chat-form{display:flex;gap:8px}
 .order-chat-form input{flex:1;padding:9px 12px;border-radius:11px;border:1px solid var(--line);background:rgba(10,8,20,.55);color:var(--text)}
 .no-messages{font-size:12px}
-.date-filter-bar{display:flex;align-items:end;gap:14px;flex-wrap:wrap;margin:0 0 16px}
+.date-filter-bar{display:flex;align-items:end;gap:14px;flex-wrap:wrap;margin:0 0 16px;padding:14px;border-radius:17px;background:rgba(255,255,255,.035);border:1px solid var(--line)}
 .date-filter-bar label{display:grid;gap:6px;font-size:12px;color:var(--muted);font-weight:800;letter-spacing:.04em;text-transform:uppercase}
 .date-filter-bar input[type=date]{padding:12px 14px;border-radius:13px;border:1px solid var(--line);background:rgba(10,8,20,.55);color:var(--text);color-scheme:dark}
 .premium-card{background:linear-gradient(165deg,#252143 0%,#1c1932 55%,#181530 100%);border:1px solid rgba(127,255,212,.22);box-shadow:0 22px 60px rgba(0,0,0,.42),inset 0 1px 0 rgba(255,255,255,.06);overflow:hidden}
@@ -176,4 +177,4 @@ th,td{text-align:left;padding:12px;border-bottom:1px solid var(--line);white-spa
 .g58-site-footer-badge{display:flex;justify-content:center;margin-bottom:14px}
 .g58-site-footer-note{color:var(--muted);font-size:12px;margin:0}
 @media(max-width:980px){.shell{grid-template-columns:1fr}.sidebar{position:fixed;left:0;right:0;bottom:0;top:auto;height:auto;z-index:30;padding:8px;background:#171426}.sidebar .brand{display:none}.nav{display:flex;overflow:auto}.nav button{min-width:max-content;font-size:12px}.main{padding-bottom:78px}.stats{grid-template-columns:repeat(2,1fr)}.store-grid,.customer-grid,.card-grid,.promotion-owner-grid{grid-template-columns:repeat(2,1fr)}.floating-support-btn{bottom:86px}.g58-site-footer{margin-bottom:78px}}
-@media(max-width:620px){.content,.topbar{padding:14px}.stats,.store-grid,.customer-grid,.card-grid,.promotion-owner-grid,.form-grid{grid-template-columns:1fr}.promotion-strip-head{align-items:flex-start;flex-direction:column}.customer-ticket{flex-basis:142px;width:142px;padding:14px}.promotion-ticket h3{font-size:15px}.razorpay-return-actions{grid-template-columns:1fr}.razorpay-owner-review{grid-template-columns:1fr}.razorpay-owner-review>strong{text-align:left}.razorpay-owner-review>small{grid-column:1}}
+@media(max-width:620px){.content,.topbar{padding:14px}.stats,.store-grid,.customer-grid,.card-grid,.promotion-owner-grid,.form-grid{grid-template-columns:1fr}.promotion-strip-head{align-items:flex-start;flex-direction:column}.customer-ticket{flex-basis:142px;width:142px;padding:14px}.promotion-ticket h3{font-size:15px}.razorpay-return-actions{grid-template-columns:1fr}.razorpay-owner-review{grid-template-columns:1fr}.razorpay-owner-review>strong{text-align:left}.razorpay-owner-review>small{grid-column:1}.date-filter-bar label{flex:1;min-width:125px}.date-filter-bar input[type=date]{width:100%}.date-filter-bar .btn{width:100%}}

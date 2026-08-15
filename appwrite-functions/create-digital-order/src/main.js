@@ -9,6 +9,8 @@ const DIGIT58_CUSTOMER_KIND_PREFIX = 'digit58_customer_';
 const DIGIT58_CARD_KIND_PREFIX = 'digit58_card_';
 const DIGIT58_ORDER_KIND_PREFIX = 'digit58_order_';
 const DIGIT58_STORE_KIND_PREFIX = 'digit58_store_';
+const DIGIT58_PROMOTION_KIND_PREFIX = 'digit58_promo_';
+const DIGIT58_OWNER_KIND = 'digit58_owners';
 const ADMIN_TEAM_ID = '6a776960001ca2fb66bf';
 const SUPPORT_KIND = 'support_tickets';
 const PUBLIC_POSTS_KIND = 'posts';
@@ -29,6 +31,7 @@ const digit58CustomerKind = ownerId => safeKindId(DIGIT58_CUSTOMER_KIND_PREFIX, 
 const digit58CardKind = ownerId => safeKindId(DIGIT58_CARD_KIND_PREFIX, ownerId, 40);
 const digit58OrderKind = ownerId => safeKindId(DIGIT58_ORDER_KIND_PREFIX, ownerId, 40);
 const digit58StoreKind = ownerId => safeKindId(DIGIT58_STORE_KIND_PREFIX, ownerId, 40);
+const digit58PromotionKind = ownerId => safeKindId(DIGIT58_PROMOTION_KIND_PREFIX, ownerId, 40);
 const digit58EntitlementRowId = ownerId => `d58-${String(ownerId).slice(0, 30)}`;
 async function isDigit58Admin(call, userId) {
   try {
@@ -277,6 +280,24 @@ async function purgeInactiveBusinessCards(call) {
     }
   }
   return { removedIds, migratedIds };
+}
+
+async function purgeExpiredDigit58Promotions(call) {
+  const ownerRows = await listRowsByKind(call, DIGIT58_OWNER_KIND);
+  const ownerIds = [...new Set(ownerRows.map(row => text(cleanRow(row).ownerId, 64)).filter(Boolean))];
+  const today = indiaDay();
+  const removedIds = [];
+  for (const ownerId of ownerIds) {
+    const promotions = await listRowsByKind(call, digit58PromotionKind(ownerId));
+    for (const row of promotions) {
+      const promotion = cleanRow(row);
+      if (!promotion.endsOn || String(promotion.endsOn) >= today) continue;
+      const rowId = row.$id || row.id || promotion.id;
+      await removeRow(call, rowId);
+      removedIds.push(String(promotion.id || rowId));
+    }
+  }
+  return { removedIds };
 }
 
 async function touchBusinessCard(call, input) {
@@ -661,12 +682,37 @@ async function createDigit58Order(call, input, userId, options = {}) {
     items: cleanItems, amount: 0, upiUri: '',
     previousAmount: Math.max(0, finite(options.previousAmount)),
     reorderedFrom: text(input.reorderedFrom, 36),
+    refillCardId: text(options.refillCardId, 40),
     prescriptionUrl: text(input.prescriptionUrl, 1000), prescriptionFileId: text(input.prescriptionFileId, 80),
     prescriptionName: text(input.prescriptionName, 200), prescriptionType: text(input.prescriptionType, 100),
     status: 'Requested', messages: [], createdAt, updatedAt: createdAt,
   };
   const created = await createRow(call, record.id, digit58OrderKind(ownerId), record, rowPermissionsFor([ownerId, userId]));
   return cleanRow(created);
+}
+
+async function createDigit58RefillOrder(call, input, userId) {
+  const ownerId = text(input.ownerId, 64), cardId = text(input.cardId, 40);
+  if (!ownerId || !cardId) throw new Error('Refill card details are missing.');
+  const row = await call(`/tablesdb/${DATABASE_ID}/tables/${TABLE_ID}/rows/${encodeURIComponent(cardId)}`);
+  const card = cleanRow(row);
+  if (row.kind !== digit58CardKind(ownerId)) throw new Error('This is not a Refills reminder card.');
+  if (card.customerAccountId !== userId) { const denied = new Error("Only this card's customer can request its refill."); denied.code = 403; throw denied; }
+  if (!card.dueAt || new Date(card.dueAt).getTime() > Date.now()) throw new Error('The refill button becomes available after the refill period is completed.');
+  const existingRows = await listRowsByKind(call, digit58OrderKind(ownerId));
+  const existing = existingRows.map(cleanRow).find(order => order.refillCardId === cardId && !['Delivered', 'Rejected'].includes(order.status));
+  if (existing) return existing;
+  const phone = normalisePhone(input.phone || card.phone);
+  const order = await createDigit58Order(call, {
+    ownerId, storeId: card.storeId, customerName: text(input.customerName, 120), customerEmail: text(input.customerEmail, 250),
+    phone, locationLat: input.locationLat, locationLng: input.locationLng,
+    items: [{ name: card.productName, qty: 1 }],
+  }, userId, { previousAmount: card.price, refillCardId: cardId });
+  await updateRow(call, cardId, {
+    ...card, status: 'Refill Requested', refillRequestedAt: new Date().toISOString(), activeOrderId: order.id,
+    phone: phone.slice(0, 15), updatedAt: new Date().toISOString(),
+  });
+  return order;
 }
 
 async function createDigit58Reorder(call, input, userId) {
@@ -700,7 +746,9 @@ export default async ({ req, res, error }) => {
   if (req.headers['x-appwrite-trigger'] === 'schedule') {
     try {
       const call = appwriteClient(req);
-      return res.json({ ok: true, scheduled: true, ...(await purgeInactiveBusinessCards(call)) });
+      const businessCards = await purgeInactiveBusinessCards(call);
+      const promotions = await purgeExpiredDigit58Promotions(call);
+      return res.json({ ok: true, scheduled: true, ...businessCards, promotions });
     } catch (caught) {
       error(`Scheduled business-card cleanup failed: ${caught?.message || caught}`);
       return res.json({ ok: false, error: caught?.message || 'Scheduled business-card cleanup failed.' }, 500);
@@ -750,6 +798,10 @@ export default async ({ req, res, error }) => {
     if (requestBody?.action === 'digit58-create-order') {
       const call = appwriteClient(req);
       return res.json({ ok: true, order: await createDigit58Order(call, requestBody, userId) }, 201);
+    }
+    if (requestBody?.action === 'digit58-create-refill-order') {
+      const call = appwriteClient(req);
+      return res.json({ ok: true, order: await createDigit58RefillOrder(call, requestBody, userId) }, 201);
     }
     if (requestBody?.action === 'digit58-reorder') {
       const call = appwriteClient(req);
