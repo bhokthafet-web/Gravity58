@@ -1601,7 +1601,12 @@ function openBusinessLocation(id) {
     "noopener",
   );
 }
-function digitalBusinessCardMarkup(b, viewAction, viewLabel = "View") {
+function digitalBusinessCardMarkup(
+  b,
+  viewAction,
+  viewLabel = "View",
+  options = {},
+) {
   const isOwner = sessionStorage.getItem(`g58BusinessOwner_${b.id}`) === "true";
   const stats = businessRatingStats(b);
   const favorited = isFavoriteBusiness(b.id);
@@ -1641,6 +1646,11 @@ ${isOwner ? '<span class="biz-owner-badge">Your Business</span>' : ""}
 <button type="button" class="biz-fav-btn biz-fav-btn-glass${favorited ? " active" : ""}" onclick="toggleFavoriteBusiness('${b.id}')" aria-label="${favorited ? "Remove from saved" : "Save business"}">${favorited ? "♥" : "♡"}</button>
 </div>
 
+${
+  options.popup
+    ? `<div class="biz-popup-lock-art" aria-hidden="true"><span class="biz-popup-lock-shackle"></span><span class="biz-popup-lock-body"><span class="biz-popup-lock-keyhole"></span></span></div>`
+    : ""
+}
 <button type="button" class="biz-card-view-pill" onclick="${viewAction}">${escapeHtml(viewLabel)}</button>
 
 <div class="biz-card-profile">
@@ -1687,7 +1697,7 @@ function floatingBusinessMarkup(b) {
   const ownerLabel = isOwner
     ? "Manage your business"
     : "Unlock if you're the owner";
-  return `<article class="biz-profile">${digitalBusinessCardMarkup(b, ownerAction, ownerLabel)}</article>`;
+  return `<article class="biz-profile">${digitalBusinessCardMarkup(b, ownerAction, ownerLabel, { popup: true })}</article>`;
 }
 let activeFloatingBusinessId = null;
 function showFloatingBusiness(id) {

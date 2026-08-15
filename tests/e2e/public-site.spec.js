@@ -152,6 +152,11 @@ test("Business Wall cards stay compact while the full profile remains available"
   await card.getByRole("button", { name: "View", exact: true }).click();
   await expect(page.locator("#floatingBusinessWrap")).toHaveClass(/show/);
   await expect(page.locator("#floatingBusinessCard .biz-card-quickrow")).toBeVisible();
+  await expect(page.locator("#floatingBusinessCard .biz-popup-lock-art")).toBeVisible();
+  await expect(page.locator("#floatingBusinessCard .biz-card-glass")).toHaveCSS(
+    "color",
+    "rgb(248, 250, 252)",
+  );
   await expect(page.locator("#floatingBusinessCard .biz-profile-more")).toHaveCount(0);
   const ownerUnlock = page.locator("#floatingBusinessCard").getByRole(
     "button",
