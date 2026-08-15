@@ -1,4 +1,10 @@
 const DAY = 86400000;
+const BUSINESS_POPUP_RETENTION_DAYS = 30;
+const BUSINESS_POPUP_RETENTION = BUSINESS_POPUP_RETENTION_DAYS * DAY;
+const whatsappBrandIcon =
+  '<svg class="biz-brand-logo" viewBox="0 0 32 32" aria-hidden="true"><path fill="currentColor" d="M16 3C9.1 3 3.5 8.4 3.5 15.1c0 2.4.7 4.7 2.1 6.6L4 29l7.6-2c1.8 1 3.8 1.5 5.9 1.5 6.9 0 12.5-5.4 12.5-12.1C30 8.4 24.4 3 17.5 3H16zm1.5 22.9c-1.9 0-3.8-.5-5.4-1.5l-.4-.2-4.5 1.2 1.2-4.2-.3-.4c-1.2-1.7-1.8-3.7-1.8-5.7 0-5.3 4.5-9.6 10.1-9.6 5.6 0 10.1 4.3 10.1 9.6s-4.5 9.6-10 9.6zm5.6-7.2c-.3-.1-1.8-.9-2.1-1-.3-.1-.5-.1-.7.2-.2.3-.8 1-1 1.2-.2.2-.4.2-.7.1-1.9-.9-3.1-1.7-4.4-3.8-.3-.5.3-.5.9-1.7.1-.2.1-.4 0-.6-.1-.2-.7-1.7-1-2.3-.3-.6-.5-.6-.7-.6h-.6c-.2 0-.6.1-.9.4-.3.3-1.2 1.1-1.2 2.8 0 1.6 1.2 3.2 1.4 3.4.2.2 2.4 3.5 5.8 4.9 2.2.9 3.1 1 4.2.8.7-.1 1.8-.7 2.1-1.4.3-.7.3-1.3.2-1.4-.1-.2-.3-.3-.6-.4z"/></svg>';
+const instagramBrandIcon =
+  '<svg class="biz-brand-logo" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="5" fill="none" stroke="currentColor" stroke-width="2.2"/><circle cx="12" cy="12" r="4.2" fill="none" stroke="currentColor" stroke-width="2.2"/><circle cx="17.4" cy="6.7" r="1.25" fill="currentColor"/></svg>';
 const defaultCustomers = [
   {
     id: "C1001",
@@ -217,17 +223,48 @@ function saveData() {
 }
 function purgeExpired() {
   const now = Date.now();
-  const before = customers.length;
+  const customerCount = customers.length;
+  const businessCount = businesses.length;
+  let migratedBusiness = false;
   customers = customers.filter(
     (c) => !c.accepted && (c.expiresAt || c.created + 30 * DAY) > now,
   );
-  if (before !== customers.length) saveData();
+  businesses.forEach((business) => {
+    if (!Number(business.popupExpiresAt)) {
+      business.popupRetentionStartedAt = now;
+      business.popupExpiresAt = now + BUSINESS_POPUP_RETENTION;
+      business.lastPopupOpenedAt = Number(business.lastPopupOpenedAt) || 0;
+      migratedBusiness = true;
+    }
+  });
+  businesses = businesses.filter(
+    (business) => Number(business.popupExpiresAt) > now,
+  );
+  if (
+    customerCount !== customers.length ||
+    businessCount !== businesses.length ||
+    migratedBusiness
+  )
+    saveData();
 }
 function daysLeft(c) {
   return Math.max(
     0,
     Math.ceil(((c.expiresAt || c.created + 30 * DAY) - Date.now()) / DAY),
   );
+}
+function businessPopupDaysLeft(business) {
+  return Math.max(
+    0,
+    Math.ceil((Number(business.popupExpiresAt || 0) - Date.now()) / DAY),
+  );
+}
+function businessPopupRetentionLabel(business) {
+  const remaining = businessPopupDaysLeft(business);
+  const suffix = `${remaining} ${remaining === 1 ? "day" : "days"} left`;
+  return Number(business.lastPopupOpenedAt)
+    ? `Popup opened ${timeAgoLabel(Number(business.lastPopupOpenedAt)).toLowerCase()} · ${suffix}`
+    : `Popup card not opened · ${suffix}`;
 }
 
 const INDIA_STATES = [
@@ -1200,6 +1237,7 @@ function openBusinessQr(id) {
     const waNumber = cleanNumber(business.whatsapp || business.phone || "");
     if (waNumber) {
       waBtn.href = `https://wa.me/${waNumber}?text=${encodeURIComponent("Hi, I found your business on G58 and would like to know more about your services.")}`;
+      waBtn.innerHTML = `${whatsappBrandIcon}<span>WhatsApp</span>`;
       waBtn.hidden = false;
     } else {
       waBtn.hidden = true;
@@ -1210,6 +1248,7 @@ function openBusinessQr(id) {
     const profileUrl = businessDemoUrl(business);
     if (profileUrl) {
       profileBtn.href = profileUrl;
+      profileBtn.innerHTML = `${instagramBrandIcon}<span>${/instagram\.com/i.test(profileUrl) ? "Instagram" : "Profile"}</span>`;
       profileBtn.hidden = false;
     } else {
       profileBtn.hidden = true;
@@ -1259,10 +1298,7 @@ function toggleNationalBusinessFilter() {
 }
 
 function businessShareUrl(id) {
-  const business = businesses.find((item) => item.id === id);
-  return business
-    ? businessSeoUrl(business)
-    : `${window.location.origin}/business/${encodeURIComponent(id)}/`;
+  return `${window.location.origin}/?business=${encodeURIComponent(id)}`;
 }
 async function copyBusinessLink(id, button) {
   const link = businessShareUrl(id);
@@ -1683,7 +1719,8 @@ function digitalBusinessCardMarkup(
     .join(", ");
   const isInstagram = /instagram\.com/i.test(websiteUrl);
   const socialLabel = isInstagram ? "Instagram" : "Profile";
-  const socialIcon = isInstagram ? "📷" : "🔗";
+  const socialIcon = instagramBrandIcon;
+  const retentionLabel = businessPopupRetentionLabel(b);
 
   const icPhone =
     '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92Z"/></svg>';
@@ -1730,10 +1767,11 @@ ${ratingRow}
 <span class="biz-card-qr-logo" aria-hidden="true"><svg viewBox="0 0 120 120" fill="none" stroke="#F97316" stroke-width="10"><circle cx="60" cy="26" r="15"/><circle cx="28" cy="82" r="15"/><circle cx="92" cy="82" r="15"/></svg></span>
 </div>
 <p class="biz-card-qr-caption">View our complete digital business card</p>
+<p class="biz-card-popup-retention"><span aria-hidden="true"></span>${escapeHtml(retentionLabel)}</p>
 </div>
 
 <div class="biz-card-primary-actions">
-${waNumber ? `<a class="biz-card-cta biz-card-cta-whatsapp" href="${waHref}" target="_blank" rel="noopener">💬 WhatsApp</a>` : `<span class="biz-card-cta biz-card-cta-whatsapp biz-card-cta-disabled">💬 WhatsApp</span>`}
+${waNumber ? `<a class="biz-card-cta biz-card-cta-whatsapp" href="${waHref}" target="_blank" rel="noopener">${whatsappBrandIcon} WhatsApp</a>` : `<span class="biz-card-cta biz-card-cta-whatsapp biz-card-cta-disabled">${whatsappBrandIcon} WhatsApp</span>`}
 ${websiteUrl ? `<a class="biz-card-cta biz-card-cta-instagram" href="${websiteUrl}" target="_blank" rel="noopener">${socialIcon} ${socialLabel}</a>` : `<span class="biz-card-cta biz-card-cta-instagram biz-card-cta-disabled">${socialIcon} ${socialLabel}</span>`}
 </div>
 
@@ -1795,14 +1833,63 @@ function floatingBusinessMarkup(b) {
 </div>`;
 }
 let activeFloatingBusinessId = null;
+function setLocalBusinessPopupActivity(business, openedAt = Date.now()) {
+  business.lastPopupOpenedAt = openedAt;
+  business.popupRetentionStartedAt ||= openedAt;
+  business.popupExpiresAt = openedAt + BUSINESS_POPUP_RETENTION;
+  localStorage.setItem("g58BusinessesV3", JSON.stringify(businesses));
+}
+async function persistBusinessPopupActivity(id) {
+  const business = businesses.find((item) => item.id === id);
+  if (!business) return;
+  const functionId = Gravity58Ads?.config?.digitalOrderFunctionId;
+  if (!Gravity58Ads?.configured || !functionId) {
+    saveData();
+    return;
+  }
+  try {
+    await Gravity58Ads.ensureUser();
+    const result = await Gravity58Ads.executeFunction(functionId, {
+      action: "touch-business-card",
+      cardId: id,
+    });
+    if (result?.business) Object.assign(business, result.business);
+    localStorage.setItem("g58BusinessesV3", JSON.stringify(businesses));
+    renderWall();
+    if (activeFloatingBusinessId === id) {
+      document.getElementById("floatingBusinessCard").innerHTML =
+        floatingBusinessMarkup(business);
+    }
+  } catch (error) {
+    if (Number(error?.code) === 410) {
+      businesses = businesses.filter((item) => item.id !== id);
+      localStorage.setItem("g58BusinessesV3", JSON.stringify(businesses));
+      hideFloatingBusiness();
+      renderWall();
+      alert("This business card expired after 30 days without a popup view.");
+      return;
+    }
+    console.warn("Business-card popup activity could not be saved:", error);
+  }
+}
 function showFloatingBusiness(id) {
   const b = businesses.find((x) => x.id === id);
   if (!b) return;
+  if (Number(b.popupExpiresAt) && Number(b.popupExpiresAt) <= Date.now()) {
+    businesses = businesses.filter((item) => item.id !== id);
+    localStorage.setItem("g58BusinessesV3", JSON.stringify(businesses));
+    renderWall();
+    alert("This business card expired after 30 days without a popup view.");
+    return;
+  }
+  setLocalBusinessPopupActivity(b);
   activeFloatingBusinessId = id;
   document.getElementById("floatingBusinessCard").innerHTML =
     floatingBusinessMarkup(b);
   document.getElementById("floatingBusinessWrap").classList.add("show");
   document.body.classList.add("req-detail-lock");
+  renderWall();
+  void persistBusinessPopupActivity(id);
 }
 function hideFloatingBusiness() {
   document.getElementById("floatingBusinessWrap").classList.remove("show");
@@ -2219,7 +2306,7 @@ function openBusinessCardCreator() {
 }
 
 function openCreateModal() {
-  if (!window.G58SiteUser) {
+  if (!window.G58SiteUser && activeMode !== "business") {
     window.G58RequestAuth?.(activeMode);
     return;
   }
@@ -2510,7 +2597,8 @@ function validateAndPublish() {
     socialUrl,
     isNational,
     created: Date.now(),
-    userId: window.G58SiteUser?.id || "",
+    userId:
+      window.G58SiteUser?.id || window.G58AnonymousPublisherId || "",
     accountEmail: window.G58SiteUser?.email || email,
     accountPhone: window.G58SiteUser?.phone || phone,
     moderationStatus: "active",
@@ -2523,12 +2611,18 @@ function validateAndPublish() {
       expiresAt: Date.now() + 30 * DAY,
       bids: [],
     });
-  else
-    businesses.unshift({
+  else {
+    const business = {
       ...base,
       experience: Number(document.getElementById("postExperience").value) || 0,
       projects: Number(document.getElementById("postProjects").value) || 0,
-    });
+      lastPopupOpenedAt: 0,
+      popupRetentionStartedAt: Date.now(),
+      popupExpiresAt: Date.now() + BUSINESS_POPUP_RETENTION,
+    };
+    businesses.unshift(business);
+    sessionStorage.setItem(`g58BusinessOwner_${id}`, "true");
+  }
   saveData();
   selectedState = state;
   selectedDistrict = district;

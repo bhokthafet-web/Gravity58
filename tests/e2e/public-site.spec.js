@@ -51,6 +51,45 @@ test("login stays simple and forgot-password reports success", async ({ page }) 
   await assertNoErrors();
 });
 
+test("business cards can be created without login and receive a permanent direct link", async ({ page }) => {
+  await prepareMockApi(page);
+  const assertNoErrors = monitorPageErrors(page);
+  await page.goto("/");
+
+  await page.evaluate(() => openBusinessCardCreator());
+  await expect(page.locator("#createModal")).toHaveClass(/show/);
+  await expect(page.locator("#siteAuthModal")).not.toHaveClass(/show/);
+  await expect(page.locator("#postType")).toHaveValue("business");
+
+  await page.locator("#postTitle").fill("Guest Bakery");
+  await page.locator("#postCategory").selectOption("Catering");
+  await page.locator("#postDescription").fill("Fresh cakes and bakery orders.");
+  await page.locator("#postDistrict").fill("Hyderabad");
+  await page.locator("#postArea").fill("Jubilee Hills");
+  await page.locator("#postFullAddress").fill("Jubilee Hills, Hyderabad");
+  await page.locator("#postPrice").fill("500");
+  await page.locator("#postName").fill("Guest Owner");
+  await page.locator("#postWhatsapp").fill("9876543210");
+  await page.locator("#postPhone").fill("9876543210");
+  await page.getByRole("button", { name: "Publish Post" }).click();
+
+  await expect(page.locator("#publishSuccessModal")).toHaveClass(/show/);
+  const published = await page.evaluate(() => {
+    const state = window.G58GetPostState();
+    const business = state.businesses.find((item) => item.id === state.lastPublishedPostId);
+    return {
+      business,
+      link: businessShareUrl(business.id),
+      signedInHeader: !document.getElementById("siteLoginButton")?.classList.contains("hidden"),
+    };
+  });
+  expect(published.business.userId).toMatch(/^anon-/);
+  expect(published.business.popupExpiresAt).toBeGreaterThan(Date.now() + 29 * 86400000);
+  expect(published.link).toBe(`http://127.0.0.1:4173/?business=${published.business.id}`);
+  expect(published.signedInHeader).toBe(true);
+  await assertNoErrors();
+});
+
 test("account signup, authenticated customer post and My Posts view work", async ({ page }) => {
   await prepareMockApi(page);
   const assertNoErrors = monitorPageErrors(page);
@@ -106,7 +145,10 @@ test("business QR, rating and customer bid workflows persist", async ({ page }) 
 
   await page.evaluate(() => openBusinessQr("B2001"));
   await expect(page.locator("#businessQrModal")).toHaveClass(/show/);
-  await expect(page.locator("#businessQrLink")).toHaveValue(/\/business\/dreamspace-interiors-gachibowli-hyderabad\//);
+  await expect(page.locator("#businessQrLink")).toHaveValue("http://127.0.0.1:4173/?business=B2001");
+  await expect(page.locator("#businessQrImage")).toHaveAttribute("src", /business%3DB2001/);
+  await expect(page.locator("#businessQrWhatsapp .biz-brand-logo")).toBeVisible();
+  await expect(page.locator("#businessQrSocial .biz-brand-logo")).toBeVisible();
   await page.locator("#businessQrModal").getByRole("button", { name: "×" }).click();
   await expect(page.locator("#businessQrModal")).not.toHaveClass(/show/);
 
@@ -143,8 +185,14 @@ test("Business Wall cards stay compact while the full profile remains available"
   const assertNoErrors = monitorPageErrors(page);
   await page.goto("/");
   await page.evaluate(() => selectMode("business"));
+  await page.evaluate(() => {
+    const business = window.G58GetPostState().businesses.find((item) => item.id === "B2001");
+    business.lastPopupOpenedAt = 0;
+    business.popupExpiresAt = Date.now() + 5 * 86400000;
+    renderWall();
+  });
 
-  const card = page.locator(".biz-card-wall-item .biz-card-glass").first();
+  const card = page.locator('.biz-card-wall-item[data-post-id="B2001"] .biz-card-glass');
   await expect(card).toBeVisible();
   const bounds = await card.boundingBox();
   expect(bounds).not.toBeNull();
@@ -153,6 +201,9 @@ test("Business Wall cards stay compact while the full profile remains available"
   await expect(card.locator(".biz-card-qr-img")).toBeVisible();
   await expect(card.locator(".biz-card-primary-actions")).toBeVisible();
   await expect(card.locator(".biz-card-quickrow")).toBeHidden();
+  await expect(card.locator(".biz-card-popup-retention")).toContainText("Popup card not opened · 5 days left");
+  await expect(card.locator(".biz-card-cta-whatsapp .biz-brand-logo")).toBeVisible();
+  await expect(card.locator(".biz-card-cta-instagram .biz-brand-logo")).toBeVisible();
 
   const viewButton = card.getByRole("button", { name: "View", exact: true });
   await expect(viewButton).toHaveCSS("font-size", "15px");
@@ -165,6 +216,7 @@ test("Business Wall cards stay compact while the full profile remains available"
 
   await viewButton.click();
   await expect(page.locator("#floatingBusinessWrap")).toHaveClass(/show/);
+  await expect(page.locator("#floatingBusinessCard .biz-card-popup-retention")).toContainText("30 days left");
   await expect(page.locator("#floatingBusinessCard .biz-card-quickrow")).toBeHidden();
   await expect(page.locator("#floatingBusinessCard .biz-popup-side-action")).toHaveCount(4);
   await expect(
@@ -201,6 +253,12 @@ test("Business Wall cards stay compact while the full profile remains available"
   await expect(ownerUnlock).toBeVisible();
   await ownerUnlock.click();
   await expect(page.locator("#cardUnlockModal")).toHaveClass(/open/);
+  await page.evaluate(() => {
+    const expired = window.G58GetPostState().businesses.find((item) => item.id === "B2002");
+    expired.popupExpiresAt = Date.now() - 1;
+    renderWall();
+  });
+  await expect(page.locator('.biz-card-wall-item[data-post-id="B2002"]')).toHaveCount(0);
   await assertNoErrors();
 });
 

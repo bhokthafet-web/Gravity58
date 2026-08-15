@@ -546,3 +546,89 @@ test('digit58: a non-admin cannot suspend a store', async () => {
     globalThis.fetch = previousFetch;
   }
 });
+
+test('business card popup view refreshes its secure 30-day retention window', async () => {
+  const previousFetch = globalThis.fetch;
+  const requests = [];
+  const card = {
+    id: 'B9001', type: 'business', title: 'Test Business',
+    popupExpiresAt: Date.now() + 5 * 86400000, lastPopupOpenedAt: 0,
+  };
+  const envelope = {
+    recordKey: card.id, postType: 'business', userId: ownerId,
+    payload: JSON.stringify(card), updatedAt: new Date().toISOString(),
+  };
+  const row = { $id: card.id, kind: 'posts', payload: JSON.stringify(envelope) };
+  globalThis.fetch = async (url, options = {}) => {
+    const method = options.method || 'GET';
+    const body = options.body ? JSON.parse(options.body) : null;
+    requests.push({ url: String(url), method, body });
+    if (method === 'GET') return new Response(JSON.stringify(row), { status: 200 });
+    if (method === 'PATCH') return new Response(JSON.stringify({ ...row, payload: body.data.payload }), { status: 200 });
+    throw new Error(`Unexpected request ${url}`);
+  };
+  process.env.APPWRITE_FUNCTION_PROJECT_ID = 'project_1';
+  try {
+    const response = await createDigitalOrder({
+      req: {
+        method: 'POST', headers: { 'x-appwrite-key': 'dynamic-key', 'x-appwrite-user-id': customerId },
+        bodyJson: { action: 'touch-business-card', cardId: card.id },
+      },
+      res: { json: (body, status = 200) => ({ body, status }) }, error: () => {},
+    });
+    assert.equal(response.status, 200);
+    assert.equal(response.body.ok, true);
+    assert.ok(response.body.business.lastPopupOpenedAt > 0);
+    assert.ok(response.body.business.popupExpiresAt > Date.now() + 29 * 86400000);
+    const patchRequest = requests.find(request => request.method === 'PATCH');
+    const savedEnvelope = JSON.parse(patchRequest.body.data.payload);
+    const savedCard = JSON.parse(savedEnvelope.payload);
+    assert.equal(savedCard.id, card.id);
+    assert.ok(savedCard.lastPopupOpenedAt > 0);
+  } finally {
+    globalThis.fetch = previousFetch;
+  }
+});
+
+test('business card cleanup migrates legacy cards and permanently deletes expired cards', async () => {
+  const previousFetch = globalThis.fetch;
+  const requests = [];
+  const expired = { id: 'B9002', type: 'business', popupExpiresAt: Date.now() - 1 };
+  const legacy = { id: 'B9003', type: 'business', title: 'Legacy Business' };
+  const postRow = (post) => ({
+    $id: post.id, kind: 'posts',
+    payload: JSON.stringify({ recordKey: post.id, postType: 'business', userId: ownerId, payload: JSON.stringify(post) }),
+  });
+  globalThis.fetch = async (url, options = {}) => {
+    const method = options.method || 'GET';
+    const body = options.body ? JSON.parse(options.body) : null;
+    requests.push({ url: String(url), method, body });
+    if (method === 'GET' && String(url).includes('/rows?')) {
+      return new Response(JSON.stringify({ rows: [postRow(expired), postRow(legacy)] }), { status: 200 });
+    }
+    if (method === 'DELETE') return new Response(null, { status: 204 });
+    if (method === 'PATCH') return new Response(JSON.stringify({ $id: legacy.id, kind: 'posts', payload: body.data.payload }), { status: 200 });
+    throw new Error(`Unexpected request ${url}`);
+  };
+  process.env.APPWRITE_FUNCTION_PROJECT_ID = 'project_1';
+  try {
+    const response = await createDigitalOrder({
+      req: {
+        method: 'POST', headers: { 'x-appwrite-key': 'dynamic-key', 'x-appwrite-trigger': 'schedule' },
+        bodyJson: {},
+      },
+      res: { json: (body, status = 200) => ({ body, status }) }, error: () => {},
+    });
+    assert.equal(response.status, 200);
+    assert.equal(response.body.scheduled, true);
+    assert.deepEqual(response.body.removedIds, [expired.id]);
+    assert.deepEqual(response.body.migratedIds, [legacy.id]);
+    assert.ok(requests.some(request => request.method === 'DELETE' && request.url.endsWith(`/rows/${expired.id}`)));
+    const migration = requests.find(request => request.method === 'PATCH');
+    const migratedEnvelope = JSON.parse(migration.body.data.payload);
+    const migratedCard = JSON.parse(migratedEnvelope.payload);
+    assert.ok(migratedCard.popupExpiresAt > Date.now() + 29 * 86400000);
+  } finally {
+    globalThis.fetch = previousFetch;
+  }
+});

@@ -10,7 +10,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/css/style.css?v=29">
+  <link rel="stylesheet" href="/css/style.css?v=30">
   <link rel="stylesheet" href="/css/mobile.css">
   <link rel="canonical" href="https://g58.in/" />
   <meta name="robots" content="index, follow, max-image-preview:large" />
@@ -804,7 +804,7 @@
         <div class="field"><label for="ratingName">Your name</label><input id="ratingName" maxlength="40" placeholder="Enter your name"></div>
         <div class="field"><label for="ratingComment">Review (optional)</label><textarea id="ratingComment" maxlength="280" placeholder="Share your genuine experience"></textarea></div>
       </div>
-      <p class="rating-privacy-note">Browsing remains open. Secure sign-in is required for publishing advertisements and business cards. Please post only genuine customer experiences.</p>
+      <p class="rating-privacy-note">Browsing and business-card creation remain open. Secure sign-in is required for customer requirements. Please post only genuine customer experiences.</p>
       <div class="rating-form-actions">
         <button class="btn orange" type="button" onclick="submitBusinessRating()">Submit Rating</button>
         <button class="btn danger hidden" id="deleteMyRatingBtn" type="button" onclick="deleteMyBusinessRating()">Delete My Rating</button>
@@ -831,8 +831,8 @@
     </div>
     <p class="qr-card-scan-hint">Scan to view this digital business card</p>
     <div class="qr-card-social-row">
-      <a id="businessQrWhatsapp" class="qr-social-btn qr-social-whatsapp" href="#" target="_blank" rel="noopener">💬 WhatsApp</a>
-      <a id="businessQrSocial" class="qr-social-btn qr-social-instagram" href="#" target="_blank" rel="noopener">📷 Profile</a>
+      <a id="businessQrWhatsapp" class="qr-social-btn qr-social-whatsapp" href="#" target="_blank" rel="noopener"><svg class="biz-brand-logo" viewBox="0 0 32 32" aria-hidden="true"><path fill="currentColor" d="M16 3C9.1 3 3.5 8.4 3.5 15.1c0 2.4.7 4.7 2.1 6.6L4 29l7.6-2c1.8 1 3.8 1.5 5.9 1.5 6.9 0 12.5-5.4 12.5-12.1C30 8.4 24.4 3 17.5 3H16zm1.5 22.9c-1.9 0-3.8-.5-5.4-1.5l-.4-.2-4.5 1.2 1.2-4.2-.3-.4c-1.2-1.7-1.8-3.7-1.8-5.7 0-5.3 4.5-9.6 10.1-9.6 5.6 0 10.1 4.3 10.1 9.6s-4.5 9.6-10 9.6z"/></svg><span>WhatsApp</span></a>
+      <a id="businessQrSocial" class="qr-social-btn qr-social-instagram" href="#" target="_blank" rel="noopener"><svg class="biz-brand-logo" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="5" fill="none" stroke="currentColor" stroke-width="2.2"/><circle cx="12" cy="12" r="4.2" fill="none" stroke="currentColor" stroke-width="2.2"/><circle cx="17.4" cy="6.7" r="1.25" fill="currentColor"/></svg><span>Instagram</span></a>
     </div>
     <div class="qr-card-domain">g58.in</div>
     <input id="businessQrLink" type="hidden">
@@ -869,8 +869,8 @@
 <script src="/js/config.js"></script>
 <script src="/js/appwrite-ads.js?v=13"></script>
 <script src="/js/database.js"></script>
-<script src="/js/app.js?v=19"></script>
-<script src="/js/site-auth.js?v=2"></script>
+<script src="/js/app.js?v=20"></script>
+<script src="/js/site-auth.js?v=3"></script>
 <script>
 (function(){
   var reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;

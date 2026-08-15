@@ -20,7 +20,7 @@
     <div class="field signup-only hidden"><label>State</label><input id="authState"></div>
     <div class="field signup-only hidden"><label>District / City</label><input id="authDistrict"></div>
     <div class="field full auth-button-row"><button type="button" class="btn primary" id="authLogin">Login</button><button type="button" class="btn orange" id="authSignup">Create account</button><button type="button" class="btn" id="authForgot">Forgot password</button></div>
-    <div class="field full"><div class="notice info" id="authMessage">Login is required only when posting an ad or creating a business card.</div></div>
+    <div class="field full"><div class="notice info" id="authMessage">Login is required for customer requirements. Business cards can be created without an account.</div></div>
   </div></div>`;
   document.body.appendChild(wrap);
 
@@ -83,7 +83,7 @@
   const originalCustomer = window.openCustomerPostCreator;
   const originalBusiness = window.openBusinessCardCreator;
   window.openCustomerPostCreator = () => { pending = "customer"; user ? finish() : show("customer"); };
-  window.openBusinessCardCreator = () => { pending = "business"; user ? finish() : show("business"); };
+  window.openBusinessCardCreator = originalBusiness;
   window.G58AccountAction = () => user ? logout() : show("login");
   window.G58LogoutAction = logout;
 
@@ -122,13 +122,28 @@
   };
 
   const originalPublish = window.validateAndPublish;
-  window.validateAndPublish = () => {
-    if (!user) return show($("postType")?.value || "customer");
+  window.validateAndPublish = async () => {
+    const postType = $("postType")?.value || "customer";
+    if (!user && postType !== "business") return show(postType);
+    if (!user && postType === "business") {
+      try {
+        const anonymousUser = await api.ensureUser();
+        window.G58AnonymousPublisherId = anonymousUser?.$id || "";
+      } catch (error) {
+        const status = $("moderationStatus");
+        if (status) {
+          status.className = "moderation-status notice error";
+          status.style.display = "block";
+          status.textContent = error?.message || "The business card could not be saved securely. Please try again.";
+        }
+        return;
+      }
+    }
     const email = $("postEmail"), phone = $("postPhone");
-    if (email && !email.value) email.value = user.email || "";
-    if (phone && !phone.value) phone.value = profile?.phone || "";
+    if (user && email && !email.value) email.value = user.email || "";
+    if (user && phone && !phone.value) phone.value = profile?.phone || "";
     const result = originalPublish();
-    setTimeout(() => {
+    if (user) setTimeout(() => {
       const state = window.G58GetPostState?.() || { customers: [], businesses: [], lastPublishedPostId: "" };
       const item = [...state.customers, ...state.businesses].find((row) => row.id === state.lastPublishedPostId);
       if (item) { item.userId = user.$id; item.accountEmail = user.email; item.accountPhone = profile?.phone || phone?.value || ""; window.saveData?.(); }
@@ -136,5 +151,9 @@
     return result;
   };
 
-  api?.currentUser().then(async (activeUser) => { user = activeUser; if (user) await finish(); else updateHeader(); });
+  api?.currentUser().then(async (activeUser) => {
+    user = activeUser?.email ? activeUser : null;
+    if (user) await finish();
+    else updateHeader();
+  });
 })();

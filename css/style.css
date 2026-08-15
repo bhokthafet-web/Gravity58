@@ -1901,6 +1901,7 @@ body.req-detail-lock{overflow:hidden}
 .biz-card-wall-item .biz-card-qr-img{width:100px;height:100px}
 .biz-card-wall-item .biz-card-qr-logo{width:23px;height:23px;border-radius:7px}
 .biz-card-wall-item .biz-card-qr-logo svg{width:14px;height:14px}
+.biz-card-wall-item .biz-card-popup-retention{margin-top:8px;font-size:9.5px}
 .biz-card-wall-item .biz-card-primary-actions{gap:8px;margin-bottom:0}
 .biz-card-wall-item .biz-card-cta{padding:10px 8px;font-size:12px}
 .biz-card-wall-item .biz-card-glass-head,
@@ -1968,8 +1969,11 @@ body.req-detail-lock{overflow:hidden}
 .biz-card-qr-logo{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:32px;height:32px;background:#fff;border-radius:9px;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(0,0,0,.18)}
 .biz-card-qr-logo svg{width:19px;height:19px}
 .biz-card-qr-caption{margin:10px 0 0;font-size:11.5px;color:var(--ink-muted,#5B6472)}
+.biz-card-popup-retention{display:flex;align-items:center;justify-content:center;gap:6px;margin:9px 0 0;color:var(--ink-muted,#5B6472);font-size:10.5px;font-weight:700;line-height:1.35}
+.biz-card-popup-retention span{width:7px;height:7px;border-radius:50%;background:#f97316;box-shadow:0 0 9px rgba(249,115,22,.72);flex:0 0 auto}
 .biz-card-primary-actions{display:flex;gap:10px;margin-bottom:16px}
 .biz-card-cta{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;padding:13px 10px;border-radius:999px;font-weight:700;font-size:13.5px;text-decoration:none;border:0;cursor:pointer;font-family:inherit;transition:transform .15s ease,box-shadow .15s ease}
+.biz-brand-logo{width:19px;height:19px;display:block;flex:0 0 auto}
 .biz-card-cta-whatsapp{background:linear-gradient(135deg,#25D366,#128C4A);color:#fff;box-shadow:0 10px 26px rgba(37,211,102,.3)}
 .biz-card-cta-instagram{background:linear-gradient(135deg,#833ab4,#fd1d1d 60%,#fcb045);color:#fff;box-shadow:0 10px 26px rgba(131,58,180,.3)}
 .biz-card-cta:hover{transform:translateY(-2px)}
@@ -2053,6 +2057,7 @@ body.req-detail-lock{overflow:hidden}
 #floatingBusinessCard .biz-card-qr-img{width:146px;height:146px}
 #floatingBusinessCard .biz-card-qr-caption{margin-top:7px}
 #floatingBusinessCard .biz-card-qr-caption{color:#d0d6e5}
+#floatingBusinessCard .biz-card-popup-retention{color:#d7dcef}
 #floatingBusinessCard .biz-card-primary-actions{gap:12px;margin-bottom:10px}
 #floatingBusinessCard .biz-card-cta{padding:10px 8px;border-radius:16px;box-shadow:0 0 0 1px rgba(255,255,255,.45) inset,0 0 18px rgba(40,211,105,.34)}
 #floatingBusinessCard .biz-card-cta-instagram{box-shadow:0 0 0 1px rgba(255,255,255,.45) inset,0 0 18px rgba(217,58,255,.36)}
@@ -2204,6 +2209,7 @@ body.req-detail-lock{overflow:hidden}
 .qr-card-scan-hint{margin:0 0 18px;font-size:12.5px;color:var(--ink-muted,#5B6472)}
 .qr-card-social-row{display:flex;gap:10px;margin-bottom:18px}
 .qr-social-btn{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;padding:11px 8px;border-radius:12px;font-weight:700;font-size:13px;text-decoration:none;color:#fff}
+.qr-social-btn .biz-brand-logo{width:20px;height:20px}
 .qr-social-whatsapp{background:linear-gradient(135deg,#25D366,#1da851)}
 .qr-social-instagram{background:linear-gradient(135deg,#833ab4,#fd1d1d 60%,#fcb045)}
 .qr-social-btn[hidden]{display:none}

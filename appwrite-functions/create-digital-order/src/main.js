@@ -11,6 +11,8 @@ const DIGIT58_ORDER_KIND_PREFIX = 'digit58_order_';
 const DIGIT58_STORE_KIND_PREFIX = 'digit58_store_';
 const ADMIN_TEAM_ID = '6a776960001ca2fb66bf';
 const SUPPORT_KIND = 'support_tickets';
+const PUBLIC_POSTS_KIND = 'posts';
+const BUSINESS_CARD_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 
 const text = (value, max = 250) => String(value ?? '').trim().slice(0, max);
 const finite = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
@@ -224,6 +226,79 @@ async function listRowsByKind(call, kind, limit = 500) {
   const queryString = queries.map(query => `queries[]=${encodeURIComponent(query)}`).join('&');
   const result = await call(`/tablesdb/${DATABASE_ID}/tables/${TABLE_ID}/rows?${queryString}`);
   return result.rows || result.documents || [];
+}
+
+function parsePublicPostRow(row) {
+  const envelope = cleanRow(row);
+  let post = {};
+  try { post = JSON.parse(envelope.payload || '{}') || {}; } catch {}
+  return { envelope, post };
+}
+
+async function updatePublicPostRow(call, row, envelope, post) {
+  const rowId = row.$id || row.id || envelope.recordKey || post.id;
+  const savedEnvelope = {
+    recordKey: envelope.recordKey || post.id || rowId,
+    postType: envelope.postType || post.type || '',
+    userId: envelope.userId || post.userId || '',
+    payload: JSON.stringify(post),
+    updatedAt: new Date().toISOString(),
+  };
+  return call(`/tablesdb/${DATABASE_ID}/tables/${TABLE_ID}/rows/${encodeURIComponent(rowId)}`, {
+    method: 'PATCH', body: JSON.stringify({ data: { payload: JSON.stringify(savedEnvelope) } }),
+  });
+}
+
+function isBusinessPost(envelope, post) {
+  return envelope.postType === 'business' || post.type === 'business';
+}
+
+async function purgeInactiveBusinessCards(call) {
+  const rows = await listRowsByKind(call, PUBLIC_POSTS_KIND);
+  const now = Date.now();
+  const removedIds = [];
+  const migratedIds = [];
+  for (const row of rows) {
+    const { envelope, post } = parsePublicPostRow(row);
+    if (!isBusinessPost(envelope, post)) continue;
+    const rowId = row.$id || row.id || envelope.recordKey || post.id;
+    const expiry = finite(post.popupExpiresAt, 0);
+    if (!expiry) {
+      post.popupExpiresAt = now + BUSINESS_CARD_RETENTION_MS;
+      post.lastPopupOpenedAt = finite(post.lastPopupOpenedAt, 0);
+      post.popupRetentionStartedAt = now;
+      await updatePublicPostRow(call, row, envelope, post);
+      migratedIds.push(String(post.id || rowId));
+      continue;
+    }
+    if (expiry <= now) {
+      await removeRow(call, rowId);
+      removedIds.push(String(post.id || rowId));
+    }
+  }
+  return { removedIds, migratedIds };
+}
+
+async function touchBusinessCard(call, input) {
+  const cardId = text(input.cardId, 36);
+  if (!cardId) throw new Error('Business card details are missing.');
+  const row = await call(`/tablesdb/${DATABASE_ID}/tables/${TABLE_ID}/rows/${encodeURIComponent(cardId)}`);
+  if (row.kind !== PUBLIC_POSTS_KIND) throw new Error('This is not a public business card.');
+  const { envelope, post } = parsePublicPostRow(row);
+  if (!isBusinessPost(envelope, post)) throw new Error('This is not a public business card.');
+  const now = Date.now();
+  const expiry = finite(post.popupExpiresAt, 0);
+  if (expiry && expiry <= now) {
+    await removeRow(call, row.$id || cardId);
+    const expired = new Error('This business card expired after 30 days without a popup view.');
+    expired.code = 410;
+    throw expired;
+  }
+  post.lastPopupOpenedAt = now;
+  post.popupExpiresAt = now + BUSINESS_CARD_RETENTION_MS;
+  post.popupRetentionStartedAt ||= now;
+  await updatePublicPostRow(call, row, envelope, post);
+  return post;
 }
 
 async function confirmPayment(call, orderId, ownerId, userId) {
@@ -533,6 +608,15 @@ async function createDigit58Order(call, input, userId) {
 }
 
 export default async ({ req, res, error }) => {
+  if (req.headers['x-appwrite-trigger'] === 'schedule') {
+    try {
+      const call = appwriteClient(req);
+      return res.json({ ok: true, scheduled: true, ...(await purgeInactiveBusinessCards(call)) });
+    } catch (caught) {
+      error(`Scheduled business-card cleanup failed: ${caught?.message || caught}`);
+      return res.json({ ok: false, error: caught?.message || 'Scheduled business-card cleanup failed.' }, 500);
+    }
+  }
   if (req.method === 'GET') return res.json({ ok: true, service: 'Gravity58 secure digital orders' });
   if (req.method !== 'POST') return res.json({ ok: false, error: 'Method not allowed.' }, 405);
   const userId = text(req.headers['x-appwrite-user-id'], 64);
@@ -590,6 +674,10 @@ export default async ({ req, res, error }) => {
       const call = appwriteClient(req);
       return res.json({ ok: true, store: await setDigit58StoreSuspended(call, requestBody, userId) });
     }
+    if (requestBody?.action === 'touch-business-card') {
+      const call = appwriteClient(req);
+      return res.json({ ok: true, business: await touchBusinessCard(call, requestBody) });
+    }
     const input = requestBody?.order || requestBody || {};
     const ownerId = text(input.cloudOwnerId || input.ownerId, 64);
     const restaurantId = text(input.restaurantId, 64);
@@ -625,7 +713,7 @@ export default async ({ req, res, error }) => {
     }
   } catch (caught) {
     error(`Secure order failed: ${caught?.message || caught}`);
-    const status = caught?.code === 403 ? 403 : caught?.code === 409 ? 409 : caught?.code === 404 ? 404 : 400;
+    const status = caught?.code === 403 ? 403 : caught?.code === 409 ? 409 : caught?.code === 404 ? 404 : caught?.code === 410 ? 410 : 400;
     return res.json({ ok: false, error: caught?.message || 'Order could not be placed.' }, status);
   }
 };
