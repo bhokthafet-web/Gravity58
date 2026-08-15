@@ -825,6 +825,17 @@ function businessDemoUrl(b) {
   if (/^[a-zA-Z0-9._]+$/.test(raw)) return "https://instagram.com/" + raw;
   return "https://" + raw;
 }
+function businessServicesUrl(b) {
+  const raw = String(
+    b.websiteUrl || b.website || b.servicesUrl || b.demoUrl || "",
+  ).trim();
+  if (raw) {
+    if (/^https?:\/\//i.test(raw)) return raw;
+    return "https://" + raw.replace(/^\/+/, "");
+  }
+  if (normalize(b.title) === "arakodi") return "https://www.arakodi.com/";
+  return businessDemoUrl(b);
+}
 function callBusinessPhone(id) {
   const b = businesses.find((x) => x.id === id);
   if (!b) return;
@@ -1353,6 +1364,8 @@ function openBusinessEdit(id) {
   document.getElementById("editBusinessAltPhone").value =
     business.altPhone || "";
   document.getElementById("editBusinessEmail").value = business.email || "";
+  document.getElementById("editBusinessWebsite").value =
+    business.websiteUrl || business.website || "";
   document.getElementById("editBusinessSocial").value =
     business.socialUrl || "";
   const editNational = document.getElementById("editBusinessNational");
@@ -1391,6 +1404,7 @@ function saveBusinessEdit() {
     phone: document.getElementById("editBusinessPhone").value.trim(),
     altPhone: document.getElementById("editBusinessAltPhone").value.trim(),
     email: document.getElementById("editBusinessEmail").value.trim(),
+    websiteUrl: document.getElementById("editBusinessWebsite").value.trim(),
     socialUrl: document.getElementById("editBusinessSocial").value.trim(),
     isNational: Boolean(
       document.getElementById("editBusinessNational")?.checked,
@@ -1697,7 +1711,39 @@ function floatingBusinessMarkup(b) {
   const ownerLabel = isOwner
     ? "Manage your business"
     : "Unlock if you're the owner";
-  return `<article class="biz-profile">${digitalBusinessCardMarkup(b, ownerAction, ownerLabel, { popup: true })}</article>`;
+  const phone = cleanNumber(b.phone || b.whatsapp || "");
+  const websiteUrl = businessServicesUrl(b);
+  const locationQuery = [b.title, b.area, itemDistrict(b), itemState(b)]
+    .filter(Boolean)
+    .join(", ");
+  const mapsUrl = locationQuery
+    ? "https://www.google.com/maps/search/?api=1&query=" +
+      encodeURIComponent(locationQuery)
+    : "";
+  const phoneIcon =
+    '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92Z"/></svg>';
+  const locationIcon =
+    '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>';
+  const servicesIcon =
+    '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 21h14"/><path d="M7 21v-2a5 5 0 0 1 10 0v2"/><path d="M12 3v3"/><path d="M4.2 7.2l2.1 2.1"/><path d="M19.8 7.2l-2.1 2.1"/><path d="M3 14h18"/></svg>';
+  const shareIcon =
+    '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="m8.6 13.5 6.8 3.9M15.4 6.6 8.6 10.5"/></svg>';
+
+  const callAction = phone
+    ? `<a class="biz-popup-side-action" href="tel:${phone}"><span>${phoneIcon}</span><strong>Call</strong></a>`
+    : `<span class="biz-popup-side-action disabled" aria-disabled="true"><span>${phoneIcon}</span><strong>Call</strong></span>`;
+  const locationAction = mapsUrl
+    ? `<a class="biz-popup-side-action" href="${escapeHtml(mapsUrl)}" target="_blank" rel="noopener"><span>${locationIcon}</span><strong>Find Location</strong></a>`
+    : `<span class="biz-popup-side-action disabled" aria-disabled="true"><span>${locationIcon}</span><strong>Find Location</strong></span>`;
+  const servicesAction = websiteUrl
+    ? `<a class="biz-popup-side-action biz-popup-view-services" href="${escapeHtml(websiteUrl)}" target="_blank" rel="noopener"><span>${servicesIcon}</span><strong>View Services</strong></a>`
+    : `<span class="biz-popup-side-action biz-popup-view-services disabled" aria-disabled="true"><span>${servicesIcon}</span><strong>View Services</strong></span>`;
+
+  return `<div class="biz-popup-layout">
+<aside class="biz-popup-side-rail biz-popup-side-left" aria-label="Business contact actions">${callAction}${locationAction}</aside>
+<article class="biz-profile">${digitalBusinessCardMarkup(b, ownerAction, ownerLabel, { popup: true })}</article>
+<aside class="biz-popup-side-rail biz-popup-side-right" aria-label="Business profile actions">${servicesAction}<button type="button" class="biz-popup-side-action" onclick="shareBusinessProfile('${b.id}')"><span>${shareIcon}</span><strong>Share</strong></button></aside>
+</div>`;
 }
 let activeFloatingBusinessId = null;
 function showFloatingBusiness(id) {
@@ -2189,6 +2235,7 @@ function validateAndPublish() {
     email = document.getElementById("postEmail").value.trim(),
     phone = document.getElementById("postPhone").value.trim(),
     altPhone = document.getElementById("postAltPhone")?.value.trim() || "",
+    websiteUrl = document.getElementById("postWebsiteUrl")?.value.trim() || "",
     socialUrl = document.getElementById("postSocialUrl")?.value.trim() || "",
     status = document.getElementById("moderationStatus");
 
@@ -2243,6 +2290,7 @@ function validateAndPublish() {
     email,
     phone,
     altPhone,
+    websiteUrl,
     socialUrl,
     isNational,
     created: Date.now(),

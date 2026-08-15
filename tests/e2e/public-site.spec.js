@@ -151,7 +151,26 @@ test("Business Wall cards stay compact while the full profile remains available"
 
   await card.getByRole("button", { name: "View", exact: true }).click();
   await expect(page.locator("#floatingBusinessWrap")).toHaveClass(/show/);
-  await expect(page.locator("#floatingBusinessCard .biz-card-quickrow")).toBeVisible();
+  await expect(page.locator("#floatingBusinessCard .biz-card-quickrow")).toBeHidden();
+  await expect(page.locator("#floatingBusinessCard .biz-popup-side-action")).toHaveCount(4);
+  await expect(
+    page.locator("#floatingBusinessCard .biz-popup-view-services"),
+  ).toHaveAttribute("href", /instagram\.com|https?:\/\//);
+  expect(
+    await page.evaluate(() =>
+      businessServicesUrl({
+        title: "ARAKODI",
+        socialUrl: "https://instagram.com/arakodi5/",
+      }),
+    ),
+  ).toBe("https://www.arakodi.com/");
+  const popupBounds = await page
+    .locator("#floatingBusinessCard .biz-card-glass")
+    .boundingBox();
+  expect(popupBounds).not.toBeNull();
+  expect(popupBounds.y + popupBounds.height).toBeLessThanOrEqual(
+    page.viewportSize().height,
+  );
   await expect(page.locator("#floatingBusinessCard .biz-popup-lock-art")).toBeVisible();
   await expect(page.locator("#floatingBusinessCard .biz-card-glass")).toHaveCSS(
     "color",
