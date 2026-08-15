@@ -1,6 +1,7 @@
 const $=(selector,root=document)=>root.querySelector(selector),$$=(selector,root=document)=>[...root.querySelectorAll(selector)];
 const app=$('#app'),api=window.Gravity58Ads,now=()=>new Date().toISOString(),money=value=>`₹${Number(value||0).toLocaleString('en-IN')}`;
 const esc=value=>String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
+const digit58StoreKind=ownerId=>`digit58_store_${String(ownerId||'').replace(/[^a-zA-Z0-9._-]/g,'-').slice(0,40)}`;
 const AD_PLACEMENT_SPECS={right_rail:{label:'Right menu rail',size:'1080 × 1350 px',ratio:'4:5'},preparing:{label:'Preparing screen',size:'1200 × 628 px',ratio:'1.91:1'},thankyou:{label:'Thank-you screen',size:'1080 × 1080 px',ratio:'1:1'}};
 const placementSpec=slotId=>AD_PLACEMENT_SPECS[slotId]||{label:slotId||'Advertisement',size:'Confirm with G58',ratio:''};
 let user=null,view='overview',data={bookings:[],advertisements:[],profiles:[],slots:[],customers:[],businesses:[],postRows:[],legacyPostDocument:null,menuPricing:[],menuEntitlements:[],menuRequests:[],dinerOrders:[],dinerOrdersLoaded:false,digit58Stores:[],digit58Requests:[],digit58Entitlements:[],digit58Customers:[],digit58CustomersLoaded:false,digit58Pricing:[],supportTickets:[]};
@@ -20,10 +21,15 @@ login=function(){renderAdminLogin();installAdminPasswordRecovery()};
 function accessDenied(){app.innerHTML=`<main class="screen auth"><section class="auth-card glass"><h2>Access denied</h2><p>This signed-in account is not a G58 team member.</p><button class="btn full" id="leave">Sign out</button></section></main>`;$('#leave').onclick=async()=>{await api.logout();user=null;login()}}
 async function loadData(){
   const [bookings,advertisements,profiles,slots,posts,menuPricing,menuEntitlements,menuRequests,digit58Stores,digit58Requests,digit58Entitlements,digit58Pricing,supportTickets]=await Promise.all([api.list('bookings'),api.list('advertisements'),api.list('profiles'),api.list('slots'),api.list('posts'),api.list('digital_menu_pricing').catch(()=>[]),api.list('digital_menu_entitlements').catch(()=>[]),api.list('digital_menu_requests').catch(()=>[]),api.list('digit58_owners').catch(()=>[]),api.list('digit58_requests').catch(()=>[]),api.list('digit58_entitlements').catch(()=>[]),api.list('digit58_pricing').catch(()=>[]),api.list('support_tickets').catch(()=>[])]);
+  const uniqueStoreSummaries=[...new Map(digit58Stores.filter(row=>row.ownerId&&(row.storeId||row.id)).map(row=>[`${row.ownerId}:${row.storeId||row.id}`,row])).values()];
+  const hydratedDigit58Stores=await Promise.all(uniqueStoreSummaries.map(async summary=>{
+    const storeId=summary.storeId||summary.id,live=await api.get(digit58StoreKind(summary.ownerId),storeId).catch(()=>null);
+    return {...summary,...(live||{}),registryId:summary.id,storeId,storeName:live?.name||summary.storeName||'Store',ownerEmail:summary.ownerEmail||live?.ownerEmail||''};
+  }));
   const legacy=posts.find(row=>row.recordKey==='global'&&(row.customers||row.businesses));
   const postRows=posts.filter(row=>row.recordKey!=='global'),customers=[],businesses=[];
   postRows.forEach(row=>{const post=parsePost(row.payload);if(!post)return;post.userId||=row.userId||'';(row.postType==='business'?businesses:customers).push(post)});
-  data={bookings,advertisements,profiles,slots,postRows,legacyPostDocument:legacy||null,customers:legacy?parse(legacy.customers):customers,businesses:legacy?parse(legacy.businesses):businesses,menuPricing,menuEntitlements,menuRequests,digit58Stores,digit58Requests,digit58Entitlements,digit58Pricing,supportTickets,digit58Customers:data.digit58Customers||[],digit58CustomersLoaded:false};
+  data={bookings,advertisements,profiles,slots,postRows,legacyPostDocument:legacy||null,customers:legacy?parse(legacy.customers):customers,businesses:legacy?parse(legacy.businesses):businesses,menuPricing,menuEntitlements,menuRequests,digit58Stores:hydratedDigit58Stores,digit58Requests,digit58Entitlements,digit58Pricing,supportTickets,digit58Customers:data.digit58Customers||[],digit58CustomersLoaded:false};
   digit58OrdersCache=null;
   await reconcileExpiredCampaigns();
 }
@@ -262,11 +268,12 @@ function digit58(){
   <div class="card table-wrap"><table><thead><tr><th>Owner</th><th>Amount</th><th>Status</th><th>Actions</th></tr></thead><tbody>${requests.map(digit58RequestRow).join('')||'<tr><td colspan="4">No pending Refills requests.</td></tr>'}</tbody></table></div>
   <div class="section-head"><h2>Store owner subscriptions</h2></div>
   <div class="card table-wrap"><table><thead><tr><th>Owner</th><th>Status</th><th>Expiry</th><th>Store Slots</th><th>Policy</th><th>Actions</th></tr></thead><tbody>${entitlements.map(digit58EntitlementRow).join('')||'<tr><td colspan="6">No activated Refills subscriptions.</td></tr>'}</tbody></table></div>
-  <div class="section-head"><h2>Refills stores</h2></div>
-  <div class="admin-filter-bar"><input id="digit58Search" placeholder="Search store, category or owner email"><select id="digit58Category"><option value="All">All categories</option>${[...new Set(stores.map(row=>row.category||'General store'))].map(category=>`<option>${esc(category)}</option>`).join('')}</select></div><div class="card table-wrap"><table><thead><tr><th>Store</th><th>Category</th><th>City</th><th>Owner</th><th>Status</th><th>Created</th><th>Actions</th></tr></thead><tbody id="digit58Rows">${stores.map(digit58Row).join('')||'<tr><td colspan="7">No Refills stores yet.</td></tr>'}</tbody></table></div>
+  <div class="section-head"><div><h2>Refills stores — individual management</h2><p class="muted">Each row controls only that store. Managing one store does not change another store belonging to the same owner.</p></div></div>
+  <div class="admin-filter-bar"><input id="digit58Search" placeholder="Search store, ID, category or owner email"><select id="digit58Category"><option value="All">All categories</option>${[...new Set(stores.map(row=>row.category||'General store'))].map(category=>`<option>${esc(category)}</option>`).join('')}</select></div><div class="card table-wrap"><table><thead><tr><th>Store</th><th>Store ID</th><th>Category</th><th>City</th><th>Owner</th><th>Status</th><th>Created</th><th>Actions</th></tr></thead><tbody id="digit58Rows">${stores.map(digit58Row).join('')||'<tr><td colspan="8">No Refills stores yet.</td></tr>'}</tbody></table></div>
   <div class="section-head"><div><h2>Store customers</h2><p class="muted">Customers signed up across all Refills stores, with their last visit.</p></div><button class="btn" id="loadDigit58Customers">${data.digit58CustomersLoaded?'Refresh':'Load Customers'}</button></div>
   <div class="card table-wrap" id="digit58CustomerTable">${data.digit58CustomersLoaded?digit58CustomersTable():'<div class="empty">Click "Load Customers" to fetch customer details across all stores.</div>'}</div>`;
-  const draw=()=>{const q=$('#digit58Search').value.toLowerCase(),category=$('#digit58Category').value,rows=stores.filter(row=>(category==='All'||row.category===category)&&`${row.storeName} ${row.category} ${row.ownerEmail}`.toLowerCase().includes(q));$('#digit58Rows').innerHTML=rows.map(digit58Row).join('')||'<tr><td colspan="7">No matching stores.</td></tr>';$$('[data-toggle-digit58-store]').forEach(button=>button.onclick=()=>toggleDigit58Store(button.dataset.toggleDigit58Store,button.dataset.ownerId))};
+  const bindStoreActions=()=>{$$('[data-manage-digit58-store]').forEach(button=>button.onclick=()=>manageDigit58Store(button.dataset.ownerId,button.dataset.manageDigit58Store));$$('[data-toggle-digit58-store]').forEach(button=>button.onclick=()=>toggleDigit58Store(button.dataset.toggleDigit58Store,button.dataset.ownerId))};
+  const draw=()=>{const q=$('#digit58Search').value.toLowerCase(),category=$('#digit58Category').value,rows=stores.filter(row=>(category==='All'||row.category===category)&&`${row.storeName} ${row.storeId||row.id} ${row.category} ${row.ownerEmail}`.toLowerCase().includes(q));$('#digit58Rows').innerHTML=rows.map(digit58Row).join('')||'<tr><td colspan="8">No matching stores.</td></tr>';bindStoreActions()};
   $('#digit58Search').oninput=draw;$('#digit58Category').onchange=draw;
   $('#editDigit58Pricing').onclick=editDigit58Pricing;
   $$('[data-send-digit58-link]').forEach(button=>button.onclick=()=>sendDigit58PaymentLink(button.dataset.sendDigit58Link));
@@ -275,13 +282,20 @@ function digit58(){
   $$('[data-edit-digit58-entitlement]').forEach(button=>button.onclick=()=>editDigit58Entitlement(button.dataset.editDigit58Entitlement));
   $$('[data-extend-digit58]').forEach(button=>button.onclick=()=>extendDigit58Entitlement(button.dataset.extendDigit58));
   $$('[data-pause-digit58]').forEach(button=>button.onclick=()=>toggleDigit58Pause(button.dataset.pauseDigit58));
-  $$('[data-toggle-digit58-store]').forEach(button=>button.onclick=()=>toggleDigit58Store(button.dataset.toggleDigit58Store,button.dataset.ownerId));
+  bindStoreActions();
   $('#loadDigit58Customers').onclick=async()=>{$('#loadDigit58Customers').disabled=true;await loadDigit58Customers(true);digit58()};
 }
-function digit58Row(row){return `<tr><td><strong>${esc(row.storeName||'Store')}</strong></td><td>${esc(row.category||'General store')}</td><td>${esc(row.city||'')}</td><td>${esc(row.ownerEmail||row.ownerId||'')}</td><td><span class="chip ${row.suspended?'due':'delivered'}">${row.suspended?'Paused':'Active'}</span></td><td>${row.createdAt?new Date(row.createdAt).toLocaleDateString('en-IN',{dateStyle:'medium'}):''}</td><td><button class="btn small ${row.suspended?'green':'red'}" data-toggle-digit58-store="${esc(row.storeId||row.id)}" data-owner-id="${esc(row.ownerId)}">${row.suspended?'Resume Store':'Pause Store'}</button></td></tr>`}
+function digit58Row(row){const storeId=row.storeId||row.id;return `<tr data-digit58-store-row="${esc(row.ownerId)}:${esc(storeId)}"><td><strong>${esc(row.storeName||row.name||'Store')}</strong>${row.highlightText?`<br><small>${esc(row.highlightText)}</small>`:''}</td><td><code>${esc(storeId)}</code></td><td>${esc(row.category||'General store')}</td><td>${esc(row.city||'')}</td><td>${esc(row.ownerEmail||row.ownerId||'')}<br><small>${esc(row.ownerId||'')}</small></td><td><span class="chip ${row.suspended?'due':'delivered'}">${row.suspended?'Paused':'Active'}</span></td><td>${row.createdAt?new Date(row.createdAt).toLocaleDateString('en-IN',{dateStyle:'medium'}):''}</td><td><div class="actions"><button class="btn small" data-manage-digit58-store="${esc(storeId)}" data-owner-id="${esc(row.ownerId)}">Manage</button><button class="btn small ${row.suspended?'green':'red'}" data-toggle-digit58-store="${esc(storeId)}" data-owner-id="${esc(row.ownerId)}">${row.suspended?'Resume':'Pause'}</button></div></td></tr>`}
+function manageDigit58Store(ownerId,storeId){
+  const row=data.digit58Stores.find(item=>item.ownerId===ownerId&&(item.storeId||item.id)===storeId);if(!row)return;
+  const customerCount=data.digit58Customers.filter(item=>item.ownerId===ownerId&&item.storeId===storeId).length;
+  const publicLink=`${location.origin}/digit58/#store&owner=${encodeURIComponent(ownerId)}&store=${encodeURIComponent(storeId)}`;
+  modal(`Manage ${esc(row.storeName||row.name||'Store')}`,`<div class="card"><p><strong>Store ID:</strong> <code>${esc(storeId)}</code></p><p><strong>Owner:</strong> ${esc(row.ownerEmail||ownerId)}</p><p><strong>Category:</strong> ${esc(row.category||'General store')} · ${esc(row.city||'')}</p><p><strong>Status:</strong> <span class="chip ${row.suspended?'due':'delivered'}">${row.suspended?'Paused':'Active'}</span></p>${data.digit58CustomersLoaded?`<p><strong>Linked customers:</strong> ${customerCount}</p>`:''}</div><div class="actions" style="margin-top:16px"><a class="btn secondary" href="${esc(publicLink)}" target="_blank" rel="noopener">Open Customer Store</a><button class="btn ${row.suspended?'green':'red'}" id="manageDigit58Status">${row.suspended?'Resume This Store':'Pause This Store'}</button></div>`,()=>{$('#manageDigit58Status').onclick=async()=>{closeModal();await toggleDigit58Store(storeId,ownerId)}});
+}
 async function toggleDigit58Store(storeId,ownerId){
+  const row=data.digit58Stores.find(item=>item.ownerId===ownerId&&(item.storeId||item.id)===storeId);if(!row)return;
   try{
-    await api.executeFunction(api.config.digitalOrderFunctionId,{action:'digit58-set-store-suspended',ownerId,storeId,suspended:!data.digit58Stores.find(row=>(row.storeId||row.id)===storeId)?.suspended});
+    await api.executeFunction(api.config.digitalOrderFunctionId,{action:'digit58-set-store-suspended',ownerId,storeId,suspended:!row.suspended});
     await refresh();toast('Store status updated');
   }catch(error){toast(error.message||'Could not update store status')}
 }
@@ -346,7 +360,7 @@ async function toggleDigit58Pause(id){const row=data.digit58Entitlements.find(it
 function digit58CustomerKind(ownerId){return `digit58_customer_${String(ownerId).replace(/[^a-zA-Z0-9._-]/g,'-').slice(0,36)}`}
 async function loadDigit58Customers(force=false){
   if(data.digit58CustomersLoaded&&!force)return;
-  const ownerIds=[...new Set([...data.digit58Entitlements.map(row=>row.ownerId),...data.digit58Requests.map(row=>row.ownerId)].filter(Boolean))];
+  const ownerIds=[...new Set([...data.digit58Stores.map(row=>row.ownerId),...data.digit58Entitlements.map(row=>row.ownerId),...data.digit58Requests.map(row=>row.ownerId)].filter(Boolean))];
   const perOwner=await Promise.all(ownerIds.map(ownerId=>api.list(digit58CustomerKind(ownerId)).catch(()=>[])));
   data.digit58Customers=perOwner.flat();
   data.digit58CustomersLoaded=true;

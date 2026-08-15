@@ -85,6 +85,16 @@ export function mockApiScript({ initialUser = null, admin = false, seed = {} } =
           const createdAt=new Date().toISOString(),row=clean({id:'refill-order-'+(++serial),ownerId:payload.ownerId,storeId:card.storeId,customerAccountId:user?.\$id,customerName:payload.customerName,customerEmail:payload.customerEmail,phone:String(payload.phone||card.phone||'').replace(/\D/g,''),items:[{name:card.productName,qty:1}],amount:0,previousAmount:Number(card.price)||0,refillCardId:card.id,upiUri:'',status:'Requested',messages:[],createdAt,updatedAt:createdAt});
           (store[orderKind]||=[]).unshift(row);Object.assign(card,{status:'Refill Requested',refillRequestedAt:createdAt,activeOrderId:row.id,phone:row.phone,updatedAt:createdAt});notify(orderKind,row);notify(cardKind,card);return {ok:true,order:clone(row)};
         }
+        if(action==='digit58-set-store-suspended'){
+          if(!${admin ? "true" : "false"})throw new Error('Only G58 administrators can manage store status.');
+          const kind='digit58_store_'+String(payload.ownerId||'').replace(/[^a-zA-Z0-9._-]/g,'-').slice(0,40);
+          const row=(store[kind]||[]).find(item=>(item.id||item.\$id)===payload.storeId);
+          if(!row)throw new Error('Store details are missing.');
+          Object.assign(row,{suspended:Boolean(payload.suspended),suspendedAt:payload.suspended?new Date().toISOString():''});
+          const summary=(store.digit58_owners||[]).find(item=>item.ownerId===payload.ownerId&&(item.storeId||item.id)===payload.storeId);
+          if(summary)summary.suspended=row.suspended;
+          notify(kind,row);return {ok:true,store:clone(row)};
+        }
         throw new Error('Unsupported secure test action: '+action);
       },
       forgotPassword:async(email,url)=>{window.__g58Mock.recoveries.push({email,url});return true},

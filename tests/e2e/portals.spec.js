@@ -215,6 +215,46 @@ test("team admin reviews bookings, activates campaigns, moderates posts and bloc
   await assertNoErrors();
 });
 
+test("G58 admin manages Refills stores independently for the same owner", async ({ page }) => {
+  const ownerId = "shared_refills_owner";
+  await prepareMockApi(page, {
+    admin: true,
+    state: null,
+    seed: {
+      digit58_owners: [
+        { id: "owner-test2", ownerId, ownerEmail: "owner@example.com", storeId: "test2", storeName: "test2", category: "Medical store", city: "Hyderabad", createdAt: "2026-08-14T08:00:00.000Z" },
+        { id: "owner-amruth", ownerId, ownerEmail: "owner@example.com", storeId: "amruth", storeName: "Amruth Medicals", category: "Medical store", city: "Hyderabad", createdAt: "2026-08-15T08:00:00.000Z" },
+      ],
+      [`digit58_store_${ownerId}`]: [
+        { id: "test2", ownerId, name: "test2", category: "Medical store", city: "Hyderabad", suspended: false, createdAt: "2026-08-14T08:00:00.000Z" },
+        { id: "amruth", ownerId, name: "Amruth Medicals", category: "Medical store", city: "Hyderabad", highlightText: "20% Off", suspended: false, createdAt: "2026-08-15T08:00:00.000Z" },
+      ],
+    },
+  });
+  const assertNoErrors = monitorPageErrors(page);
+  await page.goto("/team-admin/");
+  await page.locator('#login input[name="email"]').fill("admin@g58.in");
+  await page.locator('#login input[name="password"]').fill("testing123");
+  await page.locator("#login").getByRole("button", { name: "Secure Login" }).click();
+  await page.locator('[data-view="digit58"]').click();
+
+  const test2Row = page.locator('[data-digit58-store-row="shared_refills_owner:test2"]');
+  const amruthRow = page.locator('[data-digit58-store-row="shared_refills_owner:amruth"]');
+  await expect(test2Row).toContainText("test2");
+  await expect(amruthRow).toContainText("Amruth Medicals");
+  await expect(amruthRow).toContainText("20% Off");
+  await amruthRow.getByRole("button", { name: "Manage" }).click();
+  await expect(page.getByRole("heading", { name: "Manage Amruth Medicals" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Open Customer Store" })).toHaveAttribute("href", /owner=shared_refills_owner&store=amruth/);
+  await page.getByRole("button", { name: "Pause This Store" }).click();
+
+  await expect(page.locator('[data-digit58-store-row="shared_refills_owner:amruth"]')).toContainText("Paused");
+  await expect(page.locator('[data-digit58-store-row="shared_refills_owner:test2"]')).toContainText("Active");
+  const statuses = await page.evaluate((kind) => Object.fromEntries(window.__g58Mock.store[kind].map((row) => [row.id, Boolean(row.suspended)])), `digit58_store_${ownerId}`);
+  expect(statuses).toEqual({ test2: false, amruth: true });
+  await assertNoErrors();
+});
+
 test("admin requests a paid extension, confirms it, and permanently deletes all ad records and media", async ({ page }) => {
   const originalExpiry = new Date(Date.now() + 3_600_000).toISOString();
   await prepareMockApi(page, {
@@ -339,6 +379,40 @@ test("Refills customer reorders from history into a fresh store-owner request", 
   const orders = await page.evaluate((kind) => window.__g58Mock.store[kind], orderKind);
   expect(orders).toHaveLength(2);
   expect(orders[0]).toMatchObject({ status: "Requested", amount: 0, previousAmount: 480, reorderedFrom: "history_order", phone: "9888888888" });
+  await assertNoErrors();
+});
+
+test("Refills owner header links to G58 and stores a customer highlight message", async ({ page }) => {
+  const ownerId = "highlight_owner", storeId = "highlight_store";
+  await prepareMockApi(page, {
+    state: null,
+    initialUser: { $id: ownerId, email: "owner@example.com", name: "Store Owner" },
+    seed: {
+      digit58_entitlements: [{ id: "highlight_entitlement", ownerId, active: true, paused: false, lifetime: true, policyAcceptedAt: new Date().toISOString() }],
+      [`digit58_store_${ownerId}`]: [{ id: storeId, ownerId, name: "Amruth Medicals", category: "Medical store", city: "Hyderabad", description: "Your Trusted Local Store" }],
+    },
+  });
+  const assertNoErrors = monitorPageErrors(page);
+  await page.goto("/digit58/");
+  const homeLink = page.locator(".g58-topbar-home");
+  await expect(homeLink).toHaveText("www.g58.in");
+  await expect(homeLink).toHaveAttribute("href", "https://www.g58.in/");
+  expect(await homeLink.evaluate((node) => getComputedStyle(node).animationName)).toBe("g58TopbarBlink");
+
+  await page.getByRole("button", { name: /My Stores/ }).click();
+  await page.getByRole("button", { name: "Edit" }).click();
+  await page.locator('#storeForm input[name="highlightText"]').fill("20% Off");
+  await page.getByRole("button", { name: "Save Store" }).click();
+  await expect(page.locator(".store-grid")).toContainText("20% Off");
+
+  await page.goto(`/digit58/#store&owner=${ownerId}&store=${storeId}`);
+  await expect(page.locator(".store-hero .store-highlight-text")).toHaveText("20% Off");
+  const highlightPosition = await page.locator(".store-hero .store-highlight-text").evaluate((node) => {
+    const nodeBox = node.getBoundingClientRect(), heroBox = node.parentElement.getBoundingClientRect();
+    return { rightGap: heroBox.right - nodeBox.right, left: nodeBox.left, heroMid: heroBox.left + heroBox.width / 2 };
+  });
+  expect(highlightPosition.rightGap).toBeLessThan(35);
+  expect(highlightPosition.left).toBeGreaterThan(highlightPosition.heroMid);
   await assertNoErrors();
 });
 
