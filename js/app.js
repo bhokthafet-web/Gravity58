@@ -1293,22 +1293,6 @@ function shareCustomerOnWhatsApp(id) {
     "noopener",
   );
 }
-function shareBusinessOnWhatsApp(id) {
-  const b = businesses.find((x) => x.id === id);
-  if (!b) return;
-  const link = businessShareUrl(id);
-  const text = `${b.title} — GRAVITY58 Digital Business Card
-
-Open this link to view the dedicated business card:
-${link}
-
-Save this WhatsApp message or link for permanent access to this digital business card.`;
-  window.open(
-    `https://wa.me/?text=${encodeURIComponent(text)}`,
-    "_blank",
-    "noopener",
-  );
-}
 function publishedShareUrl() {
   return lastPublishedPostType === "customer"
     ? customerShareUrl(lastPublishedPostId)
@@ -1597,12 +1581,84 @@ async function shareBusinessProfile(id) {
         text: `${b.title} — ${b.category} on GRAVITY58`,
         url: link,
       });
+      return;
     } catch (error) {
       /* user cancelled the native share sheet */
+      return;
     }
-  } else {
-    shareBusinessOnWhatsApp(id);
   }
+  const status = document.getElementById(`share-${id}`);
+  try {
+    await navigator.clipboard.writeText(link);
+    if (status) {
+      status.textContent = "Link copied to clipboard.";
+      setTimeout(() => (status.textContent = ""), 2500);
+    }
+  } catch {
+    prompt("Copy this business-card link:", link);
+  }
+}
+function downloadBusinessVCard(id) {
+  const b = businesses.find((x) => x.id === id);
+  if (!b) return;
+  const phone = cleanNumber(b.phone || "");
+  const whatsapp = cleanNumber(b.whatsapp || "");
+  const address = [b.area, itemDistrict(b), itemState(b)]
+    .filter(Boolean)
+    .join(", ");
+  const url = businessDemoUrl(b);
+  const lines = [
+    "BEGIN:VCARD",
+    "VERSION:3.0",
+    `FN:${b.title}`,
+    `ORG:${b.title}`,
+    b.category ? `TITLE:${b.category}` : "",
+    phone ? `TEL;TYPE=WORK,VOICE:${phone}` : "",
+    whatsapp && whatsapp !== phone ? `TEL;TYPE=CELL:${whatsapp}` : "",
+    b.email ? `EMAIL:${b.email}` : "",
+    address ? `ADR;TYPE=WORK:;;${address};;;;` : "",
+    url ? `URL:${url}` : "",
+    b.description ? `NOTE:${b.description.replace(/\r?\n/g, " ")}` : "",
+    "END:VCARD",
+  ]
+    .filter(Boolean)
+    .join("\r\n");
+  const blob = new Blob([lines], { type: "text/vcard" });
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = `${b.title.replace(/[^a-z0-9]+/gi, "_")}.vcf`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  setTimeout(() => URL.revokeObjectURL(link.href), 2000);
+}
+function openBusinessLocation(id) {
+  const b = businesses.find((x) => x.id === id);
+  if (!b) return;
+  const query = [b.title, b.area, itemDistrict(b), itemState(b)]
+    .filter(Boolean)
+    .join(", ");
+  if (!query) return alert("Location details are not available.");
+  window.open(
+    "https://www.google.com/maps/search/?api=1&query=" +
+      encodeURIComponent(query),
+    "_blank",
+    "noopener",
+  );
+}
+function openBusinessPhoto(id) {
+  const b = businesses.find((x) => x.id === id);
+  if (b && b.image) {
+    window.open(b.image, "_blank", "noopener");
+    return;
+  }
+  scrollToBusinessAbout();
+}
+function scrollToBusinessAbout() {
+  const target = document.querySelector(
+    "#floatingBusinessCard .biz-profile-section",
+  );
+  if (target) target.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 function floatingBusinessMarkup(b) {
   const isOwner = sessionStorage.getItem(`g58BusinessOwner_${b.id}`) === "true";
@@ -1655,14 +1711,25 @@ function floatingBusinessMarkup(b) {
   const waHref = waNumber
     ? `https://wa.me/${waNumber}?text=${encodeURIComponent("Hi, I found your business on G58 and would like to know more about your services.")}`
     : "";
-  const cardSocialRow = [
-    waNumber
-      ? `<a class="qr-social-btn qr-social-whatsapp" href="${waHref}" target="_blank" rel="noopener">💬 WhatsApp</a>`
-      : "",
-    websiteUrl
-      ? `<a class="qr-social-btn qr-social-instagram" href="${websiteUrl}" target="_blank" rel="noopener">📷 Profile</a>`
-      : "",
-  ].join("");
+  const locationQuery = [b.area, itemDistrict(b), itemState(b)]
+    .filter(Boolean)
+    .join(", ");
+
+  const glassAction = (icon, label, handler, enabled = true) =>
+    `<button type="button" class="biz-glass-action"${enabled ? "" : " disabled"} onclick="${enabled ? handler : ""}"><span class="biz-glass-action-ic" aria-hidden="true">${icon}</span><span>${label}</span></button>`;
+  const leftActions =
+    glassAction("⚡", "Instant Connect", `callBusinessPhone('${b.id}')`) +
+    glassAction("💾", "Save Contact", `downloadBusinessVCard('${b.id}')`) +
+    glassAction(
+      "📍",
+      "Find Location",
+      `openBusinessLocation('${b.id}')`,
+      !!locationQuery,
+    );
+  const rightActions =
+    glassAction("🍽", "View Services", "scrollToBusinessAbout()") +
+    glassAction("▧", "Photos & Info", `openBusinessPhoto('${b.id}')`) +
+    glassAction("↗", "Share Easily", `shareBusinessProfile('${b.id}')`);
 
   const ownerDash = isOwner
     ? `<div class="biz-profile-section biz-owner-dash">
@@ -1686,28 +1753,67 @@ function floatingBusinessMarkup(b) {
 <button type="button" class="btn primary" style="width:100%" onclick="unlockBusinessCard('${b.id}',true)">Unlock →</button>
 </div>`;
 
+  const avatarInner = b.image
+    ? `<img src="${escapeHtml(b.image)}" alt="${escapeHtml(b.title)}">`
+    : `<span style="background:hsl(${hue} 60% 45%)">${businessInitial(b)}</span>`;
+  const ratingRow = stats.count
+    ? `<div class="biz-card-rating">${ratingStars(stats.average)}<strong>${stats.average.toFixed(1)}</strong><small>(${stats.count} ${stats.count === 1 ? "Review" : "Reviews"})</small></div>`
+    : `<button type="button" class="biz-card-rating biz-card-rating-empty" onclick="openBusinessRating('${b.id}')">☆☆☆☆☆ <small>Be the first to review</small></button>`;
+
   return `<article class="biz-profile">
-<div class="biz-profile-hero qr-card-hero">
-${isOwner ? '<span class="biz-owner-badge">Your Business</span>' : ""}
-<button type="button" class="biz-fav-btn biz-fav-btn-lg${favorited ? " active" : ""}" onclick="toggleFavoriteBusiness('${b.id}')" aria-label="${favorited ? "Remove from saved" : "Save business"}">${favorited ? "♥" : "♡"}</button>
-<div class="qr-card-brand">
-<svg class="logo3d" viewBox="0 0 120 120" fill="none" stroke="#F97316" stroke-width="8" aria-hidden="true"><circle cx="60" cy="26" r="15"/><circle cx="28" cy="82" r="15"/><circle cx="92" cy="82" r="15"/></svg>
-<span>GRAVITY58</span>
+<div class="biz-card-brandbar">
+<svg viewBox="0 0 120 120" fill="none" stroke="#F97316" stroke-width="8" aria-hidden="true"><circle cx="60" cy="26" r="15"/><circle cx="28" cy="82" r="15"/><circle cx="92" cy="82" r="15"/></svg>
+<span>g58.in</span>
+<small>POST · BID · CONNECT</small>
 </div>
-<div class="qr-card-avatar" style="background:hsl(${hue} 60% 45%)">${b.image ? `<img src="${escapeHtml(b.image)}" alt="${escapeHtml(b.title)}">` : businessInitial(b)}</div>
-<h2 class="qr-card-name">${escapeHtml(b.title)}</h2>
-<p class="qr-card-category">${escapeHtml(b.category)}</p>
-${stats.count ? `<div class="biz-rating" style="justify-content:center;margin-bottom:14px">${ratingStars(stats.average)}<strong>${stats.average.toFixed(1)}</strong><small>${stats.count} ${stats.count === 1 ? "Review" : "Reviews"}</small></div>` : ""}
-<div class="qr-card-qr-wrap"><img src="${shareQrSrc}" alt="QR code for ${escapeHtml(b.title)}" class="qr-card-qr-img"></div>
-<p class="qr-card-scan-hint">Scan to view this digital business card</p>
-${cardSocialRow ? `<div class="qr-card-social-row">${cardSocialRow}</div>` : ""}
-<div class="qr-card-domain">g58.in</div>
-<div class="qr-business-actions">
-<button type="button" class="btn orange" onclick="shareBusinessProfile('${b.id}')">Open Card</button>
-<button type="button" class="btn green" onclick="copyBusinessLink('${b.id}',this)">Copy Link</button>
+
+<div class="biz-card-shell">
+<div class="biz-card-glass">
+${isOwner ? '<span class="biz-owner-badge">Your Business</span>' : ""}
+<div class="biz-card-glass-head">
+<span class="biz-card-nfc-label"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 9a9 9 0 0 1 9-7"/><path d="M3 9a6 6 0 0 1 6-5"/><circle cx="5" cy="9" r="1.4" fill="currentColor" stroke="none"/></svg>Digital Business Card</span>
+<button type="button" class="biz-fav-btn biz-fav-btn-glass${favorited ? " active" : ""}" onclick="toggleFavoriteBusiness('${b.id}')" aria-label="${favorited ? "Remove from saved" : "Save business"}">${favorited ? "♥" : "♡"}</button>
+</div>
+
+<div class="biz-card-profile">
+<div class="biz-card-avatar-ring"><div class="biz-card-avatar">${avatarInner}</div></div>
+<h2 class="biz-card-name">${escapeHtml(b.title)}</h2>
+<p class="biz-card-category">${escapeHtml(b.category)}</p>
+${ratingRow}
+</div>
+
+<div class="biz-card-qr-block">
+<p class="biz-card-qr-label">Scan to Open</p>
+<div class="biz-card-qr-wrap"><img src="${shareQrSrc}" alt="QR code for ${escapeHtml(b.title)}" class="biz-card-qr-img" loading="lazy"></div>
+<p class="biz-card-qr-caption">View our complete digital business card</p>
+</div>
+
+<div class="biz-card-primary-actions">
+${waNumber ? `<a class="biz-card-cta biz-card-cta-whatsapp" href="${waHref}" target="_blank" rel="noopener">💬 WhatsApp</a>` : `<span class="biz-card-cta biz-card-cta-whatsapp biz-card-cta-disabled">💬 WhatsApp</span>`}
+<button type="button" class="biz-card-cta biz-card-cta-profile" onclick="scrollToBusinessAbout()">Profile ↓</button>
+</div>
+
+<div class="biz-card-quickrow">
+<button type="button" class="biz-quick-ic" onclick="callBusinessPhone('${b.id}')" title="Call" aria-label="Call">☎</button>
+<button type="button" class="biz-quick-ic" onclick="downloadBusinessVCard('${b.id}')" title="Save Contact" aria-label="Save Contact">💾</button>
+<button type="button" class="biz-quick-ic"${locationQuery ? "" : " disabled"} onclick="openBusinessLocation('${b.id}')" title="Location" aria-label="Location">📍</button>
+<button type="button" class="biz-quick-ic" onclick="scrollToBusinessAbout()" title="Services" aria-label="Services">🍽</button>
+<button type="button" class="biz-quick-ic" onclick="openBusinessPhoto('${b.id}')" title="Photos" aria-label="Photos">▧</button>
+<button type="button" class="biz-quick-ic" onclick="shareBusinessProfile('${b.id}')" title="Share" aria-label="Share">↗</button>
+</div>
+
+<div class="biz-card-footer">
+<svg viewBox="0 0 120 120" fill="none" stroke="#F97316" stroke-width="8" aria-hidden="true"><circle cx="60" cy="26" r="15"/><circle cx="28" cy="82" r="15"/><circle cx="92" cy="82" r="15"/></svg>
+<span>g58.in</span>
 </div>
 <div class="share-status" id="share-${b.id}"></div>
 </div>
+
+<div class="biz-glass-actions biz-glass-actions-left">${leftActions}</div>
+<div class="biz-glass-actions biz-glass-actions-right">${rightActions}</div>
+</div>
+
+<p class="biz-card-tagline">Your Business. Always One Scan Away.</p>
 
 ${quickStats.length ? `<div class="biz-quick-stats">${quickStats.join("")}</div>` : ""}
 ${ownerDash}
