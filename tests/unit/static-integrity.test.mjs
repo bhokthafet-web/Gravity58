@@ -17,6 +17,7 @@ function filesUnder(directory) {
 
 const files = filesUnder(root);
 const htmlFiles = files.filter((file) => extname(file) === ".html");
+const productionHtmlFiles = htmlFiles.filter((file) => !file.includes("/tests/"));
 const jsFiles = files.filter((file) => extname(file) === ".js" && !file.includes("/tests/"));
 
 test("every production JavaScript file parses", () => {
@@ -33,6 +34,19 @@ test("every HTML page declares a title and mobile viewport", () => {
     const html = readFileSync(file, "utf8");
     assert.match(html, /<title>[^<]+<\/title>/i, `Missing title: ${file}`);
     assert.match(html, /<meta[^>]+name=["']viewport["']/i, `Missing viewport: ${file}`);
+  }
+});
+
+test("every production page uses the shared Gravity58 favicon", () => {
+  for (const file of productionHtmlFiles) {
+    const html = readFileSync(file, "utf8");
+    assert.match(html, /<link[^>]+rel=["']icon["'][^>]+href=["']\/assets\/favicon-32\.png\?v=2["']/i, `Missing favicon: ${file}`);
+    assert.match(html, /<link[^>]+rel=["']apple-touch-icon["'][^>]+href=["']\/assets\/apple-touch-icon\.png\?v=2["']/i, `Missing Apple touch icon: ${file}`);
+  }
+  for (const relative of ["assets/favicon-32.png", "assets/apple-touch-icon.png", "assets/favicon-192.png"]) {
+    const path = join(root, relative);
+    assert.ok(existsSync(path), `Missing icon asset: ${relative}`);
+    assert.ok(statSync(path).size > 500, `Icon asset is unexpectedly small: ${relative}`);
   }
 });
 
