@@ -1634,10 +1634,6 @@ function floatingBusinessMarkup(b) {
     );
 
   const contactRows = [];
-  if (b.whatsapp)
-    contactRows.push(
-      `<button type="button" class="biz-contact-row biz-contact-whatsapp" onclick="contactBusinessOnWhatsApp('${b.id}')"><span>WhatsApp</span><strong>Chat on WhatsApp →</strong></button>`,
-    );
   if (b.phone)
     contactRows.push(
       `<button type="button" class="biz-contact-row" onclick="callBusinessPhone('${b.id}')"><span>Phone</span><strong>Call Business →</strong></button>`,
@@ -1655,16 +1651,16 @@ function floatingBusinessMarkup(b) {
       `<button type="button" class="biz-contact-row" onclick="openBusinessDemo('${b.id}')"><span>Website / Social</span><strong>Visit →</strong></button>`,
     );
 
-  const ownerHeaderActions = `<button type="button" class="btn ghost" onclick="openBusinessEdit('${b.id}')">Edit Profile</button><button type="button" class="btn ghost" onclick="shareBusinessProfile('${b.id}')">Share</button><button type="button" class="btn ghost" onclick="openBusinessQr('${b.id}')">QR</button>`;
-  const visitorHeaderActions = [
-    b.phone
-      ? `<button type="button" class="btn btn-call" onclick="callBusinessPhone('${b.id}')">📞 Call</button>`
+  const waNumber = cleanNumber(b.whatsapp || b.phone || "");
+  const waHref = waNumber
+    ? `https://wa.me/${waNumber}?text=${encodeURIComponent("Hi, I found your business on G58 and would like to know more about your services.")}`
+    : "";
+  const cardSocialRow = [
+    waNumber
+      ? `<a class="qr-social-btn qr-social-whatsapp" href="${waHref}" target="_blank" rel="noopener">💬 WhatsApp</a>`
       : "",
-    b.whatsapp
-      ? `<button type="button" class="btn btn-whatsapp" onclick="contactBusinessOnWhatsApp('${b.id}')">💬 WhatsApp</button>`
-      : "",
-    b.email
-      ? `<a class="btn btn-email" href="mailto:${escapeHtml(b.email)}">✉️ Email</a>`
+    websiteUrl
+      ? `<a class="qr-social-btn qr-social-instagram" href="${websiteUrl}" target="_blank" rel="noopener">📷 Profile</a>`
       : "",
   ].join("");
 
@@ -1676,7 +1672,7 @@ function floatingBusinessMarkup(b) {
 <div><strong>${stats.count ? stats.average.toFixed(1) + " ★" : "—"}</strong><small>Customer Rating</small></div>
 <div><strong>${stats.count}</strong><small>Reviews</small></div>
 </div>
-<div class="biz-owner-dash-actions"><button type="button" class="btn danger" onclick="deleteOwnedBusiness('${b.id}')">Delete Card</button></div>
+<div class="biz-owner-dash-actions"><button type="button" class="btn ghost" onclick="openBusinessEdit('${b.id}')">Edit Profile</button><button type="button" class="btn danger" onclick="deleteOwnedBusiness('${b.id}')">Delete Card</button></div>
 </div>`
     : "";
 
@@ -1691,17 +1687,26 @@ function floatingBusinessMarkup(b) {
 </div>`;
 
   return `<article class="biz-profile">
-<div class="biz-profile-hero">
+<div class="biz-profile-hero qr-card-hero">
 ${isOwner ? '<span class="biz-owner-badge">Your Business</span>' : ""}
-<div class="biz-profile-hero-top">
-<div class="biz-avatar biz-avatar-lg" style="background:hsl(${hue} 60% 45%)">${b.image ? `<img src="${escapeHtml(b.image)}" alt="${escapeHtml(b.title)}">` : businessInitial(b)}</div>
 <button type="button" class="biz-fav-btn biz-fav-btn-lg${favorited ? " active" : ""}" onclick="toggleFavoriteBusiness('${b.id}')" aria-label="${favorited ? "Remove from saved" : "Save business"}">${favorited ? "♥" : "♡"}</button>
+<div class="qr-card-brand">
+<svg class="logo3d" viewBox="0 0 120 120" fill="none" stroke="#F97316" stroke-width="8" aria-hidden="true"><circle cx="60" cy="26" r="15"/><circle cx="28" cy="82" r="15"/><circle cx="92" cy="82" r="15"/></svg>
+<span>GRAVITY58</span>
 </div>
-<span class="biz-category">${escapeHtml(b.category)}</span>
-<h2>${escapeHtml(b.title)}</h2>
-${stats.count ? `<div class="biz-rating">${ratingStars(stats.average)}<strong>${stats.average.toFixed(1)}</strong><small>${stats.count} ${stats.count === 1 ? "Review" : "Reviews"}</small></div>` : `<div class="biz-rating biz-rating-new"><small>No reviews yet</small></div>`}
-<div class="biz-loc">📍 ${escapeHtml(b.area)}, ${escapeHtml(itemDistrict(b))}</div>
-<div class="biz-profile-hero-actions">${isOwner ? ownerHeaderActions : visitorHeaderActions}</div>
+<div class="qr-card-avatar" style="background:hsl(${hue} 60% 45%)">${b.image ? `<img src="${escapeHtml(b.image)}" alt="${escapeHtml(b.title)}">` : businessInitial(b)}</div>
+<h2 class="qr-card-name">${escapeHtml(b.title)}</h2>
+<p class="qr-card-category">${escapeHtml(b.category)}</p>
+${stats.count ? `<div class="biz-rating" style="justify-content:center;margin-bottom:14px">${ratingStars(stats.average)}<strong>${stats.average.toFixed(1)}</strong><small>${stats.count} ${stats.count === 1 ? "Review" : "Reviews"}</small></div>` : ""}
+<div class="qr-card-qr-wrap"><img src="${shareQrSrc}" alt="QR code for ${escapeHtml(b.title)}" class="qr-card-qr-img"></div>
+<p class="qr-card-scan-hint">Scan to view this digital business card</p>
+${cardSocialRow ? `<div class="qr-card-social-row">${cardSocialRow}</div>` : ""}
+<div class="qr-card-domain">g58.in</div>
+<div class="qr-business-actions">
+<button type="button" class="btn orange" onclick="shareBusinessProfile('${b.id}')">Open Card</button>
+<button type="button" class="btn green" onclick="copyBusinessLink('${b.id}',this)">Copy Link</button>
+</div>
+<div class="share-status" id="share-${b.id}"></div>
 </div>
 
 ${quickStats.length ? `<div class="biz-quick-stats">${quickStats.join("")}</div>` : ""}
@@ -1718,20 +1723,6 @@ ${ownerDash}
 </div>
 
 ${contactRows.length ? `<div class="biz-profile-section"><h4>Contact Business</h4><div class="biz-contact-list">${contactRows.join("")}</div></div>` : ""}
-
-<div class="biz-profile-section">
-<h4>Share this business</h4>
-<div class="biz-share-qr-block">
-<img class="biz-share-qr-img" src="${shareQrSrc}" alt="QR code for ${escapeHtml(b.title)}" width="140" height="140" loading="lazy">
-<p>Scan to open this business card on G58</p>
-</div>
-<div class="biz-share-actions">
-<button type="button" class="btn ghost" onclick="shareBusinessProfile('${b.id}')">Share</button>
-<button type="button" class="btn ghost" onclick="copyBusinessLink('${b.id}',this)">Copy Link</button>
-<button type="button" class="btn ghost" onclick="openBusinessQr('${b.id}')">Save QR</button>
-</div>
-<div class="share-status" id="share-${b.id}"></div>
-</div>
 
 <div class="biz-profile-section">
 <div class="biz-reviews-head"><h4>Customer Reviews</h4><button type="button" class="btn ghost small" onclick="openBusinessRating('${b.id}')">Rate this business</button></div>
