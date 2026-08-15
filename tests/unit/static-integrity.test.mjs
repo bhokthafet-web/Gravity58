@@ -88,6 +88,19 @@ test("GitHub Pages deployment and custom-domain files exist", () => {
   assert.ok(existsSync(join(root, "sitemap.xml")));
 });
 
+test("Android download buttons point to the published signed installer", () => {
+  const apkRelative = "downloads/GRAVITY58-Android-v1.2.apk";
+  const apkPath = join(root, apkRelative);
+  assert.ok(existsSync(apkPath), "Published Android installer is missing");
+  assert.ok(statSync(apkPath).size > 1_000_000, "Published Android installer is unexpectedly small");
+  for (const relative of ["index.html", "digit58/app.js", "digital-menu/app-v11.js"]) {
+    const source = readFileSync(join(root, relative), "utf8");
+    assert.match(source, /href=["']\/downloads\/GRAVITY58-Android-v1\.2\.apk["']/);
+    assert.match(source, /\bdownload\b/);
+    assert.doesNotMatch(source, /Android app coming soon/i);
+  }
+});
+
 test("normal advertiser records do not request administrator-team permissions", () => {
   const source = readFileSync(join(root, "js/appwrite-ads.js"), "utf8");
   assert.match(source, /function permissionSet\(kind, userId, includeAdminTeam = false\)/);

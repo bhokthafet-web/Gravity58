@@ -385,15 +385,13 @@ function bindFloatingSupportButton(){
     $('#supportPopupClose').onclick=()=>$('#supportPopup')?.remove();
   });
 }
-function siteFooter(){return `<footer class="g58-site-footer"><div class="g58-site-footer-badge"><button type="button" class="g58-app-badge" id="androidAppBtn"><span class="g58-app-badge-icon">▶</span><span class="g58-app-badge-text"><small>Coming soon on</small><strong>Get G58 App</strong></span></button></div><p class="g58-site-footer-note">© ${new Date().getFullYear()} Gravity58 · Refills</p></footer>`}
-function bindAndroidAppFooter(){$('#androidAppBtn')?.addEventListener('click',()=>toast('Android app coming soon — stay tuned!'))}
+function siteFooter(){return `<footer class="g58-site-footer"><div class="g58-site-footer-badge"><a class="g58-app-badge" href="/downloads/GRAVITY58-Android-v1.2.apk" download aria-label="Download the Gravity58 Android app"><span class="g58-app-badge-icon">▶</span><span class="g58-app-badge-text"><small>Download Android</small><strong>Get G58 App</strong></span></a></div><p class="g58-site-footer-note">© ${new Date().getFullYear()} Gravity58 · Refills</p></footer>`}
 function renderShell(){
   const store=activeStore();
   app.innerHTML=`<div class="shell"><aside class="sidebar"><a class="brand" href="../"><svg class="brand-mark" viewBox="0 0 120 120" fill="none" stroke="#7fffd4" stroke-width="8" aria-hidden="true"><circle cx="60" cy="26" r="15"/><circle cx="28" cy="82" r="15"/><circle cx="92" cy="82" r="15"/></svg><div><strong>Refills</strong><small class="muted">Store workspace</small></div></a><nav class="nav">${navButton('dashboard','◉','Dashboard')}${navButton('stores','◫','My Stores')}${navButton('promotions','✦','Promotions')}${navButton('wall','☰','Customer Wall')}${navButton('orders','🧾','Orders')}${navButton('orderHistory','🕘','Order History')}${navButton('subscription','♢','Subscription')}${navButton('settings','⚙','Settings')}<button id="logout">⇥ Logout</button></nav></aside><main class="main"><header class="topbar"><div>${state.stores.length?`<select id="storeSwitch">${state.stores.map(row=>`<option value="${html(row.id)}" ${row.id===state.activeStoreId?'selected':''}>${html(row.name)}</option>`).join('')}</select>`:'<strong>No store yet</strong>'}</div><a class="g58-topbar-home" href="https://www.g58.in/" aria-label="Open the Gravity58 home page">www.g58.in</a><span class="status-pill"><span class="dot"></span>${html(session?.email||'')}</span></header><section class="content" id="page"></section></main></div>${siteFooter()}${floatingSupportButton('digit58')}`;
   $$('[data-view]').forEach(button=>button.onclick=()=>{view=button.dataset.view;renderShell()});
   $('#logout').onclick=async()=>{stopOwnerRealtime();await api.logout();session=null;renderOwnerAuth()};
   $('#storeSwitch')?.addEventListener('change',event=>{state.activeStoreId=event.target.value;save();renderShell()});
-  bindAndroidAppFooter();
   bindFloatingSupportButton();
   renderView();
 }
