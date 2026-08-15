@@ -391,6 +391,7 @@ test("Refills owner publishes a promotion and enables the optional Razorpay stor
   await page.getByRole("button", { name: "Edit" }).click();
   await page.locator("#razorpayEnabled").check();
   await page.locator('#storeForm input[name="razorpayLink"]').fill("razorpay.me/@naturerefills");
+  await expect(page.locator("#razorpayReturnUrl")).toHaveValue(/razorpay_return=success.*owner=promo_owner.*store=promo_store/);
   await page.getByRole("button", { name: "Save Store" }).click();
   const updatedStore = await page.evaluate((kind) => window.__g58Mock.store[kind][0], `digit58_store_${ownerId}`);
   expect(updatedStore).toMatchObject({ razorpayEnabled: true, razorpayLink: "https://razorpay.me/@naturerefills" });
@@ -401,13 +402,12 @@ test("Refills owner publishes a promotion and enables the optional Razorpay stor
   await page.locator('#promotionForm input[name="offerText"]').fill("Pure 500g jar · limited stock");
   await page.locator('#promotionForm input[name="price"]').fill("299");
   await page.locator('#promotionForm input[name="endsOn"]').fill("2026-08-30");
-  await page.locator('#promotionForm input[name="badge"]').fill("Weekend Special");
   await page.getByRole("button", { name: "Publish Promotion" }).click();
   await expect(page.locator(".promotion-owner-grid")).toContainText("Organic Honey");
-  await expect(page.locator(".promotion-owner-grid")).toContainText("₹299");
+  await expect(page.locator(".promotion-owner-grid")).toContainText("MRP ₹299");
   const promotions = await page.evaluate((kind) => window.__g58Mock.store[kind], `digit58_promo_${ownerId}`);
   expect(promotions).toHaveLength(1);
-  expect(promotions[0]).toMatchObject({ storeId, name: "Organic Honey", price: 299, endsOn: "2026-08-30", active: true });
+  expect(promotions[0]).toMatchObject({ storeId, name: "Organic Honey", price: 299, endsOn: "2026-08-30", badge: "Offer Price", active: true });
 
   await page.getByRole("button", { name: /Orders/ }).click();
   await expect(page.getByText("Razorpay payment submitted")).toBeVisible();
@@ -438,16 +438,21 @@ test("Refills customer completes the Razorpay return step and adds promotion tic
   await page.goto(`/digit58/#store&owner=${ownerId}&store=${storeId}`);
   const promotionStrip = page.locator(".promotion-strip");
   await expect(promotionStrip).toContainText("Organic Honey");
-  await expect(promotionStrip).toContainText("₹299");
+  await expect(promotionStrip).toContainText("MRP ₹299");
+  await expect(promotionStrip).toContainText("Offer Price");
+  await expect(promotionStrip).not.toContainText("Special offer");
   await expect(promotionStrip).toContainText("Offer ends 30 Aug");
   await expect(page.locator("#promotionRail")).toHaveClass(/is-auto-scrolling/);
   const ticketMotion = await page.evaluate(() => {
     const card = document.querySelector(".customer-ticket");
     const track = document.querySelector(".promotion-track");
-    return { width: card.getBoundingClientRect().width, animation: getComputedStyle(track).animationName, duration: getComputedStyle(track).animationDuration };
+    const buy = card.querySelector(".promotion-add");
+    const price = card.querySelector(".promotion-offer-price");
+    const cardBox = card.getBoundingClientRect(), buyBox = buy.getBoundingClientRect();
+    return { width: cardBox.width, buyFits: buyBox.left >= cardBox.left && buyBox.right <= cardBox.right, animation: getComputedStyle(track).animationName, duration: getComputedStyle(track).animationDuration, priceAnimation: getComputedStyle(price).animationName };
   });
   expect(ticketMotion.width).toBeLessThanOrEqual(158);
-  expect(ticketMotion).toMatchObject({ animation: "promotionMarquee", duration: "42s" });
+  expect(ticketMotion).toMatchObject({ buyFits: true, animation: "promotionMarquee", duration: "42s", priceAnimation: "promotionPriceGlitter" });
   const razorpayLink = page.getByRole("link", { name: /Open Razorpay & Pay/ });
   await expect(razorpayLink).toHaveAttribute("href", "https://razorpay.me/@naturerefills");
   await razorpayLink.evaluate((link) => link.addEventListener("click", (event) => event.preventDefault(), { once: true }));
@@ -457,7 +462,8 @@ test("Refills customer completes the Razorpay return step and adds promotion tic
   await expect(page.locator('[data-razorpay-return="priced_order"]')).toBeHidden();
   await razorpayLink.evaluate((link) => link.addEventListener("click", (event) => event.preventDefault(), { once: true }));
   await razorpayLink.click();
-  await page.getByRole("button", { name: "Payment completed" }).click();
+  await page.goto(`/digit58/?razorpay_return=success&owner=${ownerId}&store=${storeId}`);
+  await expect(page).toHaveURL(new RegExp(`#store&owner=${ownerId}&store=${storeId}$`));
   await expect(page.getByText("Payment submitted for verification")).toBeVisible();
   const paidOrder = await page.evaluate((kind) => window.__g58Mock.store[kind].find((row) => row.id === "priced_order"), orderKind);
   expect(paidOrder).toMatchObject({ status: "Priced", paymentStatus: "Awaiting store verification", paymentMethod: "Razorpay link" });

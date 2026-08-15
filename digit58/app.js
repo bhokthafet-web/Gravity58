@@ -36,6 +36,14 @@ function validRazorpayLink(value){
     return url.protocol==='https:'&&['razorpay.me','www.razorpay.me','rzp.io','www.rzp.io'].includes(url.hostname.toLowerCase());
   }catch{return false}
 }
+let razorpaySuccessfulReturn=null;
+function captureRazorpaySuccessfulReturn(){
+  const params=new URLSearchParams(location.search);
+  if(params.get('razorpay_return')!=='success')return;
+  const ownerId=params.get('owner')||'',storeId=params.get('store')||'';if(!ownerId||!storeId)return;
+  razorpaySuccessfulReturn={ownerId,storeId};
+  history.replaceState(null,'',`${location.pathname}#store&owner=${encodeURIComponent(ownerId)}&store=${encodeURIComponent(storeId)}`);
+}
 function toast(message){const target=$('#toast');if(!target)return alert(message);target.textContent=message;target.classList.add('show');setTimeout(()=>target.classList.remove('show'),2400)}
 function requestGeolocation(){
   return new Promise((resolve,reject)=>{
@@ -192,6 +200,7 @@ function orderHistoryOrders(orders){return orders.filter(row=>['Delivered','Reje
 
 async function boot(){
   if(!api?.configured)return renderConfigError();
+  captureRazorpaySuccessfulReturn();
   const hash=new URLSearchParams(location.hash.replace(/^#store&?/,''));
   if(location.hash.startsWith('#store&'))return renderPublicStore(hash);
   session=await api.currentUser().catch(()=>null);
@@ -458,11 +467,14 @@ function storeCard(store){
   return `<article class="card"><h3>${html(store.name)}</h3><p class="muted">${html(store.category)}${store.city?' · '+html(store.city):''}</p><p>${html(store.description||'')}</p><div class="chips"><span class="chip">${ownerCustomers(store.id).length} customers</span>${store.razorpayEnabled&&validRazorpayLink(store.razorpayLink)?'<span class="chip delivered">Razorpay enabled</span>':''}${store.suspended?'<span class="chip due">Paused by G58 admin</span>':''}</div><div class="actions"><button class="btn small" data-share-store="${html(store.id)}">Share Link / QR</button><button class="btn small secondary" data-edit-store="${html(store.id)}">Edit</button></div></article>`;
 }
 function publicStoreLink(store){return `${location.origin}${location.pathname.replace(/index\.html$/,'')}#store&owner=${encodeURIComponent(store.ownerId)}&store=${encodeURIComponent(store.id)}`}
+function razorpaySuccessReturnUrl(ownerId,storeId){return `${location.origin}${location.pathname.replace(/index\.html$/,'')}?razorpay_return=success&owner=${encodeURIComponent(ownerId)}&store=${encodeURIComponent(storeId)}`}
 function openStoreForm(storeId=''){
   const store=state.stores.find(row=>row.id===storeId)||{};
-  modal(storeId?'Edit Store':'Create Store',`<form id="storeForm"><div class="field"><label>Store name</label><input name="name" value="${html(store.name||'')}" required></div><div class="form-grid"><div class="field"><label>Category</label><input name="category" value="${html(store.category||'')}" placeholder="Example: Pharmacy"></div><div class="field"><label>City</label><input name="city" value="${html(store.city||'')}"></div></div><div class="field"><label>Phone</label><input name="phone" value="${html(store.phone||'')}"></div><div class="field"><label>UPI ID <small>(for order payment QR codes)</small></label><input name="upiId" value="${html(store.upiId||'')}" placeholder="yourstore@upi"></div><label class="option-toggle"><input id="razorpayEnabled" name="razorpayEnabled" type="checkbox" ${store.razorpayEnabled?'checked':''}><span><strong>Enable Razorpay payment link</strong><small>Optional — customers can open your Razorpay page after you set the order amount.</small></span></label><div class="field ${store.razorpayEnabled?'':'hidden'}" id="razorpayLinkField"><label>Razorpay payment link</label><input name="razorpayLink" type="text" inputmode="url" value="${html(store.razorpayLink||'')}" placeholder="razorpay.me/@yourstore"><small class="muted">Only razorpay.me or rzp.io secure links are accepted. https:// is added automatically.</small></div><div class="field"><label>Description</label><textarea name="description">${html(store.description||'')}</textarea></div><button class="btn full">${storeId?'Save Store':'Create Store'}</button></form>`,()=>{
+  const returnUrl=storeId?razorpaySuccessReturnUrl(store.ownerId||cloudOwnerId(),storeId):'';
+  modal(storeId?'Edit Store':'Create Store',`<form id="storeForm"><div class="field"><label>Store name</label><input name="name" value="${html(store.name||'')}" required></div><div class="form-grid"><div class="field"><label>Category</label><input name="category" value="${html(store.category||'')}" placeholder="Example: Pharmacy"></div><div class="field"><label>City</label><input name="city" value="${html(store.city||'')}"></div></div><div class="field"><label>Phone</label><input name="phone" value="${html(store.phone||'')}"></div><div class="field"><label>UPI ID <small>(for order payment QR codes)</small></label><input name="upiId" value="${html(store.upiId||'')}" placeholder="yourstore@upi"></div><label class="option-toggle"><input id="razorpayEnabled" name="razorpayEnabled" type="checkbox" ${store.razorpayEnabled?'checked':''}><span><strong>Enable Razorpay payment link</strong><small>Optional — customers can open your Razorpay page after you set the order amount.</small></span></label><div class="field ${store.razorpayEnabled?'':'hidden'}" id="razorpayLinkField"><label>Razorpay payment link</label><input name="razorpayLink" type="text" inputmode="url" value="${html(store.razorpayLink||'')}" placeholder="razorpay.me/@yourstore"><small class="muted">Only razorpay.me or rzp.io secure links are accepted. https:// is added automatically.</small>${returnUrl?`<div class="razorpay-redirect-setup"><strong>Automatic return after successful payment</strong><small>In Razorpay Payment Page settings, choose Action after successful payment → Redirect to your website, then paste this URL.</small><input id="razorpayReturnUrl" value="${html(returnUrl)}" readonly><button class="btn small secondary" id="copyRazorpayReturn" type="button">Copy Success URL</button></div>`:'<small class="muted">Save this store, then edit it again to get its automatic success-return URL.</small>'}</div><div class="field"><label>Description</label><textarea name="description">${html(store.description||'')}</textarea></div><button class="btn full">${storeId?'Save Store':'Create Store'}</button></form>`,()=>{
     const razorpayToggle=$('#razorpayEnabled'),razorpayField=$('#razorpayLinkField');
     razorpayToggle.onchange=()=>razorpayField.classList.toggle('hidden',!razorpayToggle.checked);
+    $('#copyRazorpayReturn')?.addEventListener('click',async()=>{try{await navigator.clipboard.writeText(returnUrl);toast('Razorpay success URL copied')}catch{toast('Select and copy the success URL above')}});
     $('#storeForm').onsubmit=async event=>{
       event.preventDefault();
       const raw=Object.fromEntries(new FormData(event.target)),ownerId=cloudOwnerId(),button=event.submitter;
@@ -510,16 +522,16 @@ function formatPromotionEnd(value){
 }
 function promotionOwnerCard(promotion){
   const expired=promotionIsExpired(promotion);
-  return `<article class="promotion-ticket owner-ticket ${promotion.active===false||expired?'promotion-disabled':''}"><span class="promotion-ticket-badge">${html(promotion.badge||'Store Special')}</span><h3>${html(promotion.name)}</h3><p>${html(promotion.offerText||'Limited-time store offer')}</p>${Number(promotion.price)>0?`<strong class="promotion-offer-price">${money(promotion.price)}</strong>`:''}${promotion.endsOn?`<small class="promotion-end-date">Offer ends ${html(formatPromotionEnd(promotion.endsOn))}</small>`:''}<div class="chips"><span class="chip ${promotion.active===false||expired?'due':'delivered'}">${expired?'Expired':promotion.active===false?'Paused':'Visible to customers'}</span></div><div class="actions"><button class="btn small" data-edit-promotion="${html(promotion.id)}">Edit</button><button class="btn small secondary" data-toggle-promotion="${html(promotion.id)}">${promotion.active===false?'Enable':'Pause'}</button><button class="btn small red" data-delete-promotion="${html(promotion.id)}">Delete</button></div></article>`;
+  return `<article class="promotion-ticket owner-ticket ${promotion.active===false||expired?'promotion-disabled':''}"><span class="promotion-ticket-badge">Offer Price</span><h3>${html(promotion.name)}</h3><p>${html(promotion.offerText||'Limited-time store offer')}</p>${Number(promotion.price)>0?`<strong class="promotion-offer-price">MRP ${money(promotion.price)}</strong>`:''}${promotion.endsOn?`<small class="promotion-end-date">Offer ends ${html(formatPromotionEnd(promotion.endsOn))}</small>`:''}<div class="chips"><span class="chip ${promotion.active===false||expired?'due':'delivered'}">${expired?'Expired':promotion.active===false?'Paused':'Visible to customers'}</span></div><div class="actions"><button class="btn small" data-edit-promotion="${html(promotion.id)}">Edit</button><button class="btn small secondary" data-toggle-promotion="${html(promotion.id)}">${promotion.active===false?'Enable':'Pause'}</button><button class="btn small red" data-delete-promotion="${html(promotion.id)}">Delete</button></div></article>`;
 }
 function openPromotionForm(promotionId=''){
   const store=activeStore(),promotion=state.promotions.find(row=>row.id===promotionId)||{};if(!store)return;
   const defaultEnd=new Date(Date.now()+7*86400000).toISOString().slice(0,10),today=new Date().toISOString().slice(0,10);
-  modal(promotionId?'Edit Promotion':'Create Promotion',`<form id="promotionForm"><div class="field"><label>Product name</label><input name="name" value="${html(promotion.name||'')}" placeholder="Organic Honey" maxlength="80" required></div><div class="field"><label>Offer line</label><input name="offerText" value="${html(promotion.offerText||'')}" placeholder="Pure 500g jar · limited stock" maxlength="120"></div><div class="form-grid"><div class="field"><label>Offer price</label><input name="price" type="number" min="0" step="0.01" value="${Number(promotion.price)||''}" placeholder="299" required></div><div class="field"><label>Offer ends</label><input name="endsOn" type="date" min="${today}" value="${html(promotion.endsOn||defaultEnd)}" required></div></div><div class="field"><label>Ticket label</label><input name="badge" value="${html(promotion.badge||'')}" placeholder="Weekend Special" maxlength="32"></div><label class="option-toggle"><input name="active" type="checkbox" ${promotion.active===false?'':'checked'}><span><strong>Show to customers</strong><small>Paused promotions remain saved but disappear from the customer portal.</small></span></label><button class="btn full" style="margin-top:14px">${promotionId?'Save Promotion':'Publish Promotion'}</button></form>`,()=>{
+  modal(promotionId?'Edit Promotion':'Create Promotion',`<form id="promotionForm"><div class="field"><label>Product name</label><input name="name" value="${html(promotion.name||'')}" placeholder="Organic Honey" maxlength="80" required></div><div class="field"><label>Offer line</label><input name="offerText" value="${html(promotion.offerText||'')}" placeholder="Pure 500g jar · limited stock" maxlength="120"></div><div class="form-grid"><div class="field"><label>Offer price</label><input name="price" type="number" min="0" step="0.01" value="${Number(promotion.price)||''}" placeholder="299" required></div><div class="field"><label>Offer ends</label><input name="endsOn" type="date" min="${today}" value="${html(promotion.endsOn||defaultEnd)}" required></div></div><label class="option-toggle"><input name="active" type="checkbox" ${promotion.active===false?'':'checked'}><span><strong>Show to customers</strong><small>Paused promotions remain saved but disappear from the customer portal.</small></span></label><button class="btn full" style="margin-top:14px">${promotionId?'Save Promotion':'Publish Promotion'}</button></form>`,()=>{
     $('#promotionForm').onsubmit=async event=>{
       event.preventDefault();
       const raw=Object.fromEntries(new FormData(event.target)),button=event.submitter,ownerId=cloudOwnerId();
-      const values={name:raw.name.trim(),offerText:raw.offerText.trim(),price:Math.max(0,Number(raw.price)||0),endsOn:raw.endsOn,badge:raw.badge.trim()||'Store Special',active:$('input[name="active"]',event.target).checked,updatedAt:now()};
+      const values={name:raw.name.trim(),offerText:raw.offerText.trim(),price:Math.max(0,Number(raw.price)||0),endsOn:raw.endsOn,badge:'Offer Price',active:$('input[name="active"]',event.target).checked,updatedAt:now()};
       if(!values.name)return toast('Enter a product name');
       if(!values.endsOn||values.endsOn<today)return toast('Choose today or a future offer end date');
       button.disabled=true;
@@ -924,7 +936,7 @@ function promotionQuantityControl(promotionId){
   return qty>0?`<div class="promotion-stepper" aria-label="Selected quantity"><button type="button" data-promotion-minus="${html(promotionId)}" aria-label="Remove one">−</button><strong>${qty}</strong><button type="button" data-promotion-plus="${html(promotionId)}" aria-label="Add one">+</button></div>`:`<button type="button" class="promotion-add" data-promotion-add="${html(promotionId)}">Buy</button>`;
 }
 function customerPromotionTicket(promotion,decorative=false){
-  return `<article class="promotion-ticket customer-ticket" ${decorative?'aria-hidden="true"':''}><span class="promotion-ticket-badge">${html(promotion.badge||'Store Special')}</span><h3>${html(promotion.name)}</h3><p>${html(promotion.offerText||'Limited-time store offer')}</p>${promotion.endsOn?`<small class="promotion-end-date">Offer ends ${html(formatPromotionEnd(promotion.endsOn))}</small>`:''}<div class="promotion-ticket-foot">${Number(promotion.price)>0?`<strong class="promotion-offer-price">${money(promotion.price)}</strong>`:'<strong class="promotion-offer-price">Special offer</strong>'}<div class="promotion-control" data-promotion-control="${html(promotion.id)}">${promotionQuantityControl(promotion.id)}</div></div></article>`;
+  return `<article class="promotion-ticket customer-ticket" ${decorative?'aria-hidden="true"':''}><span class="promotion-ticket-badge">Offer Price</span><h3>${html(promotion.name)}</h3><p>${html(promotion.offerText||'Limited-time store offer')}</p>${Number(promotion.price)>0?`<strong class="promotion-offer-price">MRP ${money(promotion.price)}</strong>`:''}${promotion.endsOn?`<small class="promotion-end-date">Offer ends ${html(formatPromotionEnd(promotion.endsOn))}</small>`:''}<div class="promotion-ticket-foot"><div class="promotion-control" data-promotion-control="${html(promotion.id)}">${promotionQuantityControl(promotion.id)}</div></div></article>`;
 }
 function bindCustomerPromotionActions(promotions){
   const update=(promotionId,delta)=>{
@@ -1026,28 +1038,52 @@ function customerOrderMarkup(order,store){
   return `<article class="card order-item-card premium-card"><div class="section-head"><h3>Order #${html(order.id.slice(-6).toUpperCase())}</h3><span class="chip">${html(visibleStatus)}</span></div>${bigStatusMarkup(visibleStatus)}${orderStepperMarkup(order.status)}<div class="order-items-list">${order.items.map(item=>`<div class="order-line-item"><span>${item.qty} ×</span><span>${html(item.name)}</span></div>`).join('')}</div>${order.prescriptionUrl?`<a class="link-btn" href="${html(order.prescriptionUrl)}" target="_blank" rel="noopener">📄 View your prescription</a>`:''}${paymentBlock}${orderChatMarkup(order,'customer')}</article>`;
 }
 function razorpayPaymentKey(orderId){return `g58-razorpay-open-${orderId}`}
-function razorpayPaymentWasOpened(orderId){try{return sessionStorage.getItem(razorpayPaymentKey(orderId))==='1'}catch{return false}}
-function rememberRazorpayPayment(orderId,opened){try{if(opened)sessionStorage.setItem(razorpayPaymentKey(orderId),'1');else sessionStorage.removeItem(razorpayPaymentKey(orderId))}catch{}}
+function razorpayPendingKey(ownerId,storeId){return `g58-razorpay-pending-${ownerId}-${storeId}`}
+function razorpayPaymentWasOpened(orderId){try{return localStorage.getItem(razorpayPaymentKey(orderId))==='1'}catch{return false}}
+function rememberRazorpayPayment(orderId,opened,store){
+  try{
+    if(opened){
+      localStorage.setItem(razorpayPaymentKey(orderId),'1');
+      if(store)localStorage.setItem(razorpayPendingKey(store.ownerId,store.id),JSON.stringify({orderId,openedAt:now()}));
+    }else{
+      localStorage.removeItem(razorpayPaymentKey(orderId));
+      if(store)localStorage.removeItem(razorpayPendingKey(store.ownerId,store.id));
+    }
+  }catch{}
+}
+async function submitRazorpayPaymentForVerification(order,store,customer,button=null,returned=false){
+  if(!order||order.paymentMarkedAt)return;
+  if(button){button.disabled=true;button.textContent='Notifying store…'}
+  const changes={paymentStatus:'Awaiting store verification',paymentMethod:'Razorpay link',paymentMarkedAt:now(),paymentLinkUsed:normaliseRazorpayLink(store.razorpayLink),updatedAt:now()};
+  try{
+    await api.update(orderKind(order.ownerId),order.id,changes);Object.assign(order,changes);rememberRazorpayPayment(order.id,false,store);
+    toast(returned?'Payment successful — returned to your orders':'Payment submitted — waiting for store verification');await loadAndRenderCustomerView(store,customer);
+  }catch(error){if(button){button.disabled=false;button.textContent='Payment completed'}toast(error.message||'Could not notify the store')}
+}
+function processSuccessfulRazorpayReturn(orders,store,customer){
+  if(!razorpaySuccessfulReturn||razorpaySuccessfulReturn.ownerId!==store.ownerId||razorpaySuccessfulReturn.storeId!==store.id)return;
+  razorpaySuccessfulReturn=null;
+  let pending=null;try{pending=JSON.parse(localStorage.getItem(razorpayPendingKey(store.ownerId,store.id))||'null')}catch{}
+  const order=orders.find(row=>row.id===pending?.orderId&&row.status==='Priced');
+  if(!order)return toast('Returned to your orders. Select the order payment again if it is still pending.');
+  submitRazorpayPaymentForVerification(order,store,customer,null,true);
+}
 function bindRazorpayPaymentActions(orders,store,customer){
   $$('[data-open-razorpay]').forEach(link=>link.onclick=()=>{
-    const orderId=link.dataset.openRazorpay;rememberRazorpayPayment(orderId,true);
+    const orderId=link.dataset.openRazorpay;rememberRazorpayPayment(orderId,true,store);
     const step=$(`[data-razorpay-return="${CSS.escape(orderId)}"]`);step?.classList.remove('is-hidden');
     setTimeout(()=>step?.scrollIntoView({behavior:'smooth',block:'center'}),180);
   });
   $$('[data-razorpay-not-paid]').forEach(button=>button.onclick=()=>{
-    const orderId=button.dataset.razorpayNotPaid;rememberRazorpayPayment(orderId,false);
+    const orderId=button.dataset.razorpayNotPaid;rememberRazorpayPayment(orderId,false,store);
     $(`[data-razorpay-return="${CSS.escape(orderId)}"]`)?.classList.add('is-hidden');
     toast('Payment not submitted. You can reopen Razorpay when ready.');
   });
   $$('[data-confirm-razorpay-payment]').forEach(button=>button.onclick=async()=>{
     const orderId=button.dataset.confirmRazorpayPayment,order=orders.find(row=>row.id===orderId);if(!order)return;
-    button.disabled=true;button.textContent='Notifying store…';
-    const changes={paymentStatus:'Awaiting store verification',paymentMethod:'Razorpay link',paymentMarkedAt:now(),paymentLinkUsed:normaliseRazorpayLink(store.razorpayLink),updatedAt:now()};
-    try{
-      await api.update(orderKind(order.ownerId),order.id,changes);Object.assign(order,changes);rememberRazorpayPayment(orderId,false);
-      toast('Payment submitted — waiting for store verification');await loadAndRenderCustomerView(store,customer);
-    }catch(error){button.disabled=false;button.textContent='Payment completed';toast(error.message||'Could not notify the store')}
+    await submitRazorpayPaymentForVerification(order,store,customer,button,false);
   });
+  processSuccessfulRazorpayReturn(orders,store,customer);
 }
 function customerOrderHistoryRow(order){
   return `<tr><td>${order.items.map(item=>`${item.qty}×${html(item.name)}`).join(', ')}</td><td>${money(order.amount)}</td><td>${html(order.status)}</td><td>${new Date(order.updatedAt||order.createdAt).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'})}</td><td><button type="button" class="btn small green" data-reorder-order="${html(order.id)}">Reorder</button></td></tr>`;
