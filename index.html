@@ -10,7 +10,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/css/style.css?v=17">
+  <link rel="stylesheet" href="/css/style.css?v=18">
   <link rel="stylesheet" href="/css/mobile.css">
   <link rel="canonical" href="https://g58.in/" />
   <meta name="robots" content="index, follow, max-image-preview:large" />
@@ -72,8 +72,24 @@
       <button class="header-account-btn logout hidden" id="siteLogoutButton" type="button" onclick="window.G58LogoutAction?.()">Logout</button>
       <button class="btn primary nav-post-cta" type="button" onclick="openCustomerPostCreator()">Post Requirement</button>
     </div>
+
+    <button type="button" class="mobile-nav-toggle" id="mobileNavToggle" aria-expanded="false" aria-label="Menu" onclick="toggleMobileNav()">
+      <span></span><span></span><span></span>
+    </button>
   </div>
 </header>
+
+<div class="mobile-nav-overlay" id="mobileNavOverlay" onclick="closeMobileNav()"></div>
+<nav class="mobile-nav-panel" id="mobileNavPanel" aria-label="Mobile">
+  <button type="button" class="mobile-nav-link" onclick="closeMobileNav();document.querySelector('.how-it-works-section')?.scrollIntoView({behavior:'smooth'})">How It Works</button>
+  <button type="button" class="mobile-nav-link" onclick="closeMobileNav();selectMode('customer')">For Customers</button>
+  <button type="button" class="mobile-nav-link" onclick="closeMobileNav();selectMode('business')">For Businesses</button>
+  <div class="mobile-nav-group-label">Products</div>
+  <a class="mobile-nav-link mobile-nav-sublink" href="/business/" onclick="closeMobileNav()">Business Cards</a>
+  <a class="mobile-nav-link mobile-nav-sublink" href="/digital-menu/" onclick="closeMobileNav()">Digital Menu</a>
+  <a class="mobile-nav-link mobile-nav-sublink" href="/pos/" onclick="closeMobileNav()">Free POS</a>
+  <a class="mobile-nav-link mobile-nav-sublink" href="/digit58/" onclick="closeMobileNav()">Refills</a>
+</nav>
 
 <main>
 <section class="landing" id="home">
@@ -846,7 +862,7 @@
 <script src="/js/config.js"></script>
 <script src="/js/appwrite-ads.js?v=13"></script>
 <script src="/js/database.js"></script>
-<script src="/js/app.js?v=8"></script>
+<script src="/js/app.js?v=9"></script>
 <script src="/js/site-auth.js?v=2"></script>
 <script>
 (function(){
@@ -966,6 +982,22 @@
       renderLiveActivity();
     };
   }
+
+  window.toggleMobileNav = function(){
+    var panel = document.getElementById('mobileNavPanel');
+    var overlay = document.getElementById('mobileNavOverlay');
+    var toggle = document.getElementById('mobileNavToggle');
+    var open = panel.classList.toggle('open');
+    overlay.classList.toggle('open', open);
+    toggle.classList.toggle('active', open);
+    toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+  };
+  window.closeMobileNav = function(){
+    document.getElementById('mobileNavPanel')?.classList.remove('open');
+    document.getElementById('mobileNavOverlay')?.classList.remove('open');
+    document.getElementById('mobileNavToggle')?.classList.remove('active');
+    document.getElementById('mobileNavToggle')?.setAttribute('aria-expanded', 'false');
+  };
 
   window.g58HomeSearchSubmit = function(event){
     event.preventDefault();

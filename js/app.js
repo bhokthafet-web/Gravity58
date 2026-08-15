@@ -695,29 +695,30 @@ function customerCard(c) {
     : almost
       ? `${bidCount} of 5 Offers`
       : "Accepting Offers";
-  const dots = Array.from(
-    { length: 5 },
-    (_, i) => `<span class="req-dot${i < bidCount ? " filled" : ""}"></span>`,
-  ).join("");
+  const ring = `<div class="req-ring" style="--pct:${(bidCount / 5) * 100}"><span>${bidCount}/5</span></div>`;
+  const daysLeftVal = daysLeft(c);
+  const expiryBadge = `<span class="req-expiry-badge${daysLeftVal <= 5 ? " urgent" : ""}">${daysLeftVal}d left</span>`;
   const shareRow = `<div class="req-share-row"><button type="button" class="req-link-btn" onclick="copyCustomerLink('${c.id}',this)">Copy Link</button><button type="button" class="req-link-btn" onclick="shareCustomerOnWhatsApp('${c.id}')">Share</button></div><div class="share-status" id="customer-share-${c.id}"></div>`;
 
   if (isOwner) {
     return `<article class="req-card owner" data-post-id="${c.id}">
+${expiryBadge}
 <div class="req-top"><span class="req-owner-badge">Your Requirement</span><span class="req-status ${statusClass}"><i></i>${statusLabel}</span></div>
 <h3 class="req-title">${escapeHtml(c.title)}</h3>
 <div class="req-meta-row"><span>📍 ${escapeHtml(c.area)}, ${escapeHtml(itemDistrict(c))}</span><span>${timeAgoLabel(c.created)}</span></div>
-<div class="req-bottom-row"><div class="req-budget"><strong>${formatMoney(c.price)}–${formatMoney(c.maxPrice)}</strong><small>Budget</small></div><div class="req-bid-progress"><div class="req-dots">${dots}</div><small>${bidCount} / 5 Offers</small></div></div>
+<div class="req-bottom-row"><div class="req-budget"><strong>${formatMoney(c.price)}–${formatMoney(c.maxPrice)}</strong><small>Budget</small></div><div class="req-bid-progress">${ring}<small>${bidCount} / 5 Offers</small></div></div>
 <div class="req-actions"><button type="button" class="btn primary" onclick="openRequirementDetail('${c.id}')">View Offers (${bidCount}) <span class="req-arrow">→</span></button></div>
 ${shareRow}
 </article>`;
   }
 
   return `<article class="req-card" data-post-id="${c.id}">
+${expiryBadge}
 <div class="req-top"><span class="req-category">${escapeHtml(c.category)}</span><span class="req-status ${statusClass}"><i></i>${statusLabel}</span></div>
 <h3 class="req-title">${escapeHtml(c.title)}</h3>
 <div class="req-meta-row"><span>📍 ${escapeHtml(c.area)}, ${escapeHtml(itemDistrict(c))}</span><span>${timeAgoLabel(c.created)}</span></div>
 <p class="req-desc">${escapeHtml(c.description)}</p>
-<div class="req-bottom-row"><div class="req-budget"><strong>${formatMoney(c.price)}–${formatMoney(c.maxPrice)}</strong><small>Budget</small></div><div class="req-bid-progress"><div class="req-dots">${dots}</div><small>${bidCount} / 5 Offers</small></div></div>
+<div class="req-bottom-row"><div class="req-budget"><strong>${formatMoney(c.price)}–${formatMoney(c.maxPrice)}</strong><small>Budget</small></div><div class="req-bid-progress">${ring}<small>${bidCount} / 5 Offers</small></div></div>
 ${bidCount === 4 ? '<div class="req-scarcity">Only 1 offer slot remaining</div>' : ""}
 <div class="req-actions">
 <button type="button" class="btn ghost" onclick="openRequirementDetail('${c.id}')">View Requirement <span class="req-arrow">→</span></button>
@@ -762,19 +763,16 @@ function renderRequirementDetailContent(c) {
     : almost
       ? `${bidCount} of 5 Offers`
       : "Accepting Offers";
-  const dots = Array.from(
-    { length: 5 },
-    (_, i) => `<span class="req-dot${i < bidCount ? " filled" : ""}"></span>`,
-  ).join("");
+  const ring = `<div class="req-ring" style="--pct:${(bidCount / 5) * 100}"><span>${bidCount}/5</span></div>`;
   return `
 <span class="req-detail-category">${escapeHtml(c.category)}</span>
 <h2 class="req-detail-title">${escapeHtml(c.title)}</h2>
-<div class="req-detail-meta"><span>📍 ${escapeHtml(c.area)}, ${escapeHtml(itemDistrict(c))}</span><span>${timeAgoLabel(c.created)}</span></div>
+<div class="req-detail-meta"><span>📍 ${escapeHtml(c.area)}, ${escapeHtml(itemDistrict(c))}</span><span>${timeAgoLabel(c.created)}</span><span>${daysLeft(c)} days left</span></div>
 <span class="req-status ${statusClass}"><i></i>${statusLabel}</span>
 <div class="req-detail-section"><h4>Requirement</h4><p>${escapeHtml(c.description)}</p></div>
 <div class="req-detail-section"><h4>Budget</h4><div class="req-detail-budget">${formatMoney(c.price)} – ${formatMoney(c.maxPrice)}</div><small>Expected Budget</small></div>
 <div class="req-detail-section"><h4>Location</h4><p>${escapeHtml(c.area)}<br>${escapeHtml(itemDistrict(c))}<br>${escapeHtml(itemState(c))}</p></div>
-<div class="req-detail-section"><h4>Offer Activity</h4><div class="req-bid-progress"><div class="req-dots">${dots}</div><small>${bidCount} / 5 Offers Received</small></div></div>
+<div class="req-detail-section"><h4>Offer Activity</h4><div class="req-bid-progress">${ring}<small>${bidCount} / 5 Offers Received</small></div></div>
 <div class="req-detail-sticky">${
     full
       ? '<button type="button" class="btn" style="width:100%" disabled>Offers Full</button><p class="req-detail-sticky-note">This requirement has received the maximum number of offers.</p>'
@@ -1658,7 +1656,17 @@ function floatingBusinessMarkup(b) {
     );
 
   const ownerHeaderActions = `<button type="button" class="btn ghost" onclick="openBusinessEdit('${b.id}')">Edit Profile</button><button type="button" class="btn ghost" onclick="shareBusinessProfile('${b.id}')">Share</button><button type="button" class="btn ghost" onclick="openBusinessQr('${b.id}')">QR</button>`;
-  const visitorHeaderActions = `${b.whatsapp ? `<button type="button" class="btn btn-whatsapp" onclick="contactBusinessOnWhatsApp('${b.id}')">💬 WhatsApp</button>` : ""}${b.phone ? `<button type="button" class="btn ghost" onclick="callBusinessPhone('${b.id}')">Call</button>` : ""}<button type="button" class="btn ghost" onclick="shareBusinessProfile('${b.id}')">Share</button>`;
+  const visitorHeaderActions = [
+    b.phone
+      ? `<button type="button" class="btn btn-call" onclick="callBusinessPhone('${b.id}')">📞 Call</button>`
+      : "",
+    b.whatsapp
+      ? `<button type="button" class="btn btn-whatsapp" onclick="contactBusinessOnWhatsApp('${b.id}')">💬 WhatsApp</button>`
+      : "",
+    b.email
+      ? `<a class="btn btn-email" href="mailto:${escapeHtml(b.email)}">✉️ Email</a>`
+      : "",
+  ].join("");
 
   const ownerDash = isOwner
     ? `<div class="biz-profile-section biz-owner-dash">
@@ -2358,6 +2366,7 @@ function openBidModal(id) {
   hideFloatingCustomer();
   const floatingBusiness = document.getElementById("floatingBusinessWrap");
   if (floatingBusiness) floatingBusiness.classList.remove("show");
+  closeRequirementDetail();
 
   resetBidForm();
   document.getElementById("bidPostId").value = id;
