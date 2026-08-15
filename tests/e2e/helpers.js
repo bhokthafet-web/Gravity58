@@ -64,7 +64,12 @@ export function mockApiScript({ initialUser = null, admin = false, seed = {} } =
           const kind='digit58_order_'+String(payload.ownerId||'').replace(/[^a-zA-Z0-9._-]/g,'-').slice(0,40);
           const source=(store[kind]||[]).find(row=>(row.id||row.\$id)===payload.orderId);
           if(!source||source.customerAccountId!==user?.\$id)throw new Error('Only this order customer can reorder these items.');
-          const row=clean({...clone(source),id:'reorder-'+(++serial),status:'Requested',amount:0,upiId:'',upiUri:'',reorderedFrom:source.id,phone:String(payload.phone||source.phone||'').replace(/\D/g,''),createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()});
+          const row=clean({...clone(source),id:'reorder-'+(++serial),status:'Requested',previousAmount:Number(source.amount)||0,amount:0,upiId:'',upiUri:'',reorderedFrom:source.id,phone:String(payload.phone||source.phone||'').replace(/\D/g,''),createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()});
+          (store[kind]||=[]).unshift(row);notify(kind,row);return {ok:true,order:clone(row)};
+        }
+        if(action==='digit58-create-order'){
+          const kind='digit58_order_'+String(payload.ownerId||'').replace(/[^a-zA-Z0-9._-]/g,'-').slice(0,40);
+          const row=clean({id:'order-'+(++serial),ownerId:payload.ownerId,storeId:payload.storeId,customerAccountId:user?.\$id,customerName:payload.customerName,customerEmail:payload.customerEmail,phone:String(payload.phone||'').replace(/\D/g,''),items:clone(payload.items||[]),amount:0,previousAmount:0,upiUri:'',status:'Requested',messages:[],createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()});
           (store[kind]||=[]).unshift(row);notify(kind,row);return {ok:true,order:clone(row)};
         }
         throw new Error('Unsupported secure test action: '+action);

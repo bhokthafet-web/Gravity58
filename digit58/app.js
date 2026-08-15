@@ -9,6 +9,7 @@ const storeKind=(ownerId)=>safeId('digit58_store_',ownerId,40);
 const customerKind=(ownerId)=>safeId('digit58_customer_',ownerId,36);
 const cardKind=(ownerId)=>safeId('digit58_card_',ownerId,40);
 const orderKind=(ownerId)=>safeId('digit58_order_',ownerId,40);
+const promotionKind=(ownerId)=>safeId('digit58_promo_',ownerId,40);
 const REQUEST_KIND='digit58_requests',ENTITLEMENT_KIND='digit58_entitlements',SUBSCRIPTION_AMOUNT=399,QR_REVEAL_DAYS=5;
 const ORDER_STEPS=[
   {key:'Requested',icon:'📝',label:'Requested'},
@@ -23,6 +24,17 @@ function buildUpiUri(upiId,payeeName,amount,orderId){
   const reference=`58${String(orderId||Date.now()).replace(/\D/g,'').slice(-30)}`.slice(0,35);
   const params=new URLSearchParams({pa:upiId,pn:payeeName||upiId,tr:reference,tn:`Refills order ${orderId}`,am:Number(amount||0).toFixed(2),cu:'INR'});
   return `upi://pay?${params.toString()}`;
+}
+function normaliseRazorpayLink(value){
+  const link=String(value||'').trim();
+  if(!link)return '';
+  return /^https?:\/\//i.test(link)?link:`https://${link}`;
+}
+function validRazorpayLink(value){
+  try{
+    const url=new URL(normaliseRazorpayLink(value));
+    return url.protocol==='https:'&&['razorpay.me','www.razorpay.me','rzp.io','www.rzp.io'].includes(url.hostname.toLowerCase());
+  }catch{return false}
 }
 function toast(message){const target=$('#toast');if(!target)return alert(message);target.textContent=message;target.classList.add('show');setTimeout(()=>target.classList.remove('show'),2400)}
 function requestGeolocation(){
@@ -73,7 +85,7 @@ let session=null,view='dashboard';
 let refreshView=()=>renderShell();
 let entitlement=null,myRequest=null,myStoreRequest=null;
 function storeSlotsAllowed(){return Math.max(1,Number(entitlement?.storeSlots)||1)}
-let state={activeStoreId:'',stores:[],customers:[],cards:[],orders:[]};
+let state={activeStoreId:'',stores:[],customers:[],cards:[],orders:[],promotions:[]};
 function save(){try{localStorage.setItem('gravity58Digit58',JSON.stringify(state))}catch{}}
 function load(){try{return {...state,...JSON.parse(localStorage.getItem('gravity58Digit58')||'{}')}}catch{return state}}
 state=load();
@@ -81,7 +93,7 @@ state=load();
 let orderAlertTimer=null,orderAlertContext=null;
 const ringingIds=new Set();
 let knownOrderIds=new Set(),knownBuyRequestIds=new Set();
-let ownerOrdersUnsubscribe=null,ownerCardsUnsubscribe=null;
+let ownerOrdersUnsubscribe=null,ownerCardsUnsubscribe=null,ownerPromotionsUnsubscribe=null;
 function orderAlertBeep(duration=.18,frequency=880){
   try{
     orderAlertContext||=new (window.AudioContext||window.webkitAudioContext)();
@@ -132,8 +144,10 @@ function startOwnerRealtime(){
   ownerOrdersUnsubscribe=api.subscribeKind(orderKind(ownerId),()=>refreshOwnerOrdersRealtime());
   ownerCardsUnsubscribe?.();
   ownerCardsUnsubscribe=api.subscribeKind(cardKind(ownerId),()=>refreshOwnerCardsRealtime());
+  ownerPromotionsUnsubscribe?.();
+  ownerPromotionsUnsubscribe=api.subscribeKind(promotionKind(ownerId),()=>refreshOwnerPromotionsRealtime());
 }
-function stopOwnerRealtime(){ownerOrdersUnsubscribe?.();ownerCardsUnsubscribe?.();ownerOrdersUnsubscribe=ownerCardsUnsubscribe=null;ringingIds.clear();knownOrderIds.clear();knownBuyRequestIds.clear();updateOrderAlertSound()}
+function stopOwnerRealtime(){ownerOrdersUnsubscribe?.();ownerCardsUnsubscribe?.();ownerPromotionsUnsubscribe?.();ownerOrdersUnsubscribe=ownerCardsUnsubscribe=ownerPromotionsUnsubscribe=null;ringingIds.clear();knownOrderIds.clear();knownBuyRequestIds.clear();updateOrderAlertSound()}
 async function refreshOwnerOrdersRealtime(){
   const ownerId=cloudOwnerId();if(!ownerId)return;
   const orders=await api.list(orderKind(ownerId)).catch(()=>null);
@@ -156,6 +170,13 @@ async function refreshOwnerCardsRealtime(){
   if(isNew)toast('🔔 Buy again request received');
   if(!$('.modal-backdrop'))refreshView();
 }
+async function refreshOwnerPromotionsRealtime(){
+  const ownerId=cloudOwnerId();if(!ownerId)return;
+  const promotions=await api.list(promotionKind(ownerId)).catch(()=>null);
+  if(!promotions)return;
+  state.promotions=promotions;save();
+  if(!$('.modal-backdrop'))refreshView();
+}
 
 function cloudOwnerId(){return session?.$id||''}
 function activeStore(){return state.stores.find(row=>row.id===state.activeStoreId)||state.stores[0]||null}
@@ -164,6 +185,7 @@ function customerCards(customerAccountId,storeId=state.activeStoreId){return sta
 function isCardDue(card){return new Date(card.dueAt).getTime()<=Date.now()}
 function daysRemaining(card){return Math.max(0,Math.ceil((new Date(card.dueAt).getTime()-Date.now())/86400000))}
 function storeOrders(storeId=state.activeStoreId){return state.orders.filter(row=>row.storeId===storeId)}
+function storePromotions(storeId=state.activeStoreId){return state.promotions.filter(row=>row.storeId===storeId)}
 function customerOrders(customerAccountId,storeId=state.activeStoreId){return state.orders.filter(row=>row.storeId===storeId&&row.customerAccountId===customerAccountId)}
 function activeOrders(orders){return orders.filter(row=>!['Delivered','Rejected'].includes(row.status))}
 function orderHistoryOrders(orders){return orders.filter(row=>['Delivered','Rejected'].includes(row.status))}
@@ -296,13 +318,14 @@ function renderOwnerAuth(){
 
 async function loadOwnerData(){
   const ownerId=cloudOwnerId();if(!ownerId)return;
-  const [stores,customers,cards,orders]=await Promise.all([
+  const [stores,customers,cards,orders,promotions]=await Promise.all([
     api.list(storeKind(ownerId)).catch(()=>[]),
     api.list(customerKind(ownerId)).catch(()=>[]),
     api.list(cardKind(ownerId)).catch(()=>[]),
     api.list(orderKind(ownerId)).catch(()=>[]),
+    api.list(promotionKind(ownerId)).catch(()=>[]),
   ]);
-  state.stores=stores;state.customers=customers;state.cards=cards;state.orders=orders;
+  state.stores=stores;state.customers=customers;state.cards=cards;state.orders=orders;state.promotions=promotions;
   if(!state.activeStoreId||!stores.some(row=>row.id===state.activeStoreId))state.activeStoreId=stores[0]?.id||'';
   save();
 }
@@ -312,7 +335,7 @@ function siteFooter(){return `<footer class="g58-site-footer"><div class="g58-si
 function bindAndroidAppFooter(){$('#androidAppBtn')?.addEventListener('click',()=>toast('Android app coming soon — stay tuned!'))}
 function renderShell(){
   const store=activeStore();
-  app.innerHTML=`<div class="shell"><aside class="sidebar"><a class="brand" href="../"><svg class="brand-mark" viewBox="0 0 120 120" fill="none" stroke="#7fffd4" stroke-width="8" aria-hidden="true"><circle cx="60" cy="26" r="15"/><circle cx="28" cy="82" r="15"/><circle cx="92" cy="82" r="15"/></svg><div><strong>Refills</strong><small class="muted">Store workspace</small></div></a><nav class="nav">${navButton('dashboard','◉','Dashboard')}${navButton('stores','◫','My Stores')}${navButton('wall','☰','Customer Wall')}${navButton('orders','🧾','Orders')}${navButton('orderHistory','🕘','Order History')}${navButton('subscription','♢','Subscription')}${navButton('settings','⚙','Settings')}<button id="logout">⇥ Logout</button></nav></aside><main class="main"><header class="topbar"><div>${state.stores.length?`<select id="storeSwitch">${state.stores.map(row=>`<option value="${html(row.id)}" ${row.id===state.activeStoreId?'selected':''}>${html(row.name)}</option>`).join('')}</select>`:'<strong>No store yet</strong>'}</div><span class="status-pill"><span class="dot"></span>${html(session?.email||'')}</span></header><section class="content" id="page"></section></main></div>${siteFooter()}${floatingSupportButton('digit58')}`;
+  app.innerHTML=`<div class="shell"><aside class="sidebar"><a class="brand" href="../"><svg class="brand-mark" viewBox="0 0 120 120" fill="none" stroke="#7fffd4" stroke-width="8" aria-hidden="true"><circle cx="60" cy="26" r="15"/><circle cx="28" cy="82" r="15"/><circle cx="92" cy="82" r="15"/></svg><div><strong>Refills</strong><small class="muted">Store workspace</small></div></a><nav class="nav">${navButton('dashboard','◉','Dashboard')}${navButton('stores','◫','My Stores')}${navButton('promotions','✦','Promotions')}${navButton('wall','☰','Customer Wall')}${navButton('orders','🧾','Orders')}${navButton('orderHistory','🕘','Order History')}${navButton('subscription','♢','Subscription')}${navButton('settings','⚙','Settings')}<button id="logout">⇥ Logout</button></nav></aside><main class="main"><header class="topbar"><div>${state.stores.length?`<select id="storeSwitch">${state.stores.map(row=>`<option value="${html(row.id)}" ${row.id===state.activeStoreId?'selected':''}>${html(row.name)}</option>`).join('')}</select>`:'<strong>No store yet</strong>'}</div><span class="status-pill"><span class="dot"></span>${html(session?.email||'')}</span></header><section class="content" id="page"></section></main></div>${siteFooter()}${floatingSupportButton('digit58')}`;
   $$('[data-view]').forEach(button=>button.onclick=()=>{view=button.dataset.view;renderShell()});
   $('#logout').onclick=async()=>{stopOwnerRealtime();await api.logout();session=null;renderOwnerAuth()};
   $('#storeSwitch')?.addEventListener('change',event=>{state.activeStoreId=event.target.value;save();renderShell()});
@@ -320,7 +343,7 @@ function renderShell(){
   renderView();
 }
 function navButton(key,icon,label){return `<button data-view="${key}" class="${view===key?'active':''}"><span>${icon}</span>${label}</button>`}
-function renderView(){if(!activeStore()&&view!=='stores'&&view!=='settings'&&view!=='subscription'){view='stores';return renderShell()}({dashboard:dashboardView,stores:storesView,wall:customerWallView,orders:ordersView,orderHistory:orderHistoryView,subscription:subscriptionView,settings:settingsView}[view]||dashboardView)()}
+function renderView(){if(!activeStore()&&view!=='stores'&&view!=='settings'&&view!=='subscription'){view='stores';return renderShell()}({dashboard:dashboardView,stores:storesView,promotions:promotionsView,wall:customerWallView,orders:ordersView,orderHistory:orderHistoryView,subscription:subscriptionView,settings:settingsView}[view]||dashboardView)()}
 function ordersView(){
   refreshView=ordersView;
   const orders=activeOrders(state.orders).sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
@@ -432,25 +455,30 @@ function storesView(){
 }
 function storeCard(store){
   const link=publicStoreLink(store);
-  return `<article class="card"><h3>${html(store.name)}</h3><p class="muted">${html(store.category)}${store.city?' · '+html(store.city):''}</p><p>${html(store.description||'')}</p><div class="chips"><span class="chip">${ownerCustomers(store.id).length} customers</span>${store.suspended?'<span class="chip due">Paused by G58 admin</span>':''}</div><div class="actions"><button class="btn small" data-share-store="${html(store.id)}">Share Link / QR</button><button class="btn small secondary" data-edit-store="${html(store.id)}">Edit</button></div></article>`;
+  return `<article class="card"><h3>${html(store.name)}</h3><p class="muted">${html(store.category)}${store.city?' · '+html(store.city):''}</p><p>${html(store.description||'')}</p><div class="chips"><span class="chip">${ownerCustomers(store.id).length} customers</span>${store.razorpayEnabled&&validRazorpayLink(store.razorpayLink)?'<span class="chip delivered">Razorpay enabled</span>':''}${store.suspended?'<span class="chip due">Paused by G58 admin</span>':''}</div><div class="actions"><button class="btn small" data-share-store="${html(store.id)}">Share Link / QR</button><button class="btn small secondary" data-edit-store="${html(store.id)}">Edit</button></div></article>`;
 }
 function publicStoreLink(store){return `${location.origin}${location.pathname.replace(/index\.html$/,'')}#store&owner=${encodeURIComponent(store.ownerId)}&store=${encodeURIComponent(store.id)}`}
 function openStoreForm(storeId=''){
   const store=state.stores.find(row=>row.id===storeId)||{};
-  modal(storeId?'Edit Store':'Create Store',`<form id="storeForm"><div class="field"><label>Store name</label><input name="name" value="${html(store.name||'')}" required></div><div class="form-grid"><div class="field"><label>Category</label><input name="category" value="${html(store.category||'')}" placeholder="Example: Pharmacy"></div><div class="field"><label>City</label><input name="city" value="${html(store.city||'')}"></div></div><div class="field"><label>Phone</label><input name="phone" value="${html(store.phone||'')}"></div><div class="field"><label>UPI ID <small>(for order payment QR codes)</small></label><input name="upiId" value="${html(store.upiId||'')}" placeholder="yourstore@upi"></div><div class="field"><label>Description</label><textarea name="description">${html(store.description||'')}</textarea></div><button class="btn full">${storeId?'Save Store':'Create Store'}</button></form>`,()=>{
+  modal(storeId?'Edit Store':'Create Store',`<form id="storeForm"><div class="field"><label>Store name</label><input name="name" value="${html(store.name||'')}" required></div><div class="form-grid"><div class="field"><label>Category</label><input name="category" value="${html(store.category||'')}" placeholder="Example: Pharmacy"></div><div class="field"><label>City</label><input name="city" value="${html(store.city||'')}"></div></div><div class="field"><label>Phone</label><input name="phone" value="${html(store.phone||'')}"></div><div class="field"><label>UPI ID <small>(for order payment QR codes)</small></label><input name="upiId" value="${html(store.upiId||'')}" placeholder="yourstore@upi"></div><label class="option-toggle"><input id="razorpayEnabled" name="razorpayEnabled" type="checkbox" ${store.razorpayEnabled?'checked':''}><span><strong>Enable Razorpay payment link</strong><small>Optional — customers can open your Razorpay page after you set the order amount.</small></span></label><div class="field ${store.razorpayEnabled?'':'hidden'}" id="razorpayLinkField"><label>Razorpay payment link</label><input name="razorpayLink" type="text" inputmode="url" value="${html(store.razorpayLink||'')}" placeholder="razorpay.me/@yourstore"><small class="muted">Only razorpay.me or rzp.io secure links are accepted. https:// is added automatically.</small></div><div class="field"><label>Description</label><textarea name="description">${html(store.description||'')}</textarea></div><button class="btn full">${storeId?'Save Store':'Create Store'}</button></form>`,()=>{
+    const razorpayToggle=$('#razorpayEnabled'),razorpayField=$('#razorpayLinkField');
+    razorpayToggle.onchange=()=>razorpayField.classList.toggle('hidden',!razorpayToggle.checked);
     $('#storeForm').onsubmit=async event=>{
       event.preventDefault();
-      const values=Object.fromEntries(new FormData(event.target)),ownerId=cloudOwnerId(),button=event.submitter;
+      const raw=Object.fromEntries(new FormData(event.target)),ownerId=cloudOwnerId(),button=event.submitter;
+      const razorpayEnabled=razorpayToggle.checked,razorpayLink=normaliseRazorpayLink(raw.razorpayLink);
+      if(razorpayEnabled&&!validRazorpayLink(razorpayLink))return toast('Enter a valid razorpay.me or rzp.io payment link');
+      const values={name:raw.name.trim(),category:raw.category.trim()||'General store',city:raw.city.trim(),phone:raw.phone.trim(),upiId:raw.upiId.trim(),razorpayEnabled,razorpayLink:razorpayEnabled?razorpayLink:'',description:raw.description.trim()};
       button.disabled=true;
       try{
         if(storeId){
           await api.update(storeKind(ownerId),storeId,values);
           Object.assign(store,values);
-          const ownerSummary={ownerId,ownerEmail:session?.email||'',storeId,storeName:values.name.trim(),category:values.category.trim()||'General store',city:values.city.trim(),createdAt:store.createdAt||now()};
+          const ownerSummary={ownerId,ownerEmail:session?.email||'',storeId,storeName:values.name,category:values.category,city:values.city,createdAt:store.createdAt||now()};
           try{await api.update('digit58_owners',`owner-${storeId}`,ownerSummary)}
           catch{try{await api.create('digit58_owners',ownerSummary,`owner-${storeId}`,api.permissionSet?.('digit58_owners',ownerId,true))}catch{}}
         }else{
-          const record={id:id('store'),ownerId,name:values.name.trim(),category:values.category.trim()||'General store',city:values.city.trim(),phone:values.phone.trim(),upiId:values.upiId.trim(),description:values.description.trim(),createdAt:now()};
+          const record={id:id('store'),ownerId,...values,createdAt:now()};
           const permissions=api.permissionSet?.(storeKind(ownerId),ownerId);
           const created=await api.create(storeKind(ownerId),record,record.id,permissions);
           state.stores.push({...record,...created});
@@ -461,6 +489,50 @@ function openStoreForm(storeId=''){
       }catch(error){button.disabled=false;toast(error.message||'Could not save store')}
     };
   });
+}
+function promotionsView(){
+  refreshView=promotionsView;
+  const store=activeStore(),promotions=storePromotions(store?.id).sort((a,b)=>new Date(b.createdAt||0)-new Date(a.createdAt||0));
+  $('#page').innerHTML=`<div class="section-head"><div><h1>Promotions</h1><p class="muted">Create compact offer tickets that scroll above customer orders for ${html(store?.name||'this store')}.</p></div><button class="btn" id="addPromotion">+ New Promotion</button></div><div class="promotion-owner-grid">${promotions.map(promotionOwnerCard).join('')||'<div class="empty">No promotions yet. Create your first offer ticket.</div>'}</div>`;
+  $('#addPromotion').onclick=()=>openPromotionForm();
+  $$('[data-edit-promotion]').forEach(button=>button.onclick=()=>openPromotionForm(button.dataset.editPromotion));
+  $$('[data-toggle-promotion]').forEach(button=>button.onclick=()=>togglePromotion(button.dataset.togglePromotion));
+  $$('[data-delete-promotion]').forEach(button=>button.onclick=()=>deletePromotion(button.dataset.deletePromotion));
+}
+function promotionOwnerCard(promotion){
+  return `<article class="promotion-ticket owner-ticket ${promotion.active===false?'promotion-disabled':''}"><span class="promotion-ticket-badge">${html(promotion.badge||'Store Special')}</span><h3>${html(promotion.name)}</h3><p>${html(promotion.offerText||'Limited-time store offer')}</p>${Number(promotion.price)>0?`<strong>${money(promotion.price)}</strong>`:''}<div class="chips"><span class="chip ${promotion.active===false?'due':'delivered'}">${promotion.active===false?'Paused':'Visible to customers'}</span></div><div class="actions"><button class="btn small" data-edit-promotion="${html(promotion.id)}">Edit</button><button class="btn small secondary" data-toggle-promotion="${html(promotion.id)}">${promotion.active===false?'Enable':'Pause'}</button><button class="btn small red" data-delete-promotion="${html(promotion.id)}">Delete</button></div></article>`;
+}
+function openPromotionForm(promotionId=''){
+  const store=activeStore(),promotion=state.promotions.find(row=>row.id===promotionId)||{};if(!store)return;
+  modal(promotionId?'Edit Promotion':'Create Promotion',`<form id="promotionForm"><div class="field"><label>Product name</label><input name="name" value="${html(promotion.name||'')}" placeholder="Organic Honey" maxlength="80" required></div><div class="field"><label>Offer line</label><input name="offerText" value="${html(promotion.offerText||'')}" placeholder="Pure 500g jar · limited stock" maxlength="120"></div><div class="form-grid"><div class="field"><label>Promotional price <small>(optional)</small></label><input name="price" type="number" min="0" step="0.01" value="${Number(promotion.price)||''}" placeholder="299"></div><div class="field"><label>Ticket label</label><input name="badge" value="${html(promotion.badge||'')}" placeholder="Weekend Special" maxlength="32"></div></div><label class="option-toggle"><input name="active" type="checkbox" ${promotion.active===false?'':'checked'}><span><strong>Show to customers</strong><small>Paused promotions remain saved but disappear from the customer portal.</small></span></label><button class="btn full" style="margin-top:14px">${promotionId?'Save Promotion':'Publish Promotion'}</button></form>`,()=>{
+    $('#promotionForm').onsubmit=async event=>{
+      event.preventDefault();
+      const raw=Object.fromEntries(new FormData(event.target)),button=event.submitter,ownerId=cloudOwnerId();
+      const values={name:raw.name.trim(),offerText:raw.offerText.trim(),price:Math.max(0,Number(raw.price)||0),badge:raw.badge.trim()||'Store Special',active:$('input[name="active"]',event.target).checked,updatedAt:now()};
+      if(!values.name)return toast('Enter a product name');
+      button.disabled=true;
+      try{
+        if(promotionId){await api.update(promotionKind(ownerId),promotionId,values);Object.assign(promotion,values)}
+        else{
+          const record={id:id('promo'),ownerId,storeId:store.id,...values,createdAt:now()};
+          const created=await api.create(promotionKind(ownerId),record,record.id,api.permissionSet?.(promotionKind(ownerId),ownerId));
+          state.promotions.unshift({...record,...created});
+        }
+        save();closeModal();promotionsView();toast(promotionId?'Promotion updated':'Promotion published to customers');
+      }catch(error){button.disabled=false;toast(error.message||'Could not save promotion')}
+    };
+  });
+}
+async function togglePromotion(promotionId){
+  const promotion=state.promotions.find(row=>row.id===promotionId);if(!promotion)return;
+  const active=promotion.active===false;
+  try{await api.update(promotionKind(promotion.ownerId),promotion.id,{active,updatedAt:now()});promotion.active=active;save();promotionsView();toast(active?'Promotion enabled':'Promotion paused')}
+  catch(error){toast(error.message||'Could not update promotion')}
+}
+async function deletePromotion(promotionId){
+  const promotion=state.promotions.find(row=>row.id===promotionId);if(!promotion||!confirm(`Delete the ${promotion.name} promotion?`))return;
+  try{await api.remove(promotionKind(promotion.ownerId),promotion.id);state.promotions=state.promotions.filter(row=>row.id!==promotion.id);save();promotionsView();toast('Promotion deleted')}
+  catch(error){toast(error.message||'Could not delete promotion')}
 }
 function shareStoreModal(storeId){
   const store=state.stores.find(row=>row.id===storeId);if(!store)return;
@@ -592,7 +664,7 @@ function ownerOrderMarkup(order,showCustomer,showStore){
   const ringing=ringingIds.has(order.id);
   const customer=showCustomer?state.customers.find(c=>c.customerAccountId===order.customerAccountId&&c.storeId===order.storeId):null;
   const store=showStore?state.stores.find(s=>s.id===order.storeId):null;
-  return `<article class="card order-item-card ${ringing?'incoming-order':''}">${ringing?'<span class="incoming-order-beacon" aria-label="New order" title="New order"></span>':''}<div class="section-head"><h3>Order #${html(order.id.slice(-6).toUpperCase())}</h3><span class="chip ${['Requested','Priced'].includes(order.status)?'due':''}">${html(order.status)}</span></div>${showStore?`<p class="muted" style="margin:-8px 0 0"><strong>${html(store?.name||'Store')}</strong></p>`:''}${showCustomer?`<p class="muted" style="margin:-4px 0 4px">${html(customer?.customerName||order.customerName||'Customer')}</p>`:''}${orderStepperMarkup(order.status)}<div class="order-items-list">${order.items.map(item=>`<div class="order-line-item"><span>${item.qty} ×</span><span>${html(item.name)}</span></div>`).join('')}</div>${order.prescriptionUrl?`<a class="link-btn" href="${html(order.prescriptionUrl)}" target="_blank" rel="noopener">📄 View prescription</a>`:''}${order.amount?`<h3 style="margin:10px 0">${money(order.amount)}</h3>`:'<p class="muted">Amount not set yet.</p>'}${deliveryContactMarkup(order)}<div class="actions">${orderOwnerActions(order)}</div>${orderChatMarkup(order,'owner')}</article>`;
+  return `<article class="card order-item-card ${ringing?'incoming-order':''}">${ringing?'<span class="incoming-order-beacon" aria-label="New order" title="New order"></span>':''}<div class="section-head"><h3>Order #${html(order.id.slice(-6).toUpperCase())}</h3><span class="chip ${['Requested','Priced'].includes(order.status)?'due':''}">${html(order.status)}</span></div>${showStore?`<p class="muted" style="margin:-8px 0 0"><strong>${html(store?.name||'Store')}</strong></p>`:''}${showCustomer?`<p class="muted" style="margin:-4px 0 4px">${html(customer?.customerName||order.customerName||'Customer')}</p>`:''}${orderStepperMarkup(order.status)}<div class="order-items-list">${order.items.map(item=>`<div class="order-line-item"><span>${item.qty} ×</span><span>${html(item.name)}</span></div>`).join('')}</div>${order.reorderedFrom&&Number(order.previousAmount)>0?`<div class="previous-price-note"><span>Previous order amount</span><strong>${money(order.previousAmount)}</strong></div>`:''}${order.prescriptionUrl?`<a class="link-btn" href="${html(order.prescriptionUrl)}" target="_blank" rel="noopener">📄 View prescription</a>`:''}${order.amount?`<h3 style="margin:10px 0">${money(order.amount)}</h3>`:'<p class="muted">Amount not set yet.</p>'}${deliveryContactMarkup(order)}<div class="actions">${orderOwnerActions(order)}</div>${orderChatMarkup(order,'owner')}</article>`;
 }
 function orderOwnerActions(order){
   const map={
@@ -627,7 +699,8 @@ function bindLiveQrPreview({amountInput,upiInput,previewEl,payeeName,refId}){
 function setOrderAmount(orderId){
   const order=state.orders.find(row=>row.id===orderId);if(!order)return;
   const store=state.stores.find(row=>row.id===order.storeId);
-  modal('Set Order Amount',`<form id="setAmountForm"><div class="form-grid"><div class="field"><label>Amount (₹)</label><input id="amountInput" name="amount" type="number" min="1" step="0.01" value="${order.amount||''}" required></div><div class="field"><label>UPI ID</label><input id="upiIdInput" name="upiId" value="${html(order.upiId||store?.upiId||'')}" placeholder="yourstore@upi"></div></div><div class="qr-wrap" id="amountQrPreview"></div><button class="btn full" style="margin-top:14px">Set Amount</button></form>`,()=>{
+  const suggestedAmount=Number(order.amount)||Number(order.previousAmount)||0;
+  modal('Review Order Amount',`<form id="setAmountForm">${order.reorderedFrom&&Number(order.previousAmount)>0?`<div class="previous-price-review"><span>Previous order price</span><strong>${money(order.previousAmount)}</strong><small>Approve this price as-is or enter the updated amount below.</small></div>`:''}<div class="form-grid"><div class="field"><label>Amount (₹)</label><input id="amountInput" name="amount" type="number" min="1" step="0.01" value="${suggestedAmount||''}" required></div><div class="field"><label>UPI ID</label><input id="upiIdInput" name="upiId" value="${html(order.upiId||store?.upiId||'')}" placeholder="yourstore@upi"></div></div><div class="qr-wrap" id="amountQrPreview"></div><button class="btn full" style="margin-top:14px">Approve Amount & Send Payment</button></form>`,()=>{
     bindLiveQrPreview({amountInput:$('#amountInput'),upiInput:$('#upiIdInput'),previewEl:$('#amountQrPreview'),payeeName:store?.name,refId:order.id});
     $('#setAmountForm').onsubmit=async event=>{
       event.preventDefault();
@@ -640,7 +713,7 @@ function setOrderAmount(orderId){
         await api.update(orderKind(order.ownerId),order.id,{amount,upiId,upiUri,status:'Priced',pricedAt:now()});
         Object.assign(order,{amount,upiId,upiUri,status:'Priced',pricedAt:now()});
         updateOrderAlertSound();
-        closeModal();refreshView();toast('Amount set — customer can now pay');
+        closeModal();refreshView();toast('Amount approved — customer can now pay');
       }catch(error){button.disabled=false;toast(error.message||'Could not set amount')}
     };
   });
@@ -766,23 +839,27 @@ async function renderPublicStore(hashParams){
   startCustomerRealtime(store,customer);
 }
 async function loadAndRenderCustomerView(store,customer){
-  const [cards,orders]=await Promise.all([
+  const [cards,orders,promotions]=await Promise.all([
     api.list(cardKind(store.ownerId)).catch(()=>[]),
     api.list(orderKind(store.ownerId)).catch(()=>[]),
+    api.list(promotionKind(store.ownerId)).catch(()=>[]),
   ]);
   renderCustomerCards(store,customer,
     cards.filter(row=>row.storeId===store.id&&row.customerAccountId===customer.customerAccountId),
-    orders.filter(row=>row.storeId===store.id&&row.customerAccountId===customer.customerAccountId));
+    orders.filter(row=>row.storeId===store.id&&row.customerAccountId===customer.customerAccountId),
+    promotions.filter(row=>row.storeId===store.id&&row.active!==false));
 }
-let customerOrdersUnsubscribe=null,customerCardsUnsubscribe=null;
+let customerOrdersUnsubscribe=null,customerCardsUnsubscribe=null,customerPromotionsUnsubscribe=null;
 function startCustomerRealtime(store,customer){
   if(!api?.subscribeKind)return;
   customerOrdersUnsubscribe?.();
   customerOrdersUnsubscribe=api.subscribeKind(orderKind(store.ownerId),()=>{if(!$('.modal-backdrop'))loadAndRenderCustomerView(store,customer)});
   customerCardsUnsubscribe?.();
   customerCardsUnsubscribe=api.subscribeKind(cardKind(store.ownerId),()=>{if(!$('.modal-backdrop'))loadAndRenderCustomerView(store,customer)});
+  customerPromotionsUnsubscribe?.();
+  customerPromotionsUnsubscribe=api.subscribeKind(promotionKind(store.ownerId),()=>{if(!$('.modal-backdrop'))loadAndRenderCustomerView(store,customer)});
 }
-function stopCustomerRealtime(){customerOrdersUnsubscribe?.();customerCardsUnsubscribe?.();customerOrdersUnsubscribe=customerCardsUnsubscribe=null}
+function stopCustomerRealtime(){customerOrdersUnsubscribe?.();customerCardsUnsubscribe?.();customerPromotionsUnsubscribe?.();customerOrdersUnsubscribe=customerCardsUnsubscribe=customerPromotionsUnsubscribe=null;stopPromotionAutoScroll()}
 function renderCustomerAuth(store,ownerId,storeId){
   app.innerHTML=`<main class="public-store"><section class="store-hero"><span class="chip">${html(store.category||'Store')}</span><h1>${html(store.name)}</h1><p class="muted">${html(store.description||'')}${store.city?' · '+html(store.city):''}</p></section><div class="card"><div class="actions" style="margin-bottom:14px"><button class="btn small" id="custTabLogin">Sign in</button><button class="btn small secondary" id="custTabSignup">Sign up</button></div><form id="customerAuthForm"><div class="field full-name-field hidden"><label>Your name</label><input name="name"></div><div class="field"><label>Email</label><input name="email" type="email" required></div><div class="field"><label>Password</label><input name="password" type="password" minlength="8" required></div><button class="btn full" id="custAuthSubmit" type="submit">Sign In</button></form></div></main>${siteFooter()}`;
   bindAndroidAppFooter();
@@ -805,12 +882,46 @@ async function ensureCustomerLink(ownerId,storeId,account){
   const result=await api.executeFunction(api.config.digitalOrderFunctionId,{action:'digit58-link-customer',ownerId,storeId,customerName:account.name||account.email.split('@')[0],customerEmail:account.email});
   return result.customer;
 }
-function renderCustomerCards(store,customer,cards,orders=[]){
+let customerPromotionQuantities=new Map(),promotionAutoScrollTimer=null,activePromotionStoreId='';
+function stopPromotionAutoScroll(){if(promotionAutoScrollTimer)clearInterval(promotionAutoScrollTimer);promotionAutoScrollTimer=null}
+function pausePromotionAutoScroll(){stopPromotionAutoScroll();$('#promotionRail')?.classList.add('is-paused')}
+function startPromotionAutoScroll(){
+  stopPromotionAutoScroll();
+  const rail=$('#promotionRail');if(!rail||rail.scrollWidth<=rail.clientWidth)return;
+  promotionAutoScrollTimer=setInterval(()=>{
+    if(!document.body.contains(rail))return stopPromotionAutoScroll();
+    const atEnd=rail.scrollLeft+rail.clientWidth>=rail.scrollWidth-10;
+    rail.scrollTo({left:atEnd?0:Math.min(rail.scrollLeft+214,rail.scrollWidth),behavior:'smooth'});
+  },3000);
+}
+function promotionQuantityControl(promotionId){
+  const qty=customerPromotionQuantities.get(promotionId)||0;
+  return qty>0?`<div class="promotion-stepper" aria-label="Selected quantity"><button type="button" data-promotion-minus="${html(promotionId)}" aria-label="Remove one">−</button><strong>${qty}</strong><button type="button" data-promotion-plus="${html(promotionId)}" aria-label="Add one">+</button></div>`:`<button type="button" class="promotion-add" data-promotion-add="${html(promotionId)}">Add</button>`;
+}
+function customerPromotionTicket(promotion){
+  return `<article class="promotion-ticket customer-ticket"><span class="promotion-ticket-badge">${html(promotion.badge||'Store Special')}</span><h3>${html(promotion.name)}</h3><p>${html(promotion.offerText||'Limited-time store offer')}</p><div class="promotion-ticket-foot">${Number(promotion.price)>0?`<strong>${money(promotion.price)}</strong>`:'<strong>Special offer</strong>'}<div class="promotion-control" data-promotion-control="${html(promotion.id)}">${promotionQuantityControl(promotion.id)}</div></div></article>`;
+}
+function bindCustomerPromotionActions(promotions){
+  const update=(promotionId,delta)=>{
+    if(!promotions.some(row=>row.id===promotionId))return;
+    pausePromotionAutoScroll();
+    const next=Math.max(0,Math.min(99,(customerPromotionQuantities.get(promotionId)||0)+delta));
+    if(next)customerPromotionQuantities.set(promotionId,next);else customerPromotionQuantities.delete(promotionId);
+    const control=$(`[data-promotion-control="${CSS.escape(promotionId)}"]`);if(control)control.innerHTML=promotionQuantityControl(promotionId);
+    bindCustomerPromotionActions(promotions);
+  };
+  $$('[data-promotion-add]').forEach(button=>button.onclick=()=>update(button.dataset.promotionAdd,1));
+  $$('[data-promotion-plus]').forEach(button=>button.onclick=()=>update(button.dataset.promotionPlus,1));
+  $$('[data-promotion-minus]').forEach(button=>button.onclick=()=>update(button.dataset.promotionMinus,-1));
+}
+function renderCustomerCards(store,customer,cards,orders=[],promotions=[]){
+  if(activePromotionStoreId!==store.id){activePromotionStoreId=store.id;customerPromotionQuantities.clear()}
   const active=activeOrders(orders).sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
   const history=orderHistoryOrders(orders).sort((a,b)=>new Date(b.updatedAt||b.createdAt)-new Date(a.updatedAt||a.createdAt));
   app.innerHTML=`<main class="public-store"><section class="store-hero"><span class="chip">${html(store.category||'Store')}</span><h1>${html(store.name)}</h1><p class="muted">${html(store.description||'')}${store.city?' · '+html(store.city):''}</p></section>
+  ${promotions.length?`<section class="promotion-strip"><div class="promotion-strip-head"><div><span>Store offers</span><h2>Fresh deals for your next order</h2></div><small>Tap Add to include an offer</small></div><div class="promotion-rail" id="promotionRail">${promotions.map(customerPromotionTicket).join('')}</div></section>`:''}
   <div class="section-head"><h2>Your orders</h2><button class="btn small" id="placeOrderBtn">+ Place New Order</button></div>
-  <div class="grid card-grid">${active.map(customerOrderMarkup).join('')||'<div class="empty">No active orders. Place a new order to get started.</div>'}</div>
+  <div class="grid card-grid">${active.map(order=>customerOrderMarkup(order,store)).join('')||'<div class="empty">No active orders. Place a new order to get started.</div>'}</div>
   <div class="section-head"><h2>Your reminder cards</h2></div>
   <div class="grid card-grid" id="customerCardGrid">${cards.map(customerCardCardMarkup).join('')||'<div class="empty">Your store will add reminder cards here after your first purchase.</div>'}</div>
   ${history.length?`<div class="section-head"><h2>Order History</h2></div><div class="card table-wrap"><table><thead><tr><th>Items</th><th>Amount</th><th>Status</th><th>Date</th><th>Action</th></tr></thead><tbody>${history.map(customerOrderHistoryRow).join('')}</tbody></table></div>`:''}
@@ -823,7 +934,9 @@ function renderCustomerCards(store,customer,cards,orders=[]){
     const target=document.getElementById(`card-qr-${card.id}`);
     if(target&&window.QRCode)new QRCode(target,{text:card.upiUri,width:160,height:160});
   });
-  $('#placeOrderBtn').onclick=()=>openPlaceOrderModal(store,customer);
+  bindCustomerPromotionActions(promotions);
+  startPromotionAutoScroll();
+  $('#placeOrderBtn').onclick=()=>openPlaceOrderModal(store,customer,promotions);
   $$('[data-buy-again]').forEach(button=>button.onclick=()=>{
     const card=cards.find(row=>row.id===button.dataset.buyAgain);
     openBuyAgainModal(button.dataset.buyAgain,store,customer,card?.productName);
@@ -836,7 +949,7 @@ function renderCustomerCards(store,customer,cards,orders=[]){
   bindCardChatForms(cards,'customer',()=>loadAndRenderCustomerView(store,customer));
   initShakeDetection();
   bindAndroidAppFooter();
-  $('#custLogout').onclick=async()=>{stopCustomerRealtime();await api.logout();location.hash=`store&owner=${encodeURIComponent(store.ownerId)}&store=${encodeURIComponent(store.id)}`;boot()};
+  $('#custLogout').onclick=async()=>{stopCustomerRealtime();customerPromotionQuantities.clear();activePromotionStoreId='';await api.logout();location.hash=`store&owner=${encodeURIComponent(store.ownerId)}&store=${encodeURIComponent(store.id)}`;boot()};
 }
 function vialMarkup(card){
   const remaining=daysRemaining(card),total=Math.max(1,Number(card.reminderDays)||1),due=isCardDue(card);
@@ -874,9 +987,10 @@ function openBuyAgainModal(cardId,store,customer,productName){
     };
   });
 }
-function customerOrderMarkup(order){
+function customerOrderMarkup(order,store){
+  const razorpayEnabled=store?.razorpayEnabled&&validRazorpayLink(store.razorpayLink);
   const paymentBlock=order.status==='Priced'
-    ?`<div class="qr-wrap" id="qr-${html(order.id)}"></div><h3 style="margin:10px 0;text-align:center">${money(order.amount)}</h3><p class="muted" style="text-align:center">Scan to pay via UPI. The store will accept your order once payment is received.</p>`
+    ?`<div class="qr-wrap" id="qr-${html(order.id)}"></div><h3 style="margin:10px 0;text-align:center">${money(order.amount)}</h3><p class="muted" style="text-align:center">Scan to pay via UPI${razorpayEnabled?' or use the secure Razorpay option below':''}. The store will accept your order once payment is received.</p>${razorpayEnabled?`<a class="btn full razorpay-pay-btn" href="${html(normaliseRazorpayLink(store.razorpayLink))}" target="_blank" rel="noopener noreferrer">Pay with Razorpay ↗</a>`:''}`
     :order.amount?`<h3 style="margin:10px 0">${money(order.amount)}</h3>`:'<p class="muted">Waiting for the store to review and set the amount.</p>';
   return `<article class="card order-item-card premium-card"><div class="section-head"><h3>Order #${html(order.id.slice(-6).toUpperCase())}</h3><span class="chip">${html(order.status)}</span></div>${bigStatusMarkup(order.status)}${orderStepperMarkup(order.status)}<div class="order-items-list">${order.items.map(item=>`<div class="order-line-item"><span>${item.qty} ×</span><span>${html(item.name)}</span></div>`).join('')}</div>${order.prescriptionUrl?`<a class="link-btn" href="${html(order.prescriptionUrl)}" target="_blank" rel="noopener">📄 View your prescription</a>`:''}${paymentBlock}${orderChatMarkup(order,'customer')}</article>`;
 }
@@ -901,10 +1015,12 @@ function openReorderOrderModal(order,store,customer){
     };
   });
 }
-function orderItemRowMarkup(){return `<div class="order-item-row"><input name="itemName[]" placeholder="Item name" required><input name="itemQty[]" type="number" min="1" value="1" aria-label="Quantity"><button type="button" class="btn small secondary remove-item-row" aria-label="Remove item">✕</button></div>`}
-function openPlaceOrderModal(store,customer){
+function orderItemRowMarkup(item={}){return `<div class="order-item-row"><input name="itemName[]" placeholder="Item name" value="${html(item.name||'')}" required><input name="itemQty[]" type="number" min="1" value="${Math.max(1,Number(item.qty)||1)}" aria-label="Quantity"><button type="button" class="btn small secondary remove-item-row" aria-label="Remove item">✕</button></div>`}
+function openPlaceOrderModal(store,customer,promotions=[]){
   let capturedLocation=null;
-  modal('Place New Order',`<form id="placeOrderForm"><div id="orderItemRows">${orderItemRowMarkup()}</div><button type="button" class="btn small secondary" id="addItemRow" style="margin-top:8px">+ Add another item</button><div class="field" style="margin-top:14px"><label>Contact number</label><input name="phone" type="tel" value="${html(customer.phone||'')}" placeholder="10-digit mobile number" required></div><div class="field"><button type="button" class="btn small secondary" id="shareLocationBtn">📍 Share My Location</button><p class="muted" id="locationStatus" style="margin-top:6px">Optional — helps the store guide your delivery.</p></div><div class="field"><label>Prescription image <small>(optional)</small></label><input id="prescriptionFile" type="file" accept="image/jpeg,image/png,image/webp"></div><button class="btn full" type="submit" style="margin-top:14px">Submit Order</button></form>`,()=>{
+  const selectedPromotions=promotions.filter(promotion=>customerPromotionQuantities.has(promotion.id)).map(promotion=>({name:promotion.name,qty:customerPromotionQuantities.get(promotion.id)}));
+  const startingItems=selectedPromotions.length?selectedPromotions:[{}];
+  modal('Place New Order',`<form id="placeOrderForm">${selectedPromotions.length?`<div class="selected-offer-note">${selectedPromotions.length} promotional item${selectedPromotions.length===1?'':'s'} added. You can change quantities below.</div>`:''}<div id="orderItemRows">${startingItems.map(orderItemRowMarkup).join('')}</div><button type="button" class="btn small secondary" id="addItemRow" style="margin-top:8px">+ Add another item</button><div class="field" style="margin-top:14px"><label>Contact number</label><input name="phone" type="tel" value="${html(customer.phone||'')}" placeholder="10-digit mobile number" required></div><div class="field"><button type="button" class="btn small secondary" id="shareLocationBtn">📍 Share My Location</button><p class="muted" id="locationStatus" style="margin-top:6px">Optional — helps the store guide your delivery.</p></div><div class="field"><label>Prescription image <small>(optional)</small></label><input id="prescriptionFile" type="file" accept="image/jpeg,image/png,image/webp"></div><button class="btn full" type="submit" style="margin-top:14px">Submit Order</button></form>`,()=>{
     $('#addItemRow').onclick=()=>$('#orderItemRows').insertAdjacentHTML('beforeend',orderItemRowMarkup());
     $('#orderItemRows').addEventListener('click',event=>{const row=event.target.closest('.remove-item-row');if(row&&$$('.order-item-row').length>1)row.closest('.order-item-row').remove()});
     bindShareLocationButton($('#shareLocationBtn'),$('#locationStatus'),point=>{capturedLocation=point});
@@ -925,6 +1041,7 @@ function openPlaceOrderModal(store,customer){
         }
         await api.executeFunction(api.config.digitalOrderFunctionId,{action:'digit58-create-order',ownerId:store.ownerId,storeId:store.id,customerName:customer.customerName,customerEmail:customer.customerEmail,items,phone,locationLat:capturedLocation?.lat,locationLng:capturedLocation?.lng,...prescription});
         if(phone&&phone!==customer.phone){await api.update(customerKind(store.ownerId),customer.id,{phone}).catch(()=>{});customer.phone=phone}
+        customerPromotionQuantities.clear();
         closeModal();toast('Order sent to the store');
         await loadAndRenderCustomerView(store,customer);
       }catch(error){button.disabled=false;toast(error.message||'Could not place order')}

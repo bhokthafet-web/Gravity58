@@ -460,6 +460,7 @@ test('digit58: customer reorders a history item into a fresh owner-priced order'
     assert.equal(response.status, 201);
     assert.equal(response.body.order.status, 'Requested');
     assert.equal(response.body.order.amount, 0);
+    assert.equal(response.body.order.previousAmount, 480);
     assert.equal(response.body.order.reorderedFrom, previousOrder.id);
     assert.deepEqual(response.body.order.items, previousOrder.items);
     assert.equal(response.body.order.phone, '9888888888');

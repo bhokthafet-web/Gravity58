@@ -640,7 +640,7 @@ async function requestDigit58BuyAgain(call, input, userId) {
   return updateRow(call, cardId, { ...card, ...changes });
 }
 
-async function createDigit58Order(call, input, userId) {
+async function createDigit58Order(call, input, userId, options = {}) {
   const ownerId = text(input.ownerId, 64), storeId = text(input.storeId, 40);
   if (!ownerId || !storeId) throw new Error('Store details are missing.');
   const items = Array.isArray(input.items) ? input.items : [];
@@ -659,6 +659,7 @@ async function createDigit58Order(call, input, userId) {
     locationLat: hasLocation ? lat : '', locationLng: hasLocation ? lng : '',
     locationUrl: hasLocation ? `https://www.google.com/maps?q=${lat},${lng}` : '',
     items: cleanItems, amount: 0, upiUri: '',
+    previousAmount: Math.max(0, finite(options.previousAmount)),
     reorderedFrom: text(input.reorderedFrom, 36),
     prescriptionUrl: text(input.prescriptionUrl, 1000), prescriptionFileId: text(input.prescriptionFileId, 80),
     prescriptionName: text(input.prescriptionName, 200), prescriptionType: text(input.prescriptionType, 100),
@@ -692,7 +693,7 @@ async function createDigit58Reorder(call, input, userId) {
     locationLng: input.locationLng,
     items: previous.items,
     reorderedFrom: previous.id || sourceOrderId,
-  }, userId);
+  }, userId, { previousAmount: previous.amount });
 }
 
 export default async ({ req, res, error }) => {
