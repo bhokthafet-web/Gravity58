@@ -1111,52 +1111,7 @@ function toggleFavoriteBusiness(id) {
   refreshFloatingBusinessIfOpen(id);
 }
 function businessCard(b) {
-  const stats = businessRatingStats(b);
-  const isOwner = sessionStorage.getItem(`g58BusinessOwner_${b.id}`) === "true";
-  const favorited = isFavoriteBusiness(b.id);
-  const statChips = [];
-  if (Number(b.experience))
-    statChips.push(
-      `<div class="biz-stat"><strong>${escapeHtml(String(b.experience))}+</strong><small>Years Experience</small></div>`,
-    );
-  if (Number(b.projects))
-    statChips.push(
-      `<div class="biz-stat"><strong>${escapeHtml(String(b.projects))}</strong><small>Projects</small></div>`,
-    );
-  if (Number(b.price))
-    statChips.push(
-      `<div class="biz-stat"><strong>${formatMoney(b.price)}</strong><small>Starting From</small></div>`,
-    );
-
-  return `<article class="biz-card${isOwner ? " owner" : ""}" data-post-id="${b.id}">
-<div class="biz-card-tools">
-<button type="button" class="biz-fav-btn${favorited ? " active" : ""}" onclick="toggleFavoriteBusiness('${b.id}')" aria-label="${favorited ? "Remove from saved" : "Save business"}">${favorited ? "♥" : "♡"}</button>
-</div>
-<div class="biz-top">
-<div class="biz-identity">
-<span class="biz-category">${escapeHtml(b.category)}</span>
-<h3>${escapeHtml(b.title)}</h3>
-${
-  stats.count
-    ? `<div class="biz-rating">${ratingStars(stats.average)}<strong>${stats.average.toFixed(1)}</strong><small>${stats.count} ${stats.count === 1 ? "review" : "reviews"}</small></div>`
-    : `<div class="biz-rating biz-rating-new"><small>No reviews yet</small></div>`
-}
-</div>
-</div>
-${isOwner ? '<span class="biz-owner-badge">Your Business</span>' : ""}
-<div class="biz-loc">📍 ${escapeHtml(b.area)}, ${escapeHtml(itemDistrict(b))}</div>
-<p class="biz-desc">${escapeHtml(b.description)}</p>
-${statChips.length ? `<div class="biz-stats-row">${statChips.join("")}</div>` : ""}
-<div class="biz-actions">
-<button type="button" class="btn ghost" onclick="showFloatingBusiness('${b.id}')">View Business <span class="req-arrow">→</span></button>
-${isOwner ? `<button type="button" class="btn primary" onclick="openBusinessEdit('${b.id}')">Edit Profile</button>` : `<button type="button" class="btn primary" onclick="callBusinessPhone('${b.id}')">Contact</button>`}
-</div>
-${
-  isOwner
-    ? ""
-    : `<label class="biz-unlock-row"><input type="checkbox" onchange="requestCardUnlock('business','${b.id}',this)"><span>Own this business? Unlock</span></label>`
-}
-</article>`;
+  return `<div class="biz-card-wall-item" data-post-id="${b.id}">${digitalBusinessCardMarkup(b, `showFloatingBusiness('${b.id}')`)}</div>`;
 }
 
 let qrOpenedFromBusinessPopup = false;
@@ -1652,52 +1607,15 @@ function scrollToBusinessAbout() {
   );
   if (target) target.scrollIntoView({ behavior: "smooth", block: "start" });
 }
-function floatingBusinessMarkup(b) {
+function digitalBusinessCardMarkup(b, viewAction) {
   const isOwner = sessionStorage.getItem(`g58BusinessOwner_${b.id}`) === "true";
   const stats = businessRatingStats(b);
-  const reviews = [...businessReviews(b)].sort(
-    (a, c) => (c.created || 0) - (a.created || 0),
-  );
-  const dist = ratingDistribution(b);
   const favorited = isFavoriteBusiness(b.id);
   const websiteUrl = businessDemoUrl(b);
   const shareUrl = businessShareUrl(b.id);
   const shareQrSrc =
     "https://api.qrserver.com/v1/create-qr-code/?size=220x220&ecc=H&margin=8&data=" +
     encodeURIComponent(shareUrl);
-
-  const quickStats = [];
-  if (Number(b.experience))
-    quickStats.push(
-      `<div class="biz-quick-stat"><strong>${escapeHtml(String(b.experience))}+</strong><small>Years Experience</small></div>`,
-    );
-  if (Number(b.projects))
-    quickStats.push(
-      `<div class="biz-quick-stat"><strong>${escapeHtml(String(b.projects))}</strong><small>Projects Completed</small></div>`,
-    );
-  if (Number(b.price))
-    quickStats.push(
-      `<div class="biz-quick-stat"><strong>${formatMoney(b.price)}</strong><small>Starting Price</small></div>`,
-    );
-
-  const contactRows = [];
-  if (b.phone)
-    contactRows.push(
-      `<button type="button" class="biz-contact-row" onclick="callBusinessPhone('${b.id}')"><span>Phone</span><strong>Call Business →</strong></button>`,
-    );
-  if (b.altPhone)
-    contactRows.push(
-      `<div class="biz-contact-row biz-contact-static"><span>Alternative Phone</span><strong>${escapeHtml(b.altPhone)}</strong></div>`,
-    );
-  if (b.email)
-    contactRows.push(
-      `<a class="biz-contact-row" href="mailto:${escapeHtml(b.email)}"><span>Email</span><strong>${escapeHtml(b.email)}</strong></a>`,
-    );
-  if (websiteUrl)
-    contactRows.push(
-      `<button type="button" class="biz-contact-row" onclick="openBusinessDemo('${b.id}')"><span>Website / Social</span><strong>Visit →</strong></button>`,
-    );
-
   const waNumber = cleanNumber(b.whatsapp || b.phone || "");
   const waHref = waNumber
     ? `https://wa.me/${waNumber}?text=${encodeURIComponent("Hi, I found your business on G58 and would like to know more about your services.")}`
@@ -1718,41 +1636,18 @@ function floatingBusinessMarkup(b) {
   const icShare =
     '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="m8.6 13.5 6.8 3.9M15.4 6.6 8.6 10.5"/></svg>';
 
-  const ownerDash = isOwner
-    ? `<div class="biz-profile-section biz-owner-dash">
-<h4>Your Business Card</h4>
-<div class="biz-owner-dash-grid">
-<div><strong>${businessProfileCompleteness(b)}%</strong><small>Profile Complete</small></div>
-<div><strong>${stats.count ? stats.average.toFixed(1) + " ★" : "—"}</strong><small>Customer Rating</small></div>
-<div><strong>${stats.count}</strong><small>Reviews</small></div>
-</div>
-<div class="biz-owner-dash-actions"><button type="button" class="btn ghost" onclick="openBusinessEdit('${b.id}')">Edit Profile</button><button type="button" class="btn danger" onclick="deleteOwnedBusiness('${b.id}')">Delete Card</button></div>
-</div>`
-    : "";
-
-  const unlockBlock = isOwner
-    ? ""
-    : `<div class="biz-unlock-block">
-<div class="biz-unlock-icon">🔒</div>
-<strong>Manage your business</strong>
-<p>Enter the phone number used when creating this business card.</p>
-<input id="business-unlock-floating-${b.id}" type="tel" inputmode="numeric" placeholder="Enter business phone or WhatsApp number">
-<button type="button" class="btn primary" style="width:100%" onclick="unlockBusinessCard('${b.id}',true)">Unlock →</button>
-</div>`;
-
   const ratingRow = stats.count
     ? `<div class="biz-card-rating">${ratingStars(stats.average)}<strong>${stats.average.toFixed(1)}</strong><small>(${stats.count} ${stats.count === 1 ? "Review" : "Reviews"})</small></div>`
     : `<button type="button" class="biz-card-rating biz-card-rating-empty" onclick="openBusinessRating('${b.id}')">☆☆☆☆☆ <small>Be the first to review</small></button>`;
 
-  return `<article class="biz-profile">
-<div class="biz-card-glass">
+  return `<div class="biz-card-glass">
 ${isOwner ? '<span class="biz-owner-badge">Your Business</span>' : ""}
 <div class="biz-card-glass-head">
 <span class="biz-card-nfc-label"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 9a9 9 0 0 1 9-7"/><path d="M3 9a6 6 0 0 1 6-5"/><circle cx="5" cy="9" r="1.4" fill="currentColor" stroke="none"/></svg>Digital Business Card</span>
 <button type="button" class="biz-fav-btn biz-fav-btn-glass${favorited ? " active" : ""}" onclick="toggleFavoriteBusiness('${b.id}')" aria-label="${favorited ? "Remove from saved" : "Save business"}">${favorited ? "♥" : "♡"}</button>
 </div>
 
-<button type="button" class="biz-card-view-pill" onclick="scrollToBusinessAbout()">View</button>
+<button type="button" class="biz-card-view-pill" onclick="${viewAction}">View</button>
 
 <div class="biz-card-profile">
 <h2 class="biz-card-name">${escapeHtml(b.title)}</h2>
@@ -1788,8 +1683,73 @@ ${websiteUrl ? `<a class="biz-card-cta biz-card-cta-instagram" href="${websiteUr
 </div>
 <p class="biz-card-tagline">Your Business. Always One Scan Away.</p>
 <div class="share-status" id="share-${b.id}"></div>
-</div>
+</div>`;
+}
+function floatingBusinessMarkup(b) {
+  const isOwner = sessionStorage.getItem(`g58BusinessOwner_${b.id}`) === "true";
+  const stats = businessRatingStats(b);
+  const reviews = [...businessReviews(b)].sort(
+    (a, c) => (c.created || 0) - (a.created || 0),
+  );
+  const dist = ratingDistribution(b);
+  const websiteUrl = businessDemoUrl(b);
 
+  const quickStats = [];
+  if (Number(b.experience))
+    quickStats.push(
+      `<div class="biz-quick-stat"><strong>${escapeHtml(String(b.experience))}+</strong><small>Years Experience</small></div>`,
+    );
+  if (Number(b.projects))
+    quickStats.push(
+      `<div class="biz-quick-stat"><strong>${escapeHtml(String(b.projects))}</strong><small>Projects Completed</small></div>`,
+    );
+  if (Number(b.price))
+    quickStats.push(
+      `<div class="biz-quick-stat"><strong>${formatMoney(b.price)}</strong><small>Starting Price</small></div>`,
+    );
+
+  const contactRows = [];
+  if (b.phone)
+    contactRows.push(
+      `<button type="button" class="biz-contact-row" onclick="callBusinessPhone('${b.id}')"><span>Phone</span><strong>Call Business →</strong></button>`,
+    );
+  if (b.altPhone)
+    contactRows.push(
+      `<div class="biz-contact-row biz-contact-static"><span>Alternative Phone</span><strong>${escapeHtml(b.altPhone)}</strong></div>`,
+    );
+  if (b.email)
+    contactRows.push(
+      `<a class="biz-contact-row" href="mailto:${escapeHtml(b.email)}"><span>Email</span><strong>${escapeHtml(b.email)}</strong></a>`,
+    );
+  if (websiteUrl)
+    contactRows.push(
+      `<button type="button" class="biz-contact-row" onclick="openBusinessDemo('${b.id}')"><span>Website / Social</span><strong>Visit →</strong></button>`,
+    );
+
+  const ownerDash = isOwner
+    ? `<div class="biz-profile-section biz-owner-dash">
+<h4>Your Business Card</h4>
+<div class="biz-owner-dash-grid">
+<div><strong>${businessProfileCompleteness(b)}%</strong><small>Profile Complete</small></div>
+<div><strong>${stats.count ? stats.average.toFixed(1) + " ★" : "—"}</strong><small>Customer Rating</small></div>
+<div><strong>${stats.count}</strong><small>Reviews</small></div>
+</div>
+<div class="biz-owner-dash-actions"><button type="button" class="btn ghost" onclick="openBusinessEdit('${b.id}')">Edit Profile</button><button type="button" class="btn danger" onclick="deleteOwnedBusiness('${b.id}')">Delete Card</button></div>
+</div>`
+    : "";
+
+  const unlockBlock = isOwner
+    ? ""
+    : `<div class="biz-unlock-block">
+<div class="biz-unlock-icon">🔒</div>
+<strong>Manage your business</strong>
+<p>Enter the phone number used when creating this business card.</p>
+<input id="business-unlock-floating-${b.id}" type="tel" inputmode="numeric" placeholder="Enter business phone or WhatsApp number">
+<button type="button" class="btn primary" style="width:100%" onclick="unlockBusinessCard('${b.id}',true)">Unlock →</button>
+</div>`;
+
+  return `<article class="biz-profile">
+${digitalBusinessCardMarkup(b, "scrollToBusinessAbout()")}
 <div class="biz-profile-more">
 ${quickStats.length ? `<div class="biz-quick-stats">${quickStats.join("")}</div>` : ""}
 ${ownerDash}
