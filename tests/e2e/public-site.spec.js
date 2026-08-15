@@ -203,15 +203,27 @@ test("customer cards expose owner-only unlock, clear bid and readable expiry", a
     const first = window.G58GetPostState().customers[0];
     first.userId = "test-user";
     first.accountEmail = "test@example.com";
+    first.bids = [];
+    first.bidHistory = [];
+    sessionStorage.setItem("g58BusinessOwner_B2001", "true");
     selectMode("customer");
     renderWall();
   });
 
   const ownerCard = page.locator('.req-card[data-post-id="C1001"]');
   await expect(ownerCard.getByRole("button", { name: "Unlock Post" })).toBeVisible();
-  await expect(ownerCard.getByRole("button", { name: /View Offers/ })).toBeVisible();
+  await ownerCard.getByRole("button", { name: "Bid Amount (0) →" }).click();
+  await expect(page.locator("#bidModal")).toHaveClass(/show/);
+  await expect(page.locator("#bidBusiness")).toHaveValue("DreamSpace Interiors");
+  await page.locator("#bidAmount").fill("175000");
+  await page.locator("#bidTime").fill("20 days");
+  await page.locator("#bidProposal").fill("Complete supply and installation included.");
+  await page.getByRole("button", { name: /Submit Offer/ }).click();
+  await expect(page.locator("#bidSuccessModal")).toHaveClass(/show/);
+  await page.locator("#bidSuccessModal .close").click();
+  await expect(ownerCard.getByRole("button", { name: "Bid Amount (1) →" })).toBeVisible();
   const publicCard = page.locator('.req-card[data-post-id="C1002"]');
-  await expect(publicCard.getByRole("button", { name: "Bid", exact: true })).toBeVisible();
+  await expect(publicCard.getByRole("button", { name: "Bid Amount (0)" })).toBeVisible();
   await expect(publicCard.getByRole("button", { name: "Unlock Post" })).toHaveCount(0);
   const [status, expiry] = await Promise.all([
     ownerCard.locator(".req-status").boundingBox(),

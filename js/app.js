@@ -721,7 +721,7 @@ function ownedBusinessForBid() {
 }
 function unlockOwnedCustomerPost(id) {
   const post = customers.find((item) => item.id === id);
-  if (!post || !currentAccountOwns(post)) {
+  if (!post || !window.G58SiteUser || !isCustomerPostOwner(post)) {
     alert("Only the signed-in account that created this post can unlock it.");
     return;
   }
@@ -731,7 +731,6 @@ function unlockOwnedCustomerPost(id) {
 }
 function customerCard(c) {
   const bidCount = (c.bids || []).length;
-  const accountOwner = currentAccountOwns(c);
   const isOwner = isCustomerPostOwner(c);
   const full = bidCount >= 5;
   const almost = bidCount >= 4 && !full;
@@ -744,7 +743,7 @@ function customerCard(c) {
   const ring = `<div class="req-ring" style="--pct:${(bidCount / 5) * 100}"><span>${bidCount}/5</span></div>`;
   const daysLeftVal = daysLeft(c);
   const expiryBadge = `<span class="req-expiry-badge${daysLeftVal <= 5 ? " urgent" : ""}">${daysLeftVal}d left</span>`;
-  const ownerUnlockLink = accountOwner
+  const ownerUnlockLink = window.G58SiteUser && isOwner
     ? `<button type="button" class="req-link-btn req-owner-unlock-link" onclick="unlockOwnedCustomerPost('${c.id}')">Unlock Post</button>`
     : "";
   const shareRow = `<div class="req-share-row"><button type="button" class="req-link-btn" onclick="copyCustomerLink('${c.id}',this)">Copy Link</button><button type="button" class="req-link-btn" onclick="shareCustomerOnWhatsApp('${c.id}')">Share</button>${ownerUnlockLink}</div><div class="share-status" id="customer-share-${c.id}"></div>`;
@@ -755,7 +754,7 @@ function customerCard(c) {
 <h3 class="req-title">${escapeHtml(c.title)}</h3>
 <div class="req-meta-row"><span>📍 ${escapeHtml(c.area)}, ${escapeHtml(itemDistrict(c))}</span><span>${timeAgoLabel(c.created)}</span></div>
 <div class="req-bottom-row"><div class="req-budget"><strong>${formatMoney(c.price)}–${formatMoney(c.maxPrice)}</strong><small>Budget</small></div><div class="req-bid-progress">${ring}<small>${bidCount} / 5 Offers</small></div></div>
-<div class="req-actions"><button type="button" class="btn primary" onclick="openRequirementDetail('${c.id}')">View Offers (${bidCount}) <span class="req-arrow">→</span></button></div>
+<div class="req-actions">${full ? '<button type="button" class="btn" disabled>Bids Full</button>' : `<button type="button" class="btn primary req-bid-btn" onclick="openBidModal('${c.id}')">Bid Amount (${bidCount}) <span class="req-arrow">→</span></button>`}</div>
 ${shareRow}
 </article>`;
   }
@@ -769,7 +768,7 @@ ${shareRow}
 ${bidCount === 4 ? '<div class="req-scarcity">Only 1 offer slot remaining</div>' : ""}
 <div class="req-actions">
 <button type="button" class="btn ghost" onclick="openRequirementDetail('${c.id}')">View Requirement <span class="req-arrow">→</span></button>
-${full ? '<button type="button" class="btn" disabled>Offers Full</button>' : `<button type="button" class="btn primary req-bid-btn" onclick="openBidModal('${c.id}')">Bid</button>`}
+${full ? '<button type="button" class="btn" disabled>Bids Full</button>' : `<button type="button" class="btn primary req-bid-btn" onclick="openBidModal('${c.id}')">Bid Amount (${bidCount})</button>`}
 </div>
 ${shareRow}
 </article>`;
@@ -822,7 +821,7 @@ function renderRequirementDetailContent(c) {
 <div class="req-detail-sticky">${
     full
       ? '<button type="button" class="btn" style="width:100%" disabled>Offers Full</button><p class="req-detail-sticky-note">This requirement has received the maximum number of offers.</p>'
-      : `<button type="button" class="btn primary" style="width:100%" onclick="openBidModal('${c.id}')">Bid <span class="cta-arrow">→</span></button>`
+      : `<button type="button" class="btn primary" style="width:100%" onclick="openBidModal('${c.id}')">Bid Amount (${bidCount}) <span class="cta-arrow">→</span></button>`
   }</div>`;
 }
 function renderOfferComparisonContent(c) {
@@ -2572,10 +2571,6 @@ function resetBidForm() {
 function openBidModal(id) {
   const p = customers.find((c) => c.id === id);
   if (!p) return;
-  if (currentAccountOwns(p)) {
-    unlockOwnedCustomerPost(id);
-    return;
-  }
   if ((p.bids || []).length >= 5) {
     alert("This post already received the maximum 5 active bids.");
     return;
