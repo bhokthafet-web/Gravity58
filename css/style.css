@@ -1878,7 +1878,7 @@ body.req-detail-lock{overflow:hidden}
 
 /* Digital business card as the Business Wall grid tile */
 .biz-card-wall-item{display:flex;justify-content:center}
-.biz-card-wall-item .biz-card-glass{width:100%;max-width:420px}
+.biz-card-wall-item .biz-card-glass{width:100%;max-width:340px}
 
 /* Keep Business Wall cards short and scannable. The expanded profile retains
    the full contact, save, location and share controls after the user taps View. */

@@ -143,6 +143,7 @@ test("Business Wall cards stay compact while the full profile remains available"
   await expect(card).toBeVisible();
   const bounds = await card.boundingBox();
   expect(bounds).not.toBeNull();
+  expect(bounds.width).toBeLessThanOrEqual(342);
   expect(bounds.height).toBeLessThan(410);
   await expect(card.locator(".biz-card-qr-img")).toBeVisible();
   await expect(card.locator(".biz-card-primary-actions")).toBeVisible();
