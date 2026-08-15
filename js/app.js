@@ -1767,7 +1767,7 @@ ${ratingRow}
 <span class="biz-card-qr-logo" aria-hidden="true"><svg viewBox="0 0 120 120" fill="none" stroke="#F97316" stroke-width="10"><circle cx="60" cy="26" r="15"/><circle cx="28" cy="82" r="15"/><circle cx="92" cy="82" r="15"/></svg></span>
 </div>
 <p class="biz-card-qr-caption">View our complete digital business card</p>
-<p class="biz-card-popup-retention"><span aria-hidden="true"></span>${escapeHtml(retentionLabel)}</p>
+<p class="biz-card-popup-retention"><span aria-hidden="true"></span>${escapeHtml(retentionLabel)}<small>(will delete in 30d if not opened)</small></p>
 </div>
 
 <div class="biz-card-primary-actions">

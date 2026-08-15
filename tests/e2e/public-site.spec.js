@@ -202,6 +202,7 @@ test("Business Wall cards stay compact while the full profile remains available"
   await expect(card.locator(".biz-card-primary-actions")).toBeVisible();
   await expect(card.locator(".biz-card-quickrow")).toBeHidden();
   await expect(card.locator(".biz-card-popup-retention")).toContainText("Popup card not opened · 5 days left");
+  await expect(card.locator(".biz-card-popup-retention small")).toHaveText("(will delete in 30d if not opened)");
   await expect(card.locator(".biz-card-cta-whatsapp .biz-brand-logo")).toBeVisible();
   await expect(card.locator(".biz-card-cta-instagram .biz-brand-logo")).toBeVisible();
 
@@ -217,6 +218,7 @@ test("Business Wall cards stay compact while the full profile remains available"
   await viewButton.click();
   await expect(page.locator("#floatingBusinessWrap")).toHaveClass(/show/);
   await expect(page.locator("#floatingBusinessCard .biz-card-popup-retention")).toContainText("30 days left");
+  await expect(page.locator("#floatingBusinessCard .biz-card-popup-retention small")).toHaveText("(will delete in 30d if not opened)");
   await expect(page.locator("#floatingBusinessCard .biz-card-quickrow")).toBeHidden();
   await expect(page.locator("#floatingBusinessCard .biz-popup-side-action")).toHaveCount(4);
   await expect(
