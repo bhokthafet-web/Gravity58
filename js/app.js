@@ -1601,13 +1601,7 @@ function openBusinessLocation(id) {
     "noopener",
   );
 }
-function scrollToBusinessAbout() {
-  const target = document.querySelector(
-    "#floatingBusinessCard .biz-profile-section",
-  );
-  if (target) target.scrollIntoView({ behavior: "smooth", block: "start" });
-}
-function digitalBusinessCardMarkup(b, viewAction) {
+function digitalBusinessCardMarkup(b, viewAction, viewLabel = "View") {
   const isOwner = sessionStorage.getItem(`g58BusinessOwner_${b.id}`) === "true";
   const stats = businessRatingStats(b);
   const favorited = isFavoriteBusiness(b.id);
@@ -1647,7 +1641,7 @@ ${isOwner ? '<span class="biz-owner-badge">Your Business</span>' : ""}
 <button type="button" class="biz-fav-btn biz-fav-btn-glass${favorited ? " active" : ""}" onclick="toggleFavoriteBusiness('${b.id}')" aria-label="${favorited ? "Remove from saved" : "Save business"}">${favorited ? "♥" : "♡"}</button>
 </div>
 
-<button type="button" class="biz-card-view-pill" onclick="${viewAction}">View</button>
+<button type="button" class="biz-card-view-pill" onclick="${viewAction}">${escapeHtml(viewLabel)}</button>
 
 <div class="biz-card-profile">
 <h2 class="biz-card-name">${escapeHtml(b.title)}</h2>
@@ -1687,105 +1681,13 @@ ${websiteUrl ? `<a class="biz-card-cta biz-card-cta-instagram" href="${websiteUr
 }
 function floatingBusinessMarkup(b) {
   const isOwner = sessionStorage.getItem(`g58BusinessOwner_${b.id}`) === "true";
-  const stats = businessRatingStats(b);
-  const reviews = [...businessReviews(b)].sort(
-    (a, c) => (c.created || 0) - (a.created || 0),
-  );
-  const dist = ratingDistribution(b);
-  const websiteUrl = businessDemoUrl(b);
-
-  const quickStats = [];
-  if (Number(b.experience))
-    quickStats.push(
-      `<div class="biz-quick-stat"><strong>${escapeHtml(String(b.experience))}+</strong><small>Years Experience</small></div>`,
-    );
-  if (Number(b.projects))
-    quickStats.push(
-      `<div class="biz-quick-stat"><strong>${escapeHtml(String(b.projects))}</strong><small>Projects Completed</small></div>`,
-    );
-  if (Number(b.price))
-    quickStats.push(
-      `<div class="biz-quick-stat"><strong>${formatMoney(b.price)}</strong><small>Starting Price</small></div>`,
-    );
-
-  const contactRows = [];
-  if (b.phone)
-    contactRows.push(
-      `<button type="button" class="biz-contact-row" onclick="callBusinessPhone('${b.id}')"><span>Phone</span><strong>Call Business →</strong></button>`,
-    );
-  if (b.altPhone)
-    contactRows.push(
-      `<div class="biz-contact-row biz-contact-static"><span>Alternative Phone</span><strong>${escapeHtml(b.altPhone)}</strong></div>`,
-    );
-  if (b.email)
-    contactRows.push(
-      `<a class="biz-contact-row" href="mailto:${escapeHtml(b.email)}"><span>Email</span><strong>${escapeHtml(b.email)}</strong></a>`,
-    );
-  if (websiteUrl)
-    contactRows.push(
-      `<button type="button" class="biz-contact-row" onclick="openBusinessDemo('${b.id}')"><span>Website / Social</span><strong>Visit →</strong></button>`,
-    );
-
-  const ownerDash = isOwner
-    ? `<div class="biz-profile-section biz-owner-dash">
-<h4>Your Business Card</h4>
-<div class="biz-owner-dash-grid">
-<div><strong>${businessProfileCompleteness(b)}%</strong><small>Profile Complete</small></div>
-<div><strong>${stats.count ? stats.average.toFixed(1) + " ★" : "—"}</strong><small>Customer Rating</small></div>
-<div><strong>${stats.count}</strong><small>Reviews</small></div>
-</div>
-<div class="biz-owner-dash-actions"><button type="button" class="btn ghost" onclick="openBusinessEdit('${b.id}')">Edit Profile</button><button type="button" class="btn danger" onclick="deleteOwnedBusiness('${b.id}')">Delete Card</button></div>
-</div>`
-    : "";
-
-  const unlockBlock = isOwner
-    ? ""
-    : `<div class="biz-unlock-block">
-<div class="biz-unlock-icon">🔒</div>
-<strong>Manage your business</strong>
-<p>Enter the phone number used when creating this business card.</p>
-<input id="business-unlock-floating-${b.id}" type="tel" inputmode="numeric" placeholder="Enter business phone or WhatsApp number">
-<button type="button" class="btn primary" style="width:100%" onclick="unlockBusinessCard('${b.id}',true)">Unlock →</button>
-</div>`;
-
-  return `<article class="biz-profile">
-${digitalBusinessCardMarkup(b, "scrollToBusinessAbout()")}
-<div class="biz-profile-more">
-${quickStats.length ? `<div class="biz-quick-stats">${quickStats.join("")}</div>` : ""}
-${ownerDash}
-
-<div class="biz-profile-section">
-<h4>About</h4>
-<p>${escapeHtml(b.description)}</p>
-</div>
-
-<div class="biz-profile-section">
-<h4>Location</h4>
-<p>${escapeHtml(b.area)}<br>${escapeHtml(itemDistrict(b))}<br>${escapeHtml(itemState(b))}</p>
-</div>
-
-${contactRows.length ? `<div class="biz-profile-section"><h4>Contact Business</h4><div class="biz-contact-list">${contactRows.join("")}</div></div>` : ""}
-
-<div class="biz-profile-section">
-<div class="biz-reviews-head"><h4>Customer Reviews</h4><button type="button" class="btn ghost small" onclick="openBusinessRating('${b.id}')">Rate this business</button></div>
-${
-  stats.count
-    ? `<div class="biz-reviews-summary"><strong>${stats.average.toFixed(1)}</strong>${ratingStars(stats.average)}<small>Based on ${stats.count} ${stats.count === 1 ? "review" : "reviews"}</small></div>
-<div class="biz-rating-breakdown">${dist.map((d) => `<div class="biz-rating-bar-row"><small>${d.star} ★</small><div class="biz-rating-bar-track"><div class="biz-rating-bar-fill" style="width:${d.pct}%"></div></div><small>${d.count}</small></div>`).join("")}</div>`
-    : `<p class="biz-no-reviews">No reviews yet. Be the first customer to rate this business.</p>`
-}
-<div class="biz-review-list">${reviews
-    .slice(0, 6)
-    .map(
-      (r) =>
-        `<article class="biz-review-card">${ratingStars(r.rating)}<strong>${escapeHtml(r.name || "GRAVITY58 User")}</strong>${r.comment ? `<p>${escapeHtml(r.comment)}</p>` : ""}<small>${timeAgoLabel(r.created || Date.now())}</small></article>`,
-    )
-    .join("")}</div>
-</div>
-
-${unlockBlock}
-</div>
-</article>`;
+  const ownerAction = isOwner
+    ? `openBusinessEdit('${b.id}')`
+    : `requestBusinessCardUnlock('${b.id}')`;
+  const ownerLabel = isOwner
+    ? "Manage your business"
+    : "Unlock if you're the owner";
+  return `<article class="biz-profile">${digitalBusinessCardMarkup(b, ownerAction, ownerLabel)}</article>`;
 }
 let activeFloatingBusinessId = null;
 function showFloatingBusiness(id) {
@@ -2875,6 +2777,9 @@ Visit: https://g58.in`;
 }
 
 let pendingCardUnlock = null;
+function requestBusinessCardUnlock(id) {
+  requestCardUnlock("business", id, { checked: true });
+}
 function requestCardUnlock(type, id, checkbox) {
   if (!checkbox.checked) return;
   pendingCardUnlock = { type, id, checkbox };
