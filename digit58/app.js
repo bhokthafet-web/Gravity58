@@ -189,6 +189,23 @@ function orderAlertBeep(duration=.18,frequency=880){
     oscillator.connect(gain);gain.connect(orderAlertContext.destination);oscillator.start(start);oscillator.stop(start+duration+.02);
   }catch(error){console.warn('Audio alert unavailable',error)}
 }
+function playTelephoneRingBurst(){
+  try{
+    orderAlertContext||=new (window.AudioContext||window.webkitAudioContext)();
+    if(orderAlertContext.state==='suspended')orderAlertContext.resume();
+    const ctx=orderAlertContext,start=ctx.currentTime,duration=.4;
+    [440,480].forEach(frequency=>{
+      const oscillator=ctx.createOscillator(),gain=ctx.createGain();
+      oscillator.type='sine';oscillator.frequency.value=frequency;
+      gain.gain.setValueAtTime(.0001,start);
+      gain.gain.exponentialRampToValueAtTime(.4,start+.04);
+      gain.gain.setValueAtTime(.4,start+duration-.06);
+      gain.gain.exponentialRampToValueAtTime(.0001,start+duration);
+      oscillator.connect(gain);gain.connect(ctx.destination);
+      oscillator.start(start);oscillator.stop(start+duration+.02);
+    });
+  }catch(error){console.warn('Ring unavailable',error)}
+}
 function updateOrderAlertSound(){
   [...ringingIds].forEach(id=>{
     const stillRinging=state.orders.some(row=>row.id===id&&['Requested','Minimum Approval Requested'].includes(row.status))||state.cards.some(row=>row.id===id&&row.status==='Buy Requested');
@@ -208,7 +225,7 @@ function ringDueReminders(cards){
 }
 document.addEventListener('pointerdown',()=>{if(pendingDueBeep){orderAlertBeep(.22,660);pendingDueBeep=false}},{passive:true});
 let incomingCallTimer=null;
-function playIncomingCallRing(){orderAlertBeep(.16,700);setTimeout(()=>orderAlertBeep(.16,700),230)}
+function playIncomingCallRing(){playTelephoneRingBurst();setTimeout(playTelephoneRingBurst,550)}
 function stopIncomingCallRing(){if(incomingCallTimer){clearInterval(incomingCallTimer);incomingCallTimer=null}$('.incoming-call-overlay')?.remove()}
 function showIncomingOrderCall(store,customer,message,{title='Order placed!',hint='Tap to view your order'}={}){
   stopIncomingCallRing();
