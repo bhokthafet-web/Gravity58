@@ -941,7 +941,13 @@ function settingsView(){
   $('#page').innerHTML=`<div class="section-head"><div><h1>Settings</h1><p class="muted">Signed in as ${html(session?.email||'')}</p></div></div><div class="card"><p class="muted">More store settings are coming soon. For now, manage your stores from the My Stores tab.</p></div><div class="section-head"><h2>Privacy & Payment Policy</h2></div><div class="card"><p class="muted">${html(DIGIT58_POLICY_TEXT)}</p>${acceptedAt?`<p class="muted" style="margin-top:10px">You accepted this policy on ${acceptedAt}.</p>`:''}</div>`;
 }
 function modal(title,body,ready){document.body.insertAdjacentHTML('beforeend',`<div class="modal-backdrop" id="modal"><section class="modal"><div class="section-head"><h2>${title}</h2><button class="btn small secondary" id="closeModal">✕</button></div>${body}</section></div>`);$('#closeModal').onclick=closeModal;ready?.()}
-function closeModal(){$('#modal')?.remove()}
+function closeModal(){
+  $('#modal')?.remove();
+  if(customerRenderPending&&activeCustomerContext){
+    customerRenderPending=false;
+    loadAndRenderCustomerView(activeCustomerContext.store,activeCustomerContext.customer);
+  }
+}
 
 async function renderPublicStore(hashParams){
   const ownerId=hashParams.get('owner')||'',storeId=hashParams.get('store')||'';
@@ -958,28 +964,50 @@ async function renderPublicStore(hashParams){
   await loadAndRenderCustomerView(store,linked.customer);
   startCustomerRealtime(store,linked.customer);
 }
+let activeCustomerContext=null,customerRenderPending=false;
 async function loadAndRenderCustomerView(store,customer){
+  activeCustomerContext={store,customer};
   const [cards,orders,promotions]=await Promise.all([
     api.list(cardKind(store.ownerId)).catch(()=>[]),
     api.list(orderKind(store.ownerId)).catch(()=>[]),
     api.list(promotionKind(store.ownerId)).catch(()=>[]),
   ]);
-  renderCustomerCards(store,customer,
-    cards.filter(row=>row.storeId===store.id&&row.customerAccountId===customer.customerAccountId),
-    orders.filter(row=>row.storeId===store.id&&row.customerAccountId===customer.customerAccountId),
-    promotions.filter(row=>row.storeId===store.id&&row.active!==false&&!promotionIsExpired(row)));
+  const myCards=cards.filter(row=>row.storeId===store.id&&row.customerAccountId===customer.customerAccountId);
+  const myOrders=orders.filter(row=>row.storeId===store.id&&row.customerAccountId===customer.customerAccountId);
+  const myPromotions=promotions.filter(row=>row.storeId===store.id&&row.active!==false&&!promotionIsExpired(row));
+  if($('.modal-backdrop')){customerRenderPending=true;return}
+  customerRenderPending=false;
+  renderCustomerCards(store,customer,myCards,myOrders,myPromotions);
 }
 let customerOrdersUnsubscribe=null,customerCardsUnsubscribe=null,customerPromotionsUnsubscribe=null;
 function startCustomerRealtime(store,customer){
+  activeCustomerContext={store,customer};
   if(!api?.subscribeKind)return;
   customerOrdersUnsubscribe?.();
-  customerOrdersUnsubscribe=api.subscribeKind(orderKind(store.ownerId),()=>{if(!$('.modal-backdrop'))loadAndRenderCustomerView(store,customer)});
+  customerOrdersUnsubscribe=api.subscribeKind(orderKind(store.ownerId),()=>loadAndRenderCustomerView(store,customer));
   customerCardsUnsubscribe?.();
-  customerCardsUnsubscribe=api.subscribeKind(cardKind(store.ownerId),()=>{if(!$('.modal-backdrop'))loadAndRenderCustomerView(store,customer)});
+  customerCardsUnsubscribe=api.subscribeKind(cardKind(store.ownerId),()=>loadAndRenderCustomerView(store,customer));
   customerPromotionsUnsubscribe?.();
-  customerPromotionsUnsubscribe=api.subscribeKind(promotionKind(store.ownerId),()=>{if(!$('.modal-backdrop'))loadAndRenderCustomerView(store,customer)});
+  customerPromotionsUnsubscribe=api.subscribeKind(promotionKind(store.ownerId),()=>loadAndRenderCustomerView(store,customer));
 }
-function stopCustomerRealtime(){customerOrdersUnsubscribe?.();customerCardsUnsubscribe?.();customerPromotionsUnsubscribe?.();customerOrdersUnsubscribe=customerCardsUnsubscribe=customerPromotionsUnsubscribe=null;stopPromotionAutoScroll();dueReminderRung.clear();pendingDueBeep=false}
+function stopCustomerRealtime(){customerOrdersUnsubscribe?.();customerCardsUnsubscribe?.();customerPromotionsUnsubscribe?.();customerOrdersUnsubscribe=customerCardsUnsubscribe=customerPromotionsUnsubscribe=null;stopPromotionAutoScroll();dueReminderRung.clear();pendingDueBeep=false;activeCustomerContext=null;customerRenderPending=false}
+// The Appwrite realtime WebSocket doesn't auto-reconnect after the app is
+// backgrounded (common on mobile/Android app resume) or the network drops.
+// Re-arm the subscriptions and force a fresh fetch whenever we come back.
+function resumeRealtimeConnections(){
+  if(session&&ownerOrdersUnsubscribe){
+    startOwnerRealtime();
+    refreshOwnerOrdersRealtime();
+    refreshOwnerCardsRealtime();
+    refreshOwnerPromotionsRealtime();
+  }
+  if(activeCustomerContext){
+    startCustomerRealtime(activeCustomerContext.store,activeCustomerContext.customer);
+    loadAndRenderCustomerView(activeCustomerContext.store,activeCustomerContext.customer);
+  }
+}
+window.addEventListener('online',resumeRealtimeConnections);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)resumeRealtimeConnections()});
 function renderCustomerAuth(store,ownerId,storeId){
   app.innerHTML=`<main class="public-store"><section class="store-hero"><span class="chip">${html(store.category||'Store')}</span>${store.highlightText?`<strong class="store-highlight-text">${html(store.highlightText)}</strong>`:''}<h1>${html(store.name)}</h1>${storeMinimum(store)?`<p class="store-minimum-order">Minimum new order ${money(storeMinimum(store))}</p>`:''}<p class="muted">${html(store.description||'')}${store.city?' · '+html(store.city):''}</p></section><div class="card"><div class="actions" style="margin-bottom:14px"><button class="btn small" id="custTabLogin">Sign in</button><button class="btn small secondary" id="custTabSignup">Sign up</button></div><form id="customerAuthForm"><div class="field full-name-field hidden"><label>Your name</label><input name="name"></div><div class="field"><label>Email</label><input name="email" type="email" required></div><div class="field"><label>Password</label><input name="password" type="password" minlength="8" required></div><button class="btn full" id="custAuthSubmit" type="submit">Sign In</button></form></div></main>${siteFooter()}`;
   bindAndroidAppFooter();
