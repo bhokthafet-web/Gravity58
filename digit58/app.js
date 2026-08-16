@@ -241,15 +241,18 @@ function playOwnerNotificationChime(){
     });
   }catch(error){console.warn('Chime unavailable',error)}
 }
+function ownerPortalIsActive(){return document.visibilityState==='visible'&&document.hasFocus()}
 function updateOrderAlertSound(){
   [...ringingIds].forEach(id=>{
     const stillRinging=state.orders.some(row=>row.id===id&&['Requested','Minimum Approval Requested'].includes(row.status))||state.cards.some(row=>row.id===id&&row.status==='Buy Requested');
     if(!stillRinging)ringingIds.delete(id);
   });
   if(!ringingIds.size){if(orderAlertTimer)clearInterval(orderAlertTimer);orderAlertTimer=null;return}
-  if(!orderAlertTimer){playOwnerNotificationChime();orderAlertTimer=setInterval(()=>playOwnerNotificationChime(),3500)}
+  if(!orderAlertTimer){
+    if(!ownerPortalIsActive())playOwnerNotificationChime();
+    orderAlertTimer=setInterval(()=>{if(ringingIds.size&&!ownerPortalIsActive())playOwnerNotificationChime()},3500);
+  }
 }
-document.addEventListener('pointerdown',()=>{if(ringingIds.size)playOwnerNotificationChime()},{passive:true});
 const dueReminderRung=new Set();
 let pendingDueBeep=false;
 function ringDueReminders(cards){
