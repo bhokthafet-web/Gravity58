@@ -379,13 +379,14 @@
     .pos-guide-check input{width:17px;height:17px;min-height:0;accent-color:var(--orange)}
     @media(max-width:620px){.pos-security-banner{grid-template-columns:auto 1fr}.pos-how-button{grid-column:1/-1;width:100%}.pos-guide-grid{grid-template-columns:1fr}}
 
+    :root{--receipt-page-width:80mm;--receipt-content-width:72mm;--receipt-font-size:11px;--receipt-qr-size:120px}
     @media print{
-      @page{size:80mm auto;margin:4mm}
+      @page{size:var(--receipt-page-width) auto;margin:4mm}
       body *{visibility:hidden!important}
       #printReceipt,#printReceipt *{visibility:visible!important}
       #printReceipt{
-        display:block!important;position:absolute;left:0;top:0;width:72mm;
-        color:#000;background:#fff;font-family:monospace;font-size:11px;line-height:1.35
+        display:block!important;position:absolute;left:0;top:0;width:var(--receipt-content-width);
+        color:#000;background:#fff;font-family:monospace;font-size:var(--receipt-font-size);line-height:1.35
       }
       .receipt-center{text-align:center}
       .receipt-title{font-size:18px;font-weight:900;margin:0}
@@ -397,7 +398,7 @@
       .receipt-note{font-size:10px;margin-top:1px}
       .receipt-total{font-size:15px;font-weight:900}
       .receipt-qr{display:flex;justify-content:center;margin:8px 0}
-      .receipt-qr img,.receipt-qr canvas{width:120px!important;height:120px!important}
+      .receipt-qr img,.receipt-qr canvas{width:var(--receipt-qr-size)!important;height:var(--receipt-qr-size)!important}
     }
 
 
@@ -545,6 +546,14 @@
                 <label for="customerName">Customer Name (optional)</label>
                 <input id="customerName" type="text" maxlength="40" placeholder="Example: Customer" />
               </div>
+            </div>
+
+            <div class="field">
+              <label for="paperWidth">Receipt Size (thermal printer paper width)</label>
+              <select id="paperWidth">
+                <option value="58">58mm (small thermal printers)</option>
+                <option value="80" selected>80mm (standard thermal printers)</option>
+              </select>
             </div>
           </div>
 
@@ -820,8 +829,21 @@
         brandName:"",
         contactNumber:"",
         cashierName:"",
-        customerName:""
+        customerName:"",
+        paperWidth:"80"
       };
+      const RECEIPT_WIDTHS={
+        "58":{page:"58mm",content:"48mm",font:"10px",qr:"96px"},
+        "80":{page:"80mm",content:"72mm",font:"11px",qr:"120px"}
+      };
+      function applyReceiptWidth(){
+        const size=RECEIPT_WIDTHS[settings.paperWidth]||RECEIPT_WIDTHS["80"];
+        const root=document.documentElement.style;
+        root.setProperty("--receipt-page-width",size.page);
+        root.setProperty("--receipt-content-width",size.content);
+        root.setProperty("--receipt-font-size",size.font);
+        root.setProperty("--receipt-qr-size",size.qr);
+      }
 
       const $ = id => document.getElementById(id);
 
@@ -1051,7 +1073,8 @@
           brandName,
           contactNumber,
           cashierName:$("cashierName").value.trim(),
-          customerName:$("customerName").value.trim()
+          customerName:$("customerName").value.trim(),
+          paperWidth:$("paperWidth").value==="58"?"58":"80"
         };
 
         localStorage.setItem("g58Settings",JSON.stringify(settings));
@@ -1284,9 +1307,11 @@
 
       function printBill(bill){
         if(!bill) return;
+        applyReceiptWidth();
+        const qrPixels=(RECEIPT_WIDTHS[settings.paperWidth]||RECEIPT_WIDTHS["80"]).qr.replace("px","");
         $("printReceipt").innerHTML=receiptHtml(bill);
         setTimeout(()=>{
-          renderQrForBill(bill,$("receiptQr"),120);
+          renderQrForBill(bill,$("receiptQr"),Number(qrPixels));
           setTimeout(()=>window.print(),250);
         },30);
       }
@@ -1390,6 +1415,7 @@
       }
 
       function printDailyReport(){
+        applyReceiptWidth();
         const report=getDailyReport();
         $("printReceipt").innerHTML=dailyReportPrintHtml(report);
         setTimeout(()=>window.print(),100);
@@ -1567,6 +1593,7 @@
           $("contactNumber").value=saved.contactNumber||"";
           $("cashierName").value=saved.cashierName||"";
           $("customerName").value=saved.customerName||"";
+          $("paperWidth").value=saved.paperWidth==="58"?"58":"80";
           $("gstField").classList.toggle("show",!!saved.gstEnabled);
           $("posFields").classList.toggle("show",!!saved.posEnabled);
           $("itemNoteInput").style.display=settings.notesEnabled?"block":"none";
@@ -1609,6 +1636,7 @@
         $("contactNumber").value=settings.contactNumber;
         $("cashierName").value=settings.cashierName;
         $("customerName").value=settings.customerName;
+        $("paperWidth").value=settings.paperWidth==="58"?"58":"80";
         $("gstField").classList.toggle("show",settings.gstEnabled);
         $("posFields").classList.toggle("show",settings.posEnabled);
         switchScreen($("setupScreen"));
