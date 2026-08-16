@@ -206,6 +206,25 @@ function playTelephoneRingBurst(){
     });
   }catch(error){console.warn('Ring unavailable',error)}
 }
+function playWarningSiren(){
+  try{
+    orderAlertContext||=new (window.AudioContext||window.webkitAudioContext)();
+    if(orderAlertContext.state==='suspended')orderAlertContext.resume();
+    const ctx=orderAlertContext,start=ctx.currentTime,duration=1.1;
+    const oscillator=ctx.createOscillator(),gain=ctx.createGain();
+    oscillator.type='sawtooth';
+    oscillator.frequency.setValueAtTime(500,start);
+    oscillator.frequency.linearRampToValueAtTime(900,start+.35);
+    oscillator.frequency.linearRampToValueAtTime(500,start+.7);
+    oscillator.frequency.linearRampToValueAtTime(900,start+duration);
+    gain.gain.setValueAtTime(.0001,start);
+    gain.gain.exponentialRampToValueAtTime(.3,start+.05);
+    gain.gain.setValueAtTime(.3,start+duration-.1);
+    gain.gain.exponentialRampToValueAtTime(.0001,start+duration);
+    oscillator.connect(gain);gain.connect(ctx.destination);
+    oscillator.start(start);oscillator.stop(start+duration+.02);
+  }catch(error){console.warn('Siren unavailable',error)}
+}
 function updateOrderAlertSound(){
   [...ringingIds].forEach(id=>{
     const stillRinging=state.orders.some(row=>row.id===id&&['Requested','Minimum Approval Requested'].includes(row.status))||state.cards.some(row=>row.id===id&&row.status==='Buy Requested');
@@ -224,9 +243,11 @@ function ringDueReminders(cards){
   if(newlyDue.length){orderAlertBeep(.22,660);pendingDueBeep=true}
 }
 document.addEventListener('pointerdown',()=>{if(pendingDueBeep){orderAlertBeep(.22,660);pendingDueBeep=false}},{passive:true});
+let pendingAlertReplay=null;
+document.addEventListener('pointerdown',()=>{if(pendingAlertReplay){const fn=pendingAlertReplay;pendingAlertReplay=null;fn()}},{passive:true});
 let incomingCallTimer=null;
-function playIncomingCallRing(){playTelephoneRingBurst();setTimeout(playTelephoneRingBurst,550)}
-function stopIncomingCallRing(){if(incomingCallTimer){clearInterval(incomingCallTimer);incomingCallTimer=null}$('.incoming-call-overlay')?.remove()}
+function playIncomingCallRing(){playTelephoneRingBurst();setTimeout(playTelephoneRingBurst,550);pendingAlertReplay=playTelephoneRingBurst}
+function stopIncomingCallRing(){if(incomingCallTimer){clearInterval(incomingCallTimer);incomingCallTimer=null}$('.incoming-call-overlay')?.remove();pendingAlertReplay=null}
 function showIncomingOrderCall(store,customer,message,{title='Order placed!',hint='Tap to view your order'}={}){
   stopIncomingCallRing();
   const wrap=document.createElement('div');
@@ -264,15 +285,21 @@ function startMedicineAlarmTimer(store,customer){
   medicineAlarmTimer=setInterval(()=>checkMedicineAlarms(store,customer),20000);
 }
 function stopMedicineAlarmTimer(){if(medicineAlarmTimer){clearInterval(medicineAlarmTimer);medicineAlarmTimer=null}}
+function isWithinAlarmWindow(scheduledTime,nowTime,windowMinutes=5){
+  const [sh,sm]=scheduledTime.split(':').map(Number),[nh,nm]=nowTime.split(':').map(Number);
+  if([sh,sm,nh,nm].some(Number.isNaN))return false;
+  const scheduledMinutes=sh*60+sm,nowMinutes=nh*60+nm;
+  return nowMinutes>=scheduledMinutes&&nowMinutes<scheduledMinutes+windowMinutes;
+}
 function checkMedicineAlarms(store,customer){
-  if($('.incoming-call-overlay'))return;
+  if($('.incoming-call-overlay')||$('.modal-backdrop'))return;
   const nowTime=indiaTimeValue();
   for(const course of customerCoursesCache){
     for(const medicine of course.medicines||[]){
       if(isMedicineComplete(medicine))continue;
       const key=medicineAlarmKey(medicine.id);
       if(medicineAlarmRung.has(key))continue;
-      if(medicine.time&&medicine.time<=nowTime){
+      if(medicine.time&&isWithinAlarmWindow(medicine.time,nowTime)){
         medicineAlarmRung.add(key);
         showMedicineAlarm(store,customer,course,medicine);
         return;
@@ -1236,13 +1263,14 @@ function rejectedOrderSeenKey(order,customer){return `g58-rejected-order:${custo
 function rejectionWasSeen(order,customer){try{return localStorage.getItem(rejectedOrderSeenKey(order,customer))==='1'}catch{return false}}
 function markRejectionSeen(order,customer){try{localStorage.setItem(rejectedOrderSeenKey(order,customer),'1')}catch{}}
 function showNextRejectedOrder(orders,store,customer,promotions=[]){
-  if($('.modal-backdrop'))return;
+  if($('.modal-backdrop')||$('.incoming-call-overlay'))return;
   const order=[...orders].filter(row=>row.status==='Rejected'&&!rejectionWasSeen(row,customer)&&!shownRejectedOrderIds.has(row.id)).sort((a,b)=>new Date(b.rejectedAt||b.updatedAt||0)-new Date(a.rejectedAt||a.updatedAt||0))[0];
   if(!order)return;shownRejectedOrderIds.add(order.id);
+  playWarningSiren();pendingAlertReplay=playWarningSiren;
   const reason=order.rejectionReason||'The store could not process this order. Contact the store if you need more information.';
   const storePhone=String(store.phone||'').replace(/[^\d+]/g,'');
   modal('Order Rejected',`<div class="rejection-popup"><span class="rejection-popup-icon" aria-hidden="true">!</span><p>Your order from <strong>${html(store.name)}</strong> was rejected.</p><div class="rejection-reason"><small>Reason</small><strong>${html(reason)}</strong></div><p class="muted">Order #${html(order.id.slice(-6).toUpperCase())}</p><div class="rejection-next-actions"><button class="btn full" id="reviseRejectedOrder" type="button">Revise &amp; Resubmit</button><button class="btn full secondary" id="viewRejectedHistory" type="button">View Order History</button>${storePhone?`<a class="btn full secondary" id="callRejectedStore" href="tel:${html(storePhone)}">Call ${html(store.name)}</a>`:''}<button class="rejection-dismiss" id="dismissRejectedOrder" type="button">Close</button></div></div>`,()=>{
-    const acknowledge=()=>{markRejectionSeen(order,customer);closeModal()};
+    const acknowledge=()=>{markRejectionSeen(order,customer);pendingAlertReplay=null;closeModal()};
     $('#reviseRejectedOrder').onclick=()=>{acknowledge();openPlaceOrderModal(store,customer,promotions,order)};
     $('#viewRejectedHistory').onclick=()=>{acknowledge();setTimeout(()=>$('#customerOrderHistory')?.scrollIntoView({behavior:'smooth',block:'start'}),0)};
     $('#callRejectedStore')?.addEventListener('click',()=>markRejectionSeen(order,customer));
