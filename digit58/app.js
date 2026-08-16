@@ -151,6 +151,15 @@ function updateOrderAlertSound(){
   if(!orderAlertTimer){orderAlertBeep();orderAlertTimer=setInterval(()=>orderAlertBeep(),2200)}
 }
 document.addEventListener('pointerdown',()=>{if(ringingIds.size)orderAlertBeep()},{passive:true});
+const dueReminderRung=new Set();
+let pendingDueBeep=false;
+function ringDueReminders(cards){
+  const dueIds=cards.filter(isCardDue).map(card=>card.id);
+  const newlyDue=dueIds.filter(id=>!dueReminderRung.has(id));
+  dueIds.forEach(id=>dueReminderRung.add(id));
+  if(newlyDue.length){orderAlertBeep(.22,660);pendingDueBeep=true}
+}
+document.addEventListener('pointerdown',()=>{if(pendingDueBeep){orderAlertBeep(.22,660);pendingDueBeep=false}},{passive:true});
 let motionRequested=false;
 function triggerVialShake(){$$('.vial-liquid').forEach(node=>{node.classList.remove('slosh');void node.offsetWidth;node.classList.add('slosh')})}
 function attachShakeListener(){
@@ -970,7 +979,7 @@ function startCustomerRealtime(store,customer){
   customerPromotionsUnsubscribe?.();
   customerPromotionsUnsubscribe=api.subscribeKind(promotionKind(store.ownerId),()=>{if(!$('.modal-backdrop'))loadAndRenderCustomerView(store,customer)});
 }
-function stopCustomerRealtime(){customerOrdersUnsubscribe?.();customerCardsUnsubscribe?.();customerPromotionsUnsubscribe?.();customerOrdersUnsubscribe=customerCardsUnsubscribe=customerPromotionsUnsubscribe=null;stopPromotionAutoScroll()}
+function stopCustomerRealtime(){customerOrdersUnsubscribe?.();customerCardsUnsubscribe?.();customerPromotionsUnsubscribe?.();customerOrdersUnsubscribe=customerCardsUnsubscribe=customerPromotionsUnsubscribe=null;stopPromotionAutoScroll();dueReminderRung.clear();pendingDueBeep=false}
 function renderCustomerAuth(store,ownerId,storeId){
   app.innerHTML=`<main class="public-store"><section class="store-hero"><span class="chip">${html(store.category||'Store')}</span>${store.highlightText?`<strong class="store-highlight-text">${html(store.highlightText)}</strong>`:''}<h1>${html(store.name)}</h1>${storeMinimum(store)?`<p class="store-minimum-order">Minimum new order ${money(storeMinimum(store))}</p>`:''}<p class="muted">${html(store.description||'')}${store.city?' · '+html(store.city):''}</p></section><div class="card"><div class="actions" style="margin-bottom:14px"><button class="btn small" id="custTabLogin">Sign in</button><button class="btn small secondary" id="custTabSignup">Sign up</button></div><form id="customerAuthForm"><div class="field full-name-field hidden"><label>Your name</label><input name="name"></div><div class="field"><label>Email</label><input name="email" type="email" required></div><div class="field"><label>Password</label><input name="password" type="password" minlength="8" required></div><button class="btn full" id="custAuthSubmit" type="submit">Sign In</button></form></div></main>${siteFooter()}`;
   bindAndroidAppFooter();
@@ -1055,6 +1064,7 @@ function bindCustomerPromotionActions(promotions){
 }
 function renderCustomerCards(store,customer,cards,orders=[],promotions=[]){
   if(activePromotionStoreId!==store.id){activePromotionStoreId=store.id;customerPromotionQuantities.clear()}
+  ringDueReminders(cards);
   const active=activeOrders(orders).sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
   const history=orderHistoryOrders(orders).sort((a,b)=>new Date(b.updatedAt||b.createdAt)-new Date(a.updatedAt||a.createdAt));
   const today=indiaDateValue(),historyFrom=$('#customerHistoryFrom')?.value||today,historyTo=$('#customerHistoryTo')?.value||today;
@@ -1117,7 +1127,7 @@ function customerCardCardMarkup(card){
   }else{
     payBlock=`<button class="btn full green refill-card-action" data-buy-again="${html(card.id)}">Refill</button><p class="muted refill-card-note">Refill anytime — the store will review the request and start a new order.</p>`;
   }
-  return `<article class="card reminder-card premium-card vial-card ${due?'due':''}"><div class="vial-card-body"><div class="vial-card-info"><h3>${html(card.productName)}</h3><p class="muted">${money(card.price)} · every ${Number(card.reminderDays)} day(s)</p><div class="chips"><span class="chip ${due?'due':''}">${due?'Due now':`${remaining} day(s) left`}</span>${refillPending?'<span class="chip due">Refill order sent</span>':''}</div></div>${vialMarkup(card)}</div>${payBlock}${cardChatMarkup(card,'customer')}</article>`;
+  return `<article class="card reminder-card premium-card vial-card ${due?'due':''}">${due?'<span class="reminder-due-bell" aria-label="Reminder due" title="Reminder due"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg></span>':''}<div class="vial-card-body"><div class="vial-card-info"><h3>${html(card.productName)}</h3><p class="muted">${money(card.price)} · every ${Number(card.reminderDays)} day(s)</p><div class="chips"><span class="chip ${due?'due':''}">${due?'Due now':`${remaining} day(s) left`}</span>${refillPending?'<span class="chip due">Refill order sent</span>':''}</div></div>${vialMarkup(card)}</div>${payBlock}${cardChatMarkup(card,'customer')}</article>`;
 }
 function openBuyAgainModal(cardId,store,customer,productName){
   let capturedLocation=null;
