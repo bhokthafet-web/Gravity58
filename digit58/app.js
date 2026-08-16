@@ -422,6 +422,18 @@ function activeOrders(orders){return orders.filter(row=>!['Delivered','Rejected'
 function orderHistoryOrders(orders){return orders.filter(row=>['Delivered','Rejected'].includes(row.status))}
 
 function isRefillsCustomerApp(){return navigator.userAgent.includes('G58RefillsAndroidApp')}
+async function resumeLastCustomerStore(){
+  const account=await api.currentUser().catch(()=>null);
+  if(!account)return false;
+  try{
+    const result=await api.executeFunction(api.config.digitalOrderFunctionId,{action:'digit58-list-customer-stores'});
+    const stores=result?.stores||[];
+    if(!stores.length)return false;
+    const mostRecent=[...stores].sort((a,b)=>new Date(b.lastLoginAt||0)-new Date(a.lastLoginAt||0))[0];
+    location.hash=`store&owner=${encodeURIComponent(mostRecent.ownerId)}&store=${encodeURIComponent(mostRecent.storeId)}`;
+    return true;
+  }catch{return false}
+}
 function renderCustomerPortalLanding(){
   app.innerHTML=`<main class="screen"><section class="auth-card">
     <a class="brand" href="../"><svg class="brand-mark" viewBox="0 0 120 120" fill="none" stroke="#7fffd4" stroke-width="8" aria-hidden="true"><circle cx="60" cy="26" r="15"/><circle cx="28" cy="82" r="15"/><circle cx="92" cy="82" r="15"/></svg><div><h2>G58 Refills</h2><p class="tagline">Your orders and reminder cards, from the stores you shop with.</p></div></a>
@@ -434,7 +446,10 @@ async function boot(){
   captureRazorpaySuccessfulReturn();
   const hash=new URLSearchParams(location.hash.replace(/^#store&?/,''));
   if(location.hash.startsWith('#store&'))return renderPublicStore(hash);
-  if(isRefillsCustomerApp())return renderCustomerPortalLanding();
+  if(isRefillsCustomerApp()){
+    if(await resumeLastCustomerStore())return boot();
+    return renderCustomerPortalLanding();
+  }
   session=await api.currentUser().catch(()=>null);
   if(!session)return renderOwnerAuth();
   await loadEntitlement();
