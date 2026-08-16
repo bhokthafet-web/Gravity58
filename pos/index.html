@@ -12,6 +12,7 @@
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 
   <style>
     :root{
@@ -759,6 +760,7 @@
         <div class="modal-actions" id="activeActions">
           <button class="btn btn-outline" id="copyLinkBtn">Copy UPI Link</button>
           <button class="btn btn-success" id="printBtn" style="display:none">Print Receipt</button>
+          <button class="btn btn-outline" id="shareReceiptBtn" style="display:none">Share to Printer App</button>
           <button type="button" class="btn btn-success" id="paymentReceivedBtn">Payment Received</button>
           <button type="button" class="btn btn-danger" id="paymentCancelledBtn">Cancelled</button>
         </div>
@@ -780,6 +782,7 @@
       <div id="historyQr"></div>
       <div class="modal-actions">
         <button class="btn btn-success" id="historyPrintBtn">Print Receipt</button>
+        <button class="btn btn-outline" id="historyShareReceiptBtn">Share to Printer App</button>
         <button class="btn btn-dark" id="historyCloseBtn">Close</button>
       </div>
     </div>
@@ -1161,6 +1164,7 @@
         $("qrPayee").textContent=`Pay to ${bill.upiId} · ${bill.billNumber}`;
         renderQrForBill(bill,$("qrcode"));
         $("printBtn").style.display=settings.posEnabled?"block":"none";
+        $("shareReceiptBtn").style.display=settings.posEnabled?"block":"none";
         $("qrModal").classList.add("show");
         startTimer();
         showToast("UPI QR generated");
@@ -1314,6 +1318,45 @@
           renderQrForBill(bill,$("receiptQr"),Number(qrPixels));
           setTimeout(()=>window.print(),250);
         },30);
+      }
+
+      const RECEIPT_IMAGE_WIDTHS={"58":384,"80":576};
+      async function shareReceiptImage(bill){
+        if(!bill) return;
+        if(typeof html2canvas!=="function"){
+          showToast("Receipt image sharing isn't available right now");
+          return;
+        }
+        const pixelWidth=RECEIPT_IMAGE_WIDTHS[settings.paperWidth]||RECEIPT_IMAGE_WIDTHS["80"];
+        const node=$("printReceipt");
+        const originalCssText=node.style.cssText;
+        node.innerHTML=receiptHtml(bill);
+        node.style.cssText=`display:block;position:fixed;left:-9999px;top:0;width:${pixelWidth}px;background:#fff;color:#000;font-family:monospace;font-size:${Math.round(pixelWidth/28)}px;line-height:1.35;padding:12px`;
+        renderQrForBill(bill,$("receiptQr"),Math.round(pixelWidth*0.35));
+        await new Promise(resolve=>setTimeout(resolve,260));
+        try{
+          const canvas=await html2canvas(node,{backgroundColor:"#ffffff",scale:2});
+          node.style.cssText=originalCssText;
+          const blob=await new Promise(resolve=>canvas.toBlob(resolve,"image/png"));
+          if(!blob) throw new Error("Could not generate the receipt image");
+          const filename=`${bill.billNumber}-receipt.png`;
+          const file=new File([blob],filename,{type:"image/png"});
+          if(navigator.share&&navigator.canShare&&navigator.canShare({files:[file]})){
+            await navigator.share({title:"Receipt",files:[file]});
+            showToast("Receipt shared");
+            return;
+          }
+          const url=URL.createObjectURL(blob);
+          const link=document.createElement("a");
+          link.href=url;link.download=filename;
+          document.body.appendChild(link);link.click();link.remove();
+          setTimeout(()=>URL.revokeObjectURL(url),4000);
+          showToast("Receipt image downloaded — open it and share to your printer app");
+        }catch(error){
+          node.style.cssText=originalCssText;
+          if(error&&error.name==="AbortError") return;
+          showToast("Could not generate the receipt image");
+        }
       }
 
 
@@ -1619,6 +1662,7 @@
       $("generateBtn").addEventListener("click",openQrPopup);
       $("copyLinkBtn").addEventListener("click",copyUpiLink);
       $("printBtn").addEventListener("click",()=>printBill(currentBill));
+      $("shareReceiptBtn").addEventListener("click",()=>shareReceiptImage(currentBill));
       $("showExistingBtn").addEventListener("click",showExistingQr);
       $("paymentReceivedBtn").addEventListener("click",()=>settleCurrentBill("received"));
       $("expiredReceivedBtn").addEventListener("click",()=>settleCurrentBill("received"));
@@ -1644,6 +1688,7 @@
 
       $("historyCloseBtn").addEventListener("click",()=>$("historyModal").classList.remove("show"));
       $("historyPrintBtn").addEventListener("click",()=>printBill(selectedHistoryBill));
+      $("historyShareReceiptBtn").addEventListener("click",()=>shareReceiptImage(selectedHistoryBill));
 
 
       $("reportDate").addEventListener("change",renderDailyReport);
