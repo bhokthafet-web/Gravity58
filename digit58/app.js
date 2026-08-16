@@ -365,8 +365,9 @@ function isRefillsCustomerApp(){return navigator.userAgent.includes('G58RefillsA
 function renderCustomerPortalLanding(){
   app.innerHTML=`<main class="screen"><section class="auth-card">
     <a class="brand" href="../"><svg class="brand-mark" viewBox="0 0 120 120" fill="none" stroke="#7fffd4" stroke-width="8" aria-hidden="true"><circle cx="60" cy="26" r="15"/><circle cx="28" cy="82" r="15"/><circle cx="92" cy="82" r="15"/></svg><div><h2>G58 Refills</h2><p class="tagline">Your orders and reminder cards, from the stores you shop with.</p></div></a>
-    <div class="card"><p class="muted">Open the link your store shared with you — by WhatsApp message or QR code — to sign in and see your orders and reminders here.</p></div>
+    <div class="card"><p class="muted">Open the link your store shared with you — by WhatsApp message or QR code — to sign in and see your orders and reminders here.</p><button class="btn full" id="pasteStoreLinkBtn" style="margin-top:12px">Paste Store Link</button></div>
   </section></main>${siteFooter(true)}`;
+  $('#pasteStoreLinkBtn').onclick=()=>openPasteStoreLinkPrompt();
 }
 async function boot(){
   if(!api?.configured)return renderConfigError();
@@ -474,9 +475,10 @@ function renderOwnerAuth(){
       <div class="field"><label>Password</label><input name="password" type="password" minlength="8" required></div>
       <button class="btn full" id="ownerAuthSubmit" type="submit">Sign In</button>
     </form>
-    <p class="muted" style="text-align:center;margin-top:14px">Are you a customer? Use the link your store shared with you.</p>
+    <p class="muted" style="text-align:center;margin-top:14px">Are you a customer? Use the link your store shared with you, or <a href="#" id="customerPasteLinkLink">paste your store link</a>.</p>
   </section></main>${siteFooter()}`;
   (typeof bindAndroidAppFooter==='function'&&bindAndroidAppFooter());
+  $('#customerPasteLinkLink').onclick=event=>{event.preventDefault();openPasteStoreLinkPrompt()};
   let mode='login';
   const syncMode=()=>{$('.full-name-field').classList.toggle('hidden',mode!=='signup');$('#ownerAuthSubmit').textContent=mode==='signup'?'Create Account':'Sign In';$('#tabLogin').className=mode==='login'?'btn small':'btn small secondary';$('#tabSignup').className=mode==='signup'?'btn small':'btn small secondary'};
   $('#tabLogin').onclick=()=>{mode='login';syncMode()};
@@ -521,7 +523,7 @@ function bindFloatingSupportButton(){
 }
 function siteFooter(forCustomer){
   const badge=forCustomer
-    ? `<a class="g58-app-badge" href="/downloads/GRAVITY58-Refills-Android-v1.3.apk" download aria-label="Download the G58 Refills Android app"><span class="g58-app-badge-icon">▶</span><span class="g58-app-badge-text"><small>Never miss a refill</small><strong>Get the G58 Refills App</strong></span></a>`
+    ? `<a class="g58-app-badge" href="/downloads/Refills_Customer.apk" download aria-label="Download the G58 Refills Android app"><span class="g58-app-badge-icon">▶</span><span class="g58-app-badge-text"><small>Never miss a refill</small><strong>Get the G58 Refills App</strong></span></a>`
     : `<a class="g58-app-badge" href="/downloads/GRAVITY58-Android-v1.3.apk" download aria-label="Download the Gravity58 Android app"><span class="g58-app-badge-icon">▶</span><span class="g58-app-badge-text"><small>Download Android</small><strong>Get G58 App</strong></span></a>`;
   return `<footer class="g58-site-footer"><div class="g58-site-footer-badge">${badge}</div><p class="g58-site-footer-note">© ${new Date().getFullYear()} Gravity58 · Refills</p></footer>`;
 }
@@ -651,6 +653,29 @@ function storeCard(store){
   return `<article class="card"><h3>${html(store.name)}</h3>${storeMinimum(store)?`<p class="store-minimum-order">Minimum new order ${money(storeMinimum(store))}</p>`:''}<p class="muted">${html(store.category)}${store.city?' · '+html(store.city):''}</p>${store.highlightText?`<p class="store-highlight-text">${html(store.highlightText)}</p>`:''}<p>${html(store.description||'')}</p><div class="chips"><span class="chip">${ownerCustomers(store.id).length} customers</span>${store.razorpayEnabled&&validRazorpayLink(store.razorpayLink)?'<span class="chip delivered">Razorpay enabled</span>':''}${store.suspended?'<span class="chip due">Paused by G58 admin</span>':''}</div><div class="actions"><button class="btn small" data-share-store="${html(store.id)}">Share Link / QR</button><button class="btn small secondary" data-edit-store="${html(store.id)}">Edit</button></div></article>`;
 }
 function publicStoreLink(store){return `${location.origin}${location.pathname.replace(/index\.html$/,'')}#store&owner=${encodeURIComponent(store.ownerId)}&store=${encodeURIComponent(store.id)}`}
+function parseStoreLinkHash(input){
+  const text=String(input||'').trim();
+  if(!text)return null;
+  const hashIndex=text.indexOf('#store&');
+  const hashPart=hashIndex>=0?text.slice(hashIndex+1):(text.startsWith('store&')?text:'');
+  if(!hashPart)return null;
+  const params=new URLSearchParams(hashPart.replace(/^store&?/,''));
+  const owner=params.get('owner'),store=params.get('store');
+  if(!owner||!store)return null;
+  return `store&owner=${encodeURIComponent(owner)}&store=${encodeURIComponent(store)}`;
+}
+function openPasteStoreLinkPrompt(){
+  modal('Open Your Store',`<form id="pasteStoreLinkForm"><p class="muted">Paste the link your store shared with you.</p><div class="field"><label>Store link</label><input name="storeLink" placeholder="https://g58.in/digit58/#store&owner=...&store=..." required></div><button class="btn full" type="submit" style="margin-top:10px">Continue</button></form>`,()=>{
+    $('#pasteStoreLinkForm').onsubmit=event=>{
+      event.preventDefault();
+      const hash=parseStoreLinkHash($('input[name="storeLink"]',event.target).value);
+      if(!hash)return toast("That doesn't look like a valid store link");
+      closeModal();
+      location.hash=hash;
+      boot();
+    };
+  });
+}
 function openStoreForm(storeId=''){
   const store=state.stores.find(row=>row.id===storeId)||{};
   const minimumEnabled=store.minimumOrderEnabled===true||(store.minimumOrderEnabled!==false&&configuredStoreMinimum(store)>0);
@@ -750,7 +775,8 @@ async function deletePromotion(promotionId){
 function shareStoreModal(storeId){
   const store=state.stores.find(row=>row.id===storeId);if(!store)return;
   const link=publicStoreLink(store);
-  modal('Share With Customers',`<p class="muted">Customers open this link, sign up, and see their reminder cards.</p><div class="field"><label>Customer link</label><input id="storeLinkOutput" readonly value="${html(link)}"></div><div class="actions"><button class="btn small green" id="copyStoreLink">Copy Link</button></div><div class="qr-wrap" id="storeQr" style="margin-top:16px"></div>`,()=>{
+  const whatsappText=encodeURIComponent(`Order your refills from ${store.name} here: ${link}`);
+  modal('Share With Customers',`<p class="muted">Customers open this link, sign up, and see their reminder cards.</p><div class="field"><label>Customer link</label><input id="storeLinkOutput" readonly value="${html(link)}"></div><div class="actions"><button class="btn small green" id="copyStoreLink">Copy Link</button><a class="btn small" href="https://wa.me/?text=${whatsappText}" target="_blank" rel="noopener noreferrer">Share via WhatsApp</a></div><div class="qr-wrap" id="storeQr" style="margin-top:16px"></div>`,()=>{
     $('#copyStoreLink').onclick=async()=>{try{await navigator.clipboard.writeText(link);toast('Link copied')}catch{toast('Could not copy link')}};
     if(window.QRCode)new QRCode($('#storeQr'),{text:link,width:180,height:180});
   });
@@ -1269,7 +1295,7 @@ function renderCustomerCards(store,customer,cards,orders=[],promotions=[],course
   ${promotions.length?`<section class="promotion-strip"><div class="promotion-strip-head"><div><span>Store offers</span><h2>Fresh deals for your next order</h2></div><small>Tap Buy to include an offer</small></div><div class="promotion-rail" id="promotionRail"><div class="promotion-track"><div class="promotion-sequence">${marqueePromotions.map((promotion,index)=>customerPromotionTicket(promotion,index>=promotions.length)).join('')}</div><div class="promotion-sequence" aria-hidden="true">${marqueePromotions.map(promotion=>customerPromotionTicket(promotion,true)).join('')}</div></div></div></section>`:''}
   <div class="section-head"><div><h2>Your orders</h2>${storeMinimum(store)?`<p class="muted">New orders must be at least ${money(storeMinimum(store))}. Refills and Reorders are exempt.</p>`:''}</div><button class="btn small" id="placeOrderBtn">+ Place New Order</button></div>
   <div class="grid card-grid">${active.map(order=>customerOrderMarkup(order,store)).join('')||'<div class="empty">No active orders. Place a new order to get started.</div>'}</div>
-  ${cards.length&&!navigator.userAgent.includes('G58RefillsAndroidApp')?`<a class="g58-app-badge refills-app-promo" href="/downloads/GRAVITY58-Refills-Android-v1.3.apk" download aria-label="Download the G58 Refills Android app"><span class="g58-app-badge-icon">▶</span><span class="g58-app-badge-text"><small>Never miss a refill</small><strong>Get the G58 Refills App</strong></span></a>`:''}
+  ${cards.length&&!navigator.userAgent.includes('G58RefillsAndroidApp')?`<a class="g58-app-badge refills-app-promo" href="/downloads/Refills_Customer.apk" download aria-label="Download the G58 Refills Android app"><span class="g58-app-badge-icon">▶</span><span class="g58-app-badge-text"><small>Never miss a refill</small><strong>Get the G58 Refills App</strong></span></a>`:''}
   <div class="section-head reminder-section-head"><div><h2>Your reminder cards</h2>${cards.length>1?'<p class="muted">Swipe to see the next card or switch to list view.</p>':''}</div>${cards.length>1?`<div class="reminder-view-toggle" role="group" aria-label="Reminder card view"><button type="button" class="${customerReminderView==='swipe'?'active':''}" data-reminder-view="swipe" aria-pressed="${customerReminderView==='swipe'}">Swipe</button><button type="button" class="${customerReminderView==='list'?'active':''}" data-reminder-view="list" aria-pressed="${customerReminderView==='list'}">List</button></div>`:''}</div>
   <div class="customer-reminder-view reminder-view-${customerReminderView}" id="customerCardGrid">${cards.map(customerCardCardMarkup).join('')||'<div class="empty">Your store will add reminder cards here after your first purchase.</div>'}</div>
   ${medical?`<div class="section-head"><div><h2>Medicine Courses</h2><p class="muted">Set patient, medicine, time and days from your prescription — you'll get a daily alarm.</p></div><button class="btn small" id="newCourseBtn">+ New Course</button></div><div class="grid card-grid">${activeCourseList.map(courseMarkup).join('')||'<div class="empty">No active medicine courses yet.</div>'}</div>${completedCourseList.length?`<section class="order-history-section" id="courseHistorySection"><div class="section-head"><div><h2>Course History</h2><p class="muted">Latest course per patient is shown by default. Pick dates to see more.</p></div></div><div class="date-filter-bar"><label>From<input id="courseHistoryFrom" type="date" value="${html(courseHistoryFrom)}"></label><label>To<input id="courseHistoryTo" type="date" value="${html(courseHistoryTo)}"></label><button class="btn small secondary" id="courseHistoryClear" type="button">Show Latest</button></div><div class="card table-wrap"><table><thead><tr><th>Patient</th><th>Medicines</th><th>Completed</th></tr></thead><tbody>${courseHistoryFiltered.map(courseHistoryRow).join('')||'<tr><td colspan="3">No courses in this period.</td></tr>'}</tbody></table></div></section>`:''}`:''}
