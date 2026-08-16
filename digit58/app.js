@@ -163,11 +163,11 @@ document.addEventListener('pointerdown',()=>{if(pendingDueBeep){orderAlertBeep(.
 let incomingCallTimer=null;
 function playIncomingCallRing(){orderAlertBeep(.16,700);setTimeout(()=>orderAlertBeep(.16,700),230)}
 function stopIncomingCallRing(){if(incomingCallTimer){clearInterval(incomingCallTimer);incomingCallTimer=null}$('.incoming-call-overlay')?.remove()}
-function showIncomingOrderCall(store,customer,message){
+function showIncomingOrderCall(store,customer,message,{title='Order placed!',hint='Tap to view your order'}={}){
   stopIncomingCallRing();
   const wrap=document.createElement('div');
   wrap.className='incoming-call-overlay';
-  wrap.innerHTML=`<div class="incoming-call-card"><div class="incoming-call-rings"><span></span><span></span><span></span><div class="incoming-call-avatar"><svg viewBox="0 0 120 120" fill="none" stroke="#7fffd4" stroke-width="8" aria-hidden="true"><circle cx="60" cy="26" r="15"/><circle cx="28" cy="82" r="15"/><circle cx="92" cy="82" r="15"/></svg></div></div><h2>Order placed!</h2><p class="muted">${html(store.name)}</p><button type="button" class="incoming-call-accept-btn" aria-label="Accept"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M6.6 10.8c1.5 3 3.9 5.4 6.9 6.9l2.3-2.3c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.5.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1C10.6 21 3 13.4 3 4c0-.6.4-1 1-1h3.2c.6 0 1 .4 1 1 0 1.2.2 2.4.6 3.5.1.4 0 .8-.2 1L6.6 10.8z"/></svg></button><p class="incoming-call-hint">Tap to view your order</p></div>`;
+  wrap.innerHTML=`<div class="incoming-call-card"><div class="incoming-call-rings"><span></span><span></span><span></span><div class="incoming-call-avatar"><svg viewBox="0 0 120 120" fill="none" stroke="#7fffd4" stroke-width="8" aria-hidden="true"><circle cx="60" cy="26" r="15"/><circle cx="28" cy="82" r="15"/><circle cx="92" cy="82" r="15"/></svg></div></div><h2>${html(title)}</h2><p class="muted">${html(store.name)}</p><button type="button" class="incoming-call-accept-btn" aria-label="Accept"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M6.6 10.8c1.5 3 3.9 5.4 6.9 6.9l2.3-2.3c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.5.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1C10.6 21 3 13.4 3 4c0-.6.4-1 1-1h3.2c.6 0 1 .4 1 1 0 1.2.2 2.4.6 3.5.1.4 0 .8-.2 1L6.6 10.8z"/></svg></button><p class="incoming-call-hint">${html(hint)}</p></div>`;
   document.body.appendChild(wrap);
   playIncomingCallRing();
   incomingCallTimer=setInterval(playIncomingCallRing,1900);
@@ -176,6 +176,20 @@ function showIncomingOrderCall(store,customer,message){
     if(message)toast(message);
     loadAndRenderCustomerView(store,customer);
   };
+}
+const pendingOwnerOrderRung=new Set();
+function ringPendingOwnerOrders(store,customer,orders){
+  const pending=orders.filter(row=>row.status==='Pending Customer Acceptance');
+  const unrung=pending.filter(row=>!pendingOwnerOrderRung.has(row.id));
+  pending.forEach(row=>pendingOwnerOrderRung.add(row.id));
+  if(unrung.length)showIncomingOrderCall(store,customer,'New order from the store — review and accept it below',{title:'Incoming order!',hint:'Tap to review'});
+}
+async function acceptOwnerOrder(store,customer,orderId){
+  try{
+    await api.executeFunction(api.config.digitalOrderFunctionId,{action:'digit58-accept-owner-order',ownerId:store.ownerId,orderId});
+    toast('Order accepted — the store will now review and set the amount');
+    await loadAndRenderCustomerView(store,customer);
+  }catch(error){toast(error.message||'Could not accept the order')}
 }
 let motionRequested=false;
 function triggerVialShake(){$$('.vial-liquid').forEach(node=>{node.classList.remove('slosh');void node.offsetWidth;node.classList.add('slosh')})}
@@ -689,12 +703,13 @@ function customerDetailView(customerId){
   const customer=state.customers.find(row=>row.id===customerId);if(!customer)return;
   const cards=customerCards(customer.customerAccountId,customer.storeId);
   const orders=activeOrders(customerOrders(customer.customerAccountId,customer.storeId)).sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
-  $('#page').innerHTML=`<div class="section-head"><div><h1>${html(customer.customerName||'Customer')}</h1><p class="muted">${html(customer.customerEmail||'')}</p></div><div class="actions"><button class="btn secondary" id="backToWall">← Back</button><button class="btn" id="addCard">+ Add Reminder Card</button></div></div>
+  $('#page').innerHTML=`<div class="section-head"><div><h1>${html(customer.customerName||'Customer')}</h1><p class="muted">${html(customer.customerEmail||'')}</p></div><div class="actions"><button class="btn secondary" id="backToWall">← Back</button><button class="btn secondary" id="addOwnerOrder">+ Create Order</button><button class="btn" id="addCard">+ Add Reminder Card</button></div></div>
   <div class="section-head"><h2>Orders</h2></div>
   <div class="grid card-grid">${orders.map(order=>ownerOrderMarkup(order)).join('')||'<div class="empty">No active orders from this customer.</div>'}</div>
   <div class="section-head"><h2>Reminder Cards</h2></div>
   <div class="grid card-grid">${cards.map(ownerCardMarkup).join('')||'<div class="empty">No cards yet for this customer.</div>'}</div>`;
   $('#backToWall').onclick=()=>{view='wall';renderShell()};
+  $('#addOwnerOrder').onclick=()=>openOwnerOrderForm(customer);
   $('#addCard').onclick=()=>openCardForm(customer);
   bindOwnerCardActions();
   bindOwnerOrderActions();
@@ -704,6 +719,7 @@ function customerDetailView(customerId){
   bindDeliveryShareButtons(cards);
 }
 const BIG_STATUS_SUB={
+  'Pending Customer Acceptance':'The store started this order for you — accept it below to continue',
   'Minimum Approval Requested':'Waiting for the store to approve this below-minimum order',
   Requested:'Your order has been received by the store',
   Priced:'Review the amount below and pay to continue',
@@ -725,6 +741,7 @@ function bigStatusMarkup(status){
 function orderStepperMarkup(status){
   if(status==='Rejected')return `<div class="order-stepper"><div class="order-step current"><span class="order-step-icon">🚫</span><small>Rejected</small></div></div>`;
   if(status==='Minimum Approval Requested')return `<div class="order-stepper"><div class="order-step current"><span class="order-step-icon">⏳</span><small>Owner approval</small></div></div>`;
+  if(status==='Pending Customer Acceptance')return `<div class="order-stepper"><div class="order-step current"><span class="order-step-icon">📞</span><small>Awaiting your acceptance</small></div></div>`;
   const currentIndex=ORDER_STEPS.findIndex(step=>step.key===status);
   return `<div class="order-stepper">${ORDER_STEPS.map((step,index)=>`<div class="order-step ${index<=currentIndex?'done':''} ${index===currentIndex?'current':''}"><span class="order-step-icon">${step.icon}</span><small>${step.label}</small></div>`).join('')}</div>`;
 }
@@ -945,6 +962,25 @@ function openCardForm(customer,cardId=''){
     };
   });
 }
+function openOwnerOrderForm(customer){
+  modal('Create Order for Customer',`<form id="ownerOrderForm"><p class="muted">Creates a regular order for ${html(customer.customerName||'this customer')}. They'll get a call-style alert and must accept it before it enters your normal order queue.</p><div id="ownerOrderItemRows">${orderItemRowMarkup()}</div><button type="button" class="btn small secondary" id="addOwnerOrderItemRow" style="margin-top:8px">+ Add another item</button><button class="btn full" type="submit" style="margin-top:14px">Send to Customer</button></form>`,()=>{
+    $('#addOwnerOrderItemRow').onclick=()=>$('#ownerOrderItemRows').insertAdjacentHTML('beforeend',orderItemRowMarkup());
+    $('#ownerOrderItemRows').addEventListener('click',event=>{const row=event.target.closest('.remove-item-row');if(row&&$$('.order-item-row').length>1)row.closest('.order-item-row').remove()});
+    $('#ownerOrderForm').onsubmit=async event=>{
+      event.preventDefault();
+      const names=$$('input[name="itemName[]"]').map(input=>input.value.trim());
+      const qtys=$$('input[name="itemQty[]"]').map(input=>Math.max(1,Number(input.value)||1));
+      const items=names.map((name,index)=>({name,qty:qtys[index]})).filter(item=>item.name);
+      if(!items.length)return toast('Add at least one item');
+      const ownerId=cloudOwnerId(),button=event.submitter;button.disabled=true;
+      try{
+        const result=await api.executeFunction(api.config.digitalOrderFunctionId,{action:'digit58-owner-create-order',ownerId,storeId:customer.storeId,customerAccountId:customer.customerAccountId,items});
+        state.orders.push(result.order);save();
+        closeModal();customerDetailView(customer.id);toast('Order sent — waiting for the customer to accept');
+      }catch(error){button.disabled=false;toast(error.message||'Could not create order')}
+    };
+  });
+}
 async function deliverCard(cardId){
   const card=state.cards.find(row=>row.id===cardId);if(!card)return;
   const changes={status:'Active',purchasedAt:now(),dueAt:new Date(Date.now()+Number(card.reminderDays||30)*86400000).toISOString(),timesDelivered:Number(card.timesDelivered||0)+1,buyRequestedAt:'',lastDeliveredAt:now()};
@@ -1020,7 +1056,7 @@ function startCustomerRealtime(store,customer){
   customerPromotionsUnsubscribe?.();
   customerPromotionsUnsubscribe=api.subscribeKind(promotionKind(store.ownerId),()=>loadAndRenderCustomerView(store,customer));
 }
-function stopCustomerRealtime(){customerOrdersUnsubscribe?.();customerCardsUnsubscribe?.();customerPromotionsUnsubscribe?.();customerOrdersUnsubscribe=customerCardsUnsubscribe=customerPromotionsUnsubscribe=null;stopPromotionAutoScroll();dueReminderRung.clear();pendingDueBeep=false;activeCustomerContext=null;customerRenderPending=false;stopIncomingCallRing()}
+function stopCustomerRealtime(){customerOrdersUnsubscribe?.();customerCardsUnsubscribe?.();customerPromotionsUnsubscribe?.();customerOrdersUnsubscribe=customerCardsUnsubscribe=customerPromotionsUnsubscribe=null;stopPromotionAutoScroll();dueReminderRung.clear();pendingDueBeep=false;pendingOwnerOrderRung.clear();activeCustomerContext=null;customerRenderPending=false;stopIncomingCallRing()}
 // The Appwrite realtime WebSocket doesn't auto-reconnect after the app is
 // backgrounded (common on mobile/Android app resume) or the network drops.
 // Re-arm the subscriptions and force a fresh fetch whenever we come back.
@@ -1124,6 +1160,7 @@ function bindCustomerPromotionActions(promotions){
 function renderCustomerCards(store,customer,cards,orders=[],promotions=[]){
   if(activePromotionStoreId!==store.id){activePromotionStoreId=store.id;customerPromotionQuantities.clear()}
   ringDueReminders(cards);
+  ringPendingOwnerOrders(store,customer,orders);
   const active=activeOrders(orders).sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
   const history=orderHistoryOrders(orders).sort((a,b)=>new Date(b.updatedAt||b.createdAt)-new Date(a.updatedAt||a.createdAt));
   const today=indiaDateValue(),historyFrom=$('#customerHistoryFrom')?.value||today,historyTo=$('#customerHistoryTo')?.value||today;
@@ -1148,6 +1185,7 @@ function renderCustomerCards(store,customer,cards,orders=[],promotions=[]){
   startPromotionAutoScroll();
   bindRazorpayPaymentActions(active,store,customer);
   $('#placeOrderBtn').onclick=()=>openPlaceOrderModal(store,customer,promotions);
+  $$('[data-accept-owner-order]').forEach(button=>button.onclick=()=>acceptOwnerOrder(store,customer,button.dataset.acceptOwnerOrder));
   $$('[data-buy-again]').forEach(button=>button.onclick=()=>{
     const card=cards.find(row=>row.id===button.dataset.buyAgain);
     openBuyAgainModal(button.dataset.buyAgain,store,customer,card?.productName);
@@ -1208,7 +1246,9 @@ function openBuyAgainModal(cardId,store,customer,productName){
 function customerOrderMarkup(order,store){
   const razorpayEnabled=store?.razorpayEnabled&&validRazorpayLink(store.razorpayLink);
   const razorpayReturnOpen=razorpayPaymentWasOpened(order.id);
-  const paymentBlock=order.status==='Priced'
+  const paymentBlock=order.status==='Pending Customer Acceptance'
+    ?`<div class="pending-acceptance-note"><p class="muted">The store started this order for you. Accept it to send it into the normal order queue.</p><button type="button" class="btn full green" data-accept-owner-order="${html(order.id)}">Accept Order</button></div>`
+    :order.status==='Priced'
     ?order.paymentMarkedAt
       ?`<div class="razorpay-submitted"><span class="razorpay-submitted-icon">✓</span><div><strong>Payment submitted for verification</strong><p>The store has been notified. It will verify the Razorpay payment and accept your order.</p></div></div>`
       :`<div class="qr-wrap" id="qr-${html(order.id)}"></div><h3 style="margin:10px 0;text-align:center">${money(order.amount)}</h3><p class="muted" style="text-align:center">Scan to pay via UPI${razorpayEnabled?' or use the secure Razorpay option below':''}. The store will accept your order once payment is received.</p>${razorpayEnabled?`<a class="btn full razorpay-pay-btn" data-open-razorpay="${html(order.id)}" href="${html(normaliseRazorpayLink(store.razorpayLink))}" target="_blank" rel="noopener noreferrer">Open Razorpay & Pay ↗</a><p class="razorpay-window-note">Razorpay opens securely in another tab. Keep this G58 page open.</p><div class="razorpay-return-step ${razorpayReturnOpen?'':'is-hidden'}" data-razorpay-return="${html(order.id)}"><strong>Returned from Razorpay?</strong><p>Choose the correct option so your order can move to the next step.</p><div class="razorpay-return-actions"><button type="button" class="btn green" data-confirm-razorpay-payment="${html(order.id)}">Payment completed</button><button type="button" class="btn secondary" data-razorpay-not-paid="${html(order.id)}">Payment not completed</button></div></div>`:''}`

@@ -153,6 +153,8 @@ th,td{text-align:left;padding:12px;border-bottom:1px solid var(--line);white-spa
 .razorpay-submitted,.razorpay-owner-review{display:flex;gap:12px;padding:14px;border-radius:16px;background:linear-gradient(135deg,rgba(45,212,168,.18),rgba(127,255,212,.08));border:1px solid rgba(127,255,212,.34)}
 .razorpay-submitted-icon{display:grid;place-items:center;flex:0 0 38px;height:38px;border-radius:50%;background:linear-gradient(135deg,#7fffd4,#2dd4a8);color:#09241c;font-size:21px;font-weight:950;box-shadow:0 0 22px rgba(127,255,212,.28)}
 .razorpay-submitted strong,.razorpay-owner-review strong{display:block;color:#d9fff3}.razorpay-submitted p{margin:4px 0 0;color:var(--muted);font-size:12px;line-height:1.45}
+.pending-acceptance-note{padding:14px;border-radius:16px;background:linear-gradient(135deg,rgba(74,222,128,.16),rgba(74,222,128,.05));border:1px solid rgba(74,222,128,.3)}
+.pending-acceptance-note p{margin:0 0 10px}
 .razorpay-owner-review{display:grid;grid-template-columns:1fr auto;gap:3px 12px}.razorpay-owner-review>span{color:#a9f8df;font-size:11px;font-weight:850;text-transform:uppercase;letter-spacing:.06em}.razorpay-owner-review>strong{text-align:right}.razorpay-owner-review>small{grid-column:1/-1;color:var(--muted)}
 .order-item-card.payment-awaiting{border-color:rgba(127,255,212,.55);box-shadow:0 22px 60px rgba(0,0,0,.42),0 0 30px rgba(45,212,168,.09),inset 0 1px 0 rgba(255,255,255,.06)}
 .promotion-owner-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}

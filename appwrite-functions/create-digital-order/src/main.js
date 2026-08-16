@@ -718,6 +718,7 @@ async function createDigit58Order(call, input, userId, options = {}) {
       minimumApprovalStatus = 'Requested';
     }
   }
+  if (options.initialStatus) { status = options.initialStatus; minimumApprovalStatus = ''; }
   const phone = normalisePhone(input.phone);
   const lat = Number(input.locationLat), lng = Number(input.locationLng), hasLocation = Number.isFinite(lat) && Number.isFinite(lng);
   const createdAt = new Date().toISOString();
@@ -790,6 +791,32 @@ async function createDigit58Reorder(call, input, userId) {
   }, userId, { previousAmount: previous.amount, enforceMinimum: false });
 }
 
+async function createDigit58OwnerOrder(call, input, userId) {
+  const ownerId = text(input.ownerId, 64), storeId = text(input.storeId, 40), customerAccountId = text(input.customerAccountId, 64);
+  if (userId !== ownerId) { const denied = new Error('Only the store owner can create this order.'); denied.code = 403; throw denied; }
+  if (!storeId || !customerAccountId) throw new Error('Customer details are missing.');
+  const customerRows = await listRowsByKind(call, digit58CustomerKind(ownerId));
+  const customer = customerRows.map(cleanRow).find(row => row.storeId === storeId && row.customerAccountId === customerAccountId);
+  if (!customer) throw new Error('This customer is not linked to the selected store.');
+  return createDigit58Order(call, {
+    ownerId, storeId, items: input.items,
+    customerName: customer.customerName, customerEmail: customer.customerEmail,
+    phone: customer.phone,
+  }, customerAccountId, { enforceMinimum: false, initialStatus: 'Pending Customer Acceptance' });
+}
+
+async function acceptDigit58OwnerOrder(call, input, userId) {
+  const ownerId = text(input.ownerId, 64), orderId = text(input.orderId, 36);
+  if (!ownerId || !orderId) throw new Error('Order details are missing.');
+  const row = await call(`/tablesdb/${DATABASE_ID}/tables/${TABLE_ID}/rows/${encodeURIComponent(orderId)}`);
+  if (row.kind !== digit58OrderKind(ownerId)) throw new Error('This is not a Refills order.');
+  const order = cleanRow(row);
+  if (order.customerAccountId !== userId) { const denied = new Error("Only this order's customer can accept it."); denied.code = 403; throw denied; }
+  if (order.status !== 'Pending Customer Acceptance') throw new Error('This order has already been handled.');
+  const changes = { status: 'Requested', acceptedByCustomerAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
+  return updateRow(call, orderId, { ...order, ...changes });
+}
+
 export default async ({ req, res, error }) => {
   if (req.headers['x-appwrite-trigger'] === 'schedule') {
     try {
@@ -859,6 +886,14 @@ export default async ({ req, res, error }) => {
     if (requestBody?.action === 'digit58-reorder') {
       const call = appwriteClient(req);
       return res.json({ ok: true, order: await createDigit58Reorder(call, requestBody, userId) }, 201);
+    }
+    if (requestBody?.action === 'digit58-owner-create-order') {
+      const call = appwriteClient(req);
+      return res.json({ ok: true, order: await createDigit58OwnerOrder(call, requestBody, userId) }, 201);
+    }
+    if (requestBody?.action === 'digit58-accept-owner-order') {
+      const call = appwriteClient(req);
+      return res.json({ ok: true, order: await acceptDigit58OwnerOrder(call, requestBody, userId) });
     }
     if (requestBody?.action === 'raise-support-ticket') {
       const call = appwriteClient(req);
