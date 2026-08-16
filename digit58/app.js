@@ -160,6 +160,23 @@ function ringDueReminders(cards){
   if(newlyDue.length){orderAlertBeep(.22,660);pendingDueBeep=true}
 }
 document.addEventListener('pointerdown',()=>{if(pendingDueBeep){orderAlertBeep(.22,660);pendingDueBeep=false}},{passive:true});
+let incomingCallTimer=null;
+function playIncomingCallRing(){orderAlertBeep(.16,700);setTimeout(()=>orderAlertBeep(.16,700),230)}
+function stopIncomingCallRing(){if(incomingCallTimer){clearInterval(incomingCallTimer);incomingCallTimer=null}$('.incoming-call-overlay')?.remove()}
+function showIncomingOrderCall(store,customer,message){
+  stopIncomingCallRing();
+  const wrap=document.createElement('div');
+  wrap.className='incoming-call-overlay';
+  wrap.innerHTML=`<div class="incoming-call-card"><div class="incoming-call-rings"><span></span><span></span><span></span><div class="incoming-call-avatar"><svg viewBox="0 0 120 120" fill="none" stroke="#7fffd4" stroke-width="8" aria-hidden="true"><circle cx="60" cy="26" r="15"/><circle cx="28" cy="82" r="15"/><circle cx="92" cy="82" r="15"/></svg></div></div><h2>Order placed!</h2><p class="muted">${html(store.name)}</p><button type="button" class="incoming-call-accept-btn" aria-label="Accept"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M6.6 10.8c1.5 3 3.9 5.4 6.9 6.9l2.3-2.3c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.5.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1C10.6 21 3 13.4 3 4c0-.6.4-1 1-1h3.2c.6 0 1 .4 1 1 0 1.2.2 2.4.6 3.5.1.4 0 .8-.2 1L6.6 10.8z"/></svg></button><p class="incoming-call-hint">Tap to view your order</p></div>`;
+  document.body.appendChild(wrap);
+  playIncomingCallRing();
+  incomingCallTimer=setInterval(playIncomingCallRing,1900);
+  wrap.querySelector('.incoming-call-accept-btn').onclick=()=>{
+    stopIncomingCallRing();
+    if(message)toast(message);
+    loadAndRenderCustomerView(store,customer);
+  };
+}
 let motionRequested=false;
 function triggerVialShake(){$$('.vial-liquid').forEach(node=>{node.classList.remove('slosh');void node.offsetWidth;node.classList.add('slosh')})}
 function attachShakeListener(){
@@ -1003,7 +1020,7 @@ function startCustomerRealtime(store,customer){
   customerPromotionsUnsubscribe?.();
   customerPromotionsUnsubscribe=api.subscribeKind(promotionKind(store.ownerId),()=>loadAndRenderCustomerView(store,customer));
 }
-function stopCustomerRealtime(){customerOrdersUnsubscribe?.();customerCardsUnsubscribe?.();customerPromotionsUnsubscribe?.();customerOrdersUnsubscribe=customerCardsUnsubscribe=customerPromotionsUnsubscribe=null;stopPromotionAutoScroll();dueReminderRung.clear();pendingDueBeep=false;activeCustomerContext=null;customerRenderPending=false}
+function stopCustomerRealtime(){customerOrdersUnsubscribe?.();customerCardsUnsubscribe?.();customerPromotionsUnsubscribe?.();customerOrdersUnsubscribe=customerCardsUnsubscribe=customerPromotionsUnsubscribe=null;stopPromotionAutoScroll();dueReminderRung.clear();pendingDueBeep=false;activeCustomerContext=null;customerRenderPending=false;stopIncomingCallRing()}
 // The Appwrite realtime WebSocket doesn't auto-reconnect after the app is
 // backgrounded (common on mobile/Android app resume) or the network drops.
 // Re-arm the subscriptions and force a fresh fetch whenever we come back.
@@ -1024,10 +1041,11 @@ document.addEventListener('visibilitychange',()=>{if(!document.hidden)resumeReal
 function renderCustomerAuth(store,ownerId,storeId){
   app.innerHTML=`<main class="public-store"><section class="store-hero"><span class="chip">${html(store.category||'Store')}</span>${store.highlightText?`<strong class="store-highlight-text">${html(store.highlightText)}</strong>`:''}<h1>${html(store.name)}</h1>${storeMinimum(store)?`<p class="store-minimum-order">Minimum new order ${money(storeMinimum(store))}</p>`:''}<p class="muted">${html(store.description||'')}${store.city?' · '+html(store.city):''}</p></section><div class="card"><div class="actions" style="margin-bottom:14px"><button class="btn small" id="custTabLogin">Sign in</button><button class="btn small secondary" id="custTabSignup">Sign up</button></div><form id="customerAuthForm"><div class="field full-name-field hidden"><label>Your name</label><input name="name"></div><div class="field"><label>Email</label><input name="email" type="email" required></div><div class="field"><label>Password</label><input name="password" type="password" minlength="8" required></div><button class="btn full" id="custAuthSubmit" type="submit">Sign In</button></form></div></main>${siteFooter(true)}`;
   (typeof bindAndroidAppFooter==='function'&&bindAndroidAppFooter());
-  let mode='login';
+  let mode='signup';
   const syncMode=()=>{$('.full-name-field').classList.toggle('hidden',mode!=='signup');$('#custAuthSubmit').textContent=mode==='signup'?'Create Account':'Sign In';$('#custTabLogin').className=mode==='login'?'btn small':'btn small secondary';$('#custTabSignup').className=mode==='signup'?'btn small':'btn small secondary'};
   $('#custTabLogin').onclick=()=>{mode='login';syncMode()};
   $('#custTabSignup').onclick=()=>{mode='signup';syncMode()};
+  syncMode();
   $('#customerAuthForm').onsubmit=async event=>{
     event.preventDefault();
     const values=Object.fromEntries(new FormData(event.target)),button=$('#custAuthSubmit');
@@ -1182,8 +1200,7 @@ function openBuyAgainModal(cardId,store,customer,productName){
       try{
         await api.executeFunction(api.config.digitalOrderFunctionId,{action:'digit58-create-refill-order',ownerId:store.ownerId,cardId,customerName:customer.customerName,customerEmail:customer.customerEmail,phone,locationLat:capturedLocation?.lat,locationLng:capturedLocation?.lng});
         if(phone&&phone!==customer.phone){await api.update(customerKind(store.ownerId),customer.id,{phone}).catch(()=>{});customer.phone=phone}
-        closeModal();toast('Refill order sent — the store can now review and process it');
-        await loadAndRenderCustomerView(store,customer);
+        closeModal();showIncomingOrderCall(store,customer,'Refill order sent — the store can now review and process it');
       }catch(error){button.disabled=false;toast(error.message||'Could not send request')}
     };
   });
@@ -1262,8 +1279,7 @@ function openReorderOrderModal(order,store,customer){
       try{
         await api.executeFunction(api.config.digitalOrderFunctionId,{action:'digit58-reorder',ownerId:store.ownerId,orderId:order.id,phone,locationLat:capturedLocation?.lat,locationLng:capturedLocation?.lng});
         if(phone&&phone!==customer.phone){await api.update(customerKind(store.ownerId),customer.id,{phone}).catch(()=>{});customer.phone=phone}
-        closeModal();toast('Reorder sent — the store will review the amount and send your payment QR');
-        await loadAndRenderCustomerView(store,customer);
+        closeModal();showIncomingOrderCall(store,customer,'Reorder sent — the store will review the amount and send your payment QR');
       }catch(error){button.disabled=false;toast(error.message||'Could not send reorder request')}
     };
   });
@@ -1304,8 +1320,7 @@ function openPlaceOrderModal(store,customer,promotions=[],rejectedDraft=null){
         await api.executeFunction(api.config.digitalOrderFunctionId,{action:'digit58-create-order',ownerId:store.ownerId,storeId:store.id,customerName:customer.customerName,customerEmail:customer.customerEmail,items,customerOrderValue,requestMinimumApproval,phone,locationLat:capturedLocation?.lat,locationLng:capturedLocation?.lng,...prescription});
         if(phone&&phone!==customer.phone){await api.update(customerKind(store.ownerId),customer.id,{phone}).catch(()=>{});customer.phone=phone}
         customerPromotionQuantities.clear();
-        closeModal();toast(requestMinimumApproval?'Minimum-order approval requested from the store':'Order sent to the store');
-        await loadAndRenderCustomerView(store,customer);
+        closeModal();showIncomingOrderCall(store,customer,requestMinimumApproval?'Minimum-order approval requested from the store':'Order sent to the store');
       }catch(error){button.disabled=false;toast(error.message||'Could not place order')}
     };
   });
