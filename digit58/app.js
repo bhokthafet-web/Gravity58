@@ -244,11 +244,19 @@ function customerOrders(customerAccountId,storeId=state.activeStoreId){return st
 function activeOrders(orders){return orders.filter(row=>!['Delivered','Rejected'].includes(row.status))}
 function orderHistoryOrders(orders){return orders.filter(row=>['Delivered','Rejected'].includes(row.status))}
 
+function isRefillsCustomerApp(){return navigator.userAgent.includes('G58RefillsAndroidApp')}
+function renderCustomerPortalLanding(){
+  app.innerHTML=`<main class="screen"><section class="auth-card">
+    <a class="brand" href="../"><svg class="brand-mark" viewBox="0 0 120 120" fill="none" stroke="#7fffd4" stroke-width="8" aria-hidden="true"><circle cx="60" cy="26" r="15"/><circle cx="28" cy="82" r="15"/><circle cx="92" cy="82" r="15"/></svg><div><h2>G58 Refills</h2><p class="tagline">Your orders and reminder cards, from the stores you shop with.</p></div></a>
+    <div class="card"><p class="muted">Open the link your store shared with you — by WhatsApp message or QR code — to sign in and see your orders and reminders here.</p></div>
+  </section></main>${siteFooter(true)}`;
+}
 async function boot(){
   if(!api?.configured)return renderConfigError();
   captureRazorpaySuccessfulReturn();
   const hash=new URLSearchParams(location.hash.replace(/^#store&?/,''));
   if(location.hash.startsWith('#store&'))return renderPublicStore(hash);
+  if(isRefillsCustomerApp())return renderCustomerPortalLanding();
   session=await api.currentUser().catch(()=>null);
   if(!session)return renderOwnerAuth();
   await loadEntitlement();
