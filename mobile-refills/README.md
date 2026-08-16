@@ -83,3 +83,21 @@ Android already resolves `intent.getData()` to the tag's URI for a simple NDEF U
 matching the manifest filter, so no manual NDEF payload parsing is needed. To provision a
 tag for a store, write its `publicStoreLink()` URL to the tag as an NDEF URI record with
 any standard NFC-tools app.
+
+## Cold-start deep link reliability
+
+On a true cold start, Capacitor's bridge begins navigating its `WebView` to the configured
+`server.url` at roughly the same time `MainActivity.onCreate()` runs. If the bridge/WebView
+isn't fully attached yet the moment `onCreate()` tries to apply an incoming deep link, that
+`loadUrl()` call can silently no-op. `MainActivity` now applies the deep link twice on cold
+start — immediately, and again ~600ms later — so it reliably wins regardless of that timing.
+`onNewIntent()` (the app already running) is unaffected and applies the link once, since
+there's no competing initial navigation there.
+
+Separately, a **freshly installed** app's Android App Link verification also runs
+asynchronously after install — even forcing it via `pm verify-app-links --re-verify` takes a
+few seconds to report `verified` on this project's own test emulator. Until verification
+completes, the very first tap on a `g58.in` link after installing may still fall back to a
+browser instead of opening the app directly; retrying moments later (once verification has
+finished) opens the app as expected. This is an Android OS behavior, not something app code
+can fully eliminate.
