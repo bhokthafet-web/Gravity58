@@ -225,15 +225,31 @@ function playWarningSiren(){
     oscillator.start(start);oscillator.stop(start+duration+.02);
   }catch(error){console.warn('Siren unavailable',error)}
 }
+function playOwnerNotificationChime(){
+  try{
+    orderAlertContext||=new (window.AudioContext||window.webkitAudioContext)();
+    if(orderAlertContext.state==='suspended')orderAlertContext.resume();
+    const ctx=orderAlertContext,start=ctx.currentTime;
+    [{frequency:880,at:0,duration:.3},{frequency:659.25,at:.16,duration:.4}].forEach(note=>{
+      const oscillator=ctx.createOscillator(),gain=ctx.createGain(),noteStart=start+note.at;
+      oscillator.type='sine';oscillator.frequency.value=note.frequency;
+      gain.gain.setValueAtTime(.0001,noteStart);
+      gain.gain.exponentialRampToValueAtTime(.28,noteStart+.02);
+      gain.gain.exponentialRampToValueAtTime(.0001,noteStart+note.duration);
+      oscillator.connect(gain);gain.connect(ctx.destination);
+      oscillator.start(noteStart);oscillator.stop(noteStart+note.duration+.02);
+    });
+  }catch(error){console.warn('Chime unavailable',error)}
+}
 function updateOrderAlertSound(){
   [...ringingIds].forEach(id=>{
     const stillRinging=state.orders.some(row=>row.id===id&&['Requested','Minimum Approval Requested'].includes(row.status))||state.cards.some(row=>row.id===id&&row.status==='Buy Requested');
     if(!stillRinging)ringingIds.delete(id);
   });
   if(!ringingIds.size){if(orderAlertTimer)clearInterval(orderAlertTimer);orderAlertTimer=null;return}
-  if(!orderAlertTimer){playIncomingCallRing();orderAlertTimer=setInterval(()=>playIncomingCallRing(),2200)}
+  if(!orderAlertTimer){playOwnerNotificationChime();orderAlertTimer=setInterval(()=>playOwnerNotificationChime(),3500)}
 }
-document.addEventListener('pointerdown',()=>{if(ringingIds.size)playIncomingCallRing()},{passive:true});
+document.addEventListener('pointerdown',()=>{if(ringingIds.size)playOwnerNotificationChime()},{passive:true});
 const dueReminderRung=new Set();
 let pendingDueBeep=false;
 function ringDueReminders(cards){
