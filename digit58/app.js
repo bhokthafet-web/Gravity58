@@ -13,6 +13,52 @@ function indiaDateValue(value=new Date()){
   const parts=Object.fromEntries(new Intl.DateTimeFormat('en-IN',{timeZone:'Asia/Kolkata',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(date).filter(part=>part.type!=='literal').map(part=>[part.type,part.value]));
   return `${parts.year}-${parts.month}-${parts.day}`;
 }
+function indiaTimeValue(value=new Date()){
+  const date=value instanceof Date?value:new Date(value);
+  if(Number.isNaN(date.getTime()))return '';
+  const parts=Object.fromEntries(new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Kolkata',hour:'2-digit',minute:'2-digit',hour12:false}).formatToParts(date).filter(part=>part.type!=='literal').map(part=>[part.type,part.value]));
+  return `${parts.hour}:${parts.minute}`;
+}
+function isMedicalStore(store){return /medic|pharma|chemist|drug/i.test(String(store?.category||''))}
+function medicineDaysElapsed(medicine){
+  const startDay=indiaDateValue(medicine.startedAt);
+  const today=indiaDateValue();
+  if(!startDay)return 0;
+  return Math.max(0,Math.round((new Date(today)-new Date(startDay))/86400000));
+}
+function isMedicineComplete(medicine){return medicineDaysElapsed(medicine)>=Number(medicine.days)}
+function isCourseComplete(course){return (course.medicines||[]).every(isMedicineComplete)}
+function courseCompletionDate(course){
+  const times=(course.medicines||[]).map(medicine=>new Date(medicine.startedAt).getTime()+Number(medicine.days)*86400000);
+  return times.length?new Date(Math.max(...times)).toISOString():course.updatedAt||course.createdAt;
+}
+function activeCourses(courses){return courses.filter(course=>!isCourseComplete(course))}
+function completedCourses(courses){return courses.filter(isCourseComplete)}
+function latestCoursePerPatient(courses){
+  const byPatient=new Map();
+  courses.forEach(course=>{
+    const key=course.patientName||'';
+    const existing=byPatient.get(key);
+    if(!existing||new Date(courseCompletionDate(course))>new Date(courseCompletionDate(existing)))byPatient.set(key,course);
+  });
+  return [...byPatient.values()];
+}
+function filterCoursesByIndiaDate(courses,fromDate,toDate){
+  return courses.filter(course=>{
+    const day=indiaDateValue(courseCompletionDate(course));
+    return (!fromDate||day>=fromDate)&&(!toDate||day<=toDate);
+  });
+}
+function medicineRowMarkup(medicine){
+  const done=isMedicineComplete(medicine),remaining=Math.max(0,Number(medicine.days)-medicineDaysElapsed(medicine));
+  return `<div class="medicine-row ${done?'medicine-done':''}"><span class="medicine-name">${html(medicine.name)}</span><span class="medicine-meta">${html(medicine.time)} · ${done?'Completed':`${remaining} day(s) left`}</span></div>`;
+}
+function courseMarkup(course){
+  return `<article class="card course-card"><h3>${html(course.patientName)}</h3><div class="medicine-list">${(course.medicines||[]).map(medicineRowMarkup).join('')}</div><button class="btn small secondary" data-add-medicine="${html(course.id)}">+ Add Medicine</button></article>`;
+}
+function courseHistoryRow(course){
+  return `<tr><td>${html(course.patientName)}</td><td>${(course.medicines||[]).map(medicine=>html(medicine.name)).join(', ')}</td><td>${new Date(courseCompletionDate(course)).toLocaleString('en-IN',{timeZone:'Asia/Kolkata',dateStyle:'medium'})}</td></tr>`;
+}
 function orderHistoryTimestamp(order){return order.deliveredAt||order.rejectedAt||order.updatedAt||order.createdAt}
 function filterOrdersByIndiaDate(orders,fromDate,toDate){
   return orders.filter(order=>{
@@ -41,6 +87,7 @@ const customerKind=(ownerId)=>safeId('digit58_customer_',ownerId,36);
 const cardKind=(ownerId)=>safeId('digit58_card_',ownerId,40);
 const orderKind=(ownerId)=>safeId('digit58_order_',ownerId,40);
 const promotionKind=(ownerId)=>safeId('digit58_promo_',ownerId,40);
+const courseKind=(ownerId)=>safeId('digit58_course_',ownerId,39);
 const REQUEST_KIND='digit58_requests',ENTITLEMENT_KIND='digit58_entitlements',SUBSCRIPTION_AMOUNT=399;
 const ORDER_STEPS=[
   {key:'Requested',icon:'📝',label:'Requested'},
@@ -190,6 +237,45 @@ async function acceptOwnerOrder(store,customer,orderId){
     toast('Order accepted — the store will now review and set the amount');
     await loadAndRenderCustomerView(store,customer);
   }catch(error){toast(error.message||'Could not accept the order')}
+}
+let medicineAlarmTimer=null,customerCoursesCache=[];
+const medicineAlarmRung=new Set();
+function medicineAlarmKey(medicineId){return `${medicineId}:${indiaDateValue()}`}
+function startMedicineAlarmTimer(store,customer){
+  stopMedicineAlarmTimer();
+  if(!isMedicalStore(store))return;
+  medicineAlarmTimer=setInterval(()=>checkMedicineAlarms(store,customer),20000);
+}
+function stopMedicineAlarmTimer(){if(medicineAlarmTimer){clearInterval(medicineAlarmTimer);medicineAlarmTimer=null}}
+function checkMedicineAlarms(store,customer){
+  if($('.incoming-call-overlay'))return;
+  const nowTime=indiaTimeValue();
+  for(const course of customerCoursesCache){
+    for(const medicine of course.medicines||[]){
+      if(isMedicineComplete(medicine))continue;
+      const key=medicineAlarmKey(medicine.id);
+      if(medicineAlarmRung.has(key))continue;
+      if(medicine.time&&medicine.time<=nowTime){
+        medicineAlarmRung.add(key);
+        showMedicineAlarm(store,customer,course,medicine);
+        return;
+      }
+    }
+  }
+}
+function showMedicineAlarm(store,customer,course,medicine){
+  stopIncomingCallRing();
+  const wrap=document.createElement('div');
+  wrap.className='incoming-call-overlay';
+  wrap.innerHTML=`<div class="incoming-call-card"><div class="incoming-call-rings"><span></span><span></span><span></span><div class="incoming-call-avatar medicine-alarm-avatar" aria-hidden="true">💊</div></div><h2>Medicine time!</h2><p class="muted">${html(medicine.name)} for ${html(course.patientName)}</p><button type="button" class="incoming-call-accept-btn" aria-label="Accept"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M6.6 10.8c1.5 3 3.9 5.4 6.9 6.9l2.3-2.3c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.5.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1C10.6 21 3 13.4 3 4c0-.6.4-1 1-1h3.2c.6 0 1 .4 1 1 0 1.2.2 2.4.6 3.5.1.4 0 .8-.2 1L6.6 10.8z"/></svg></button><p class="incoming-call-hint">Tap to mark as taken</p></div>`;
+  document.body.appendChild(wrap);
+  playIncomingCallRing();
+  incomingCallTimer=setInterval(playIncomingCallRing,1900);
+  wrap.querySelector('.incoming-call-accept-btn').onclick=()=>{
+    stopIncomingCallRing();
+    toast(`${medicine.name} marked as taken for today`);
+    checkMedicineAlarms(store,customer);
+  };
 }
 let motionRequested=false;
 function triggerVialShake(){$$('.vial-liquid').forEach(node=>{node.classList.remove('slosh');void node.offsetWidth;node.classList.add('slosh')})}
@@ -1033,21 +1119,24 @@ async function renderPublicStore(hashParams){
 let activeCustomerContext=null,customerRenderPending=false;
 async function loadAndRenderCustomerView(store,customer){
   activeCustomerContext={store,customer};
-  const [cards,orders,promotions]=await Promise.all([
+  const [cards,orders,promotions,courses]=await Promise.all([
     api.list(cardKind(store.ownerId)).catch(()=>[]),
     api.list(orderKind(store.ownerId)).catch(()=>[]),
     api.list(promotionKind(store.ownerId)).catch(()=>[]),
+    isMedicalStore(store)?api.list(courseKind(store.ownerId)).catch(()=>[]):Promise.resolve([]),
   ]);
   const myCards=cards.filter(row=>row.storeId===store.id&&row.customerAccountId===customer.customerAccountId);
   const myOrders=orders.filter(row=>row.storeId===store.id&&row.customerAccountId===customer.customerAccountId);
   const myPromotions=promotions.filter(row=>row.storeId===store.id&&row.active!==false&&!promotionIsExpired(row));
+  const myCourses=courses.filter(row=>row.storeId===store.id&&row.customerAccountId===customer.customerAccountId);
   if($('.modal-backdrop')){customerRenderPending=true;return}
   customerRenderPending=false;
-  renderCustomerCards(store,customer,myCards,myOrders,myPromotions);
+  renderCustomerCards(store,customer,myCards,myOrders,myPromotions,myCourses);
 }
-let customerOrdersUnsubscribe=null,customerCardsUnsubscribe=null,customerPromotionsUnsubscribe=null;
+let customerOrdersUnsubscribe=null,customerCardsUnsubscribe=null,customerPromotionsUnsubscribe=null,customerCoursesUnsubscribe=null;
 function startCustomerRealtime(store,customer){
   activeCustomerContext={store,customer};
+  startMedicineAlarmTimer(store,customer);
   if(!api?.subscribeKind)return;
   customerOrdersUnsubscribe?.();
   customerOrdersUnsubscribe=api.subscribeKind(orderKind(store.ownerId),()=>loadAndRenderCustomerView(store,customer));
@@ -1055,8 +1144,10 @@ function startCustomerRealtime(store,customer){
   customerCardsUnsubscribe=api.subscribeKind(cardKind(store.ownerId),()=>loadAndRenderCustomerView(store,customer));
   customerPromotionsUnsubscribe?.();
   customerPromotionsUnsubscribe=api.subscribeKind(promotionKind(store.ownerId),()=>loadAndRenderCustomerView(store,customer));
+  customerCoursesUnsubscribe?.();
+  if(isMedicalStore(store))customerCoursesUnsubscribe=api.subscribeKind(courseKind(store.ownerId),()=>loadAndRenderCustomerView(store,customer));
 }
-function stopCustomerRealtime(){customerOrdersUnsubscribe?.();customerCardsUnsubscribe?.();customerPromotionsUnsubscribe?.();customerOrdersUnsubscribe=customerCardsUnsubscribe=customerPromotionsUnsubscribe=null;stopPromotionAutoScroll();dueReminderRung.clear();pendingDueBeep=false;pendingOwnerOrderRung.clear();activeCustomerContext=null;customerRenderPending=false;stopIncomingCallRing()}
+function stopCustomerRealtime(){customerOrdersUnsubscribe?.();customerCardsUnsubscribe?.();customerPromotionsUnsubscribe?.();customerCoursesUnsubscribe?.();customerOrdersUnsubscribe=customerCardsUnsubscribe=customerPromotionsUnsubscribe=customerCoursesUnsubscribe=null;stopPromotionAutoScroll();stopMedicineAlarmTimer();dueReminderRung.clear();pendingDueBeep=false;pendingOwnerOrderRung.clear();medicineAlarmRung.clear();activeCustomerContext=null;customerRenderPending=false;stopIncomingCallRing()}
 // The Appwrite realtime WebSocket doesn't auto-reconnect after the app is
 // backgrounded (common on mobile/Android app resume) or the network drops.
 // Re-arm the subscriptions and force a fresh fetch whenever we come back.
@@ -1157,14 +1248,22 @@ function bindCustomerPromotionActions(promotions){
   $$('[data-promotion-plus]').forEach(button=>button.onclick=()=>update(button.dataset.promotionPlus,1));
   $$('[data-promotion-minus]').forEach(button=>button.onclick=()=>update(button.dataset.promotionMinus,-1));
 }
-function renderCustomerCards(store,customer,cards,orders=[],promotions=[]){
+function renderCustomerCards(store,customer,cards,orders=[],promotions=[],courses=[]){
   if(activePromotionStoreId!==store.id){activePromotionStoreId=store.id;customerPromotionQuantities.clear()}
   ringDueReminders(cards);
   ringPendingOwnerOrders(store,customer,orders);
+  customerCoursesCache=courses;
   const active=activeOrders(orders).sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
   const history=orderHistoryOrders(orders).sort((a,b)=>new Date(b.updatedAt||b.createdAt)-new Date(a.updatedAt||a.createdAt));
   const today=indiaDateValue(),historyFrom=$('#customerHistoryFrom')?.value||today,historyTo=$('#customerHistoryTo')?.value||today;
   const filteredHistory=filterOrdersByIndiaDate(history,historyFrom,historyTo).sort((a,b)=>new Date(orderHistoryTimestamp(b))-new Date(orderHistoryTimestamp(a)));
+  const medical=isMedicalStore(store);
+  const activeCourseList=activeCourses(courses).sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
+  const completedCourseList=completedCourses(courses);
+  const courseHistoryFrom=$('#courseHistoryFrom')?.value||'',courseHistoryTo=$('#courseHistoryTo')?.value||'';
+  const courseHistoryFiltered=(courseHistoryFrom||courseHistoryTo)
+    ?filterCoursesByIndiaDate(completedCourseList,courseHistoryFrom,courseHistoryTo).sort((a,b)=>new Date(courseCompletionDate(b))-new Date(courseCompletionDate(a)))
+    :latestCoursePerPatient(completedCourseList).sort((a,b)=>new Date(courseCompletionDate(b))-new Date(courseCompletionDate(a)));
   const marqueePromotions=promotions.length?Array.from({length:Math.max(1,Math.ceil(6/promotions.length))},()=>promotions).flat():[];
   app.innerHTML=`<main class="public-store">${customerStoreHub(store)}<section class="store-hero"><span class="chip">${html(store.category||'Store')}</span>${store.highlightText?`<strong class="store-highlight-text">${html(store.highlightText)}</strong>`:''}<h1>${html(store.name)}</h1>${storeMinimum(store)?`<p class="store-minimum-order">Minimum new order ${money(storeMinimum(store))}</p>`:''}<p class="muted">${html(store.description||'')}${store.city?' · '+html(store.city):''}</p></section>
   ${promotions.length?`<section class="promotion-strip"><div class="promotion-strip-head"><div><span>Store offers</span><h2>Fresh deals for your next order</h2></div><small>Tap Buy to include an offer</small></div><div class="promotion-rail" id="promotionRail"><div class="promotion-track"><div class="promotion-sequence">${marqueePromotions.map((promotion,index)=>customerPromotionTicket(promotion,index>=promotions.length)).join('')}</div><div class="promotion-sequence" aria-hidden="true">${marqueePromotions.map(promotion=>customerPromotionTicket(promotion,true)).join('')}</div></div></div></section>`:''}
@@ -1173,6 +1272,7 @@ function renderCustomerCards(store,customer,cards,orders=[],promotions=[]){
   ${cards.length&&!navigator.userAgent.includes('G58RefillsAndroidApp')?`<a class="g58-app-badge refills-app-promo" href="/downloads/GRAVITY58-Refills-Android-v1.2.apk" download aria-label="Download the G58 Refills Android app"><span class="g58-app-badge-icon">▶</span><span class="g58-app-badge-text"><small>Never miss a refill</small><strong>Get the G58 Refills App</strong></span></a>`:''}
   <div class="section-head reminder-section-head"><div><h2>Your reminder cards</h2>${cards.length>1?'<p class="muted">Swipe to see the next card or switch to list view.</p>':''}</div>${cards.length>1?`<div class="reminder-view-toggle" role="group" aria-label="Reminder card view"><button type="button" class="${customerReminderView==='swipe'?'active':''}" data-reminder-view="swipe" aria-pressed="${customerReminderView==='swipe'}">Swipe</button><button type="button" class="${customerReminderView==='list'?'active':''}" data-reminder-view="list" aria-pressed="${customerReminderView==='list'}">List</button></div>`:''}</div>
   <div class="customer-reminder-view reminder-view-${customerReminderView}" id="customerCardGrid">${cards.map(customerCardCardMarkup).join('')||'<div class="empty">Your store will add reminder cards here after your first purchase.</div>'}</div>
+  ${medical?`<div class="section-head"><div><h2>Medicine Courses</h2><p class="muted">Set patient, medicine, time and days from your prescription — you'll get a daily alarm.</p></div><button class="btn small" id="newCourseBtn">+ New Course</button></div><div class="grid card-grid">${activeCourseList.map(courseMarkup).join('')||'<div class="empty">No active medicine courses yet.</div>'}</div>${completedCourseList.length?`<section class="order-history-section" id="courseHistorySection"><div class="section-head"><div><h2>Course History</h2><p class="muted">Latest course per patient is shown by default. Pick dates to see more.</p></div></div><div class="date-filter-bar"><label>From<input id="courseHistoryFrom" type="date" value="${html(courseHistoryFrom)}"></label><label>To<input id="courseHistoryTo" type="date" value="${html(courseHistoryTo)}"></label><button class="btn small secondary" id="courseHistoryClear" type="button">Show Latest</button></div><div class="card table-wrap"><table><thead><tr><th>Patient</th><th>Medicines</th><th>Completed</th></tr></thead><tbody>${courseHistoryFiltered.map(courseHistoryRow).join('')||'<tr><td colspan="3">No courses in this period.</td></tr>'}</tbody></table></div></section>`:''}`:''}
   ${history.length?`<section class="order-history-section" id="customerOrderHistory"><div class="section-head"><div><h2>Order History</h2><p class="muted">Today's history is shown by default. Select another date period when needed.</p></div><button class="btn small secondary" id="exportCustomerHistory" ${filteredHistory.length?'':'disabled'}>Export CSV</button></div><div class="date-filter-bar"><label>From<input id="customerHistoryFrom" type="date" value="${html(historyFrom)}" max="${html(historyTo)}"></label><label>To<input id="customerHistoryTo" type="date" value="${html(historyTo)}" min="${html(historyFrom)}"></label><button class="btn small secondary" id="customerHistoryToday" type="button">Today</button></div><div class="card table-wrap"><table><thead><tr><th>Items</th><th>Reorder</th><th>Amount</th><th>Status</th><th>Date</th></tr></thead><tbody>${filteredHistory.map(customerOrderHistoryRow).join('')||'<tr><td colspan="5">No orders in this period.</td></tr>'}</tbody></table></div></section>`:''}
   <div class="actions" style="margin-top:20px"><button class="btn secondary" id="custLogout">Sign out</button></div></main>${siteFooter(true)}`;
   active.filter(order=>order.status==='Priced'&&order.upiUri).forEach(order=>{
@@ -1201,15 +1301,24 @@ function renderCustomerCards(store,customer,cards,orders=[],promotions=[]){
     const order=filteredHistory.find(row=>row.id===button.dataset.reorderOrder);
     if(order)openReorderOrderModal(order,store,customer);
   });
-  $('#customerHistoryFrom')?.addEventListener('change',()=>renderCustomerCards(store,customer,cards,orders,promotions));
-  $('#customerHistoryTo')?.addEventListener('change',()=>renderCustomerCards(store,customer,cards,orders,promotions));
-  $('#customerHistoryToday')?.addEventListener('click',()=>{$('#customerHistoryFrom').value=today;$('#customerHistoryTo').value=today;renderCustomerCards(store,customer,cards,orders,promotions)});
+  $('#customerHistoryFrom')?.addEventListener('change',()=>renderCustomerCards(store,customer,cards,orders,promotions,courses));
+  $('#customerHistoryTo')?.addEventListener('change',()=>renderCustomerCards(store,customer,cards,orders,promotions,courses));
+  $('#customerHistoryToday')?.addEventListener('click',()=>{$('#customerHistoryFrom').value=today;$('#customerHistoryTo').value=today;renderCustomerCards(store,customer,cards,orders,promotions,courses)});
   $('#exportCustomerHistory')?.addEventListener('click',()=>downloadOrderHistoryCsv(filteredHistory,{filePrefix:`${store.name||'store'}-my-orders`.toLowerCase().replace(/[^a-z0-9]+/g,'-'),storeName:store.name||'Store'}));
+  $('#newCourseBtn')?.addEventListener('click',()=>openCreateCourseModal(store,customer));
+  $$('[data-add-medicine]').forEach(button=>button.onclick=()=>{
+    const course=courses.find(row=>row.id===button.dataset.addMedicine);
+    if(course)openAddMedicineModal(store,customer,course);
+  });
+  $('#courseHistoryFrom')?.addEventListener('change',()=>renderCustomerCards(store,customer,cards,orders,promotions,courses));
+  $('#courseHistoryTo')?.addEventListener('change',()=>renderCustomerCards(store,customer,cards,orders,promotions,courses));
+  $('#courseHistoryClear')?.addEventListener('click',()=>{$('#courseHistoryFrom').value='';$('#courseHistoryTo').value='';renderCustomerCards(store,customer,cards,orders,promotions,courses)});
   bindOrderChatForms(active,'customer',()=>loadAndRenderCustomerView(store,customer));
   bindCardChatForms(cards,'customer',()=>loadAndRenderCustomerView(store,customer));
   initShakeDetection();
   (typeof bindAndroidAppFooter==='function'&&bindAndroidAppFooter());
   setTimeout(()=>showNextRejectedOrder(orders,store,customer,promotions),0);
+  if(medical)checkMedicineAlarms(store,customer);
   $('#custLogout').onclick=async()=>{stopCustomerRealtime();customerPromotionQuantities.clear();activePromotionStoreId='';customerStoreLinks=[];await api.logout();location.hash=`store&owner=${encodeURIComponent(store.ownerId)}&store=${encodeURIComponent(store.id)}`;boot()};
 }
 function vialMarkup(card){
@@ -1325,6 +1434,36 @@ function openReorderOrderModal(order,store,customer){
   });
 }
 function orderItemRowMarkup(item={}){return `<div class="order-item-row"><input name="itemName[]" placeholder="Item name" value="${html(item.name||'')}" required><input name="itemQty[]" type="number" min="1" value="${Math.max(1,Number(item.qty)||1)}" aria-label="Quantity"><button type="button" class="btn small secondary remove-item-row" aria-label="Remove item">✕</button></div>`}
+function medicineFieldsMarkup(){return `<div class="form-grid"><div class="field"><label>Medicine name</label><input name="medName" required></div><div class="field"><label>Time</label><input name="medTime" type="time" required></div></div><div class="field"><label>Days</label><input name="medDays" type="number" min="1" step="1" value="5" required></div>`}
+function openCreateCourseModal(store,customer){
+  modal('New Medicine Course',`<form id="createCourseForm"><div class="field"><label>Patient name</label><input name="patientName" value="${html(customer.customerName||'')}" required></div>${medicineFieldsMarkup()}<button class="btn full" type="submit" style="margin-top:14px">Start Course</button></form>`,()=>{
+    $('#createCourseForm').onsubmit=async event=>{
+      event.preventDefault();
+      const values=Object.fromEntries(new FormData(event.target)),patientName=values.patientName.trim(),button=event.submitter;
+      if(!patientName)return toast('Enter the patient name');
+      button.disabled=true;
+      try{
+        await api.executeFunction(api.config.digitalOrderFunctionId,{action:'digit58-create-course',ownerId:store.ownerId,storeId:store.id,patientName,medicine:{name:values.medName.trim(),time:values.medTime,days:Number(values.medDays)}});
+        closeModal();toast('Medicine course started');
+        await loadAndRenderCustomerView(store,customer);
+      }catch(error){button.disabled=false;toast(error.message||'Could not start course')}
+    };
+  });
+}
+function openAddMedicineModal(store,customer,course){
+  modal(`Add Medicine — ${html(course.patientName)}`,`<form id="addMedicineForm">${medicineFieldsMarkup()}<button class="btn full" type="submit" style="margin-top:14px">Add Medicine</button></form>`,()=>{
+    $('#addMedicineForm').onsubmit=async event=>{
+      event.preventDefault();
+      const values=Object.fromEntries(new FormData(event.target)),button=event.submitter;
+      button.disabled=true;
+      try{
+        await api.executeFunction(api.config.digitalOrderFunctionId,{action:'digit58-add-medicine',ownerId:store.ownerId,courseId:course.id,medicine:{name:values.medName.trim(),time:values.medTime,days:Number(values.medDays)}});
+        closeModal();toast('Medicine added to course');
+        await loadAndRenderCustomerView(store,customer);
+      }catch(error){button.disabled=false;toast(error.message||'Could not add medicine')}
+    };
+  });
+}
 function openPlaceOrderModal(store,customer,promotions=[],rejectedDraft=null){
   let capturedLocation=null;
   const selectedPromotions=promotions.filter(promotion=>customerPromotionQuantities.has(promotion.id)).map(promotion=>({name:promotion.name,qty:customerPromotionQuantities.get(promotion.id)}));

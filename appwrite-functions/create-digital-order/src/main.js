@@ -10,6 +10,7 @@ const DIGIT58_CARD_KIND_PREFIX = 'digit58_card_';
 const DIGIT58_ORDER_KIND_PREFIX = 'digit58_order_';
 const DIGIT58_STORE_KIND_PREFIX = 'digit58_store_';
 const DIGIT58_PROMOTION_KIND_PREFIX = 'digit58_promo_';
+const DIGIT58_COURSE_KIND_PREFIX = 'digit58_course_';
 const DIGIT58_OWNER_KIND = 'digit58_owners';
 const DIGIT58_ENTITLEMENT_KIND = 'digit58_entitlements';
 const ADMIN_TEAM_ID = '6a776960001ca2fb66bf';
@@ -33,6 +34,7 @@ const digit58CardKind = ownerId => safeKindId(DIGIT58_CARD_KIND_PREFIX, ownerId,
 const digit58OrderKind = ownerId => safeKindId(DIGIT58_ORDER_KIND_PREFIX, ownerId, 40);
 const digit58StoreKind = ownerId => safeKindId(DIGIT58_STORE_KIND_PREFIX, ownerId, 40);
 const digit58PromotionKind = ownerId => safeKindId(DIGIT58_PROMOTION_KIND_PREFIX, ownerId, 40);
+const digit58CourseKind = ownerId => safeKindId(DIGIT58_COURSE_KIND_PREFIX, ownerId, 39);
 const digit58EntitlementRowId = ownerId => `d58-${String(ownerId).slice(0, 30)}`;
 async function isDigit58Admin(call, userId) {
   try {
@@ -817,6 +819,42 @@ async function acceptDigit58OwnerOrder(call, input, userId) {
   return updateRow(call, orderId, { ...order, ...changes });
 }
 
+function cleanMedicineInput(input) {
+  const name = text(input?.name, 160);
+  if (!name) throw new Error('Enter a medicine name.');
+  const time = /^([01]\d|2[0-3]):[0-5]\d$/.test(input?.time) ? input.time : '';
+  if (!time) throw new Error('Enter a valid medicine time.');
+  const days = Math.max(1, Math.min(365, Math.floor(finite(input?.days, 0))));
+  if (!days) throw new Error('Enter how many days this medicine should run for.');
+  return { id: digit58Id('med'), name, time, days, startedAt: new Date().toISOString() };
+}
+
+async function createDigit58Course(call, input, userId) {
+  const ownerId = text(input.ownerId, 64), storeId = text(input.storeId, 40), patientName = text(input.patientName, 120);
+  if (!ownerId || !storeId) throw new Error('Store details are missing.');
+  if (!patientName) throw new Error('Enter the patient name.');
+  const medicine = cleanMedicineInput(input.medicine);
+  const createdAt = new Date().toISOString();
+  const record = {
+    id: digit58Id('course'), ownerId, storeId, customerAccountId: userId,
+    patientName, medicines: [medicine], createdAt, updatedAt: createdAt,
+  };
+  const created = await createRow(call, record.id, digit58CourseKind(ownerId), record, rowPermissionsFor([ownerId, userId]));
+  return cleanRow(created);
+}
+
+async function addDigit58Medicine(call, input, userId) {
+  const ownerId = text(input.ownerId, 64), courseId = text(input.courseId, 40);
+  if (!ownerId || !courseId) throw new Error('Course details are missing.');
+  const row = await call(`/tablesdb/${DATABASE_ID}/tables/${TABLE_ID}/rows/${encodeURIComponent(courseId)}`);
+  if (row.kind !== digit58CourseKind(ownerId)) throw new Error('This is not a Refills medicine course.');
+  const course = cleanRow(row);
+  if (course.customerAccountId !== userId) { const denied = new Error("Only this course's customer can add medicines to it."); denied.code = 403; throw denied; }
+  const medicine = cleanMedicineInput(input.medicine);
+  const medicines = [...(Array.isArray(course.medicines) ? course.medicines : []), medicine];
+  return updateRow(call, courseId, { ...course, medicines, updatedAt: new Date().toISOString() });
+}
+
 export default async ({ req, res, error }) => {
   if (req.headers['x-appwrite-trigger'] === 'schedule') {
     try {
@@ -894,6 +932,14 @@ export default async ({ req, res, error }) => {
     if (requestBody?.action === 'digit58-accept-owner-order') {
       const call = appwriteClient(req);
       return res.json({ ok: true, order: await acceptDigit58OwnerOrder(call, requestBody, userId) });
+    }
+    if (requestBody?.action === 'digit58-create-course') {
+      const call = appwriteClient(req);
+      return res.json({ ok: true, course: await createDigit58Course(call, requestBody, userId) }, 201);
+    }
+    if (requestBody?.action === 'digit58-add-medicine') {
+      const call = appwriteClient(req);
+      return res.json({ ok: true, course: await addDigit58Medicine(call, requestBody, userId) });
     }
     if (requestBody?.action === 'raise-support-ticket') {
       const call = appwriteClient(req);

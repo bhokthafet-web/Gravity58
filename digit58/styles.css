@@ -61,6 +61,13 @@ h1,h2,h3,p{margin-top:0}
 @keyframes incomingCallRing{0%{transform:scale(.6);opacity:.9}100%{transform:scale(1.6);opacity:0}}
 .incoming-call-avatar{position:relative;width:88px;height:88px;border-radius:50%;background:var(--panel2);border:1px solid var(--line);display:grid;place-items:center;box-shadow:0 10px 30px rgba(0,0,0,.4)}
 .incoming-call-avatar svg{width:44px;height:44px}
+.medicine-alarm-avatar{font-size:40px;line-height:1}
+.course-card .medicine-list{display:flex;flex-direction:column;gap:8px;margin:10px 0 14px}
+.medicine-row{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 12px;border-radius:12px;background:var(--panel2);border:1px solid var(--line)}
+.medicine-row .medicine-name{font-weight:700}
+.medicine-row .medicine-meta{color:var(--muted);font-size:12px;white-space:nowrap}
+.medicine-row.medicine-done{opacity:.6}
+.medicine-row.medicine-done .medicine-name{text-decoration:line-through}
 .incoming-call-card h2{margin:4px 0 0;font-size:22px}
 .incoming-call-card .muted{margin:0 0 18px}
 .incoming-call-accept-btn{width:72px;height:72px;border-radius:50%;border:none;display:grid;place-items:center;background:var(--green);color:#0a2e1a;cursor:pointer;box-shadow:0 0 0 0 rgba(74,222,128,.6);animation:incomingCallAcceptPulse 1.4s ease-in-out infinite}
