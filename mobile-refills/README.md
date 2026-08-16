@@ -52,3 +52,17 @@ without hosting a `https://g58.in/.well-known/assetlinks.json` with this app's s
 certificate fingerprint, Android will prompt the user to choose this app the first time
 rather than opening it automatically. That's a reasonable follow-up once a stable release
 keystore exists.
+
+## NFC tags
+
+Tapping an NFC tag encoded with an `https://g58.in/digit58/#store&owner=...&store=...`
+URI record opens straight to that store's customer page, the same way a deep link does.
+`AndroidManifest.xml` adds an `android.nfc.action.NDEF_DISCOVERED` intent-filter matching
+the same host/path as the VIEW filter, plus the `android.permission.NFC` permission and
+an optional (`required="false"`) `android.hardware.nfc` feature declaration so the app
+still installs on devices without NFC hardware. `MainActivity.loadIncomingLink()` handles
+`NDEF_DISCOVERED`/`TECH_DISCOVERED`/`TAG_DISCOVERED` the same way it handles `ACTION_VIEW`:
+Android already resolves `intent.getData()` to the tag's URI for a simple NDEF URI record
+matching the manifest filter, so no manual NDEF payload parsing is needed. To provision a
+tag for a store, write its `publicStoreLink()` URL to the tag as an NDEF URI record with
+any standard NFC-tools app.
