@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">G58 Refills</string>
+    <string name="title_activity_main">G58 Refills</string>
+    <string name="package_name">in.g58.refills</string>
+    <string name="custom_url_scheme">in.g58.refills</string>
+</resources>

@@ -1,0 +1,13 @@
+{
+  "appId": "in.g58.refills",
+  "appName": "G58 Refills",
+  "webDir": "www",
+  "server": {
+    "url": "https://g58.in/digit58/",
+    "androidScheme": "https",
+    "cleartext": false
+  },
+  "android": {
+    "appendUserAgent": "G58RefillsAndroidApp/1.0"
+  }
+}
