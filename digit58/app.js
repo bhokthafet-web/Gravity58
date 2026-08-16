@@ -1417,7 +1417,8 @@ function openBuyAgainModal(cardId,store,customer,productName){
       try{
         await api.executeFunction(api.config.digitalOrderFunctionId,{action:'digit58-create-refill-order',ownerId:store.ownerId,cardId,customerName:customer.customerName,customerEmail:customer.customerEmail,phone,locationLat:capturedLocation?.lat,locationLng:capturedLocation?.lng});
         if(phone&&phone!==customer.phone){await api.update(customerKind(store.ownerId),customer.id,{phone}).catch(()=>{});customer.phone=phone}
-        closeModal();showIncomingOrderCall(store,customer,'Refill order sent — the store can now review and process it');
+        closeModal();toast('Refill order sent — the store can now review and process it');
+        await loadAndRenderCustomerView(store,customer);
       }catch(error){button.disabled=false;toast(error.message||'Could not send request')}
     };
   });
@@ -1498,7 +1499,8 @@ function openReorderOrderModal(order,store,customer){
       try{
         await api.executeFunction(api.config.digitalOrderFunctionId,{action:'digit58-reorder',ownerId:store.ownerId,orderId:order.id,phone,locationLat:capturedLocation?.lat,locationLng:capturedLocation?.lng});
         if(phone&&phone!==customer.phone){await api.update(customerKind(store.ownerId),customer.id,{phone}).catch(()=>{});customer.phone=phone}
-        closeModal();showIncomingOrderCall(store,customer,'Reorder sent — the store will review the amount and send your payment QR');
+        closeModal();toast('Reorder sent — the store will review the amount and send your payment QR');
+        await loadAndRenderCustomerView(store,customer);
       }catch(error){button.disabled=false;toast(error.message||'Could not send reorder request')}
     };
   });
@@ -1569,7 +1571,8 @@ function openPlaceOrderModal(store,customer,promotions=[],rejectedDraft=null){
         await api.executeFunction(api.config.digitalOrderFunctionId,{action:'digit58-create-order',ownerId:store.ownerId,storeId:store.id,customerName:customer.customerName,customerEmail:customer.customerEmail,items,customerOrderValue,requestMinimumApproval,phone,locationLat:capturedLocation?.lat,locationLng:capturedLocation?.lng,...prescription});
         if(phone&&phone!==customer.phone){await api.update(customerKind(store.ownerId),customer.id,{phone}).catch(()=>{});customer.phone=phone}
         customerPromotionQuantities.clear();
-        closeModal();showIncomingOrderCall(store,customer,requestMinimumApproval?'Minimum-order approval requested from the store':'Order sent to the store');
+        closeModal();toast(requestMinimumApproval?'Minimum-order approval requested from the store':'Order sent to the store');
+        await loadAndRenderCustomerView(store,customer);
       }catch(error){button.disabled=false;toast(error.message||'Could not place order')}
     };
   });
