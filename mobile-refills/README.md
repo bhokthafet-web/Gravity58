@@ -45,13 +45,30 @@ losing that keystore means future updates can't be installed over the old one.
 
 ## Deep links
 
-`AndroidManifest.xml` registers an intent-filter for `https://g58.in/digit58/*`, and
-`MainActivity.java` forwards the incoming URL (including the `#store&owner=...&store=...`
-hash customers get from their store) into the WebView. This is **not** auto-verified —
-without hosting a `https://g58.in/.well-known/assetlinks.json` with this app's signing
-certificate fingerprint, Android will prompt the user to choose this app the first time
-rather than opening it automatically. That's a reasonable follow-up once a stable release
-keystore exists.
+`AndroidManifest.xml` registers an `android:autoVerify="true"` intent-filter for
+`https://g58.in/digit58/*`, and `MainActivity.java` forwards the incoming URL (including
+the `#store&owner=...&store=...` hash customers get from their store) into the WebView.
+This is what makes links tapped in WhatsApp (or anywhere else) open the app directly
+instead of falling back to a browser — without a verified App Link, Android/WhatsApp
+have no proof the app owns the domain and default to the browser.
+
+Verification is backed by `/.well-known/assetlinks.json` at the repo root, which lists
+the SHA256 fingerprint of the certificate the installed APK is signed with. **Today
+that's this Mac's debug keystore** (`~/.android/debug.keystore`) — fast to stand up, but
+that keystore is random per machine, so an APK rebuilt elsewhere, or resigned with a
+proper release keystore, needs `assetlinks.json` updated with the new fingerprint or
+verification silently breaks (Android just falls back to the old browser-prompt
+behavior, no error surfaced to the user). Regenerate the fingerprint with:
+
+```bash
+keytool -list -v -keystore ~/.android/debug.keystore -alias androiddebugkey \
+  -storepass android -keypass android | grep SHA256
+```
+
+Moving to a dedicated release keystore (needed for Play Store distribution anyway) means
+generating that keystore, signing future builds with it, and swapping the fingerprint in
+`assetlinks.json` to match — a deliberate one-time step once someone owns that keystore's
+long-term custody.
 
 ## NFC tags
 

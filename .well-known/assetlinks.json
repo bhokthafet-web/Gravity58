@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "in.g58.refills",
+      "sha256_cert_fingerprints": [
+        "FD:09:12:7F:90:EF:95:E2:B3:7B:E7:76:1B:6D:C3:E4:8B:03:6A:66:93:17:89:DF:39:17:C4:78:81:FA:56:83"
+      ]
+    }
+  }
+]
