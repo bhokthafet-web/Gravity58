@@ -625,6 +625,7 @@ function renderWall() {
     wall.innerHTML = businessWallEmptyState();
   }
   if (typeof window.afterRenderWall === "function") window.afterRenderWall(list);
+  updateBidBell();
 }
 function businessWallSkeleton() {
   return Array.from(
@@ -743,6 +744,48 @@ function isCustomerPostOwner(c) {
     accountOwner ||
     sessionStorage.getItem(`g58OwnerUnlocked_${c.id}`) === "true"
   );
+}
+function seenBidIds(postId) {
+  try {
+    const raw = JSON.parse(
+      localStorage.getItem(`g58SeenBids_${postId}`) || "[]",
+    );
+    return Array.isArray(raw) ? raw : [];
+  } catch {
+    return [];
+  }
+}
+function markBidsSeen(postId, bidIds) {
+  localStorage.setItem(`g58SeenBids_${postId}`, JSON.stringify(bidIds));
+}
+function unreadBidCount(c) {
+  const seen = new Set(seenBidIds(c.id));
+  return (c.bids || []).filter((bid) => !seen.has(bid.id)).length;
+}
+function updateBidBell() {
+  const button = document.getElementById("bidBellButton");
+  const badge = document.getElementById("bidBellBadge");
+  if (!button || !badge) return;
+  const count = customers.reduce(
+    (sum, c) => sum + (isCustomerPostOwner(c) ? unreadBidCount(c) : 0),
+    0,
+  );
+  badge.textContent = count > 9 ? "9+" : String(count);
+  button.classList.toggle("hidden", count === 0);
+}
+function openBidBellPanel() {
+  customers.forEach((c) => {
+    if (!isCustomerPostOwner(c)) return;
+    markBidsSeen(c.id, (c.bids || []).map((bid) => bid.id));
+  });
+  updateBidBell();
+  if (window.G58SiteUser) {
+    openMyPostsPage();
+  } else {
+    alert(
+      "You have new bids on a requirement you posted. Log in with the same account, or open the post you unlocked earlier, to view them.",
+    );
+  }
 }
 function isBusinessCardOwner(b) {
   const accountOwner = currentAccountOwns(b);
@@ -3185,45 +3228,6 @@ async function initialiseGravity58() {
 }
 
 initialiseGravity58();
-async function shareG58CardToWhatsApp() {
-  const shareText = `GRAVITY58 — India's Local Business Platform
-
-✅ Free Ad Post
-✅ Free Digital Business Card
-✅ Free POS
-
-Visit: https://g58.in`;
-  const imageUrl = window.location.origin + "/assets/g58-whatsapp-card.png";
-
-  try {
-    const response = await fetch(imageUrl, { cache: "no-store" });
-    if (!response.ok) throw new Error("Image could not be loaded");
-    const blob = await response.blob();
-    const imageFile = new File([blob], "GRAVITY58-Digital-Card.png", {
-      type: blob.type || "image/png",
-    });
-
-    if (navigator.canShare && navigator.canShare({ files: [imageFile] })) {
-      await navigator.share({
-        title: "GRAVITY58",
-        text: shareText,
-        files: [imageFile],
-      });
-      return;
-    }
-  } catch (error) {
-    if (error && error.name === "AbortError") return;
-    console.warn("Direct image sharing is unavailable:", error);
-  }
-
-  const fallbackText = shareText + "\n\nCard image: " + imageUrl;
-  window.open(
-    "https://wa.me/?text=" + encodeURIComponent(fallbackText),
-    "_blank",
-    "noopener",
-  );
-}
-
 let pendingCardUnlock = null;
 function requestBusinessCardUnlock(id) {
   requestCardUnlock("business", id, { checked: true });

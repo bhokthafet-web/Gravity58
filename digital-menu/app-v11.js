@@ -236,7 +236,24 @@ function bindOwnerPeriodControls(renderer){const mode=$('#ownerPeriodMode'),valu
 function formatToken(value){return String(Math.max(0,Number(value)||0)).padStart(4,'0')}
 function chatEditorActive(){return document.activeElement?.matches?.('.order-chat-form input[name="message"]')||false}
 function activeQueueStatus(status){return !['Completed','Rejected','Payment Rejected'].includes(status)}
-function restaurantCloudFields(r){const fields=['id','name','type','city','description','address','phone','email','open','accepting','tax','service','identification','restaurantKey','social','paymentEnabled','upiId','upiPayeeName','logoImageUrl','logoImageFileId','subscriptionPlans','digitalMenuPlan','ordersEnabled','premiumFeatures','entitlementExpiresAt'];return Object.fromEntries(fields.map(key=>[key,r?.[key]]))}
+function restaurantCloudFields(r){const fields=['id','name','type','city','description','address','phone','email','open','accepting','tax','service','identification','restaurantKey','social','paymentEnabled','upiId','upiPayeeName','logoImageUrl','logoImageFileId','subscriptionPlans','digitalMenuPlan','ordersEnabled','premiumFeatures','entitlementExpiresAt','listedInSearch'];return Object.fromEntries(fields.map(key=>[key,r?.[key]]))}
+function directoryRowId(ownerId){return `dir_menu_${String(ownerId||'').replace(/[^a-zA-Z0-9._-]/g,'-').slice(0,40)}`}
+async function syncDirectoryListing(r){
+  if(!isCloudMenuSession())return;
+  const ownerId=cloudOwnerId();if(!ownerId)return;
+  const rowId=directoryRowId(ownerId);
+  if(r.listedInSearch){
+    const data={source:'menu',ownerId,storeId:r.id,name:r.name||'',category:r.type||'Restaurant',city:r.city||'',logoImageUrl:r.logoImageUrl||'',url:cloudCustomerMenuUrl(r),updatedAt:now()};
+    const permissions=Gravity58Ads.permissionSet?.('directory',ownerId);
+    try{await Gravity58Ads.create('directory',data,rowId,permissions)}
+    catch(error){
+      if(error?.code!==409&&!/already exists/i.test(error?.message||''))throw error;
+      await Gravity58Ads.update('directory',rowId,data,permissions);
+    }
+  }else{
+    try{await Gravity58Ads.remove('directory',rowId)}catch(error){/* not listed, nothing to remove */}
+  }
+}
 function restaurantPaymentSettings(restaurant={}){
   const upiId=String(restaurant.upiId||'').trim(),payeeName=String(restaurant.upiPayeeName||restaurant.name||'').trim();
   const hasExplicitSetting=restaurant.paymentEnabled!==undefined&&restaurant.paymentEnabled!==null;
@@ -924,16 +941,16 @@ function publicAdSection(r){
 function bindPublicAdContact(r){$$('[data-book-ad-space]').forEach(b=>b.onclick=()=>{const base=CONFIG.adBookingPortalUrl||'../advertise/';location.href=`${base}?restaurant=${encodeURIComponent(`${r.name}|${r.city}`)}`})}
 function settingsView(){
   const r=activeRestaurant(),payment=restaurantPaymentSettings(r);
-  $('#page').innerHTML=`<div class="section-head"><div><h1>Restaurant Settings</h1><p class="muted">Settings apply only to ${html(r.name)}</p></div></div><article class="card"><form id="settingsForm"><div class="form-grid"><div class="field"><label>Restaurant status</label><select name="open"><option value="true" ${r.open?'selected':''}>Open</option><option value="false" ${!r.open?'selected':''}>Closed</option></select></div><div class="field"><label>Accept orders</label><select name="accepting"><option value="true" ${r.accepting?'selected':''}>Yes</option><option value="false" ${!r.accepting?'selected':''}>No</option></select></div><div class="field"><label>Tax %</label><input name="tax" type="number" value="${r.tax||0}"></div><div class="field"><label>Service charge %</label><input name="service" type="number" value="${r.service||0}"></div><div class="field"><label>Enable customer payment</label><select name="paymentEnabled"><option value="true" ${payment.enabled?'selected':''}>Enabled</option><option value="false" ${!payment.enabled?'selected':''}>Disabled</option></select></div><div class="field"><label>UPI ID</label><input name="upiId" value="${html(payment.upiId)}" placeholder="restaurant@upi"></div><div class="field"><label>UPI payee name</label><input name="upiPayeeName" value="${html(payment.payeeName)}" placeholder="Exact bank-registered receiver name"><small>Enter the exact receiver or merchant name shown by the bank for this UPI ID.</small></div><div class="field"><label>Instagram URL</label><input name="instagram" value="${html(r.social?.Instagram||'')}"></div><div class="field"><label>WhatsApp number or URL</label><input name="whatsapp" value="${html(r.social?.WhatsApp||'')}" placeholder="9876543210 or https://wa.me/..."></div></div><p class="muted">Customers scan the restaurant UPI QR, upload the payment receipt image, and the order remains under Payment Verification until you confirm it. Confirmation permanently deletes the receipt image.</p><button class="btn">Save Settings</button></form></article>`;
+  $('#page').innerHTML=`<div class="section-head"><div><h1>Restaurant Settings</h1><p class="muted">Settings apply only to ${html(r.name)}</p></div></div><article class="card"><form id="settingsForm"><div class="form-grid"><div class="field"><label>Restaurant status</label><select name="open"><option value="true" ${r.open?'selected':''}>Open</option><option value="false" ${!r.open?'selected':''}>Closed</option></select></div><div class="field"><label>Accept orders</label><select name="accepting"><option value="true" ${r.accepting?'selected':''}>Yes</option><option value="false" ${!r.accepting?'selected':''}>No</option></select></div><div class="field"><label>Tax %</label><input name="tax" type="number" value="${r.tax||0}"></div><div class="field"><label>Service charge %</label><input name="service" type="number" value="${r.service||0}"></div><div class="field"><label>Enable customer payment</label><select name="paymentEnabled"><option value="true" ${payment.enabled?'selected':''}>Enabled</option><option value="false" ${!payment.enabled?'selected':''}>Disabled</option></select></div><div class="field"><label>UPI ID</label><input name="upiId" value="${html(payment.upiId)}" placeholder="restaurant@upi"></div><div class="field"><label>UPI payee name</label><input name="upiPayeeName" value="${html(payment.payeeName)}" placeholder="Exact bank-registered receiver name"><small>Enter the exact receiver or merchant name shown by the bank for this UPI ID.</small></div><div class="field"><label>Instagram URL</label><input name="instagram" value="${html(r.social?.Instagram||'')}"></div><div class="field"><label>WhatsApp number or URL</label><input name="whatsapp" value="${html(r.social?.WhatsApp||'')}" placeholder="9876543210 or https://wa.me/..."></div></div><label class="menu-checkbox"><input name="listedInSearch" type="checkbox" ${r.listedInSearch?'checked':''}> List my restaurant in G58 Search</label><small class="muted">Lets customers find and open your menu from the G58 search page.</small><p class="muted">Customers scan the restaurant UPI QR, upload the payment receipt image, and the order remains under Payment Verification until you confirm it. Confirmation permanently deletes the receipt image.</p><button class="btn">Save Settings</button></form></article>`;
   $('#settingsForm').onsubmit=async event=>{
     event.preventDefault();
-    const values=Object.fromEntries(new FormData(event.target)),button=event.submitter;
-    const paymentEnabled=values.paymentEnabled==='true',upiId=values.upiId.trim(),upiPayeeName=values.upiPayeeName.trim(),whatsapp=values.whatsapp.trim();
+    const fd=new FormData(event.target),values=Object.fromEntries(fd),button=event.submitter;
+    const paymentEnabled=values.paymentEnabled==='true',upiId=values.upiId.trim(),upiPayeeName=values.upiPayeeName.trim(),whatsapp=values.whatsapp.trim(),listedInSearch=fd.has('listedInSearch');
     if(paymentEnabled&&!upiId)return toast('Add a UPI ID before enabling the customer payment QR');
     if(paymentEnabled&&upiId&&!upiPayeeName)return toast('Add the exact bank-registered UPI payee name');
     button.disabled=true;
-    Object.assign(r,{open:values.open==='true',accepting:values.accepting==='true',tax:+values.tax,service:+values.service,paymentEnabled,upiId,upiPayeeName,social:{...r.social,Instagram:values.instagram.trim(),WhatsApp:whatsapp}});
-    try{await persistCloudMenu(r.id);toast('Settings saved and published to the customer menu');renderShell()}catch(error){button.disabled=false;toast(error.message||'Could not save settings')}
+    Object.assign(r,{open:values.open==='true',accepting:values.accepting==='true',tax:+values.tax,service:+values.service,paymentEnabled,upiId,upiPayeeName,listedInSearch,social:{...r.social,Instagram:values.instagram.trim(),WhatsApp:whatsapp}});
+    try{await persistCloudMenu(r.id);await syncDirectoryListing(r);toast('Settings saved and published to the customer menu');renderShell()}catch(error){button.disabled=false;toast(error.message||'Could not save settings')}
   };
 }
 

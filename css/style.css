@@ -17,6 +17,11 @@
     .header-account-controls{display:flex;align-items:center;gap:7px;min-width:0}
     .header-account-btn{min-height:34px;padding:0 12px;border:1px solid rgba(249,115,22,.38);border-radius:10px;background:rgba(249,115,22,.10);color:#ffd0ae;font-size:11px;font-weight:900;cursor:pointer;white-space:nowrap}
     .header-account-btn:hover{background:rgba(249,115,22,.22)}
+    .g58-bell-btn{position:relative;display:flex;align-items:center;justify-content:center;width:34px;height:34px;border:1px solid rgba(255,255,255,.16);border-radius:10px;background:rgba(255,255,255,.05);color:#dfe7f0;cursor:pointer;flex-shrink:0}
+    .g58-bell-btn:hover{background:rgba(255,255,255,.1)}
+    .g58-bell-btn svg{width:18px;height:18px}
+    .g58-bell-btn.hidden{display:none}
+    .g58-bell-badge{position:absolute;top:-5px;right:-5px;min-width:16px;height:16px;padding:0 3px;border-radius:999px;background:#EF4444;color:#fff;font-size:9.5px;font-weight:800;line-height:16px;text-align:center}
     .header-account-btn.login{background:#f97316;color:#111;border-color:#f97316}
     .header-account-btn.logout{border-color:rgba(239,68,68,.34);background:rgba(239,68,68,.10);color:#fecaca}
     .header-user-name{max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#fff;font-size:12px;font-weight:900}
@@ -1060,7 +1065,7 @@ body.qr-modal-open{overflow:hidden}
 }
 
 
-.g58-whatsapp-round{
+.g58-search-round{
   position:fixed;
   right:18px;
   bottom:18px;
@@ -1071,30 +1076,30 @@ body.qr-modal-open{overflow:hidden}
   border-radius:50%;
   display:grid;
   place-items:center;
-  background:linear-gradient(145deg,#31e56f,#16a34a);
-  box-shadow:0 14px 38px rgba(0,0,0,.38),0 0 0 5px rgba(37,211,102,.14);
+  background:linear-gradient(145deg,#2563EB,#1D4ED8);
+  box-shadow:0 14px 38px rgba(0,0,0,.28),0 0 0 5px rgba(37,99,235,.14);
   cursor:pointer;
   transition:transform .18s ease,box-shadow .18s ease;
 }
-.g58-whatsapp-round:hover{
+.g58-search-round:hover{
   transform:translateY(-3px) scale(1.03);
-  box-shadow:0 18px 46px rgba(0,0,0,.44),0 0 0 7px rgba(37,211,102,.16);
+  box-shadow:0 18px 46px rgba(0,0,0,.34),0 0 0 7px rgba(37,99,235,.16);
 }
-.g58-whatsapp-round:active{transform:scale(.96)}
-.g58-whatsapp-round svg{
-  width:34px;
-  height:34px;
-  fill:#fff;
+.g58-search-round:active{transform:scale(.96)}
+.g58-search-round svg{
+  width:26px;
+  height:26px;
+  color:#fff;
   filter:drop-shadow(0 2px 2px rgba(0,0,0,.18));
 }
 @media(max-width:640px){
-  .g58-whatsapp-round{
+  .g58-search-round{
     right:12px;
     bottom:12px;
     width:54px;
     height:54px;
   }
-  .g58-whatsapp-round svg{width:31px;height:31px}
+  .g58-search-round svg{width:24px;height:24px}
 }
 
 

@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#07111F" />
+  <title>Search Stores — GRAVITY58</title>
+  <meta name="description" content="Search Digital Menu restaurants and Refills stores across GRAVITY58 and open their store page directly." />
+  <link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32.png?v=2" />
+  <link rel="apple-touch-icon" sizes="180x180" href="/assets/apple-touch-icon.png?v=2" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/style.css?v=33">
+  <link rel="stylesheet" href="/css/mobile.css">
+  <link rel="stylesheet" href="/search/search.css?v=1">
+  <link rel="canonical" href="https://g58.in/search/" />
+  <meta name="robots" content="index, follow" />
+</head>
+<body class="g58-search-body">
+<header class="topbar">
+  <div class="shell nav nav-v2">
+    <a class="brand gravity-brand" href="/">
+      <svg class="logo3d" viewBox="0 0 120 120" fill="none" stroke="#F97316" stroke-width="8" aria-hidden="true"><circle cx="60" cy="26" r="15"/><circle cx="28" cy="82" r="15"/><circle cx="92" cy="82" r="15"/></svg>
+      <div class="gravity-wordmark">
+        <div class="gravity-main">GRAVITY<span>58</span></div>
+        <small>POST · BID · CONNECT</small>
+      </div>
+    </a>
+    <a class="btn ghost" href="/">← Back to G58</a>
+  </div>
+</header>
+
+<main class="g58-search-page">
+  <div class="shell">
+    <div class="g58-search-head">
+      <h1>Search Stores</h1>
+      <p>Find restaurants on Digital Menu and shops on Refills, then open their store page directly.</p>
+    </div>
+
+    <div class="g58-search-bar">
+      <div class="g58-search-filters" role="group" aria-label="Filter by store type">
+        <label class="g58-search-check"><input type="checkbox" id="filterAll" checked> All</label>
+        <label class="g58-search-check"><input type="checkbox" id="filterMenu"> Digital Menu</label>
+        <label class="g58-search-check"><input type="checkbox" id="filterRefills"> Refills</label>
+      </div>
+      <form class="g58-search-form" id="searchForm">
+        <input type="search" id="searchInput" placeholder="Search by store name, category or city" aria-label="Search stores">
+        <button type="submit" class="btn primary">Search</button>
+      </form>
+    </div>
+
+    <p class="g58-search-status" id="searchStatus"></p>
+    <div class="g58-search-results" id="searchResults"></div>
+  </div>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/appwrite@26.2.0"></script>
+<script src="/js/config.js"></script>
+<script src="/js/appwrite-ads.js?v=18"></script>
+<script src="/search/app.js?v=1"></script>
+</body>
+</html>
