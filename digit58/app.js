@@ -264,7 +264,7 @@ async function proceedAfterEntitlement(){
 }
 function renderPolicyGate(){
   app.innerHTML=`<main class="screen"><section class="auth-card"><a class="brand" href="../"><svg class="brand-mark" viewBox="0 0 120 120" fill="none" stroke="#7fffd4" stroke-width="8" aria-hidden="true"><circle cx="60" cy="26" r="15"/><circle cx="28" cy="82" r="15"/><circle cx="92" cy="82" r="15"/></svg><div><h2>Before you continue</h2><p class="tagline">Please review and accept the Refills policy</p></div></a><div class="card"><p class="muted">${html(DIGIT58_POLICY_TEXT)}</p></div><div class="actions" style="margin-top:16px"><button class="btn full" id="acceptPolicyBtn">I Accept</button><button class="btn secondary full" id="policyLogout">Sign out</button></div></section></main>${siteFooter()}`;
-  bindAndroidAppFooter();
+  (typeof bindAndroidAppFooter==='function'&&bindAndroidAppFooter());
   $('#acceptPolicyBtn').onclick=async()=>{
     const button=$('#acceptPolicyBtn');button.disabled=true;
     try{
@@ -310,7 +310,7 @@ function renderAccessGate(){
     body=accessRequestBlock(status);
   }
   app.innerHTML=`<main class="screen"><section class="auth-card"><a class="brand" href="../"><svg class="brand-mark" viewBox="0 0 120 120" fill="none" stroke="#7fffd4" stroke-width="8" aria-hidden="true"><circle cx="60" cy="26" r="15"/><circle cx="28" cy="82" r="15"/><circle cx="92" cy="82" r="15"/></svg><div><h2>Refills</h2><p class="tagline">Store portal access is ${money(SUBSCRIPTION_AMOUNT)}/month.</p></div></a>${body}<div class="actions" style="margin-top:16px"><button class="btn secondary full" id="gateLogout">Sign out</button></div></section></main>${siteFooter()}`;
-  bindAndroidAppFooter();
+  (typeof bindAndroidAppFooter==='function'&&bindAndroidAppFooter());
   $('#requestAccessBtn')?.addEventListener('click',requestStoreAccess);
   $('#gateLogout').onclick=async()=>{stopOwnerRealtime();await api.logout();session=null;renderOwnerAuth()};
 }
@@ -337,7 +337,7 @@ async function requestAdditionalStore(){
     toast('Additional store request sent to the G58 team');
   }catch(error){if(button)button.disabled=false;toast(error.message||'Could not send request')}
 }
-function renderConfigError(){app.innerHTML=`<main class="screen"><section class="auth-card"><a class="brand" href="../"><svg class="brand-mark" viewBox="0 0 120 120" fill="none" stroke="#7fffd4" stroke-width="8" aria-hidden="true"><circle cx="60" cy="26" r="15"/><circle cx="28" cy="82" r="15"/><circle cx="92" cy="82" r="15"/></svg><div><h2>Refills</h2><p class="tagline">Take any store online</p></div></a><p>Refills is temporarily unavailable. Please try again shortly.</p></section></main>${siteFooter()}`;bindAndroidAppFooter()}
+function renderConfigError(){app.innerHTML=`<main class="screen"><section class="auth-card"><a class="brand" href="../"><svg class="brand-mark" viewBox="0 0 120 120" fill="none" stroke="#7fffd4" stroke-width="8" aria-hidden="true"><circle cx="60" cy="26" r="15"/><circle cx="28" cy="82" r="15"/><circle cx="92" cy="82" r="15"/></svg><div><h2>Refills</h2><p class="tagline">Take any store online</p></div></a><p>Refills is temporarily unavailable. Please try again shortly.</p></section></main>${siteFooter()}`;(typeof bindAndroidAppFooter==='function'&&bindAndroidAppFooter())}
 
 function renderOwnerAuth(){
   app.innerHTML=`<main class="screen"><section class="auth-card">
@@ -351,7 +351,7 @@ function renderOwnerAuth(){
     </form>
     <p class="muted" style="text-align:center;margin-top:14px">Are you a customer? Use the link your store shared with you.</p>
   </section></main>${siteFooter()}`;
-  bindAndroidAppFooter();
+  (typeof bindAndroidAppFooter==='function'&&bindAndroidAppFooter());
   let mode='login';
   const syncMode=()=>{$('.full-name-field').classList.toggle('hidden',mode!=='signup');$('#ownerAuthSubmit').textContent=mode==='signup'?'Create Account':'Sign In';$('#tabLogin').className=mode==='login'?'btn small':'btn small secondary';$('#tabSignup').className=mode==='signup'?'btn small':'btn small secondary'};
   $('#tabLogin').onclick=()=>{mode='login';syncMode()};
@@ -952,11 +952,11 @@ function closeModal(){
 async function renderPublicStore(hashParams){
   const ownerId=hashParams.get('owner')||'',storeId=hashParams.get('store')||'';
   customerReminderView='swipe';
-  if(!ownerId||!storeId){app.innerHTML=`<main class="public-store"><div class="empty">This store link is invalid.</div></main>${siteFooter()}`;bindAndroidAppFooter();return}
+  if(!ownerId||!storeId){app.innerHTML=`<main class="public-store"><div class="empty">This store link is invalid.</div></main>${siteFooter()}`;(typeof bindAndroidAppFooter==='function'&&bindAndroidAppFooter());return}
   let store;
   try{store=await api.get(storeKind(ownerId),storeId)}
-  catch{app.innerHTML=`<main class="public-store"><div class="empty">This store could not be found.</div></main>${siteFooter()}`;bindAndroidAppFooter();return}
-  if(store.suspended){app.innerHTML=`<main class="public-store"><section class="store-hero"><h1>${html(store.name)}</h1></section><div class="empty">This store is temporarily unavailable. Please check back later.</div></main>${siteFooter()}`;bindAndroidAppFooter();return}
+  catch{app.innerHTML=`<main class="public-store"><div class="empty">This store could not be found.</div></main>${siteFooter()}`;(typeof bindAndroidAppFooter==='function'&&bindAndroidAppFooter());return}
+  if(store.suspended){app.innerHTML=`<main class="public-store"><section class="store-hero"><h1>${html(store.name)}</h1></section><div class="empty">This store is temporarily unavailable. Please check back later.</div></main>${siteFooter()}`;(typeof bindAndroidAppFooter==='function'&&bindAndroidAppFooter());return}
   const account=await api.currentUser().catch(()=>null);
   if(!account)return renderCustomerAuth(store,ownerId,storeId);
   const linked=await ensureCustomerLink(ownerId,storeId,account);
@@ -1010,7 +1010,7 @@ window.addEventListener('online',resumeRealtimeConnections);
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)resumeRealtimeConnections()});
 function renderCustomerAuth(store,ownerId,storeId){
   app.innerHTML=`<main class="public-store"><section class="store-hero"><span class="chip">${html(store.category||'Store')}</span>${store.highlightText?`<strong class="store-highlight-text">${html(store.highlightText)}</strong>`:''}<h1>${html(store.name)}</h1>${storeMinimum(store)?`<p class="store-minimum-order">Minimum new order ${money(storeMinimum(store))}</p>`:''}<p class="muted">${html(store.description||'')}${store.city?' · '+html(store.city):''}</p></section><div class="card"><div class="actions" style="margin-bottom:14px"><button class="btn small" id="custTabLogin">Sign in</button><button class="btn small secondary" id="custTabSignup">Sign up</button></div><form id="customerAuthForm"><div class="field full-name-field hidden"><label>Your name</label><input name="name"></div><div class="field"><label>Email</label><input name="email" type="email" required></div><div class="field"><label>Password</label><input name="password" type="password" minlength="8" required></div><button class="btn full" id="custAuthSubmit" type="submit">Sign In</button></form></div></main>${siteFooter()}`;
-  bindAndroidAppFooter();
+  (typeof bindAndroidAppFooter==='function'&&bindAndroidAppFooter());
   let mode='login';
   const syncMode=()=>{$('.full-name-field').classList.toggle('hidden',mode!=='signup');$('#custAuthSubmit').textContent=mode==='signup'?'Create Account':'Sign In';$('#custTabLogin').className=mode==='login'?'btn small':'btn small secondary';$('#custTabSignup').className=mode==='signup'?'btn small':'btn small secondary'};
   $('#custTabLogin').onclick=()=>{mode='login';syncMode()};
@@ -1138,7 +1138,7 @@ function renderCustomerCards(store,customer,cards,orders=[],promotions=[]){
   bindOrderChatForms(active,'customer',()=>loadAndRenderCustomerView(store,customer));
   bindCardChatForms(cards,'customer',()=>loadAndRenderCustomerView(store,customer));
   initShakeDetection();
-  bindAndroidAppFooter();
+  (typeof bindAndroidAppFooter==='function'&&bindAndroidAppFooter());
   setTimeout(()=>showNextRejectedOrder(orders,store,customer,promotions),0);
   $('#custLogout').onclick=async()=>{stopCustomerRealtime();customerPromotionQuantities.clear();activePromotionStoreId='';customerStoreLinks=[];await api.logout();location.hash=`store&owner=${encodeURIComponent(store.ownerId)}&store=${encodeURIComponent(store.id)}`;boot()};
 }
