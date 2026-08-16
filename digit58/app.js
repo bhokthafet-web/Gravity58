@@ -212,9 +212,9 @@ function updateOrderAlertSound(){
     if(!stillRinging)ringingIds.delete(id);
   });
   if(!ringingIds.size){if(orderAlertTimer)clearInterval(orderAlertTimer);orderAlertTimer=null;return}
-  if(!orderAlertTimer){orderAlertBeep();orderAlertTimer=setInterval(()=>orderAlertBeep(),2200)}
+  if(!orderAlertTimer){playIncomingCallRing();orderAlertTimer=setInterval(()=>playIncomingCallRing(),2200)}
 }
-document.addEventListener('pointerdown',()=>{if(ringingIds.size)orderAlertBeep()},{passive:true});
+document.addEventListener('pointerdown',()=>{if(ringingIds.size)playIncomingCallRing()},{passive:true});
 const dueReminderRung=new Set();
 let pendingDueBeep=false;
 function ringDueReminders(cards){
