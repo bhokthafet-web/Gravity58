@@ -3228,6 +3228,45 @@ async function initialiseGravity58() {
 }
 
 initialiseGravity58();
+async function shareG58CardToWhatsApp() {
+  const shareText = `GRAVITY58 — India's Local Business Platform
+
+✅ Free Ad Post
+✅ Free Digital Business Card
+✅ Free POS
+
+Visit: https://g58.in`;
+  const imageUrl = window.location.origin + "/assets/g58-whatsapp-card.png";
+
+  try {
+    const response = await fetch(imageUrl, { cache: "no-store" });
+    if (!response.ok) throw new Error("Image could not be loaded");
+    const blob = await response.blob();
+    const imageFile = new File([blob], "GRAVITY58-Digital-Card.png", {
+      type: blob.type || "image/png",
+    });
+
+    if (navigator.canShare && navigator.canShare({ files: [imageFile] })) {
+      await navigator.share({
+        title: "GRAVITY58",
+        text: shareText,
+        files: [imageFile],
+      });
+      return;
+    }
+  } catch (error) {
+    if (error && error.name === "AbortError") return;
+    console.warn("Direct image sharing is unavailable:", error);
+  }
+
+  const fallbackText = shareText + "\n\nCard image: " + imageUrl;
+  window.open(
+    "https://wa.me/?text=" + encodeURIComponent(fallbackText),
+    "_blank",
+    "noopener",
+  );
+}
+
 let pendingCardUnlock = null;
 function requestBusinessCardUnlock(id) {
   requestCardUnlock("business", id, { checked: true });
