@@ -1,2 +1,3 @@
 node_modules/
 android/local.properties
+android/app/google-services.json

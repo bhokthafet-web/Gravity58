@@ -1,4 +1,5 @@
 import webpush from 'web-push';
+import admin from 'firebase-admin';
 
 const DATABASE_ID = 'gravity58';
 const TABLE_ID = 'g58_records';
@@ -14,6 +15,7 @@ const DIGIT58_STORE_KIND_PREFIX = 'digit58_store_';
 const DIGIT58_PROMOTION_KIND_PREFIX = 'digit58_promo_';
 const DIGIT58_COURSE_KIND_PREFIX = 'digit58_course_';
 const DIGIT58_PUSH_KIND_PREFIX = 'digit58_push_';
+const DIGIT58_FCM_KIND_PREFIX = 'digit58_fcm_';
 const VAPID_PUBLIC_KEY = 'BBWHhjt1keQag3HnZIooxS1pJvelQ8CuQ6eWBxFp9AStQLDpTzZqwKHmwj_gomaCpNBykqJRo6AsmfbC0roZoEY';
 const DIGIT58_OWNER_KIND = 'digit58_owners';
 const DIGIT58_ENTITLEMENT_KIND = 'digit58_entitlements';
@@ -40,6 +42,7 @@ const digit58StoreKind = ownerId => safeKindId(DIGIT58_STORE_KIND_PREFIX, ownerI
 const digit58PromotionKind = ownerId => safeKindId(DIGIT58_PROMOTION_KIND_PREFIX, ownerId, 40);
 const digit58CourseKind = ownerId => safeKindId(DIGIT58_COURSE_KIND_PREFIX, ownerId, 39);
 const digit58PushKind = ownerId => safeKindId(DIGIT58_PUSH_KIND_PREFIX, ownerId, 40);
+const digit58FcmKind = ownerId => safeKindId(DIGIT58_FCM_KIND_PREFIX, ownerId, 40);
 const digit58EntitlementRowId = ownerId => `d58-${String(ownerId).slice(0, 30)}`;
 async function isDigit58Admin(call, userId) {
   try {
@@ -878,6 +881,19 @@ async function saveDigit58PushSubscription(call, input, userId) {
   const created = await createRow(call, rowId, digit58PushKind(ownerId), record, rowPermissionsFor([ownerId, userId]));
   return cleanRow(created);
 }
+async function saveDigit58FcmToken(call, input, userId) {
+  const ownerId = text(input.ownerId, 64), storeId = text(input.storeId, 40);
+  const token = text(input.token, 300);
+  if (!ownerId || !storeId) throw new Error('Store details are missing.');
+  if (!token) throw new Error('This device token is incomplete.');
+  const rowId = `fcm-${safeKindId('', ownerId, 30)}-${safeKindId('', userId, 30)}`;
+  const now = new Date().toISOString();
+  const record = { id: rowId, ownerId, storeId, customerAccountId: userId, token, createdAt: now, updatedAt: now };
+  const existing = await call(`/tablesdb/${DATABASE_ID}/tables/${TABLE_ID}/rows/${encodeURIComponent(rowId)}`).catch(() => null);
+  if (existing) return updateRow(call, rowId, record);
+  const created = await createRow(call, rowId, digit58FcmKind(ownerId), record, rowPermissionsFor([ownerId, userId]));
+  return cleanRow(created);
+}
 
 const DIGIT58_PUSH_STATUSES = ['Priced', 'Rejected', 'Delivered', 'Pending Customer Acceptance'];
 function digit58PushMessageForOrder(order) {
@@ -891,10 +907,27 @@ function digit58PushMessageForOrder(order) {
   const message = byStatus[order.status] || { title: 'Order update', body: `Order #${shortId}: ${order.status}` };
   return { ...message, url: `/digit58/#store&owner=${order.ownerId}&store=${order.storeId}` };
 }
+let fcmAppInitialized = false;
+function ensureFcmApp() {
+  if (fcmAppInitialized) return admin.apps.length > 0;
+  fcmAppInitialized = true;
+  const raw = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
+  if (!raw) return false;
+  try {
+    const serviceAccount = JSON.parse(raw);
+    admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function sendDigit58PushNotifications(call, error) {
   const privateKey = process.env.VAPID_PRIVATE_KEY;
-  if (!privateKey) return { skipped: true, reason: 'VAPID_PRIVATE_KEY environment variable is not set.' };
-  webpush.setVapidDetails('mailto:support@g58.in', VAPID_PUBLIC_KEY, privateKey);
+  const webPushReady = Boolean(privateKey);
+  if (webPushReady) webpush.setVapidDetails('mailto:support@g58.in', VAPID_PUBLIC_KEY, privateKey);
+  const fcmReady = ensureFcmApp();
+  if (!webPushReady && !fcmReady) return { skipped: true, reason: 'Neither VAPID_PRIVATE_KEY nor FIREBASE_SERVICE_ACCOUNT_JSON is set.' };
   const [ownerRows, entitlementRows] = await Promise.all([
     listRowsByKind(call, DIGIT58_OWNER_KIND).catch(() => []),
     listRowsByKind(call, DIGIT58_ENTITLEMENT_KIND).catch(() => []),
@@ -905,31 +938,56 @@ async function sendDigit58PushNotifications(call, error) {
   ].filter(Boolean))];
   let sent = 0, expired = 0, failed = 0;
   for (const ownerId of ownerIds) {
-    const [orderRows, pushRows] = await Promise.all([
+    const [orderRows, pushRows, fcmRows] = await Promise.all([
       listRowsByKind(call, digit58OrderKind(ownerId)).catch(() => []),
       listRowsByKind(call, digit58PushKind(ownerId)).catch(() => []),
+      listRowsByKind(call, digit58FcmKind(ownerId)).catch(() => []),
     ]);
     const subscriptionsByCustomer = new Map(pushRows.map(cleanRow).map(row => [row.customerAccountId, row]));
+    const fcmTokensByCustomer = new Map(fcmRows.map(cleanRow).map(row => [row.customerAccountId, row]));
     for (const raw of orderRows) {
       const order = cleanRow(raw);
       if (!DIGIT58_PUSH_STATUSES.includes(order.status) || order.pushNotifiedStatus === order.status) continue;
       const subscriptionRow = subscriptionsByCustomer.get(order.customerAccountId);
-      if (!subscriptionRow) continue;
+      const fcmTokenRow = fcmTokensByCustomer.get(order.customerAccountId);
+      if (!subscriptionRow && !fcmTokenRow) continue;
       const message = digit58PushMessageForOrder(order);
-      try {
-        await webpush.sendNotification(
-          { endpoint: subscriptionRow.endpoint, keys: subscriptionRow.keys },
-          JSON.stringify(message)
-        );
-        sent += 1;
-      } catch (caught) {
-        if (caught?.statusCode === 404 || caught?.statusCode === 410) {
-          expired += 1;
-          await removeRow(call, subscriptionRow.id || subscriptionRow.$id).catch(() => {});
-          subscriptionsByCustomer.delete(order.customerAccountId);
-        } else {
-          failed += 1;
-          error(`Push send failed for order ${order.id}: ${caught?.message || caught}`);
+      if (webPushReady && subscriptionRow) {
+        try {
+          await webpush.sendNotification(
+            { endpoint: subscriptionRow.endpoint, keys: subscriptionRow.keys },
+            JSON.stringify(message)
+          );
+          sent += 1;
+        } catch (caught) {
+          if (caught?.statusCode === 404 || caught?.statusCode === 410) {
+            expired += 1;
+            await removeRow(call, subscriptionRow.id || subscriptionRow.$id).catch(() => {});
+            subscriptionsByCustomer.delete(order.customerAccountId);
+          } else {
+            failed += 1;
+            error(`Push send failed for order ${order.id}: ${caught?.message || caught}`);
+          }
+        }
+      }
+      if (fcmReady && fcmTokenRow) {
+        try {
+          await admin.messaging().send({
+            token: fcmTokenRow.token,
+            notification: { title: message.title, body: message.body },
+            data: { url: message.url },
+            android: { priority: 'high', notification: { sound: 'default' } },
+          });
+          sent += 1;
+        } catch (caught) {
+          if (caught?.code === 'messaging/registration-token-not-registered' || caught?.code === 'messaging/invalid-registration-token') {
+            expired += 1;
+            await removeRow(call, fcmTokenRow.id || fcmTokenRow.$id).catch(() => {});
+            fcmTokensByCustomer.delete(order.customerAccountId);
+          } else {
+            failed += 1;
+            error(`FCM send failed for order ${order.id}: ${caught?.message || caught}`);
+          }
         }
       }
       await updateRow(call, order.id, { ...order, pushNotifiedStatus: order.status }).catch(() => {});
@@ -1028,6 +1086,10 @@ export default async ({ req, res, error }) => {
     if (requestBody?.action === 'digit58-save-push-subscription') {
       const call = appwriteClient(req);
       return res.json({ ok: true, subscription: await saveDigit58PushSubscription(call, requestBody, userId) }, 201);
+    }
+    if (requestBody?.action === 'digit58-save-fcm-token') {
+      const call = appwriteClient(req);
+      return res.json({ ok: true, token: await saveDigit58FcmToken(call, requestBody, userId) }, 201);
     }
     if (requestBody?.action === 'raise-support-ticket') {
       const call = appwriteClient(req);

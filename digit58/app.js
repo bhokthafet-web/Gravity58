@@ -1292,10 +1292,48 @@ async function subscribeToPush(store,customer){
     return subscription;
   }catch(error){console.warn('Push subscription failed',error);return null}
 }
+function isNativePushAvailable(){return !!(window.Capacitor&&window.Capacitor.Plugins&&window.Capacitor.Plugins.PushNotifications)}
+async function subscribeToNativePush(store,customer){
+  const {PushNotifications}=window.Capacitor.Plugins;
+  try{
+    let status=await PushNotifications.checkPermissions();
+    if(status.receive==='prompt'||status.receive==='prompt-with-rationale')status=await PushNotifications.requestPermissions();
+    if(status.receive!=='granted')return null;
+    return await new Promise(resolve=>{
+      let settled=false;
+      const finish=async token=>{
+        if(settled)return;settled=true;
+        registrationHandle.remove();errorHandle.remove();
+        if(!token){resolve(null);return}
+        try{
+          await api.executeFunction(api.config.digitalOrderFunctionId,{
+            action:'digit58-save-fcm-token',
+            ownerId:store.ownerId,storeId:store.id,
+            token,
+          });
+          resolve(token);
+        }catch(error){console.warn('Save FCM token failed',error);resolve(null)}
+      };
+      const registrationHandle=PushNotifications.addListener('registration',token=>finish(token?.value||null));
+      const errorHandle=PushNotifications.addListener('registrationError',error=>{console.warn('FCM registration error',error);finish(null)});
+      PushNotifications.register();
+    });
+  }catch(error){console.warn('Native push subscription failed',error);return null}
+}
 function renderPushPrompt(store,customer){
   const container=$('#pushNotifyPrompt');
   if(!container)return;
   if(localStorage.getItem(pushDismissKey(store))==='1'){container.innerHTML='';return}
+  if(isNativePushAvailable()){
+    container.innerHTML=`<div class="push-hint-card"><p>Get notified about your orders — even when the app is closed.</p><div class="push-hint-actions"><button type="button" class="btn small green" id="pushEnableBtn">Enable Notifications</button><button type="button" class="push-hint-dismiss" id="pushHintDismiss">Not now</button></div></div>`;
+    $('#pushEnableBtn').onclick=async()=>{
+      const token=await subscribeToNativePush(store,customer);
+      if(token){toast('Notifications enabled');container.innerHTML=''}
+      else toast('Could not enable notifications');
+    };
+    $('#pushHintDismiss').onclick=()=>{localStorage.setItem(pushDismissKey(store),'1');container.innerHTML=''};
+    return;
+  }
   if(!('Notification' in window)||!('serviceWorker' in navigator)||!('PushManager' in window)){
     if(isRefillsCustomerApp()){
       container.innerHTML=`<div class="push-hint-card"><p>Order notifications aren't available inside this app. Open <strong>g58.in/digit58/</strong> in Chrome or Safari on your phone to enable them.</p><button type="button" class="push-hint-dismiss" id="pushHintDismiss">Not now</button></div>`;
