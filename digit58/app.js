@@ -248,26 +248,57 @@ document.addEventListener('pointerdown',()=>{if(pendingAlertReplay){const fn=pen
 let incomingCallTimer=null;
 function playIncomingCallRing(){playTelephoneRingBurst();setTimeout(playTelephoneRingBurst,550);pendingAlertReplay=playTelephoneRingBurst}
 function stopIncomingCallRing(){if(incomingCallTimer){clearInterval(incomingCallTimer);incomingCallTimer=null}$('.incoming-call-overlay')?.remove();pendingAlertReplay=null}
-function showIncomingOrderCall(store,customer,message,{title='Order placed!',hint='Tap to view your order'}={}){
+function bindSlideToView(wrap,onComplete){
+  const track=wrap.querySelector('.slide-to-view-track'),thumb=wrap.querySelector('.slide-to-view-thumb');
+  let dragging=false,startClientX=0,startX=0,maxX=0,done=false;
+  const setX=x=>{thumb.style.transform=`translateX(${x}px)`;track.style.setProperty('--slide-progress',maxX>0?x/maxX:0)};
+  const pointerX=event=>(event.touches?event.touches[0]:event).clientX;
+  const onDown=event=>{
+    if(done)return;
+    dragging=true;startClientX=pointerX(event);
+    const current=/translateX\(([-\d.]+)px\)/.exec(thumb.style.transform);
+    startX=current?parseFloat(current[1]):0;
+    maxX=track.clientWidth-thumb.offsetWidth-8;
+    thumb.setPointerCapture?.(event.pointerId);
+  };
+  const onMove=event=>{
+    if(!dragging||done)return;
+    const x=Math.max(0,Math.min(maxX,startX+(pointerX(event)-startClientX)));
+    setX(x);
+  };
+  const onUp=()=>{
+    if(!dragging||done)return;
+    dragging=false;
+    const current=/translateX\(([-\d.]+)px\)/.exec(thumb.style.transform);
+    const x=current?parseFloat(current[1]):0;
+    if(maxX>0&&x>=maxX*.8){done=true;setX(maxX);onComplete()}
+    else setX(0);
+  };
+  thumb.addEventListener('pointerdown',onDown);
+  thumb.addEventListener('pointermove',onMove);
+  thumb.addEventListener('pointerup',onUp);
+  thumb.addEventListener('pointercancel',onUp);
+}
+function showIncomingOrderCall(store,customer,message,{title='Order placed!',hint='Slide to view order'}={}){
   stopIncomingCallRing();
   const wrap=document.createElement('div');
   wrap.className='incoming-call-overlay';
-  wrap.innerHTML=`<div class="incoming-call-card"><div class="incoming-call-rings"><span></span><span></span><span></span><div class="incoming-call-avatar"><svg viewBox="0 0 120 120" fill="none" stroke="#7fffd4" stroke-width="8" aria-hidden="true"><circle cx="60" cy="26" r="15"/><circle cx="28" cy="82" r="15"/><circle cx="92" cy="82" r="15"/></svg></div></div><h2>${html(title)}</h2><p class="muted">${html(store.name)}</p><button type="button" class="incoming-call-accept-btn" aria-label="Accept"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M6.6 10.8c1.5 3 3.9 5.4 6.9 6.9l2.3-2.3c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.5.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1C10.6 21 3 13.4 3 4c0-.6.4-1 1-1h3.2c.6 0 1 .4 1 1 0 1.2.2 2.4.6 3.5.1.4 0 .8-.2 1L6.6 10.8z"/></svg></button><p class="incoming-call-hint">${html(hint)}</p></div>`;
+  wrap.innerHTML=`<div class="incoming-call-card"><div class="incoming-call-rings"><span></span><span></span><span></span><div class="incoming-call-avatar"><svg viewBox="0 0 120 120" fill="none" stroke="#7fffd4" stroke-width="8" aria-hidden="true"><circle cx="60" cy="26" r="15"/><circle cx="28" cy="82" r="15"/><circle cx="92" cy="82" r="15"/></svg></div></div><h2>${html(title)}</h2><p class="muted">${html(store.name)}</p><div class="slide-to-view"><div class="slide-to-view-track"><span class="slide-to-view-label">${html(hint)}</span><button type="button" class="slide-to-view-thumb" aria-label="${html(hint)}"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8.59 16.59 13.17 12 8.59 7.41 10 6l6 6-6 6z"/></svg></button></div></div></div>`;
   document.body.appendChild(wrap);
   playIncomingCallRing();
   incomingCallTimer=setInterval(playIncomingCallRing,1900);
-  wrap.querySelector('.incoming-call-accept-btn').onclick=()=>{
+  bindSlideToView(wrap,()=>{
     stopIncomingCallRing();
     if(message)toast(message);
     loadAndRenderCustomerView(store,customer);
-  };
+  });
 }
 const pendingOwnerOrderRung=new Set();
 function ringPendingOwnerOrders(store,customer,orders){
   const pending=orders.filter(row=>row.status==='Pending Customer Acceptance');
   const unrung=pending.filter(row=>!pendingOwnerOrderRung.has(row.id));
   pending.forEach(row=>pendingOwnerOrderRung.add(row.id));
-  if(unrung.length)showIncomingOrderCall(store,customer,'New order from the store — review and accept it below',{title:'Incoming order!',hint:'Tap to review'});
+  if(unrung.length)showIncomingOrderCall(store,customer,'New order from the store — review and accept it below',{title:'Incoming order!',hint:'Slide to view order'});
 }
 async function acceptOwnerOrder(store,customer,orderId){
   try{
