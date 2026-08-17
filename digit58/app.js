@@ -1215,7 +1215,14 @@ async function renderPublicStore(hashParams){
   if(store.suspended){app.innerHTML=`<main class="public-store"><section class="store-hero"><h1>${html(store.name)}</h1></section><div class="empty">This store is temporarily unavailable. Please check back later.</div></main>${siteFooter(true)}`;(typeof bindAndroidAppFooter==='function'&&bindAndroidAppFooter());return}
   const account=await api.currentUser().catch(()=>null);
   if(!account)return renderCustomerAuth(store,ownerId,storeId);
-  const linked=await ensureCustomerLink(ownerId,storeId,account);
+  let linked;
+  try{linked=await ensureCustomerLink(ownerId,storeId,account)}
+  catch(error){
+    app.innerHTML=`<main class="public-store"><section class="store-hero"><h1>${html(store.name)}</h1></section><div class="empty">Could not connect right now. ${html(error.message||'Please try again in a moment.')}<div class="actions" style="justify-content:center;margin-top:14px"><button class="btn small" id="retryCustomerLink" type="button">Try Again</button></div></div></main>${siteFooter(true)}`;
+    (typeof bindAndroidAppFooter==='function'&&bindAndroidAppFooter());
+    $('#retryCustomerLink').onclick=()=>renderPublicStore(hashParams);
+    return;
+  }
   customerStoreLinks=linked.stores?.length?linked.stores:[{ownerId,storeId,storeName:store.name,category:store.category,city:store.city}];
   await loadAndRenderCustomerView(store,linked.customer);
   startCustomerRealtime(store,linked.customer);
