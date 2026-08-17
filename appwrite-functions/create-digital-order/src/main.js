@@ -1,5 +1,6 @@
 import webpush from 'web-push';
-import admin from 'firebase-admin';
+import { initializeApp as initializeFirebaseApp, getApps as getFirebaseApps, cert as firebaseCert } from 'firebase-admin/app';
+import { getMessaging } from 'firebase-admin/messaging';
 import { createHash } from 'crypto';
 
 const DATABASE_ID = 'gravity58';
@@ -925,13 +926,13 @@ function digit58PushMessageForOrder(order) {
 }
 let fcmAppInitialized = false;
 function ensureFcmApp() {
-  if (fcmAppInitialized) return admin.apps.length > 0;
+  if (fcmAppInitialized) return getFirebaseApps().length > 0;
   fcmAppInitialized = true;
   const raw = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
   if (!raw) return false;
   try {
     const serviceAccount = JSON.parse(raw);
-    admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
+    initializeFirebaseApp({ credential: firebaseCert(serviceAccount) });
     return true;
   } catch {
     return false;
@@ -988,7 +989,7 @@ async function sendDigit58PushNotifications(call, error) {
       }
       if (fcmReady && fcmTokenRow) {
         try {
-          await admin.messaging().send({
+          await getMessaging().send({
             token: fcmTokenRow.token,
             notification: { title: message.title, body: message.body },
             data: { url: message.url },
