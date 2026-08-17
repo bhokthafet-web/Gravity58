@@ -1341,11 +1341,13 @@ async function subscribeToNativePush(store,customer){
     });
   }catch(error){console.warn('Native push subscription failed',error);return null}
 }
-function renderPushPrompt(store,customer){
+async function renderPushPrompt(store,customer){
   const container=$('#pushNotifyPrompt');
   if(!container)return;
   if(localStorage.getItem(pushDismissKey(store))==='1'){container.innerHTML='';return}
   if(isNativePushAvailable()){
+    const nativeStatus=await window.Capacitor.Plugins.PushNotifications.checkPermissions().catch(()=>({receive:'prompt'}));
+    if(nativeStatus.receive==='granted'){container.innerHTML='';return}
     container.innerHTML=`<div class="push-hint-card"><p>Get notified about your orders — even when the app is closed.</p><div class="push-hint-actions"><button type="button" class="btn small green" id="pushEnableBtn">Enable Notifications</button><button type="button" class="push-hint-dismiss" id="pushHintDismiss">Not now</button></div></div>`;
     $('#pushEnableBtn').onclick=async()=>{
       const token=await subscribeToNativePush(store,customer);
