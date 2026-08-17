@@ -276,6 +276,15 @@ async function acceptOwnerOrder(store,customer,orderId){
     await loadAndRenderCustomerView(store,customer);
   }catch(error){toast(error.message||'Could not accept the order')}
 }
+async function rejectOwnerOrder(store,customer,orderId){
+  if(!confirm('Reject this order from the store?'))return;
+  try{
+    const result=await api.executeFunction(api.config.digitalOrderFunctionId,{action:'digit58-reject-owner-order',ownerId:store.ownerId,orderId});
+    if(result?.order)markRejectionSeen(result.order,customer);
+    toast('Order rejected');
+    await loadAndRenderCustomerView(store,customer);
+  }catch(error){toast(error.message||'Could not reject the order')}
+}
 let medicineAlarmTimer=null,customerCoursesCache=[];
 const medicineAlarmRung=new Set();
 function medicineAlarmKey(medicineId){return `${medicineId}:${indiaDateValue()}`}
@@ -1476,6 +1485,7 @@ function renderCustomerCards(store,customer,cards,orders=[],promotions=[],course
   bindRazorpayPaymentActions(active,store,customer);
   $('#placeOrderBtn').onclick=()=>openPlaceOrderModal(store,customer,promotions);
   $$('[data-accept-owner-order]').forEach(button=>button.onclick=()=>acceptOwnerOrder(store,customer,button.dataset.acceptOwnerOrder));
+  $$('[data-reject-owner-order]').forEach(button=>button.onclick=()=>rejectOwnerOrder(store,customer,button.dataset.rejectOwnerOrder));
   $$('[data-buy-again]').forEach(button=>button.onclick=()=>{
     const card=cards.find(row=>row.id===button.dataset.buyAgain);
     openBuyAgainModal(button.dataset.buyAgain,store,customer,card?.productName);
@@ -1548,7 +1558,7 @@ function customerOrderMarkup(order,store){
   const razorpayEnabled=store?.razorpayEnabled&&validRazorpayLink(store.razorpayLink);
   const razorpayReturnOpen=razorpayPaymentWasOpened(order.id);
   const paymentBlock=order.status==='Pending Customer Acceptance'
-    ?`<div class="pending-acceptance-note"><p class="muted">The store started this order for you. Accept it to send it into the normal order queue.</p><button type="button" class="btn full green" data-accept-owner-order="${html(order.id)}">Accept Order</button></div>`
+    ?`<div class="pending-acceptance-note"><p class="muted">The store started this order for you. Accept it to send it into the normal order queue.</p><button type="button" class="btn full green" data-accept-owner-order="${html(order.id)}">Accept Order</button><button type="button" class="btn full secondary" data-reject-owner-order="${html(order.id)}">Reject</button></div>`
     :order.status==='Priced'
     ?order.paymentMarkedAt
       ?`<div class="razorpay-submitted"><span class="razorpay-submitted-icon">✓</span><div><strong>Payment submitted for verification</strong><p>The store has been notified. It will verify the Razorpay payment and accept your order.</p></div></div>`

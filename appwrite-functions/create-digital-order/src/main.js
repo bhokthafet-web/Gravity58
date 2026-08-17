@@ -826,6 +826,18 @@ async function acceptDigit58OwnerOrder(call, input, userId) {
   const changes = { status: 'Requested', acceptedByCustomerAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
   return updateRow(call, orderId, { ...order, ...changes });
 }
+async function rejectDigit58OwnerOrder(call, input, userId) {
+  const ownerId = text(input.ownerId, 64), orderId = text(input.orderId, 36);
+  if (!ownerId || !orderId) throw new Error('Order details are missing.');
+  const row = await call(`/tablesdb/${DATABASE_ID}/tables/${TABLE_ID}/rows/${encodeURIComponent(orderId)}`);
+  if (row.kind !== digit58OrderKind(ownerId)) throw new Error('This is not a Refills order.');
+  const order = cleanRow(row);
+  if (order.customerAccountId !== userId) { const denied = new Error("Only this order's customer can reject it."); denied.code = 403; throw denied; }
+  if (order.status !== 'Pending Customer Acceptance') throw new Error('This order has already been handled.');
+  const rejectedAt = new Date().toISOString();
+  const changes = { status: 'Rejected', rejectionReason: 'Declined by customer.', rejectedAt, updatedAt: rejectedAt, pushNotifiedStatus: 'Rejected' };
+  return updateRow(call, orderId, { ...order, ...changes });
+}
 
 function cleanMedicineInput(input) {
   const name = text(input?.name, 160);
@@ -1074,6 +1086,10 @@ export default async ({ req, res, error }) => {
     if (requestBody?.action === 'digit58-accept-owner-order') {
       const call = appwriteClient(req);
       return res.json({ ok: true, order: await acceptDigit58OwnerOrder(call, requestBody, userId) });
+    }
+    if (requestBody?.action === 'digit58-reject-owner-order') {
+      const call = appwriteClient(req);
+      return res.json({ ok: true, order: await rejectDigit58OwnerOrder(call, requestBody, userId) });
     }
     if (requestBody?.action === 'digit58-create-course') {
       const call = appwriteClient(req);
