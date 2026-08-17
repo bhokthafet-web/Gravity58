@@ -1,3 +1,5 @@
+import webpush from 'web-push';
+
 const DATABASE_ID = 'gravity58';
 const TABLE_ID = 'g58_records';
 const MEDIA_BUCKET_ID = 'ad-media';
@@ -11,6 +13,8 @@ const DIGIT58_ORDER_KIND_PREFIX = 'digit58_order_';
 const DIGIT58_STORE_KIND_PREFIX = 'digit58_store_';
 const DIGIT58_PROMOTION_KIND_PREFIX = 'digit58_promo_';
 const DIGIT58_COURSE_KIND_PREFIX = 'digit58_course_';
+const DIGIT58_PUSH_KIND_PREFIX = 'digit58_push_';
+const VAPID_PUBLIC_KEY = 'BBWHhjt1keQag3HnZIooxS1pJvelQ8CuQ6eWBxFp9AStQLDpTzZqwKHmwj_gomaCpNBykqJRo6AsmfbC0roZoEY';
 const DIGIT58_OWNER_KIND = 'digit58_owners';
 const DIGIT58_ENTITLEMENT_KIND = 'digit58_entitlements';
 const ADMIN_TEAM_ID = '6a776960001ca2fb66bf';
@@ -35,6 +39,7 @@ const digit58OrderKind = ownerId => safeKindId(DIGIT58_ORDER_KIND_PREFIX, ownerI
 const digit58StoreKind = ownerId => safeKindId(DIGIT58_STORE_KIND_PREFIX, ownerId, 40);
 const digit58PromotionKind = ownerId => safeKindId(DIGIT58_PROMOTION_KIND_PREFIX, ownerId, 40);
 const digit58CourseKind = ownerId => safeKindId(DIGIT58_COURSE_KIND_PREFIX, ownerId, 39);
+const digit58PushKind = ownerId => safeKindId(DIGIT58_PUSH_KIND_PREFIX, ownerId, 40);
 const digit58EntitlementRowId = ownerId => `d58-${String(ownerId).slice(0, 30)}`;
 async function isDigit58Admin(call, userId) {
   try {
@@ -855,13 +860,92 @@ async function addDigit58Medicine(call, input, userId) {
   return updateRow(call, courseId, { ...course, medicines, updatedAt: new Date().toISOString() });
 }
 
+async function saveDigit58PushSubscription(call, input, userId) {
+  const ownerId = text(input.ownerId, 64), storeId = text(input.storeId, 40);
+  const subscription = input.subscription || {};
+  const endpoint = text(subscription.endpoint, 500);
+  const p256dh = text(subscription.keys?.p256dh, 200), auth = text(subscription.keys?.auth, 100);
+  if (!ownerId || !storeId) throw new Error('Store details are missing.');
+  if (!endpoint || !p256dh || !auth) throw new Error('This push subscription is incomplete.');
+  const rowId = `push-${safeKindId('', ownerId, 30)}-${safeKindId('', userId, 30)}`;
+  const now = new Date().toISOString();
+  const record = {
+    id: rowId, ownerId, storeId, customerAccountId: userId,
+    endpoint, keys: { p256dh, auth }, createdAt: now, updatedAt: now,
+  };
+  const existing = await call(`/tablesdb/${DATABASE_ID}/tables/${TABLE_ID}/rows/${encodeURIComponent(rowId)}`).catch(() => null);
+  if (existing) return updateRow(call, rowId, record);
+  const created = await createRow(call, rowId, digit58PushKind(ownerId), record, rowPermissionsFor([ownerId, userId]));
+  return cleanRow(created);
+}
+
+const DIGIT58_PUSH_STATUSES = ['Priced', 'Rejected', 'Delivered', 'Pending Customer Acceptance'];
+function digit58PushMessageForOrder(order) {
+  const shortId = text(order.id, 40).slice(-6).toUpperCase();
+  const byStatus = {
+    Priced: { title: 'Payment ready', body: `Order #${shortId} is priced — open the app to pay.` },
+    Rejected: { title: 'Order rejected', body: `Order #${shortId} was rejected by the store.` },
+    Delivered: { title: 'Order delivered', body: `Order #${shortId} has been delivered. Enjoy!` },
+    'Pending Customer Acceptance': { title: 'New order from the store', body: `Review and accept order #${shortId}.` },
+  };
+  const message = byStatus[order.status] || { title: 'Order update', body: `Order #${shortId}: ${order.status}` };
+  return { ...message, url: `/digit58/#store&owner=${order.ownerId}&store=${order.storeId}` };
+}
+async function sendDigit58PushNotifications(call, error) {
+  const privateKey = process.env.VAPID_PRIVATE_KEY;
+  if (!privateKey) return { skipped: true, reason: 'VAPID_PRIVATE_KEY environment variable is not set.' };
+  webpush.setVapidDetails('mailto:support@g58.in', VAPID_PUBLIC_KEY, privateKey);
+  const [ownerRows, entitlementRows] = await Promise.all([
+    listRowsByKind(call, DIGIT58_OWNER_KIND).catch(() => []),
+    listRowsByKind(call, DIGIT58_ENTITLEMENT_KIND).catch(() => []),
+  ]);
+  const ownerIds = [...new Set([
+    ...ownerRows.map(row => text(cleanRow(row).ownerId, 64)),
+    ...entitlementRows.map(row => text(cleanRow(row).ownerId, 64)),
+  ].filter(Boolean))];
+  let sent = 0, expired = 0, failed = 0;
+  for (const ownerId of ownerIds) {
+    const [orderRows, pushRows] = await Promise.all([
+      listRowsByKind(call, digit58OrderKind(ownerId)).catch(() => []),
+      listRowsByKind(call, digit58PushKind(ownerId)).catch(() => []),
+    ]);
+    const subscriptionsByCustomer = new Map(pushRows.map(cleanRow).map(row => [row.customerAccountId, row]));
+    for (const raw of orderRows) {
+      const order = cleanRow(raw);
+      if (!DIGIT58_PUSH_STATUSES.includes(order.status) || order.pushNotifiedStatus === order.status) continue;
+      const subscriptionRow = subscriptionsByCustomer.get(order.customerAccountId);
+      if (!subscriptionRow) continue;
+      const message = digit58PushMessageForOrder(order);
+      try {
+        await webpush.sendNotification(
+          { endpoint: subscriptionRow.endpoint, keys: subscriptionRow.keys },
+          JSON.stringify(message)
+        );
+        sent += 1;
+      } catch (caught) {
+        if (caught?.statusCode === 404 || caught?.statusCode === 410) {
+          expired += 1;
+          await removeRow(call, subscriptionRow.id || subscriptionRow.$id).catch(() => {});
+          subscriptionsByCustomer.delete(order.customerAccountId);
+        } else {
+          failed += 1;
+          error(`Push send failed for order ${order.id}: ${caught?.message || caught}`);
+        }
+      }
+      await updateRow(call, order.id, { ...order, pushNotifiedStatus: order.status }).catch(() => {});
+    }
+  }
+  return { sent, expired, failed };
+}
+
 export default async ({ req, res, error }) => {
   if (req.headers['x-appwrite-trigger'] === 'schedule') {
     try {
       const call = appwriteClient(req);
       const businessCards = await purgeInactiveBusinessCards(call);
       const promotions = await purgeExpiredDigit58Promotions(call);
-      return res.json({ ok: true, scheduled: true, ...businessCards, promotions });
+      const pushNotifications = await sendDigit58PushNotifications(call, error).catch(caught => ({ error: caught?.message || String(caught) }));
+      return res.json({ ok: true, scheduled: true, ...businessCards, promotions, pushNotifications });
     } catch (caught) {
       error(`Scheduled business-card cleanup failed: ${caught?.message || caught}`);
       return res.json({ ok: false, error: caught?.message || 'Scheduled business-card cleanup failed.' }, 500);
@@ -940,6 +1024,10 @@ export default async ({ req, res, error }) => {
     if (requestBody?.action === 'digit58-add-medicine') {
       const call = appwriteClient(req);
       return res.json({ ok: true, course: await addDigit58Medicine(call, requestBody, userId) });
+    }
+    if (requestBody?.action === 'digit58-save-push-subscription') {
+      const call = appwriteClient(req);
+      return res.json({ ok: true, subscription: await saveDigit58PushSubscription(call, requestBody, userId) }, 201);
     }
     if (requestBody?.action === 'raise-support-ticket') {
       const call = appwriteClient(req);

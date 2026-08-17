@@ -1252,6 +1252,59 @@ function startCustomerRealtime(store,customer){
   if(isMedicalStore(store))customerCoursesUnsubscribe=api.subscribeKind(courseKind(store.ownerId),()=>loadAndRenderCustomerView(store,customer));
 }
 function stopCustomerRealtime(){customerOrdersUnsubscribe?.();customerCardsUnsubscribe?.();customerPromotionsUnsubscribe?.();customerCoursesUnsubscribe?.();customerOrdersUnsubscribe=customerCardsUnsubscribe=customerPromotionsUnsubscribe=customerCoursesUnsubscribe=null;stopPromotionAutoScroll();stopMedicineAlarmTimer();dueReminderRung.clear();pendingDueBeep=false;pendingOwnerOrderRung.clear();medicineAlarmRung.clear();activeCustomerContext=null;customerRenderPending=false;stopIncomingCallRing()}
+const VAPID_PUBLIC_KEY='BBWHhjt1keQag3HnZIooxS1pJvelQ8CuQ6eWBxFp9AStQLDpTzZqwKHmwj_gomaCpNBykqJRo6AsmfbC0roZoEY';
+function urlBase64ToUint8Array(base64String){
+  const padding='='.repeat((4-base64String.length%4)%4);
+  const base64=(base64String+padding).replace(/-/g,'+').replace(/_/g,'/');
+  const rawData=atob(base64);
+  const outputArray=new Uint8Array(rawData.length);
+  for(let i=0;i<rawData.length;i++)outputArray[i]=rawData.charCodeAt(i);
+  return outputArray;
+}
+function isStandalonePwa(){return window.matchMedia('(display-mode: standalone)').matches||window.navigator.standalone===true}
+function isIOSDevice(){return /iphone|ipad|ipod/i.test(navigator.userAgent)}
+function pushDismissKey(store){return `g58-push-hint-dismissed:${store.ownerId}:${store.id}`}
+async function subscribeToPush(store,customer){
+  if(!('serviceWorker' in navigator)||!('PushManager' in window))return null;
+  try{
+    const registration=await navigator.serviceWorker.register('/digit58/sw.js');
+    const permission=await Notification.requestPermission();
+    if(permission!=='granted')return null;
+    let subscription=await registration.pushManager.getSubscription();
+    if(!subscription){
+      subscription=await registration.pushManager.subscribe({
+        userVisibleOnly:true,
+        applicationServerKey:urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
+      });
+    }
+    await api.executeFunction(api.config.digitalOrderFunctionId,{
+      action:'digit58-save-push-subscription',
+      ownerId:store.ownerId,storeId:store.id,
+      subscription:subscription.toJSON(),
+    });
+    return subscription;
+  }catch(error){console.warn('Push subscription failed',error);return null}
+}
+function renderPushPrompt(store,customer){
+  const container=$('#pushNotifyPrompt');
+  if(!container)return;
+  if(!('Notification' in window)||localStorage.getItem(pushDismissKey(store))==='1'){container.innerHTML='';return}
+  if(Notification.permission==='granted'){container.innerHTML='';return}
+  if(isIOSDevice()&&!isStandalonePwa()){
+    container.innerHTML=`<div class="push-hint-card"><p>Add this page to your Home Screen (Share → Add to Home Screen) to get notified about your orders — even when this page is closed.</p><button type="button" class="push-hint-dismiss" id="pushHintDismiss">Not now</button></div>`;
+    $('#pushHintDismiss').onclick=()=>{localStorage.setItem(pushDismissKey(store),'1');container.innerHTML=''};
+    return;
+  }
+  if(!('serviceWorker' in navigator)||!('PushManager' in window)){container.innerHTML='';return}
+  container.innerHTML=`<div class="push-hint-card"><p>Get notified about your orders — even when this page is closed.</p><div class="push-hint-actions"><button type="button" class="btn small green" id="pushEnableBtn">Enable Notifications</button><button type="button" class="push-hint-dismiss" id="pushHintDismiss">Not now</button></div></div>`;
+  $('#pushEnableBtn').onclick=async()=>{
+    const subscription=await subscribeToPush(store,customer);
+    if(subscription){toast('Notifications enabled');container.innerHTML=''}
+    else toast('Could not enable notifications');
+  };
+  $('#pushHintDismiss').onclick=()=>{localStorage.setItem(pushDismissKey(store),'1');container.innerHTML=''};
+}
+function initPushNotifications(store,customer){renderPushPrompt(store,customer)}
 // The Appwrite realtime WebSocket doesn't auto-reconnect after the app is
 // backgrounded (common on mobile/Android app resume) or the network drops.
 // Re-arm the subscriptions and force a fresh fetch whenever we come back.
@@ -1370,7 +1423,7 @@ function renderCustomerCards(store,customer,cards,orders=[],promotions=[],course
     ?filterCoursesByIndiaDate(completedCourseList,courseHistoryFrom,courseHistoryTo).sort((a,b)=>new Date(courseCompletionDate(b))-new Date(courseCompletionDate(a)))
     :latestCoursePerPatient(completedCourseList).sort((a,b)=>new Date(courseCompletionDate(b))-new Date(courseCompletionDate(a)));
   const marqueePromotions=promotions.length?Array.from({length:Math.max(1,Math.ceil(6/promotions.length))},()=>promotions).flat():[];
-  app.innerHTML=`<main class="public-store">${customerStoreHub(store)}<section class="store-hero"><span class="chip">${html(store.category||'Store')}</span>${store.highlightText?`<strong class="store-highlight-text">${html(store.highlightText)}</strong>`:''}<h1>${html(store.name)}</h1>${storeMinimum(store)?`<p class="store-minimum-order">Minimum new order ${money(storeMinimum(store))}</p>`:''}<p class="muted">${html(store.description||'')}${store.city?' · '+html(store.city):''}</p></section>
+  app.innerHTML=`<main class="public-store">${customerStoreHub(store)}<div id="pushNotifyPrompt"></div><section class="store-hero"><span class="chip">${html(store.category||'Store')}</span>${store.highlightText?`<strong class="store-highlight-text">${html(store.highlightText)}</strong>`:''}<h1>${html(store.name)}</h1>${storeMinimum(store)?`<p class="store-minimum-order">Minimum new order ${money(storeMinimum(store))}</p>`:''}<p class="muted">${html(store.description||'')}${store.city?' · '+html(store.city):''}</p></section>
   ${promotions.length?`<section class="promotion-strip"><div class="promotion-strip-head"><div><span>Store offers</span><h2>Fresh deals for your next order</h2></div><small>Tap Buy to include an offer</small></div><div class="promotion-rail" id="promotionRail"><div class="promotion-track"><div class="promotion-sequence">${marqueePromotions.map((promotion,index)=>customerPromotionTicket(promotion,index>=promotions.length)).join('')}</div><div class="promotion-sequence" aria-hidden="true">${marqueePromotions.map(promotion=>customerPromotionTicket(promotion,true)).join('')}</div></div></div></section>`:''}
   <div class="section-head"><div><h2>Your orders</h2>${storeMinimum(store)?`<p class="muted">New orders must be at least ${money(storeMinimum(store))}. Refills and Reorders are exempt.</p>`:''}</div><button class="btn small" id="placeOrderBtn">+ Place New Order</button></div>
   <div class="grid card-grid">${active.map(order=>customerOrderMarkup(order,store)).join('')||'<div class="empty">No active orders. Place a new order to get started.</div>'}</div>
@@ -1420,6 +1473,7 @@ function renderCustomerCards(store,customer,cards,orders=[],promotions=[],course
   bindOrderChatForms(active,'customer',()=>loadAndRenderCustomerView(store,customer));
   bindCardChatForms(cards,'customer',()=>loadAndRenderCustomerView(store,customer));
   initShakeDetection();
+  initPushNotifications(store,customer);
   (typeof bindAndroidAppFooter==='function'&&bindAndroidAppFooter());
   setTimeout(()=>showNextRejectedOrder(orders,store,customer,promotions),0);
   if(medical)checkMedicineAlarms(store,customer);

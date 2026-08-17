@@ -1,0 +1,14 @@
+{
+  "name": "G58 Refills",
+  "short_name": "Refills",
+  "description": "Track your refill reminders and orders from the stores you shop with.",
+  "start_url": "/digit58/",
+  "scope": "/digit58/",
+  "display": "standalone",
+  "background_color": "#141220",
+  "theme_color": "#15130f",
+  "icons": [
+    { "src": "/assets/favicon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/assets/apple-touch-icon.png", "sizes": "180x180", "type": "image/png" }
+  ]
+}
