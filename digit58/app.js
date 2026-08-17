@@ -206,25 +206,6 @@ function playTelephoneRingBurst(){
     });
   }catch(error){console.warn('Ring unavailable',error)}
 }
-function playWarningSiren(){
-  try{
-    orderAlertContext||=new (window.AudioContext||window.webkitAudioContext)();
-    if(orderAlertContext.state==='suspended')orderAlertContext.resume();
-    const ctx=orderAlertContext,start=ctx.currentTime,duration=1.1;
-    const oscillator=ctx.createOscillator(),gain=ctx.createGain();
-    oscillator.type='sawtooth';
-    oscillator.frequency.setValueAtTime(500,start);
-    oscillator.frequency.linearRampToValueAtTime(900,start+.35);
-    oscillator.frequency.linearRampToValueAtTime(500,start+.7);
-    oscillator.frequency.linearRampToValueAtTime(900,start+duration);
-    gain.gain.setValueAtTime(.0001,start);
-    gain.gain.exponentialRampToValueAtTime(.3,start+.05);
-    gain.gain.setValueAtTime(.3,start+duration-.1);
-    gain.gain.exponentialRampToValueAtTime(.0001,start+duration);
-    oscillator.connect(gain);gain.connect(ctx.destination);
-    oscillator.start(start);oscillator.stop(start+duration+.02);
-  }catch(error){console.warn('Siren unavailable',error)}
-}
 function playOwnerNotificationChime(){
   try{
     orderAlertContext||=new (window.AudioContext||window.webkitAudioContext)();
@@ -1406,11 +1387,10 @@ function showNextRejectedOrder(orders,store,customer,promotions=[]){
   if($('.modal-backdrop')||$('.incoming-call-overlay'))return;
   const order=[...orders].filter(row=>row.status==='Rejected'&&!rejectionWasSeen(row,customer)&&!shownRejectedOrderIds.has(row.id)).sort((a,b)=>new Date(b.rejectedAt||b.updatedAt||0)-new Date(a.rejectedAt||a.updatedAt||0))[0];
   if(!order)return;shownRejectedOrderIds.add(order.id);
-  playWarningSiren();pendingAlertReplay=playWarningSiren;
   const reason=order.rejectionReason||'The store could not process this order. Contact the store if you need more information.';
   const storePhone=String(store.phone||'').replace(/[^\d+]/g,'');
   modal('Order Rejected',`<div class="rejection-popup"><span class="rejection-popup-icon" aria-hidden="true">!</span><p>Your order from <strong>${html(store.name)}</strong> was rejected.</p><div class="rejection-reason"><small>Reason</small><strong>${html(reason)}</strong></div><p class="muted">Order #${html(order.id.slice(-6).toUpperCase())}</p><div class="rejection-next-actions"><button class="btn full" id="reviseRejectedOrder" type="button">Revise &amp; Resubmit</button><button class="btn full secondary" id="viewRejectedHistory" type="button">View Order History</button>${storePhone?`<a class="btn full secondary" id="callRejectedStore" href="tel:${html(storePhone)}">Call ${html(store.name)}</a>`:''}<button class="rejection-dismiss" id="dismissRejectedOrder" type="button">Close</button></div></div>`,()=>{
-    const acknowledge=()=>{markRejectionSeen(order,customer);pendingAlertReplay=null;closeModal()};
+    const acknowledge=()=>{markRejectionSeen(order,customer);closeModal()};
     $('#reviseRejectedOrder').onclick=()=>{acknowledge();openPlaceOrderModal(store,customer,promotions,order)};
     $('#viewRejectedHistory').onclick=()=>{acknowledge();setTimeout(()=>$('#customerOrderHistory')?.scrollIntoView({behavior:'smooth',block:'start'}),0)};
     $('#callRejectedStore')?.addEventListener('click',()=>markRejectionSeen(order,customer));
