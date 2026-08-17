@@ -1,5 +1,6 @@
 import webpush from 'web-push';
 import admin from 'firebase-admin';
+import { createHash } from 'crypto';
 
 const DATABASE_ID = 'gravity58';
 const TABLE_ID = 'g58_records';
@@ -31,6 +32,9 @@ const indiaDay = (value = new Date()) => new Intl.DateTimeFormat('en-CA', {
   timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit',
 }).format(new Date(value));
 const safeKindId = (prefix, ownerId, maxOwnerLength) => `${prefix}${String(ownerId).replace(/[^a-zA-Z0-9._-]/g, '-').slice(0, maxOwnerLength)}`;
+// Row IDs are capped at 36 chars by Appwrite, so pairing two full IDs (usually 20 chars each)
+// needs a hash rather than truncated concatenation to stay under the limit without collisions.
+const pairRowId = (prefix, a, b) => `${prefix}${createHash('sha1').update(`${a}:${b}`).digest('hex').slice(0, 32 - prefix.length)}`;
 const orderKind = ownerId => safeKindId(ORDER_KIND_PREFIX, ownerId, 47);
 const tokenKind = ownerId => safeKindId(TOKEN_KIND_PREFIX, ownerId, 47);
 const menuKind = ownerId => safeKindId(MENU_KIND_PREFIX, ownerId, 48);
@@ -882,7 +886,7 @@ async function saveDigit58PushSubscription(call, input, userId) {
   const p256dh = text(subscription.keys?.p256dh, 200), auth = text(subscription.keys?.auth, 100);
   if (!ownerId || !storeId) throw new Error('Store details are missing.');
   if (!endpoint || !p256dh || !auth) throw new Error('This push subscription is incomplete.');
-  const rowId = `push-${safeKindId('', ownerId, 30)}-${safeKindId('', userId, 30)}`;
+  const rowId = pairRowId('push-', ownerId, userId);
   const now = new Date().toISOString();
   const record = {
     id: rowId, ownerId, storeId, customerAccountId: userId,
@@ -898,7 +902,7 @@ async function saveDigit58FcmToken(call, input, userId) {
   const token = text(input.token, 300);
   if (!ownerId || !storeId) throw new Error('Store details are missing.');
   if (!token) throw new Error('This device token is incomplete.');
-  const rowId = `fcm-${safeKindId('', ownerId, 30)}-${safeKindId('', userId, 30)}`;
+  const rowId = pairRowId('fcm-', ownerId, userId);
   const now = new Date().toISOString();
   const record = { id: rowId, ownerId, storeId, customerAccountId: userId, token, createdAt: now, updatedAt: now };
   const existing = await call(`/tablesdb/${DATABASE_ID}/tables/${TABLE_ID}/rows/${encodeURIComponent(rowId)}`).catch(() => null);
