@@ -1288,14 +1288,22 @@ async function subscribeToPush(store,customer){
 function renderPushPrompt(store,customer){
   const container=$('#pushNotifyPrompt');
   if(!container)return;
-  if(!('Notification' in window)||localStorage.getItem(pushDismissKey(store))==='1'){container.innerHTML='';return}
+  if(localStorage.getItem(pushDismissKey(store))==='1'){container.innerHTML='';return}
+  if(!('Notification' in window)||!('serviceWorker' in navigator)||!('PushManager' in window)){
+    if(isRefillsCustomerApp()){
+      container.innerHTML=`<div class="push-hint-card"><p>Order notifications aren't available inside this app. Open <strong>g58.in/digit58/</strong> in Chrome or Safari on your phone to enable them.</p><button type="button" class="push-hint-dismiss" id="pushHintDismiss">Not now</button></div>`;
+      $('#pushHintDismiss').onclick=()=>{localStorage.setItem(pushDismissKey(store),'1');container.innerHTML=''};
+    }else{
+      container.innerHTML='';
+    }
+    return;
+  }
   if(Notification.permission==='granted'){container.innerHTML='';return}
   if(isIOSDevice()&&!isStandalonePwa()){
     container.innerHTML=`<div class="push-hint-card"><p>Add this page to your Home Screen (Share → Add to Home Screen) to get notified about your orders — even when this page is closed.</p><button type="button" class="push-hint-dismiss" id="pushHintDismiss">Not now</button></div>`;
     $('#pushHintDismiss').onclick=()=>{localStorage.setItem(pushDismissKey(store),'1');container.innerHTML=''};
     return;
   }
-  if(!('serviceWorker' in navigator)||!('PushManager' in window)){container.innerHTML='';return}
   container.innerHTML=`<div class="push-hint-card"><p>Get notified about your orders — even when this page is closed.</p><div class="push-hint-actions"><button type="button" class="btn small green" id="pushEnableBtn">Enable Notifications</button><button type="button" class="push-hint-dismiss" id="pushHintDismiss">Not now</button></div></div>`;
   $('#pushEnableBtn').onclick=async()=>{
     const subscription=await subscribeToPush(store,customer);
