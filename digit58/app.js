@@ -91,7 +91,8 @@ const courseKind=(ownerId)=>safeId('digit58_course_',ownerId,39);
 const REQUEST_KIND='digit58_requests',ENTITLEMENT_KIND='digit58_entitlements',SUBSCRIPTION_AMOUNT=399;
 const CARD_PURCHASE_KIND='digit58_card_purchases',FREE_PROMOTION_CARDS=3;
 const PROMOTION_CARD_PRICING={'30d':{label:'30 Days',amount:150,days:30},'6mo':{label:'6 Months',amount:750,days:182},'1yr':{label:'1 Year',amount:1200,days:365}};
-const BRAND_KIND='digit58_brand_owners',BRAND_REQUEST_KIND='digit58_brand_requests',BRAND_CARD_AMOUNT=300,BRAND_CARD_DAYS=30,STORE_APPROVAL_FEE=150;
+const BRAND_KIND='digit58_brand_owners',BRAND_REQUEST_KIND='digit58_brand_requests';
+const BRAND_CARD_PRICING={'30d':{label:'30 Days',amount:300,days:30},'6mo':{label:'6 Months',amount:1500,days:182},'1yr':{label:'1 Year',amount:2000,days:365}};
 let brandSession=null,brandProfile=null,brandRequests=[],pendingBrandTarget=null;
 const ORDER_STEPS=[
   {key:'Requested',icon:'📝',label:'Requested'},
@@ -644,7 +645,7 @@ function siteFooter(forCustomer){
 }
 function renderShell(){
   const store=activeStore();
-  app.innerHTML=`<div class="shell"><aside class="sidebar"><a class="brand" href="../"><svg class="brand-mark" viewBox="0 0 120 120" fill="none" stroke="#7fffd4" stroke-width="8" aria-hidden="true"><circle cx="60" cy="26" r="15"/><circle cx="28" cy="82" r="15"/><circle cx="92" cy="82" r="15"/></svg><div><strong>Refills</strong><small class="muted">Store workspace</small></div></a><nav class="nav">${navButton('dashboard','◉','Dashboard')}${navButton('stores','◫','My Stores')}${navButton('promotions','✦','Promotions')}${navButton('brands','♟','Brand Partners')}${navButton('wall','☰','Customer Wall')}${navButton('orders','🧾','Orders')}${navButton('orderHistory','🕘','Order History')}${navButton('subscription','♢','Subscription')}${navButton('settings','⚙','Settings')}<button id="logout">⇥ Logout</button></nav></aside><main class="main"><header class="topbar"><div>${state.stores.length?`<select id="storeSwitch">${state.stores.map(row=>`<option value="${html(row.id)}" ${row.id===state.activeStoreId?'selected':''}>${html(row.name)}</option>`).join('')}</select>`:'<strong>No store yet</strong>'}</div><a class="g58-topbar-home" href="https://www.g58.in/" aria-label="Open the Gravity58 home page">www.g58.in</a><span class="status-pill"><span class="dot"></span>${html(session?.email||'')}</span></header><section class="content" id="page"></section></main></div>${siteFooter()}${floatingSupportButton('digit58')}`;
+  app.innerHTML=`<div class="shell"><aside class="sidebar"><a class="brand" href="../"><svg class="brand-mark" viewBox="0 0 120 120" fill="none" stroke="#7fffd4" stroke-width="8" aria-hidden="true"><circle cx="60" cy="26" r="15"/><circle cx="28" cy="82" r="15"/><circle cx="92" cy="82" r="15"/></svg><div><strong>Refills</strong><small class="muted">Store workspace</small></div></a><nav class="nav">${navButton('dashboard','◉','Dashboard')}${navButton('stores','◫','My Stores')}${navButton('promotions','✦','Promotions')}${navButton('brands','♟','Brand Orders')}${navButton('wall','☰','Customer Wall')}${navButton('orders','🧾','Orders')}${navButton('orderHistory','🕘','Order History')}${navButton('subscription','♢','Subscription')}${navButton('settings','⚙','Settings')}<button id="logout">⇥ Logout</button></nav></aside><main class="main"><header class="topbar"><div>${state.stores.length?`<select id="storeSwitch">${state.stores.map(row=>`<option value="${html(row.id)}" ${row.id===state.activeStoreId?'selected':''}>${html(row.name)}</option>`).join('')}</select>`:'<strong>No store yet</strong>'}</div><a class="g58-topbar-home" href="https://www.g58.in/" aria-label="Open the Gravity58 home page">www.g58.in</a><span class="status-pill"><span class="dot"></span>${html(session?.email||'')}</span></header><section class="content" id="page"></section></main></div>${siteFooter()}${floatingSupportButton('digit58')}`;
   $$('[data-view]').forEach(button=>button.onclick=()=>{view=button.dataset.view;renderShell()});
   $('#logout').onclick=async()=>{stopOwnerRealtime();await api.logout();session=null;renderOwnerAuth()};
   $('#storeSwitch')?.addEventListener('change',event=>{state.activeStoreId=event.target.value;save();renderShell()});
@@ -812,8 +813,25 @@ async function bootBrand(){
   if(!brandSession)return renderBrandAuth();
   await ensureBrandProfile();
   await loadBrandData();
+  afterBrandAuth();
+}
+function afterBrandAuth(){
+  if(!brandProfile.disclaimerAcceptedAt)return renderBrandDisclaimer();
   renderBrandDashboard();
   openPendingBrandTarget();
+}
+function renderBrandDisclaimer(){
+  app.innerHTML=`<main class="screen"><section class="auth-card"><a class="brand" href="../"><svg class="brand-mark" viewBox="0 0 120 120" fill="none" stroke="#7fffd4" stroke-width="8" aria-hidden="true"><circle cx="60" cy="26" r="15"/><circle cx="28" cy="82" r="15"/><circle cx="92" cy="82" r="15"/></svg><div><h2>Before you continue</h2><p class="tagline">One-time agreement</p></div></a><div class="card" style="text-align:left"><p class="muted">A promotion card placement is a direct agreement between <strong>you (the brand)</strong> and the <strong>store owner</strong> you request a card from — covering the product shown, the price displayed, the plan duration, and the payment for that placement.</p><p class="muted" style="margin-top:10px">G58 is not a party to this agreement. G58 does not verify, guarantee, mediate, or take responsibility for the accuracy of what either side declares, or for any dispute between you and a store owner. G58 only provides the platform and audits self-declared payments to keep the system honest.</p><button class="btn full green" id="brandDisclaimerAccept" style="margin-top:16px">I Understand — Continue</button></div></section></main>${siteFooter()}`;
+  (typeof bindAndroidAppFooter==='function'&&bindAndroidAppFooter());
+  $('#brandDisclaimerAccept').onclick=async()=>{
+    const button=$('#brandDisclaimerAccept');button.disabled=true;
+    try{
+      const disclaimerAcceptedAt=now();
+      await api.update(BRAND_KIND,brandProfile.id,{disclaimerAcceptedAt});
+      brandProfile.disclaimerAcceptedAt=disclaimerAcceptedAt;
+      afterBrandAuth();
+    }catch(error){button.disabled=false;toast(error.message||'Could not save your acceptance')}
+  };
 }
 function openPendingBrandTarget(){
   if(!pendingBrandTarget)return;
@@ -839,8 +857,7 @@ function renderBrandAuth(){
       brandSession=await api.currentUser();
       await ensureBrandProfile();
       await loadBrandData();
-      renderBrandDashboard();
-      openPendingBrandTarget();
+      afterBrandAuth();
     }catch(error){button.disabled=false;toast(error.message||'Could not sign in')}
   };
 }
@@ -866,14 +883,15 @@ function brandRequestStatusNote(row){
   return `<span class="chip due">Waiting for store approval</span>`;
 }
 function renderBrandDashboard(){
-  app.innerHTML=`<main class="screen brand-dashboard"><a class="brand" href="../"><svg class="brand-mark" viewBox="0 0 120 120" fill="none" stroke="#7fffd4" stroke-width="8" aria-hidden="true"><circle cx="60" cy="26" r="15"/><circle cx="28" cy="82" r="15"/><circle cx="92" cy="82" r="15"/></svg><div><h2>G58 Brand Partners</h2><p class="tagline">${html(brandProfile?.name||brandSession.email)}</p></div></a><div class="section-head"><div><h1>Your Card Requests</h1><p class="muted">Request a 30-day promotion card on any Refills store for ${money(BRAND_CARD_AMOUNT)}.</p></div><button class="btn" id="newBrandRequest">+ New Request</button></div><div class="grid card-grid">${brandRequests.map(brandRequestCard).join('')||'<div class="empty">No requests yet. Create your first one.</div>'}</div><div class="actions" style="margin-top:20px"><button class="btn secondary" id="brandLogout">Sign out</button></div></main>${siteFooter()}`;
+  app.innerHTML=`<main class="screen brand-dashboard"><a class="brand" href="../"><svg class="brand-mark" viewBox="0 0 120 120" fill="none" stroke="#7fffd4" stroke-width="8" aria-hidden="true"><circle cx="60" cy="26" r="15"/><circle cx="28" cy="82" r="15"/><circle cx="92" cy="82" r="15"/></svg><div><h2>G58 Brand Partners</h2><p class="tagline">${html(brandProfile?.name||brandSession.email)}</p></div></a><div class="section-head"><div><h1>Your Card Requests</h1><p class="muted">Request a promotion card on any Refills store — choose a 30-day, 6-month, or 1-year plan.</p></div><button class="btn" id="newBrandRequest">+ New Request</button></div><div class="grid card-grid">${brandRequests.map(brandRequestCard).join('')||'<div class="empty">No requests yet. Create your first one.</div>'}</div><div class="actions" style="margin-top:20px"><button class="btn secondary" id="brandLogout">Sign out</button></div></main>${siteFooter()}`;
   (typeof bindAndroidAppFooter==='function'&&bindAndroidAppFooter());
   $('#newBrandRequest').onclick=()=>openBrandRequestForm();
   $('#brandLogout').onclick=async()=>{await api.logout();brandSession=null;brandProfile=null;renderBrandAuth()};
   $$('[data-pay-brand-request]').forEach(button=>button.onclick=()=>declareBrandPayment(button.dataset.payBrandRequest));
 }
 function brandRequestCard(row){
-  return `<article class="card brand-request-card"><h3>${html(row.promotionName)}</h3><p class="muted">${html(row.storeName)} · ${money(row.price)}</p>${brandRequestStatusNote(row)}${row.status==='Awaiting Payment'&&!row.brandPaidAt?`<button type="button" class="btn small green" style="margin-top:10px" data-pay-brand-request="${html(row.id)}">Pay ${money(BRAND_CARD_AMOUNT)}</button>`:''}</article>`;
+  const tier=BRAND_CARD_PRICING[row.duration||'30d'];
+  return `<article class="card brand-request-card"><h3>${html(row.promotionName)}</h3><p class="muted">${html(row.storeName)} · ${money(row.price)} shown to customers</p><p class="muted">${html(tier.label)} plan · ${money(tier.amount)}</p>${brandRequestStatusNote(row)}${row.status==='Awaiting Payment'&&!row.brandPaidAt?`<button type="button" class="btn small green" style="margin-top:10px" data-pay-brand-request="${html(row.id)}">Pay ${money(tier.amount)}</button>`:''}</article>`;
 }
 async function openBrandRequestForm(prefillTarget){
   let prefillStore=null;
@@ -882,7 +900,8 @@ async function openBrandRequestForm(prefillTarget){
     if(!prefillStore)toast("Couldn't load that store — paste the link manually");
   }
   const storeField=prefillStore?`<div class="field"><label>Store</label><input value="${html(prefillStore.name)}" disabled></div>`:`<div class="field"><label>Store link</label><input name="storeLink" placeholder="https://g58.in/digit58/#store&owner=...&store=..." required></div>`;
-  modal('New Card Request',`<form id="brandRequestForm">${storeField}<div class="field"><label>Product name</label><input name="promotionName" maxlength="80" required></div><div class="field"><label>Offer line</label><input name="offerText" maxlength="120" placeholder="Pure 500g jar · limited stock"></div><div class="field"><label>Price to display</label><input name="price" type="number" min="0" step="0.01" required></div><div class="field local-image-field"><label>Product image <small>(optional · auto-compressed to fit)</small></label><input name="imageFile" type="file" accept="image/jpeg,image/png,image/webp"><div class="image-preview" id="brandImagePreview"></div></div><p class="muted">This request goes to the store owner for approval, then costs ${money(BRAND_CARD_AMOUNT)} for a 30-day placement.</p><button class="btn full" style="margin-top:10px">Send Request</button></form>`,()=>{
+  const tierOptions=Object.entries(BRAND_CARD_PRICING).map(([key,tier])=>`<label class="option-toggle"><input type="radio" name="brandDuration" value="${key}" ${key==='30d'?'checked':''}><span><strong>${tier.label}</strong><small>${money(tier.amount)}</small></span></label>`).join('');
+  modal('New Card Request',`<form id="brandRequestForm">${storeField}<div class="field"><label>Product name</label><input name="promotionName" maxlength="80" required></div><div class="field"><label>Offer line</label><input name="offerText" maxlength="120" placeholder="Pure 500g jar · limited stock"></div><div class="field"><label>Price to display</label><input name="price" type="number" min="0" step="0.01" required></div><div class="field local-image-field"><label>Product image <small>(optional · auto-compressed to fit)</small></label><input name="imageFile" type="file" accept="image/jpeg,image/png,image/webp"><div class="image-preview" id="brandImagePreview"></div></div><div class="field"><label>Plan duration</label><div class="card-purchase-tiers">${tierOptions}</div></div><p class="muted">This request goes to the store owner for approval, then costs the plan amount above for that placement duration.</p><button class="btn full" style="margin-top:10px">Send Request</button></form>`,()=>{
     const form=$('#brandRequestForm'),imageFile=form.imageFile,imagePreview=$('#brandImagePreview');
     let compressedBlob=null,previewUrl='';
     imageFile.onchange=async()=>{
@@ -903,7 +922,8 @@ async function openBrandRequestForm(prefillTarget){
       button.disabled=true;
       try{
         const store=prefillStore||await api.get(storeKind(target.ownerId),target.storeId);
-        const record={id:id('brandreq'),brandOwnerId:brandSession.$id,brandOwnerName:brandProfile?.name||brandSession.email.split('@')[0],brandOwnerEmail:brandSession.email,ownerId:target.ownerId,storeId:target.storeId,storeName:store.name,promotionName:raw.promotionName.trim(),offerText:raw.offerText.trim(),price:Math.max(0,Number(raw.price)||0),status:'Pending Store Approval',createdAt:now()};
+        const duration=BRAND_CARD_PRICING[raw.brandDuration]?raw.brandDuration:'30d';
+        const record={id:id('brandreq'),brandOwnerId:brandSession.$id,brandOwnerName:brandProfile?.name||brandSession.email.split('@')[0],brandOwnerEmail:brandSession.email,ownerId:target.ownerId,storeId:target.storeId,storeName:store.name,promotionName:raw.promotionName.trim(),offerText:raw.offerText.trim(),price:Math.max(0,Number(raw.price)||0),duration,status:'Pending Store Approval',createdAt:now()};
         if(compressedBlob){
           const upload=await api.uploadMenuMedia(new File([compressedBlob],`brand-${id('img')}.webp`,{type:compressedBlob.type}));
           record.imageUrl=upload.mediaUrl;record.imageFileId=upload.fileId;
@@ -918,15 +938,16 @@ async function openBrandRequestForm(prefillTarget){
 async function declareBrandPayment(requestId){
   const row=brandRequests.find(item=>item.id===requestId);if(!row)return;
   try{
+    const tier=BRAND_CARD_PRICING[row.duration||'30d'];
     const pricingRows=await api.list('digit58_pricing').catch(()=>[]);
     const paymentLink=(pricingRows.find(item=>(item.id||item.$id)==='default')||pricingRows[0])?.paymentLink||'';
     if(!paymentLink)return toast('Payment link is not configured yet. Contact G58 support.');
     window.open(paymentLink,'_blank','noopener');
-    if(!confirm(`Have you completed the ${money(BRAND_CARD_AMOUNT)} payment?`))return;
+    if(!confirm(`Have you completed the ${money(tier.amount)} payment?`))return;
     const brandPaidAt=now();
     const nextStatus=row.storePaidAt?'Live':'Awaiting Payment';
     const changes={brandPaidAt,status:nextStatus,updatedAt:brandPaidAt};
-    if(nextStatus==='Live')changes.expiresAt=new Date(Date.now()+BRAND_CARD_DAYS*86400000).toISOString();
+    if(nextStatus==='Live')changes.expiresAt=new Date(Date.now()+tier.days*86400000).toISOString();
     await api.update(BRAND_REQUEST_KIND,requestId,changes);
     Object.assign(row,changes);
     renderBrandDashboard();toast(nextStatus==='Live'?'Card is now live on the store!':'Payment submitted — waiting for the store to pay their share');
@@ -986,7 +1007,8 @@ function promotionsView(){
   $$('[data-reject-brand-request]').forEach(button=>button.onclick=()=>rejectBrandRequest(button.dataset.rejectBrandRequest));
 }
 function brandRequestOwnerCard(row){
-  return `<article class="card brand-request-card"><h3>${html(row.promotionName)}</h3><p class="muted">From ${html(row.brandOwnerName||row.brandOwnerEmail)} · ${money(row.price)} shown to customers</p><p class="muted">Approving costs you ${money(STORE_APPROVAL_FEE)} to G58; the brand pays ${money(BRAND_CARD_AMOUNT)} for a 30-day placement.</p><div class="actions" style="margin-top:10px"><button class="btn small green" data-approve-brand-request="${html(row.id)}">Approve</button><button class="btn small red" data-reject-brand-request="${html(row.id)}">Reject</button></div></article>`;
+  const brandTier=BRAND_CARD_PRICING[row.duration||'30d'],approvalTier=PROMOTION_CARD_PRICING[row.duration||'30d'];
+  return `<article class="card brand-request-card"><h3>${html(row.promotionName)}</h3><p class="muted">From ${html(row.brandOwnerName||row.brandOwnerEmail)} · ${money(row.price)} shown to customers</p><p class="muted">${html(brandTier.label)} plan · Approving costs you ${money(approvalTier.amount)} to G58; the brand pays ${money(brandTier.amount)}.</p><div class="actions" style="margin-top:10px"><button class="btn small green" data-approve-brand-request="${html(row.id)}">Approve</button><button class="btn small red" data-reject-brand-request="${html(row.id)}">Reject</button></div></article>`;
 }
 async function rejectBrandRequest(requestId){
   const row=state.brandRequests.find(item=>item.id===requestId);if(!row||!confirm(`Reject the "${row.promotionName}" request?`))return;
@@ -997,16 +1019,17 @@ async function rejectBrandRequest(requestId){
 }
 async function approveBrandRequest(requestId){
   const row=state.brandRequests.find(item=>item.id===requestId);if(!row)return;
+  const brandTier=BRAND_CARD_PRICING[row.duration||'30d'],approvalTier=PROMOTION_CARD_PRICING[row.duration||'30d'];
   let paymentLink='';
   try{const pricingRows=await api.list('digit58_pricing');paymentLink=(pricingRows.find(item=>(item.id||item.$id)==='default')||pricingRows[0])?.paymentLink||''}catch{}
-  modal('Approve Brand Request',`<div class="card"><p class="muted">Approving "${html(row.promotionName)}" from ${html(row.brandOwnerName||row.brandOwnerEmail)} costs you ${money(STORE_APPROVAL_FEE)} to G58 for a 30-day placement.</p>${paymentLink?`<a class="btn full" href="${html(paymentLink)}" target="_blank" rel="noopener noreferrer" style="margin-top:14px;text-align:center;text-decoration:none">Pay ${money(STORE_APPROVAL_FEE)}</a><p class="muted" style="margin-top:6px;font-size:12px">Opens securely in another tab. Come back and confirm below once paid.</p>`:'<p class="muted" style="margin-top:14px">Payment link is not configured yet. Contact G58 support.</p>'}<button type="button" class="btn full green" id="brandApproveConfirm" style="margin-top:10px" ${paymentLink?'':'disabled'}>I've Paid — Approve Request</button></div>`,()=>{
+  modal('Approve Brand Request',`<div class="card"><p class="muted">Approving "${html(row.promotionName)}" from ${html(row.brandOwnerName||row.brandOwnerEmail)} costs you ${money(approvalTier.amount)} to G58 for a ${html(approvalTier.label)} placement.</p>${paymentLink?`<a class="btn full" href="${html(paymentLink)}" target="_blank" rel="noopener noreferrer" style="margin-top:14px;text-align:center;text-decoration:none">Pay ${money(approvalTier.amount)}</a><p class="muted" style="margin-top:6px;font-size:12px">Opens securely in another tab. Come back and confirm below once paid.</p>`:'<p class="muted" style="margin-top:14px">Payment link is not configured yet. Contact G58 support.</p>'}<button type="button" class="btn full green" id="brandApproveConfirm" style="margin-top:10px" ${paymentLink?'':'disabled'}>I've Paid — Approve Request</button></div>`,()=>{
     $('#brandApproveConfirm').onclick=async()=>{
       const button=$('#brandApproveConfirm');button.disabled=true;
       try{
         const storePaidAt=now();
         const nextStatus=row.brandPaidAt?'Live':'Awaiting Payment';
         const changes={storePaidAt,status:nextStatus,updatedAt:storePaidAt};
-        if(nextStatus==='Live')changes.expiresAt=new Date(Date.now()+BRAND_CARD_DAYS*86400000).toISOString();
+        if(nextStatus==='Live')changes.expiresAt=new Date(Date.now()+brandTier.days*86400000).toISOString();
         await api.update(BRAND_REQUEST_KIND,requestId,changes);
         Object.assign(row,changes);
         closeModal();refreshView();
@@ -1020,8 +1043,7 @@ function brandPartnersView(){
   const rows=state.brandRequests.slice().sort((a,b)=>new Date(b.createdAt||0)-new Date(a.createdAt||0));
   const pending=rows.filter(row=>row.status==='Pending Store Approval');
   const live=rows.filter(row=>row.status==='Live');
-  const approvedCount=rows.filter(row=>row.storePaidAt).length;
-  const brandSpend=approvedCount*STORE_APPROVAL_FEE;
+  const brandSpend=rows.filter(row=>row.storePaidAt).reduce((sum,row)=>sum+(PROMOTION_CARD_PRICING[row.duration||'30d']?.amount||0),0);
   const ownSpend=state.cardPurchases.filter(row=>row.status==='Declared Paid').reduce((sum,row)=>sum+Number(row.amount||0),0);
   const brandOwnersMap=new Map();
   rows.forEach(row=>{
@@ -1031,7 +1053,7 @@ function brandPartnersView(){
   });
   const brandOwners=[...brandOwnersMap.values()];
   const pendingSection=pending.length?`<div class="section-head"><h2>Pending your approval</h2></div><div class="grid card-grid">${pending.map(brandRequestOwnerCard).join('')}</div>`:'';
-  $('#page').innerHTML=`<div class="section-head"><div><h1>Brand Partners</h1><p class="muted">Brand accounts connected to your stores, and promotion spend tracked separately from your own cards.</p></div></div>
+  $('#page').innerHTML=`<div class="section-head"><div><h1>Brand Orders</h1><p class="muted">Brand card requests and connected accounts across your stores, with promotion spend tracked separately from your own cards.</p></div></div>
   <div class="grid stats">${metric('Your Own Cards — Spent',money(ownSpend))}${metric('Brand Partner Cards — Spent',money(brandSpend))}${metric('Connected Brand Accounts',brandOwners.length)}${metric('Live Brand Cards',live.length)}</div>
   ${pendingSection}
   <div class="section-head"><h2>Connected brand accounts</h2></div>
