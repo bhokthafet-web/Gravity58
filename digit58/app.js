@@ -604,6 +604,7 @@ async function boot(){
   await proceedAfterEntitlement();
 }
 const DIGIT58_POLICY_TEXT='Refills generates a payment QR code from the UPI ID you provide, to help you collect payment from your customers. G58 only facilitates this QR generation — we are not a party to any payment and are not responsible for any fraud, dispute or disagreement between you and your customer. Please verify payments independently before fulfilling any order.';
+const DIGIT58_CUSTOMER_AGREEMENT_TEXT='By continuing, you agree that this store — not G58 — is responsible for its products, pricing, offers, stock, and order fulfillment. Any payment you make (by UPI QR code or payment link shown on your order) goes directly to the store; G58 only provides this ordering platform and does not process, hold, or verify these payments. Before you pay, always confirm the amount matches your order and that the QR code or payment link genuinely belongs to this store. G58 is not responsible for any payment error, fraud, delay, or dispute between you and the store. For any issue with your order or payment, contact the store directly using the Support button in this portal.';
 async function proceedAfterEntitlement(){
   if(!entitlement?.policyAcceptedAt)return renderPolicyGate();
   await loadOwnerData();
@@ -753,6 +754,15 @@ function bindFloatingSupportButton(){
     document.body.insertAdjacentHTML('beforeend',`<aside class="support-popup" id="supportPopup" role="dialog" aria-modal="false" aria-labelledby="supportPopupTitle"><button class="support-popup-close" id="supportPopupClose" type="button" aria-label="Close support">✕</button><span class="chip">G58 Support</span><h3 id="supportPopupTitle">How can we help?</h3><p>Open your secure support centre to raise a ticket or read replies from the G58 team.</p><a class="btn full" href="/support/?from=${encodeURIComponent(source)}">Open Support Centre</a></aside>`);
     $('#supportPopupClose').onclick=()=>$('#supportPopup')?.remove();
   });
+}
+function customerBrandStrip(){
+  return `<div class="customer-brand-strip"><svg class="brand-mark" viewBox="0 0 120 120" fill="none" stroke="#7fffd4" stroke-width="8" aria-hidden="true"><circle cx="60" cy="26" r="15"/><circle cx="28" cy="82" r="15"/><circle cx="92" cy="82" r="15"/></svg><div><strong>Refills</strong><small>powered by <a href="https://www.g58.in/" target="_blank" rel="noopener noreferrer">g58.in</a></small></div></div>`;
+}
+function floatingStoreWhatsappButton(store){
+  const phone=String(store?.phone||'').replace(/[^\d+]/g,'').replace(/^\+/,'');
+  if(!phone)return '';
+  const message=encodeURIComponent(`Hi ${store.name||'there'}, I need help with my order on G58 Refills.`);
+  return `<a class="floating-support-btn floating-whatsapp-btn" href="https://wa.me/${phone}?text=${message}" target="_blank" rel="noopener noreferrer" title="Chat with ${html(store.name||'the store')} on WhatsApp">💬<span>Support</span></a>`;
 }
 function siteFooter(forCustomer){
   const badge=forCustomer
@@ -1726,8 +1736,29 @@ async function renderPublicStore(hashParams){
     return;
   }
   customerStoreLinks=linked.stores?.length?linked.stores:[{ownerId,storeId,storeName:store.name,category:store.category,city:store.city}];
+  if(!linked.customer.agreementAcceptedAt)return renderCustomerAgreementGate(store,linked.customer);
   await loadAndRenderCustomerView(store,linked.customer);
   startCustomerRealtime(store,linked.customer);
+}
+async function proceedAfterCustomerAgreement(store,customer){
+  await loadAndRenderCustomerView(store,customer);
+  startCustomerRealtime(store,customer);
+}
+function renderCustomerAgreementGate(store,customer){
+  app.innerHTML=`<main class="public-store"><section class="store-hero"><h1>${html(store.name)}</h1></section><div class="card" style="text-align:left"><h3 style="margin-top:0">Before you continue</h3><p class="muted">${html(DIGIT58_CUSTOMER_AGREEMENT_TEXT)}</p><button class="btn full green" id="acceptCustomerAgreement" style="margin-top:14px">I Accept</button></div></main>${siteFooter(true)}`;
+  (typeof bindAndroidAppFooter==='function'&&bindAndroidAppFooter());
+  $('#acceptCustomerAgreement').onclick=async()=>{
+    const button=$('#acceptCustomerAgreement');button.disabled=true;
+    try{
+      const agreementAcceptedAt=now();
+      await api.update(customerKind(store.ownerId),customer.id,{agreementAcceptedAt});
+      customer.agreementAcceptedAt=agreementAcceptedAt;
+      proceedAfterCustomerAgreement(store,customer);
+    }catch(error){button.disabled=false;toast(error.message||'Could not save your acceptance')}
+  };
+}
+function openCustomerAgreementModal(store,customer){
+  modal('Legal Agreement',`<p class="muted">${html(DIGIT58_CUSTOMER_AGREEMENT_TEXT)}</p>${customer.agreementAcceptedAt?`<p class="muted" style="margin-top:10px;font-size:12px">Accepted on ${html(new Date(customer.agreementAcceptedAt).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'}))}</p>`:''}`);
 }
 let activeCustomerContext=null,customerRenderPending=false;
 function brandRequestAsPromotion(row){
@@ -2008,7 +2039,7 @@ function renderCustomerCards(store,customer,cards,orders=[],promotions=[],course
     ?filterCoursesByIndiaDate(completedCourseList,courseHistoryFrom,courseHistoryTo).sort((a,b)=>new Date(courseCompletionDate(b))-new Date(courseCompletionDate(a)))
     :latestCoursePerPatient(completedCourseList).sort((a,b)=>new Date(courseCompletionDate(b))-new Date(courseCompletionDate(a)));
   const marqueePromotions=promotions.length?Array.from({length:Math.max(1,Math.ceil(6/promotions.length))},()=>promotions).flat():[];
-  app.innerHTML=`<main class="public-store">${customerStoreHub(store)}<div id="pushNotifyPrompt"></div><section class="store-hero"><span class="chip">${html(store.category||'Store')}</span>${store.highlightText?`<strong class="store-highlight-text">${html(store.highlightText)}</strong>`:''}<h1>${html(store.name)}</h1>${storeMinimum(store)?`<p class="store-minimum-order">Minimum new order ${money(storeMinimum(store))}</p>`:''}<p class="muted">${html(store.description||'')}${store.city?' · '+html(store.city):''}</p></section>
+  app.innerHTML=`<main class="public-store">${customerBrandStrip()}${customerStoreHub(store)}<div id="pushNotifyPrompt"></div><section class="store-hero"><span class="chip">${html(store.category||'Store')}</span>${store.highlightText?`<strong class="store-highlight-text">${html(store.highlightText)}</strong>`:''}<h1>${html(store.name)}</h1>${customer.phone?`<p class="customer-phone-line">Your number: ${html(customer.phone)}</p>`:''}${storeMinimum(store)?`<p class="store-minimum-order">Minimum new order ${money(storeMinimum(store))}</p>`:''}<p class="muted">${html(store.description||'')}${store.city?' · '+html(store.city):''}</p></section>
   ${promotions.length?`<section class="promotion-strip"><div class="promotion-strip-head"><div><span>Store offers</span><h2>Fresh deals for your next order</h2></div><small>Tap Buy to include an offer</small></div><div class="promotion-rail" id="promotionRail"><div class="promotion-track"><div class="promotion-sequence">${marqueePromotions.map((promotion,index)=>customerPromotionTicket(promotion,index>=promotions.length)).join('')}</div><div class="promotion-sequence" aria-hidden="true">${marqueePromotions.map(promotion=>customerPromotionTicket(promotion,true)).join('')}</div></div></div></section>`:''}
   <div class="section-head"><div><h2>Your orders</h2>${storeMinimum(store)?`<p class="muted">New orders must be at least ${money(storeMinimum(store))}. Refills and Reorders are exempt.</p>`:''}</div><button class="btn small" id="placeOrderBtn">+ Place New Order</button></div>
   <div class="grid card-grid">${active.map(order=>customerOrderMarkup(order,store)).join('')||'<div class="empty">No active orders. Place a new order to get started.</div>'}</div>
@@ -2016,16 +2047,16 @@ function renderCustomerCards(store,customer,cards,orders=[],promotions=[],course
   <div class="customer-reminder-view reminder-view-${customerReminderView}" id="customerCardGrid">${cards.map(customerCardCardMarkup).join('')||'<div class="empty">Your store will add reminder cards here after your first purchase.</div>'}</div>
   ${medical?`<div class="section-head"><div><h2>Medicine Courses</h2><p class="muted">Set patient, medicine, time and days from your prescription — you'll get a daily alarm.</p></div><button class="btn small" id="newCourseBtn">+ New Course</button></div><div class="grid card-grid">${activeCourseList.map(courseMarkup).join('')||'<div class="empty">No active medicine courses yet.</div>'}</div>${completedCourseList.length?`<section class="order-history-section" id="courseHistorySection"><div class="section-head"><div><h2>Course History</h2><p class="muted">Latest course per patient is shown by default. Pick dates to see more.</p></div></div><div class="date-filter-bar"><label>From<input id="courseHistoryFrom" type="date" value="${html(courseHistoryFrom)}"></label><label>To<input id="courseHistoryTo" type="date" value="${html(courseHistoryTo)}"></label><button class="btn small secondary" id="courseHistoryClear" type="button">Show Latest</button></div><div class="card table-wrap"><table><thead><tr><th>Patient</th><th>Medicines</th><th>Completed</th></tr></thead><tbody>${courseHistoryFiltered.map(courseHistoryRow).join('')||'<tr><td colspan="3">No courses in this period.</td></tr>'}</tbody></table></div></section>`:''}`:''}
   ${history.length?`<section class="order-history-section" id="customerOrderHistory"><div class="section-head"><div><h2>Order History</h2><p class="muted">Today's history is shown by default. Select another date period when needed.</p></div><button class="btn small secondary" id="exportCustomerHistory" ${filteredHistory.length?'':'disabled'}>Export CSV</button></div><div class="date-filter-bar"><label>From<input id="customerHistoryFrom" type="date" value="${html(historyFrom)}" max="${html(historyTo)}"></label><label>To<input id="customerHistoryTo" type="date" value="${html(historyTo)}" min="${html(historyFrom)}"></label><button class="btn small secondary" id="customerHistoryToday" type="button">Today</button></div><div class="card table-wrap"><table><thead><tr><th>Items</th><th>Reorder</th><th>Amount</th><th>Status</th><th>Date</th></tr></thead><tbody>${filteredHistory.map(customerOrderHistoryRow).join('')||'<tr><td colspan="5">No orders in this period.</td></tr>'}</tbody></table></div></section>`:''}
-  <div class="actions" style="margin-top:20px"><button class="btn secondary" id="custLogout">Sign out</button></div></main><div class="promotion-cart-bar" id="promotionCartBar" hidden><div class="promotion-cart-items" id="promotionCartItems"></div><div class="promotion-cart-summary" id="promotionCartSummary"><div class="promotion-cart-info"><strong id="promotionCartCount">0 items selected</strong><span id="promotionCartTotal">₹0</span></div><button type="button" class="btn" id="promotionCartCheckout">Checkout</button></div></div>${siteFooter(true)}`;
+  <div class="actions" style="margin-top:20px"><button class="btn secondary" id="viewAgreementBtn">Legal Agreement</button><button class="btn secondary" id="custLogout">Sign out</button></div></main><div class="promotion-cart-bar" id="promotionCartBar" hidden><div class="promotion-cart-items" id="promotionCartItems"></div><div class="promotion-cart-summary" id="promotionCartSummary"><div class="promotion-cart-info"><strong id="promotionCartCount">0 items selected</strong><span id="promotionCartTotal">₹0</span></div><button type="button" class="btn" id="promotionCartCheckout">Checkout</button></div></div>${siteFooter(true)}${floatingStoreWhatsappButton(store)}`;
   active.filter(order=>order.status==='Priced'&&order.upiUri).forEach(order=>{
     const target=document.getElementById(`qr-${order.id}`);
     if(target&&window.QRCode)new QRCode(target,{text:order.upiUri,width:180,height:180});
   });
   bindCustomerPromotionActions(promotions);
   bindCustomerStoreHub(store);
-  bindFloatingSupportButton();
   startPromotionAutoScroll();
   bindRazorpayPaymentActions(active,store,customer);
+  $('#viewAgreementBtn').onclick=()=>openCustomerAgreementModal(store,customer);
   $('#placeOrderBtn').onclick=()=>openPlaceOrderModal(store,customer,promotions);
   $('#promotionCartCheckout').onclick=()=>openPlaceOrderModal(store,customer,promotions);
   $('#promotionCartSummary').onclick=event=>{if(event.target.closest('#promotionCartCheckout'))return;$('#promotionCartBar').classList.toggle('is-expanded')};
@@ -2107,7 +2138,7 @@ function customerOrderMarkup(order,store){
     :order.status==='Priced'
     ?order.paymentMarkedAt
       ?`<div class="razorpay-submitted"><span class="razorpay-submitted-icon">✓</span><div><strong>Payment submitted for verification</strong><p>The store has been notified. It will verify the Razorpay payment and accept your order.</p></div></div>`
-      :`<div class="qr-wrap" id="qr-${html(order.id)}"></div><h3 style="margin:10px 0;text-align:center">${money(order.amount)}</h3><p class="muted" style="text-align:center">Scan to pay via UPI${razorpayEnabled?' or use the secure Razorpay option below':''}. The store will accept your order once payment is received.</p>${razorpayEnabled?`<a class="btn full razorpay-pay-btn" data-open-razorpay="${html(order.id)}" href="${html(normaliseRazorpayLink(store.razorpayLink))}" target="_blank" rel="noopener noreferrer">Open Razorpay & Pay ↗</a><p class="razorpay-window-note">Razorpay opens securely in another tab. Keep this G58 page open.</p><div class="razorpay-return-step ${razorpayReturnOpen?'':'is-hidden'}" data-razorpay-return="${html(order.id)}"><strong>Returned from Razorpay?</strong><p>Choose the correct option so your order can move to the next step.</p><div class="razorpay-return-actions"><button type="button" class="btn green" data-confirm-razorpay-payment="${html(order.id)}">Payment completed</button><button type="button" class="btn secondary" data-razorpay-not-paid="${html(order.id)}">Payment not completed</button></div></div>`:''}`
+      :`<div class="payment-warning"><strong>⚠️ Before you pay</strong><p>Check that the amount below matches your order, and that this QR code or payment link genuinely belongs to <strong>${html(store?.name||'this store')}</strong>. G58 does not process or verify this payment — any payment issue, fraud, or dispute is strictly between you and the store. If anything looks wrong, use the Support button to contact the store before paying.</p></div><div class="qr-wrap" id="qr-${html(order.id)}"></div><h3 style="margin:10px 0;text-align:center">${money(order.amount)}</h3><p class="muted" style="text-align:center">Scan to pay via UPI${razorpayEnabled?' or use the secure Razorpay option below':''}. The store will accept your order once payment is received.</p>${razorpayEnabled?`<a class="btn full razorpay-pay-btn" data-open-razorpay="${html(order.id)}" href="${html(normaliseRazorpayLink(store.razorpayLink))}" target="_blank" rel="noopener noreferrer">Open Razorpay & Pay ↗</a><p class="razorpay-window-note">Razorpay opens securely in another tab. Keep this G58 page open.</p><div class="razorpay-return-step ${razorpayReturnOpen?'':'is-hidden'}" data-razorpay-return="${html(order.id)}"><strong>Returned from Razorpay?</strong><p>Choose the correct option so your order can move to the next step.</p><div class="razorpay-return-actions"><button type="button" class="btn green" data-confirm-razorpay-payment="${html(order.id)}">Payment completed</button><button type="button" class="btn secondary" data-razorpay-not-paid="${html(order.id)}">Payment not completed</button></div></div>`:''}`
     :order.amount?`<h3 style="margin:10px 0">${money(order.amount)}</h3>`:'<p class="muted">Waiting for the store to review and set the amount.</p>';
   const visibleStatus=order.paymentMarkedAt&&order.status==='Priced'?'Payment Verification':order.status;
   return `<article class="card order-item-card premium-card"><div class="section-head"><h3>Order #${html(order.id.slice(-6).toUpperCase())}</h3><span class="chip">${html(visibleStatus)}</span></div>${bigStatusMarkup(visibleStatus)}${orderStepperMarkup(order.status)}<div class="order-items-list">${order.items.map(item=>`<div class="order-line-item"><span>${item.qty} ×</span><span>${html(item.name)}</span></div>`).join('')}</div>${Number(order.customerOrderValue)>0?`<div class="customer-order-value"><span>Your estimated order value</span><strong>${money(order.customerOrderValue)}</strong></div>`:''}${order.prescriptionUrl?`<a class="link-btn" href="${html(order.prescriptionUrl)}" target="_blank" rel="noopener">📄 View your prescription</a>`:''}${paymentBlock}${orderChatMarkup(order,'customer')}</article>`;
