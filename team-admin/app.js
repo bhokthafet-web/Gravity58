@@ -56,10 +56,11 @@ function overview(){
   const adRevenue=data.bookings.filter(row=>['Live','Expired'].includes(row.status)).reduce((sum,row)=>sum+Number(row.amount||0),0);
   const menuRevenue=data.menuRequests.filter(row=>row.status==='Activated').reduce((sum,row)=>sum+Number(row.amount||0),0);
   const refillsRevenue=data.digit58Requests.filter(row=>row.status==='Activated').reduce((sum,row)=>sum+Number(row.amount||0),0);
-  const totalRevenue=adRevenue+menuRevenue+refillsRevenue;
+  const cardBrandRevenue=digit58CardBrandRevenue();
+  const totalRevenue=adRevenue+menuRevenue+refillsRevenue+cardBrandRevenue;
   $('#page').innerHTML=`<div class="section-head"><div><h1>Unified Administration</h1><p class="muted">Manage advertising, public posts, accounts and restaurant placements from one G58-only portal.</p></div><button class="btn" id="refresh">Refresh</button></div><div class="grid stats">${metric('Pending Bookings',data.bookings.filter(row=>['Requested','Proof Sent'].includes(row.status)).length)}${metric('Live Ads',data.advertisements.filter(row=>row.active&&(!row.expiresAt||new Date(row.expiresAt)>new Date())).length)}${metric('Public Posts',data.customers.length+data.businesses.length)}${metric('Total Revenue',money(totalRevenue))}</div>
-  <div class="section-head"><div><h2>Revenue breakdown</h2><p class="muted">Ad bookings, Digital Menu and Refills activation revenue. POS-only premium (activation-key path, not linked to a Digital Menu plan) isn't tracked in a queryable record yet, so it isn't included here.</p></div></div>
-  <div class="grid stats">${metric('Ad Bookings',money(adRevenue))}${metric('Digital Menu',money(menuRevenue))}${metric('Refills',money(refillsRevenue))}</div>
+  <div class="section-head"><div><h2>Revenue breakdown</h2><p class="muted">Ad bookings, Digital Menu, Refills activation, and Refills promotion/brand card revenue (self-declared payments through your default payment link). POS-only premium (activation-key path, not linked to a Digital Menu plan) isn't tracked in a queryable record yet, so it isn't included here.</p></div></div>
+  <div class="grid stats">${metric('Ad Bookings',money(adRevenue))}${metric('Digital Menu',money(menuRevenue))}${metric('Refills Subscriptions',money(refillsRevenue))}${metric('Refills Cards & Brands',money(cardBrandRevenue))}</div>
   <div class="section-head"><h2>Quick actions</h2></div><div class="grid restaurant-grid"><button class="card admin-action" data-open="bookings"><h3>Review bookings</h3><p>Send payment links and activate paid campaigns.</p></button><button class="card admin-action" data-open="campaigns"><h3>Campaign timers</h3><p>Pause, publish or remove restaurant ads.</p></button><button class="card admin-action" data-open="marketplace"><h3>Moderate posts</h3><p>Review customer posts and business cards.</p></button></div>`;
   $('#refresh').onclick=refresh;$$('[data-open]').forEach(button=>button.onclick=()=>{view=button.dataset.open;shell()});
 }
@@ -266,7 +267,7 @@ function digit58(){
   const cardPurchases=[...data.digit58CardPurchases].sort((a,b)=>new Date(b.declaredPaidAt||b.createdAt||0)-new Date(a.declaredPaidAt||a.createdAt||0));
   const brandRequests=[...data.digit58BrandRequests].sort((a,b)=>new Date(b.createdAt||0)-new Date(a.createdAt||0));
   const pricing=digit58PricingConfig();
-  $('#page').innerHTML=`<div class="section-head"><div><h1>Refills</h1><p class="muted">Store subscriptions, activation requests, stores and customers across every Refills owner.</p></div><button class="btn secondary" id="editDigit58Pricing">${pricing.paymentLink?'Edit':'Set'} Default Payment Link</button></div><div class="grid stats">${metric('Stores',stores.length)}${metric('Store Owners',owners)}${metric('Pending Requests',requests.length)}${metric('Active Subscriptions',entitlements.filter(row=>row.active&&!row.paused).length)}</div>
+  $('#page').innerHTML=`<div class="section-head"><div><h1>Refills</h1><p class="muted">Store subscriptions, activation requests, stores and customers across every Refills owner.</p></div><button class="btn secondary" id="editDigit58Pricing">${pricing.paymentLink?'Edit':'Set'} Default Payment Link</button></div><div class="grid stats">${metric('Stores',stores.length)}${metric('Store Owners',owners)}${metric('Pending Requests',requests.length)}${metric('Active Subscriptions',entitlements.filter(row=>row.active&&!row.paused).length)}${metric('Card & Brand Revenue',money(digit58CardBrandRevenue()))}</div>
   <div class="section-head"><h2>Store owner requests</h2></div>
   <div class="card table-wrap"><table><thead><tr><th>Owner</th><th>Amount</th><th>Status</th><th>Actions</th></tr></thead><tbody>${requests.map(digit58RequestRow).join('')||'<tr><td colspan="4">No pending Refills requests.</td></tr>'}</tbody></table></div>
   <div class="section-head"><h2>Store owner subscriptions</h2></div>
@@ -321,6 +322,14 @@ function digit58EntitlementRow(row){
   return `<tr><td>${esc(row.ownerEmail||row.ownerId)}</td><td>${row.paused?'Paused':row.active?'Active':'Inactive'}</td><td>${timeLeft(row.expiresAt,row.lifetime)}</td><td><strong>${Math.max(1,Number(row.storeSlots)||1)} paid slot(s)</strong><div class="entitlement-store-list">${storeButtons||'<small class="muted">No live stores found</small>'}</div></td><td>${esc(policy)}</td><td><div class="actions"><button class="btn small" data-edit-digit58-entitlement="${esc(row.id)}">Edit</button><button class="btn small green" data-extend-digit58="${esc(row.id)}">+30 days</button><button class="btn small ${row.paused?'green':'secondary'}" data-pause-digit58="${esc(row.id)}">${row.paused?'Resume':'Pause'}</button></div></td></tr>`;
 }
 const DIGIT58_CARD_DURATION_LABELS={'30d':'30 Days','6mo':'6 Months','1yr':'1 Year'};
+const DIGIT58_CARD_APPROVAL_PRICING={'30d':150,'6mo':750,'1yr':1200};
+const DIGIT58_BRAND_CARD_PRICING={'30d':300,'6mo':1500,'1yr':2000};
+function digit58CardBrandRevenue(){
+  const cardPurchaseRevenue=data.digit58CardPurchases.filter(row=>row.status==='Declared Paid').reduce((sum,row)=>sum+Number(row.amount||0),0);
+  const approvalRevenue=data.digit58BrandRequests.filter(row=>row.storePaidAt).reduce((sum,row)=>sum+(DIGIT58_CARD_APPROVAL_PRICING[row.duration||'30d']||0),0);
+  const brandPaidRevenue=data.digit58BrandRequests.filter(row=>row.brandPaidAt).reduce((sum,row)=>sum+(DIGIT58_BRAND_CARD_PRICING[row.duration||'30d']||0),0);
+  return cardPurchaseRevenue+approvalRevenue+brandPaidRevenue;
+}
 function digit58CardPurchaseRow(row){
   const paused=row.status==='Paused';
   return `<tr><td>${esc(row.storeName||row.storeId)}</td><td>${esc(row.ownerEmail||row.ownerId)}</td><td>${esc(DIGIT58_CARD_DURATION_LABELS[row.duration]||row.duration)}</td><td>${money(row.amount)}</td><td>${row.declaredPaidAt?new Date(row.declaredPaidAt).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'}):''}</td><td><span class="chip ${paused?'due':'delivered'}">${paused?'Paused':'Declared Paid'}</span><br><small class="muted">${timeLeft(row.expiresAt)}</small></td><td><div class="actions"><button class="btn small ${paused?'green':'red'}" data-pause-digit58-card="${esc(row.id)}">${paused?'Resume':'Pause'}</button></div></td></tr>`;
@@ -350,11 +359,20 @@ function digit58BrandOwnersView(){
   $('#page').innerHTML=`<div class="section-head"><div><h1>Brand Owners</h1><p class="muted">Every brand account that has signed up, and whether they've accepted the store-owner agreement disclaimer before requesting cards.</p></div></div>
   <div class="grid stats">${metric('Brand Accounts',owners.length)}${metric('Accepted Disclaimer',accepted)}${metric('Not Yet Accepted',owners.length-accepted)}${metric('Brand Card Requests',data.digit58BrandRequests.length)}</div>
   <div class="section-head"><h2>All brand accounts</h2></div>
-  <div class="card table-wrap"><table><thead><tr><th>Brand</th><th>Email</th><th>Signed Up</th><th>Disclaimer Accepted</th><th>Card Requests</th></tr></thead><tbody>${owners.map(digit58BrandOwnerRow).join('')||'<tr><td colspan="5">No brand accounts yet.</td></tr>'}</tbody></table></div>`;
+  <div class="card table-wrap"><table><thead><tr><th>Brand</th><th>Email</th><th>Signed Up</th><th>Disclaimer Accepted</th><th>Card Requests</th><th>Status</th><th>Actions</th></tr></thead><tbody>${owners.map(digit58BrandOwnerRow).join('')||'<tr><td colspan="7">No brand accounts yet.</td></tr>'}</tbody></table></div>`;
+  $$('[data-toggle-digit58-brand-owner]').forEach(button=>button.onclick=()=>toggleDigit58BrandOwnerBlock(button.dataset.toggleDigit58BrandOwner));
 }
 function digit58BrandOwnerRow(row){
   const requestCount=data.digit58BrandRequests.filter(item=>item.brandOwnerId===row.userId).length;
-  return `<tr><td><strong>${esc(row.name||row.email)}</strong></td><td>${esc(row.email||'')}</td><td>${row.createdAt?new Date(row.createdAt).toLocaleDateString('en-IN',{dateStyle:'medium'}):''}</td><td><span class="chip ${row.disclaimerAcceptedAt?'delivered':'due'}">${row.disclaimerAcceptedAt?'Accepted '+new Date(row.disclaimerAcceptedAt).toLocaleDateString('en-IN',{dateStyle:'medium'}):'Not accepted'}</span></td><td>${requestCount}</td></tr>`;
+  return `<tr><td><strong>${esc(row.name||row.email)}</strong></td><td>${esc(row.email||'')}</td><td>${row.createdAt?new Date(row.createdAt).toLocaleDateString('en-IN',{dateStyle:'medium'}):''}</td><td><span class="chip ${row.disclaimerAcceptedAt?'delivered':'due'}">${row.disclaimerAcceptedAt?'Accepted '+new Date(row.disclaimerAcceptedAt).toLocaleDateString('en-IN',{dateStyle:'medium'}):'Not accepted'}</span></td><td>${requestCount}</td><td><span class="chip ${row.blocked?'due':'delivered'}">${row.blocked?'Blocked':'Active'}</span></td><td><div class="actions"><button class="btn small ${row.blocked?'green':'red'}" data-toggle-digit58-brand-owner="${esc(row.id)}">${row.blocked?'Unblock':'Block'}</button></div></td></tr>`;
+}
+async function toggleDigit58BrandOwnerBlock(id){
+  const row=data.digit58BrandOwners.find(item=>item.id===id);if(!row)return;
+  if(!row.blocked&&!confirm(`Block ${row.name||row.email}? They will not be able to sign in or request cards until unblocked.`))return;
+  try{
+    await api.update('digit58_brand_owners',id,{blocked:!row.blocked,updatedAt:now()});
+    await refresh();toast(row.blocked?'Brand account unblocked':'Brand account blocked');
+  }catch(error){toast(error.message||'Could not update this brand account')}
 }
 function sendDigit58PaymentLink(id){
   const row=data.digit58Requests.find(item=>item.id===id);if(!row)return;

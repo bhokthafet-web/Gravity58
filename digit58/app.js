@@ -943,9 +943,15 @@ async function bootBrand(){
   afterBrandAuth();
 }
 function afterBrandAuth(){
+  if(brandProfile.blocked)return renderBrandBlocked();
   if(!brandProfile.disclaimerAcceptedAt)return renderBrandDisclaimer();
   renderBrandDashboard();
   openPendingBrandTarget();
+}
+function renderBrandBlocked(){
+  app.innerHTML=`<main class="screen"><section class="auth-card"><a class="brand" href="../"><svg class="brand-mark" viewBox="0 0 120 120" fill="none" stroke="#7fffd4" stroke-width="8" aria-hidden="true"><circle cx="60" cy="26" r="15"/><circle cx="28" cy="82" r="15"/><circle cx="92" cy="82" r="15"/></svg><div><h2>Account Restricted</h2><p class="tagline">Your brand account has been paused by the G58 team.</p></div></a><div class="card"><p class="muted">Contact G58 support if you believe this is a mistake.</p></div><div class="actions" style="margin-top:16px"><button class="btn secondary full" id="brandBlockedLogout">Sign out</button></div></section></main>${siteFooter()}`;
+  (typeof bindAndroidAppFooter==='function'&&bindAndroidAppFooter());
+  $('#brandBlockedLogout').onclick=async()=>{await api.logout();brandSession=null;brandProfile=null;renderBrandAuth()};
 }
 function renderBrandDisclaimer(){
   app.innerHTML=`<main class="screen"><section class="auth-card"><a class="brand" href="../"><svg class="brand-mark" viewBox="0 0 120 120" fill="none" stroke="#7fffd4" stroke-width="8" aria-hidden="true"><circle cx="60" cy="26" r="15"/><circle cx="28" cy="82" r="15"/><circle cx="92" cy="82" r="15"/></svg><div><h2>Before you continue</h2><p class="tagline">One-time agreement</p></div></a><div class="card" style="text-align:left"><p class="muted">A promotion card placement is a direct agreement between <strong>you (the brand)</strong> and the <strong>store owner</strong> you request a card from — covering the product shown, the price displayed, the plan duration, and the payment for that placement.</p><p class="muted" style="margin-top:10px">G58 is not a party to this agreement. G58 does not verify, guarantee, mediate, or take responsibility for the accuracy of what either side declares, or for any dispute between you and a store owner. G58 only provides the platform and audits self-declared payments to keep the system honest.</p><button class="btn full green" id="brandDisclaimerAccept" style="margin-top:16px">I Understand — Continue</button></div></section></main>${siteFooter()}`;
