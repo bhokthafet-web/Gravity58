@@ -91,6 +91,8 @@ const courseKind=(ownerId)=>safeId('digit58_course_',ownerId,39);
 const REQUEST_KIND='digit58_requests',ENTITLEMENT_KIND='digit58_entitlements',SUBSCRIPTION_AMOUNT=399;
 const CARD_PURCHASE_KIND='digit58_card_purchases',FREE_PROMOTION_CARDS=3;
 const PROMOTION_CARD_PRICING={'30d':{label:'30 Days',amount:150,days:30},'6mo':{label:'6 Months',amount:750,days:182},'1yr':{label:'1 Year',amount:1200,days:365}};
+const BRAND_KIND='digit58_brand_owners',BRAND_REQUEST_KIND='digit58_brand_requests',BRAND_CARD_AMOUNT=300,BRAND_CARD_DAYS=30,STORE_APPROVAL_FEE=150;
+let brandSession=null,brandProfile=null,brandRequests=[];
 const ORDER_STEPS=[
   {key:'Requested',icon:'📝',label:'Requested'},
   {key:'Priced',icon:'💳',label:'Payment'},
@@ -173,7 +175,7 @@ let session=null,view='dashboard';
 let refreshView=()=>renderShell();
 let entitlement=null,myRequest=null,myStoreRequest=null;
 function storeSlotsAllowed(){return Math.max(1,Number(entitlement?.storeSlots)||1)}
-let state={activeStoreId:'',stores:[],customers:[],cards:[],orders:[],promotions:[],cardPurchases:[]};
+let state={activeStoreId:'',stores:[],customers:[],cards:[],orders:[],promotions:[],cardPurchases:[],brandRequests:[]};
 function save(){try{localStorage.setItem('gravity58Digit58',JSON.stringify(state))}catch{}}
 function load(){try{return {...state,...JSON.parse(localStorage.getItem('gravity58Digit58')||'{}')}}catch{return state}}
 state=load();
@@ -472,6 +474,7 @@ async function boot(){
   captureRazorpaySuccessfulReturn();
   const hash=new URLSearchParams(location.hash.replace(/^#store&?/,''));
   if(location.hash.startsWith('#store&'))return renderPublicStore(hash);
+  if(location.hash.startsWith('#brand'))return bootBrand();
   if(isRefillsCustomerApp()){
     if(await resumeLastCustomerStore())return boot();
     return renderCustomerPortalLanding();
@@ -601,16 +604,18 @@ function renderOwnerAuth(){
 
 async function loadOwnerData(){
   const ownerId=cloudOwnerId();if(!ownerId)return;
-  const [stores,customers,cards,orders,promotions,cardPurchases]=await Promise.all([
+  const [stores,customers,cards,orders,promotions,cardPurchases,incomingBrandRequests]=await Promise.all([
     api.list(storeKind(ownerId)).catch(()=>[]),
     api.list(customerKind(ownerId)).catch(()=>[]),
     api.list(cardKind(ownerId)).catch(()=>[]),
     api.list(orderKind(ownerId)).catch(()=>[]),
     api.list(promotionKind(ownerId)).catch(()=>[]),
     api.list(CARD_PURCHASE_KIND).catch(()=>[]),
+    api.list(BRAND_REQUEST_KIND).catch(()=>[]),
   ]);
   state.stores=stores;state.customers=customers;state.cards=cards;state.orders=orders;state.promotions=await cleanupExpiredOwnerPromotions(ownerId,promotions);
   state.cardPurchases=cardPurchases.filter(row=>row.ownerId===ownerId);
+  state.brandRequests=incomingBrandRequests.filter(row=>row.ownerId===ownerId);
   if(!state.activeStoreId||!stores.some(row=>row.id===state.activeStoreId))state.activeStoreId=stores[0]?.id||'';
   save();
 }
@@ -786,6 +791,123 @@ function openPasteStoreLinkPrompt(){
     };
   });
 }
+function parseStoreLinkOwnerStore(input){
+  const hash=parseStoreLinkHash(input);if(!hash)return null;
+  const params=new URLSearchParams(hash.replace(/^store&?/,''));
+  const ownerId=params.get('owner'),storeId=params.get('store');
+  return ownerId&&storeId?{ownerId,storeId}:null;
+}
+async function bootBrand(){
+  brandSession=await api.currentUser().catch(()=>null);
+  if(!brandSession)return renderBrandAuth();
+  await ensureBrandProfile();
+  await loadBrandData();
+  renderBrandDashboard();
+}
+function renderBrandAuth(){
+  app.innerHTML=`<main class="screen"><section class="auth-card"><a class="brand" href="../"><svg class="brand-mark" viewBox="0 0 120 120" fill="none" stroke="#7fffd4" stroke-width="8" aria-hidden="true"><circle cx="60" cy="26" r="15"/><circle cx="28" cy="82" r="15"/><circle cx="92" cy="82" r="15"/></svg><div><h2>G58 Brand Partners</h2><p class="tagline">Get your product's promotion card placed on Refills stores.</p></div></a><div class="actions" style="margin-bottom:14px"><button class="btn small" id="brandTabLogin">Sign in</button><button class="btn small secondary" id="brandTabSignup">Create brand account</button></div><form id="brandAuthForm"><div class="field full-name-field hidden"><label>Brand / contact name</label><input name="name"></div><div class="field"><label>Email</label><input name="email" type="email" required></div><div class="field"><label>Password</label><input name="password" type="password" minlength="8" required></div><button class="btn full" id="brandAuthSubmit" type="submit">Sign In</button></form></section></main>${siteFooter()}`;
+  (typeof bindAndroidAppFooter==='function'&&bindAndroidAppFooter());
+  let mode='signup';
+  const syncMode=()=>{$('.full-name-field').classList.toggle('hidden',mode!=='signup');$('#brandAuthSubmit').textContent=mode==='signup'?'Create Account':'Sign In';$('#brandTabLogin').className=mode==='login'?'btn small':'btn small secondary';$('#brandTabSignup').className=mode==='signup'?'btn small':'btn small secondary'};
+  $('#brandTabLogin').onclick=()=>{mode='login';syncMode()};
+  $('#brandTabSignup').onclick=()=>{mode='signup';syncMode()};
+  syncMode();
+  $('#brandAuthForm').onsubmit=async event=>{
+    event.preventDefault();
+    const values=Object.fromEntries(new FormData(event.target)),button=$('#brandAuthSubmit');
+    button.disabled=true;
+    try{
+      if(mode==='signup')await api.register(values.email.trim(),values.password,values.name.trim()||values.email.split('@')[0]);
+      else await api.login(values.email.trim(),values.password);
+      brandSession=await api.currentUser();
+      await ensureBrandProfile();
+      await loadBrandData();
+      renderBrandDashboard();
+    }catch(error){button.disabled=false;toast(error.message||'Could not sign in')}
+  };
+}
+async function ensureBrandProfile(){
+  const existing=await api.list(BRAND_KIND).catch(()=>[]);
+  brandProfile=existing.find(row=>row.userId===brandSession.$id)||null;
+  if(brandProfile)return;
+  const record={id:id('brand'),userId:brandSession.$id,name:brandSession.name||brandSession.email.split('@')[0],email:brandSession.email,createdAt:now()};
+  brandProfile=await api.create(BRAND_KIND,record,record.id,api.collaborativePermissionSet?.(brandSession.$id));
+}
+async function loadBrandData(){
+  const rows=await api.list(BRAND_REQUEST_KIND).catch(()=>[]);
+  brandRequests=rows.filter(row=>row.brandOwnerId===brandSession.$id).sort((a,b)=>new Date(b.createdAt||0)-new Date(a.createdAt||0));
+}
+function brandRequestStatusNote(row){
+  if(row.status==='Rejected')return `<span class="chip due">Rejected by store</span>`;
+  if(row.status==='Paused')return `<span class="chip due">Paused by G58</span>`;
+  if(row.status==='Live')return `<span class="chip delivered">Live on store</span>`;
+  if(row.status==='Awaiting Payment'){
+    if(!row.brandPaidAt)return `<span class="chip due">Approved — payment needed</span>`;
+    return `<span class="chip due">Payment submitted — waiting for store</span>`;
+  }
+  return `<span class="chip due">Waiting for store approval</span>`;
+}
+function renderBrandDashboard(){
+  app.innerHTML=`<main class="screen brand-dashboard"><a class="brand" href="../"><svg class="brand-mark" viewBox="0 0 120 120" fill="none" stroke="#7fffd4" stroke-width="8" aria-hidden="true"><circle cx="60" cy="26" r="15"/><circle cx="28" cy="82" r="15"/><circle cx="92" cy="82" r="15"/></svg><div><h2>G58 Brand Partners</h2><p class="tagline">${html(brandProfile?.name||brandSession.email)}</p></div></a><div class="section-head"><div><h1>Your Card Requests</h1><p class="muted">Request a 30-day promotion card on any Refills store for ${money(BRAND_CARD_AMOUNT)}.</p></div><button class="btn" id="newBrandRequest">+ New Request</button></div><div class="grid card-grid">${brandRequests.map(brandRequestCard).join('')||'<div class="empty">No requests yet. Create your first one.</div>'}</div><div class="actions" style="margin-top:20px"><button class="btn secondary" id="brandLogout">Sign out</button></div></main>${siteFooter()}`;
+  (typeof bindAndroidAppFooter==='function'&&bindAndroidAppFooter());
+  $('#newBrandRequest').onclick=()=>openBrandRequestForm();
+  $('#brandLogout').onclick=async()=>{await api.logout();brandSession=null;brandProfile=null;renderBrandAuth()};
+  $$('[data-pay-brand-request]').forEach(button=>button.onclick=()=>declareBrandPayment(button.dataset.payBrandRequest));
+}
+function brandRequestCard(row){
+  return `<article class="card brand-request-card"><h3>${html(row.promotionName)}</h3><p class="muted">${html(row.storeName)} · ${money(row.price)}</p>${brandRequestStatusNote(row)}${row.status==='Awaiting Payment'&&!row.brandPaidAt?`<button type="button" class="btn small green" style="margin-top:10px" data-pay-brand-request="${html(row.id)}">Pay ${money(BRAND_CARD_AMOUNT)}</button>`:''}</article>`;
+}
+async function openBrandRequestForm(){
+  modal('New Card Request',`<form id="brandRequestForm"><div class="field"><label>Store link</label><input name="storeLink" placeholder="https://g58.in/digit58/#store&owner=...&store=..." required></div><div class="field"><label>Product name</label><input name="promotionName" maxlength="80" required></div><div class="field"><label>Offer line</label><input name="offerText" maxlength="120" placeholder="Pure 500g jar · limited stock"></div><div class="field"><label>Price to display</label><input name="price" type="number" min="0" step="0.01" required></div><div class="field local-image-field"><label>Product image <small>(optional · auto-compressed to fit)</small></label><input name="imageFile" type="file" accept="image/jpeg,image/png,image/webp"><div class="image-preview" id="brandImagePreview"></div></div><p class="muted">This request goes to the store owner for approval, then costs ${money(BRAND_CARD_AMOUNT)} for a 30-day placement.</p><button class="btn full" style="margin-top:10px">Send Request</button></form>`,()=>{
+    const form=$('#brandRequestForm'),imageFile=form.imageFile,imagePreview=$('#brandImagePreview');
+    let compressedBlob=null,previewUrl='';
+    imageFile.onchange=async()=>{
+      const file=imageFile.files[0];if(!file)return;
+      compressedBlob=null;imagePreview.innerHTML='<span class="muted" style="font-size:12px">Compressing image…</span>';
+      try{
+        compressedBlob=await compressImageTo100Kb(file);
+        if(previewUrl)URL.revokeObjectURL(previewUrl);
+        previewUrl=URL.createObjectURL(compressedBlob);
+        imagePreview.innerHTML=`<img src="${previewUrl}" alt="">`;
+      }catch(error){imageFile.value='';imagePreview.innerHTML='';toast(error.message)}
+    };
+    form.onsubmit=async event=>{
+      event.preventDefault();
+      const raw=Object.fromEntries(new FormData(event.target)),button=event.submitter;
+      const target=parseStoreLinkOwnerStore(raw.storeLink);
+      if(!target)return toast("That doesn't look like a valid store link");
+      button.disabled=true;
+      try{
+        const store=await api.get(storeKind(target.ownerId),target.storeId);
+        const record={id:id('brandreq'),brandOwnerId:brandSession.$id,brandOwnerName:brandProfile?.name||brandSession.email.split('@')[0],brandOwnerEmail:brandSession.email,ownerId:target.ownerId,storeId:target.storeId,storeName:store.name,promotionName:raw.promotionName.trim(),offerText:raw.offerText.trim(),price:Math.max(0,Number(raw.price)||0),status:'Pending Store Approval',createdAt:now()};
+        if(compressedBlob){
+          const upload=await api.uploadMenuMedia(new File([compressedBlob],`brand-${id('img')}.webp`,{type:compressedBlob.type}));
+          record.imageUrl=upload.mediaUrl;record.imageFileId=upload.fileId;
+        }
+        const created=await api.create(BRAND_REQUEST_KIND,record,record.id,api.collaborativePermissionSet?.(brandSession.$id));
+        brandRequests.unshift(created);
+        closeModal();renderBrandDashboard();toast('Request sent to the store owner');
+      }catch(error){button.disabled=false;toast(error.message||'Could not find that store — check the link')}
+    };
+  });
+}
+async function declareBrandPayment(requestId){
+  const row=brandRequests.find(item=>item.id===requestId);if(!row)return;
+  try{
+    const pricingRows=await api.list('digit58_pricing').catch(()=>[]);
+    const paymentLink=(pricingRows.find(item=>(item.id||item.$id)==='default')||pricingRows[0])?.paymentLink||'';
+    if(!paymentLink)return toast('Payment link is not configured yet. Contact G58 support.');
+    window.open(paymentLink,'_blank','noopener');
+    if(!confirm(`Have you completed the ${money(BRAND_CARD_AMOUNT)} payment?`))return;
+    const brandPaidAt=now();
+    const nextStatus=row.storePaidAt?'Live':'Awaiting Payment';
+    const changes={brandPaidAt,status:nextStatus,updatedAt:brandPaidAt};
+    if(nextStatus==='Live')changes.expiresAt=new Date(Date.now()+BRAND_CARD_DAYS*86400000).toISOString();
+    await api.update(BRAND_REQUEST_KIND,requestId,changes);
+    Object.assign(row,changes);
+    renderBrandDashboard();toast(nextStatus==='Live'?'Card is now live on the store!':'Payment submitted — waiting for the store to pay their share');
+  }catch(error){toast(error.message||'Could not submit payment')}
+}
 function openStoreForm(storeId=''){
   const store=state.stores.find(row=>row.id===storeId)||{};
   const minimumEnabled=store.minimumOrderEnabled===true||(store.minimumOrderEnabled!==false&&configuredStoreMinimum(store)>0);
@@ -829,11 +951,45 @@ function promotionsView(){
   const allowance=promotionCardAllowance(store.id),paused=promotionCardsPaused(store.id),atLimit=promotions.length>=allowance;
   const pausedNotice=paused?`<div class="card"><p class="muted">Your paid promotion cards are currently paused by the G58 team pending payment verification. Contact G58 support to resolve this.</p></div>`:'';
   const limitNote=`<p class="muted" style="margin-top:4px">${promotions.length} of ${allowance} card${allowance===1?'':'s'} used (${FREE_PROMOTION_CARDS} free).</p>`;
-  $('#page').innerHTML=`<div class="section-head"><div><h1>Promotions</h1><p class="muted">Create compact offer tickets that scroll above customer orders for ${html(store.name||'this store')}.</p>${limitNote}</div><button class="btn" id="addPromotion">${atLimit?'+ Buy More Cards':'+ New Promotion'}</button></div>${pausedNotice}<div class="promotion-owner-grid">${promotions.map(promotionOwnerCard).join('')||'<div class="empty">No promotions yet. Create your first offer ticket.</div>'}</div>`;
+  const pendingBrandRequests=state.brandRequests.filter(row=>row.storeId===store.id&&row.status==='Pending Store Approval');
+  const brandRequestsSection=pendingBrandRequests.length?`<div class="section-head"><h2>Brand card requests</h2></div><div class="grid card-grid">${pendingBrandRequests.map(brandRequestOwnerCard).join('')}</div>`:'';
+  $('#page').innerHTML=`<div class="section-head"><div><h1>Promotions</h1><p class="muted">Create compact offer tickets that scroll above customer orders for ${html(store.name||'this store')}.</p>${limitNote}</div><button class="btn" id="addPromotion">${atLimit?'+ Buy More Cards':'+ New Promotion'}</button></div>${pausedNotice}${brandRequestsSection}<div class="promotion-owner-grid">${promotions.map(promotionOwnerCard).join('')||'<div class="empty">No promotions yet. Create your first offer ticket.</div>'}</div>`;
   $('#addPromotion').onclick=()=>atLimit?openBuyPromotionCardForm(store):openPromotionForm();
   $$('[data-edit-promotion]').forEach(button=>button.onclick=()=>openPromotionForm(button.dataset.editPromotion));
   $$('[data-toggle-promotion]').forEach(button=>button.onclick=()=>togglePromotion(button.dataset.togglePromotion));
   $$('[data-delete-promotion]').forEach(button=>button.onclick=()=>deletePromotion(button.dataset.deletePromotion));
+  $$('[data-approve-brand-request]').forEach(button=>button.onclick=()=>approveBrandRequest(button.dataset.approveBrandRequest));
+  $$('[data-reject-brand-request]').forEach(button=>button.onclick=()=>rejectBrandRequest(button.dataset.rejectBrandRequest));
+}
+function brandRequestOwnerCard(row){
+  return `<article class="card brand-request-card"><h3>${html(row.promotionName)}</h3><p class="muted">From ${html(row.brandOwnerName||row.brandOwnerEmail)} · ${money(row.price)} shown to customers</p><p class="muted">Approving costs you ${money(STORE_APPROVAL_FEE)} to G58; the brand pays ${money(BRAND_CARD_AMOUNT)} for a 30-day placement.</p><div class="actions" style="margin-top:10px"><button class="btn small green" data-approve-brand-request="${html(row.id)}">Approve</button><button class="btn small red" data-reject-brand-request="${html(row.id)}">Reject</button></div></article>`;
+}
+async function rejectBrandRequest(requestId){
+  const row=state.brandRequests.find(item=>item.id===requestId);if(!row||!confirm(`Reject the "${row.promotionName}" request?`))return;
+  try{
+    await api.update(BRAND_REQUEST_KIND,requestId,{status:'Rejected',updatedAt:now()});
+    row.status='Rejected';promotionsView();toast('Request rejected');
+  }catch(error){toast(error.message||'Could not reject this request')}
+}
+async function approveBrandRequest(requestId){
+  const row=state.brandRequests.find(item=>item.id===requestId);if(!row)return;
+  let paymentLink='';
+  try{const pricingRows=await api.list('digit58_pricing');paymentLink=(pricingRows.find(item=>(item.id||item.$id)==='default')||pricingRows[0])?.paymentLink||''}catch{}
+  modal('Approve Brand Request',`<div class="card"><p class="muted">Approving "${html(row.promotionName)}" from ${html(row.brandOwnerName||row.brandOwnerEmail)} costs you ${money(STORE_APPROVAL_FEE)} to G58 for a 30-day placement.</p>${paymentLink?`<a class="btn full" href="${html(paymentLink)}" target="_blank" rel="noopener noreferrer" style="margin-top:14px;text-align:center;text-decoration:none">Pay ${money(STORE_APPROVAL_FEE)}</a><p class="muted" style="margin-top:6px;font-size:12px">Opens securely in another tab. Come back and confirm below once paid.</p>`:'<p class="muted" style="margin-top:14px">Payment link is not configured yet. Contact G58 support.</p>'}<button type="button" class="btn full green" id="brandApproveConfirm" style="margin-top:10px" ${paymentLink?'':'disabled'}>I've Paid — Approve Request</button></div>`,()=>{
+    $('#brandApproveConfirm').onclick=async()=>{
+      const button=$('#brandApproveConfirm');button.disabled=true;
+      try{
+        const storePaidAt=now();
+        const nextStatus=row.brandPaidAt?'Live':'Awaiting Payment';
+        const changes={storePaidAt,status:nextStatus,updatedAt:storePaidAt};
+        if(nextStatus==='Live')changes.expiresAt=new Date(Date.now()+BRAND_CARD_DAYS*86400000).toISOString();
+        await api.update(BRAND_REQUEST_KIND,requestId,changes);
+        Object.assign(row,changes);
+        closeModal();promotionsView();
+        toast(nextStatus==='Live'?'Card is now live for customers!':'Approved — waiting for the brand to pay their share');
+      }catch(error){button.disabled=false;toast(error.message||'Could not approve this request')}
+    };
+  });
 }
 async function openBuyPromotionCardForm(store){
   let selectedTier='30d',paymentLink='';
@@ -1357,17 +1513,22 @@ async function renderPublicStore(hashParams){
   startCustomerRealtime(store,linked.customer);
 }
 let activeCustomerContext=null,customerRenderPending=false;
+function brandRequestAsPromotion(row){
+  return {id:row.id,name:row.promotionName,offerText:row.offerText,price:row.price,imageUrl:row.imageUrl,endsOn:row.expiresAt?indiaDateValue(new Date(row.expiresAt)):'',active:true,isBrandCard:true};
+}
 async function loadAndRenderCustomerView(store,customer){
   activeCustomerContext={store,customer};
-  const [cards,orders,promotions,courses]=await Promise.all([
+  const [cards,orders,promotions,courses,brandRequestsForStore]=await Promise.all([
     api.list(cardKind(store.ownerId)).catch(()=>[]),
     api.list(orderKind(store.ownerId)).catch(()=>[]),
     api.list(promotionKind(store.ownerId)).catch(()=>[]),
     isMedicalStore(store)?api.list(courseKind(store.ownerId)).catch(()=>[]):Promise.resolve([]),
+    api.list(BRAND_REQUEST_KIND).catch(()=>[]),
   ]);
   const myCards=cards.filter(row=>row.storeId===store.id&&row.customerAccountId===customer.customerAccountId);
   const myOrders=orders.filter(row=>row.storeId===store.id&&row.customerAccountId===customer.customerAccountId);
-  const myPromotions=promotions.filter(row=>row.storeId===store.id&&row.active!==false&&!promotionIsExpired(row));
+  const liveBrandCards=brandRequestsForStore.filter(row=>row.storeId===store.id&&row.status==='Live'&&(!row.expiresAt||new Date(row.expiresAt).getTime()>Date.now())).map(brandRequestAsPromotion);
+  const myPromotions=[...promotions.filter(row=>row.storeId===store.id&&row.active!==false&&!promotionIsExpired(row)),...liveBrandCards];
   const myCourses=courses.filter(row=>row.storeId===store.id&&row.customerAccountId===customer.customerAccountId);
   if($('.modal-backdrop')){customerRenderPending=true;return}
   customerRenderPending=false;

@@ -4,7 +4,7 @@ const esc=value=>String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&
 const digit58StoreKind=ownerId=>`digit58_store_${String(ownerId||'').replace(/[^a-zA-Z0-9._-]/g,'-').slice(0,40)}`;
 const AD_PLACEMENT_SPECS={right_rail:{label:'Right menu rail',size:'1080 × 1350 px',ratio:'4:5'},preparing:{label:'Preparing screen',size:'1200 × 628 px',ratio:'1.91:1'},thankyou:{label:'Thank-you screen',size:'1080 × 1080 px',ratio:'1:1'}};
 const placementSpec=slotId=>AD_PLACEMENT_SPECS[slotId]||{label:slotId||'Advertisement',size:'Confirm with G58',ratio:''};
-let user=null,view='overview',data={bookings:[],advertisements:[],profiles:[],slots:[],customers:[],businesses:[],postRows:[],legacyPostDocument:null,menuPricing:[],menuEntitlements:[],menuRequests:[],dinerOrders:[],dinerOrdersLoaded:false,digit58Stores:[],digit58Requests:[],digit58Entitlements:[],digit58Customers:[],digit58CustomersLoaded:false,digit58Pricing:[],digit58CardPurchases:[],supportTickets:[]};
+let user=null,view='overview',data={bookings:[],advertisements:[],profiles:[],slots:[],customers:[],businesses:[],postRows:[],legacyPostDocument:null,menuPricing:[],menuEntitlements:[],menuRequests:[],dinerOrders:[],dinerOrdersLoaded:false,digit58Stores:[],digit58Requests:[],digit58Entitlements:[],digit58Customers:[],digit58CustomersLoaded:false,digit58Pricing:[],digit58CardPurchases:[],digit58BrandRequests:[],supportTickets:[]};
 function toast(message){const target=$('#toast');target.textContent=message;target.classList.add('show');setTimeout(()=>target.classList.remove('show'),2200)}
 function timeLeft(expiresAt,lifetime=false){if(lifetime)return'Lifetime';if(!expiresAt)return'No expiry';const ms=new Date(expiresAt)-new Date();if(ms<=0)return'Expired';const days=Math.floor(ms/864e5),hours=Math.floor(ms%864e5/36e5),minutes=Math.floor(ms%36e5/6e4);return`${days?days+'d ':''}${hours}h ${minutes}m remaining`}
 async function boot(){if(!api.configured)return configurationRequired();user=await api.currentUser();if(!user)return login();if(!await api.isTeamAdmin())return accessDenied();await loadData();shell()}
@@ -20,7 +20,7 @@ const renderAdminLogin=login;
 login=function(){renderAdminLogin();installAdminPasswordRecovery()};
 function accessDenied(){app.innerHTML=`<main class="screen auth"><section class="auth-card glass"><h2>Access denied</h2><p>This signed-in account is not a G58 team member.</p><button class="btn full" id="leave">Sign out</button></section></main>`;$('#leave').onclick=async()=>{await api.logout();user=null;login()}}
 async function loadData(){
-  const [bookings,advertisements,profiles,slots,posts,menuPricing,menuEntitlements,menuRequests,digit58Stores,digit58Requests,digit58Entitlements,digit58Pricing,digit58CardPurchases,supportTickets]=await Promise.all([api.list('bookings'),api.list('advertisements'),api.list('profiles'),api.list('slots'),api.list('posts'),api.list('digital_menu_pricing').catch(()=>[]),api.list('digital_menu_entitlements').catch(()=>[]),api.list('digital_menu_requests').catch(()=>[]),api.list('digit58_owners').catch(()=>[]),api.list('digit58_requests').catch(()=>[]),api.list('digit58_entitlements').catch(()=>[]),api.list('digit58_pricing').catch(()=>[]),api.list('digit58_card_purchases').catch(()=>[]),api.list('support_tickets').catch(()=>[])]);
+  const [bookings,advertisements,profiles,slots,posts,menuPricing,menuEntitlements,menuRequests,digit58Stores,digit58Requests,digit58Entitlements,digit58Pricing,digit58CardPurchases,digit58BrandRequests,supportTickets]=await Promise.all([api.list('bookings'),api.list('advertisements'),api.list('profiles'),api.list('slots'),api.list('posts'),api.list('digital_menu_pricing').catch(()=>[]),api.list('digital_menu_entitlements').catch(()=>[]),api.list('digital_menu_requests').catch(()=>[]),api.list('digit58_owners').catch(()=>[]),api.list('digit58_requests').catch(()=>[]),api.list('digit58_entitlements').catch(()=>[]),api.list('digit58_pricing').catch(()=>[]),api.list('digit58_card_purchases').catch(()=>[]),api.list('digit58_brand_requests').catch(()=>[]),api.list('support_tickets').catch(()=>[])]);
   const uniqueStoreSummaries=[...new Map(digit58Stores.filter(row=>row.ownerId&&(row.storeId||row.id)).map(row=>[`${row.ownerId}:${row.storeId||row.id}`,row])).values()];
   const ownerIds=[...new Set([...uniqueStoreSummaries.map(row=>row.ownerId),...digit58Entitlements.map(row=>row.ownerId),...digit58Requests.map(row=>row.ownerId)].filter(Boolean))];
   const liveStoresByOwner=await Promise.all(ownerIds.map(async ownerId=>({ownerId,rows:await api.list(digit58StoreKind(ownerId)).catch(()=>[])})));
@@ -30,7 +30,7 @@ async function loadData(){
   const legacy=posts.find(row=>row.recordKey==='global'&&(row.customers||row.businesses));
   const postRows=posts.filter(row=>row.recordKey!=='global'),customers=[],businesses=[];
   postRows.forEach(row=>{const post=parsePost(row.payload);if(!post)return;post.userId||=row.userId||'';(row.postType==='business'?businesses:customers).push(post)});
-  data={bookings,advertisements,profiles,slots,postRows,legacyPostDocument:legacy||null,customers:legacy?parse(legacy.customers):customers,businesses:legacy?parse(legacy.businesses):businesses,menuPricing,menuEntitlements,menuRequests,digit58Stores:hydratedDigit58Stores,digit58Requests,digit58Entitlements,digit58Pricing,digit58CardPurchases,supportTickets,digit58Customers:data.digit58Customers||[],digit58CustomersLoaded:false};
+  data={bookings,advertisements,profiles,slots,postRows,legacyPostDocument:legacy||null,customers:legacy?parse(legacy.customers):customers,businesses:legacy?parse(legacy.businesses):businesses,menuPricing,menuEntitlements,menuRequests,digit58Stores:hydratedDigit58Stores,digit58Requests,digit58Entitlements,digit58Pricing,digit58CardPurchases,digit58BrandRequests,supportTickets,digit58Customers:data.digit58Customers||[],digit58CustomersLoaded:false};
   digit58OrdersCache=null;
   await reconcileExpiredCampaigns();
 }
@@ -264,6 +264,7 @@ function digit58(){
   const requests=[...data.digit58Requests].filter(row=>!['Activated','Rejected'].includes(row.status)).sort((a,b)=>new Date(b.createdAt||b.$createdAt)-new Date(a.createdAt||a.$createdAt));
   const entitlements=[...data.digit58Entitlements].sort((a,b)=>String(a.ownerEmail||a.ownerId).localeCompare(String(b.ownerEmail||b.ownerId)));
   const cardPurchases=[...data.digit58CardPurchases].sort((a,b)=>new Date(b.declaredPaidAt||b.createdAt||0)-new Date(a.declaredPaidAt||a.createdAt||0));
+  const brandRequests=[...data.digit58BrandRequests].sort((a,b)=>new Date(b.createdAt||0)-new Date(a.createdAt||0));
   const pricing=digit58PricingConfig();
   $('#page').innerHTML=`<div class="section-head"><div><h1>Refills</h1><p class="muted">Store subscriptions, activation requests, stores and customers across every Refills owner.</p></div><button class="btn secondary" id="editDigit58Pricing">${pricing.paymentLink?'Edit':'Set'} Default Payment Link</button></div><div class="grid stats">${metric('Stores',stores.length)}${metric('Store Owners',owners)}${metric('Pending Requests',requests.length)}${metric('Active Subscriptions',entitlements.filter(row=>row.active&&!row.paused).length)}</div>
   <div class="section-head"><h2>Store owner requests</h2></div>
@@ -272,6 +273,8 @@ function digit58(){
   <div class="card table-wrap"><table><thead><tr><th>Owner</th><th>Status</th><th>Expiry</th><th>Store Slots</th><th>Policy</th><th>Actions</th></tr></thead><tbody>${entitlements.map(digit58EntitlementRow).join('')||'<tr><td colspan="6">No activated Refills subscriptions.</td></tr>'}</tbody></table></div>
   <div class="section-head"><div><h2>Promotion card purchases</h2><p class="muted">Self-declared payments for extra promotion cards beyond the 3 free ones. Pause a purchase if payment was not actually received — this immediately revokes that card slot.</p></div></div>
   <div class="card table-wrap"><table><thead><tr><th>Store</th><th>Owner</th><th>Duration</th><th>Amount</th><th>Declared Paid</th><th>Status</th><th>Actions</th></tr></thead><tbody>${cardPurchases.map(digit58CardPurchaseRow).join('')||'<tr><td colspan="7">No promotion card purchases yet.</td></tr>'}</tbody></table></div>
+  <div class="section-head"><div><h2>Brand card requests</h2><p class="muted">Brand partners requesting a card on a store, plus each side's self-declared payment status. Pause if either payment looks fraudulent.</p></div></div>
+  <div class="card table-wrap"><table><thead><tr><th>Store</th><th>Brand</th><th>Product</th><th>Brand Paid</th><th>Store Paid</th><th>Status</th><th>Actions</th></tr></thead><tbody>${brandRequests.map(digit58BrandRequestRow).join('')||'<tr><td colspan="7">No brand card requests yet.</td></tr>'}</tbody></table></div>
   <div class="section-head"><div><h2>Refills stores — individual management</h2><p class="muted">Each row controls only that store. Managing one store does not change another store belonging to the same owner.</p></div></div>
   <div class="admin-filter-bar"><input id="digit58Search" placeholder="Search store, ID, category or owner email"><select id="digit58Category"><option value="All">All categories</option>${[...new Set(stores.map(row=>row.category||'General store'))].map(category=>`<option>${esc(category)}</option>`).join('')}</select></div><div class="card table-wrap"><table><thead><tr><th>Store</th><th>Store ID</th><th>Category</th><th>City</th><th>Owner</th><th>Status</th><th>Created</th><th>Actions</th></tr></thead><tbody id="digit58Rows">${stores.map(digit58Row).join('')||'<tr><td colspan="8">No Refills stores yet.</td></tr>'}</tbody></table></div>
   <div class="section-head"><div><h2>Store customers</h2><p class="muted">Customers signed up across all Refills stores, with their last visit.</p></div><button class="btn" id="loadDigit58Customers">${data.digit58CustomersLoaded?'Refresh':'Load Customers'}</button></div>
@@ -287,6 +290,7 @@ function digit58(){
   $$('[data-extend-digit58]').forEach(button=>button.onclick=()=>extendDigit58Entitlement(button.dataset.extendDigit58));
   $$('[data-pause-digit58]').forEach(button=>button.onclick=()=>toggleDigit58Pause(button.dataset.pauseDigit58));
   $$('[data-pause-digit58-card]').forEach(button=>button.onclick=()=>toggleDigit58CardPurchasePause(button.dataset.pauseDigit58Card));
+  $$('[data-pause-digit58-brand]').forEach(button=>button.onclick=()=>toggleDigit58BrandRequestPause(button.dataset.pauseDigit58Brand));
   bindStoreActions();
   $('#loadDigit58Customers').onclick=async()=>{$('#loadDigit58Customers').disabled=true;await loadDigit58Customers(true);digit58()};
 }
@@ -327,6 +331,18 @@ async function toggleDigit58CardPurchasePause(id){
     await api.update('digit58_card_purchases',id,{status:row.status==='Paused'?'Declared Paid':'Paused',updatedAt:now()});
     await refresh();toast(row.status==='Paused'?'Card purchase resumed':'Card purchase paused — that card slot is revoked');
   }catch(error){toast(error.message||'Could not update this purchase')}
+}
+function digit58BrandRequestRow(row){
+  const paused=row.status==='Paused';
+  const statusLabel=paused?'Paused':row.status==='Live'?'Live':row.status==='Rejected'?'Rejected':row.status==='Awaiting Payment'?'Awaiting Payment':'Pending Approval';
+  return `<tr><td>${esc(row.storeName||row.storeId)}</td><td>${esc(row.brandOwnerEmail||row.brandOwnerId)}</td><td>${esc(row.promotionName)}<br><small class="muted">${money(row.price)}</small></td><td>${row.brandPaidAt?new Date(row.brandPaidAt).toLocaleDateString('en-IN',{dateStyle:'medium'}):'—'}</td><td>${row.storePaidAt?new Date(row.storePaidAt).toLocaleDateString('en-IN',{dateStyle:'medium'}):'—'}</td><td><span class="chip ${paused||row.status==='Rejected'?'due':row.status==='Live'?'delivered':'due'}">${esc(statusLabel)}</span></td><td>${row.status==='Live'||paused?`<div class="actions"><button class="btn small ${paused?'green':'red'}" data-pause-digit58-brand="${esc(row.id)}">${paused?'Resume':'Pause'}</button></div>`:''}</td></tr>`;
+}
+async function toggleDigit58BrandRequestPause(id){
+  const row=data.digit58BrandRequests.find(item=>item.id===id);if(!row)return;
+  try{
+    await api.update('digit58_brand_requests',id,{status:row.status==='Paused'?'Live':'Paused',updatedAt:now()});
+    await refresh();toast(row.status==='Paused'?'Brand card resumed':'Brand card paused — no longer shown to customers');
+  }catch(error){toast(error.message||'Could not update this request')}
 }
 function sendDigit58PaymentLink(id){
   const row=data.digit58Requests.find(item=>item.id===id);if(!row)return;

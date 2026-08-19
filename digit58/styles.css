@@ -122,6 +122,8 @@ th,td{text-align:left;padding:12px;border-bottom:1px solid var(--line);white-spa
 .option-toggle span{display:grid;gap:3px}.option-toggle strong{font-size:13px}.option-toggle small{color:var(--muted);line-height:1.4}
 .empty{padding:36px;text-align:center;color:var(--muted);border:1px dashed var(--line);border-radius:18px}
 .card-purchase-tiers .option-toggle{margin:8px 0}
+.brand-request-card h3{margin:0 0 4px}
+.brand-dashboard{max-width:640px;margin:0 auto;padding:24px 16px}
 .toast{position:fixed;right:18px;top:18px;z-index:200;padding:12px 16px;border-radius:13px;background:#241f38;border:1px solid var(--line);opacity:0;pointer-events:none;transform:translateY(-10px);transition:.25s}
 .toast.show{opacity:1;transform:none}
 .public-store{max-width:820px;margin:0 auto;padding:24px 18px 60px}
