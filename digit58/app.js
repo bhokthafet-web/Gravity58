@@ -839,7 +839,33 @@ function promotionOwnerCard(promotion){
 }
 function loadBrowserImage(file){return new Promise((resolve,reject)=>{if(!file?.type?.startsWith('image/'))return reject(new Error('Select a JPG, PNG or WebP image'));if(file.size>20*1024*1024)return reject(new Error('Source image must be below 20 MB'));const url=URL.createObjectURL(file),image=new Image();image.onload=()=>{URL.revokeObjectURL(url);resolve(image)};image.onerror=()=>{URL.revokeObjectURL(url);reject(new Error('This image could not be opened'))};image.src=url})}
 function canvasImageBlob(canvas,type,quality){return new Promise((resolve,reject)=>canvas.toBlob(blob=>blob?resolve(blob):reject(new Error('Image compression failed')),type,quality))}
-async function compressImageTo100Kb(file){const image=await loadBrowserImage(file);let width=Math.min(1600,image.naturalWidth||image.width),height=Math.max(1,Math.round((image.naturalHeight||image.height)*(width/(image.naturalWidth||image.width))));for(let sizePass=0;sizePass<10;sizePass++){const canvas=document.createElement('canvas');canvas.width=Math.max(1,Math.round(width));canvas.height=Math.max(1,Math.round(height));const context=canvas.getContext('2d',{alpha:false});context.fillStyle='#ffffff';context.fillRect(0,0,canvas.width,canvas.height);context.drawImage(image,0,0,canvas.width,canvas.height);for(let quality=.88;quality>=.3;quality-=.08){const blob=await canvasImageBlob(canvas,'image/jpeg',quality);if(blob.size<=100*1024)return blob}width*=.78;height*=.78}throw new Error('Could not reduce this image below 100 KB. Try a smaller source image.')}
+function imageHasTransparency(image,width,height){
+  const probeWidth=Math.min(200,width),probeHeight=Math.max(1,Math.round(probeWidth*(height/width)));
+  const canvas=document.createElement('canvas');canvas.width=probeWidth;canvas.height=probeHeight;
+  const context=canvas.getContext('2d',{alpha:true});
+  context.drawImage(image,0,0,probeWidth,probeHeight);
+  const data=context.getImageData(0,0,probeWidth,probeHeight).data;
+  for(let i=3;i<data.length;i+=4)if(data[i]<250)return true;
+  return false;
+}
+async function compressImageTo100Kb(file){
+  const image=await loadBrowserImage(file);
+  let width=Math.min(1600,image.naturalWidth||image.width),height=Math.max(1,Math.round((image.naturalHeight||image.height)*(width/(image.naturalWidth||image.width))));
+  const transparent=imageHasTransparency(image,width,height),outputType=transparent?'image/webp':'image/jpeg';
+  for(let sizePass=0;sizePass<10;sizePass++){
+    const canvas=document.createElement('canvas');
+    canvas.width=Math.max(1,Math.round(width));canvas.height=Math.max(1,Math.round(height));
+    const context=canvas.getContext('2d',{alpha:transparent});
+    if(!transparent){context.fillStyle='#ffffff';context.fillRect(0,0,canvas.width,canvas.height)}
+    context.drawImage(image,0,0,canvas.width,canvas.height);
+    for(let quality=.88;quality>=.3;quality-=.08){
+      const blob=await canvasImageBlob(canvas,outputType,quality);
+      if(blob.size<=100*1024)return blob;
+    }
+    width*=.78;height*=.78;
+  }
+  throw new Error('Could not reduce this image below 100 KB. Try a smaller source image.');
+}
 function openPromotionForm(promotionId=''){
   const store=activeStore(),promotion=state.promotions.find(row=>row.id===promotionId)||{};if(!store)return;
   const defaultEnd=indiaDateValue(new Date(Date.now()+7*86400000)),today=indiaDateValue();
@@ -867,7 +893,8 @@ function openPromotionForm(promotionId=''){
       try{
         if(compressedBlob){
           const oldFileId=promotion.imageFileId;
-          const upload=await api.uploadMenuMedia(new File([compressedBlob],`promo-${id('img')}.jpg`,{type:'image/jpeg'}));
+          const ext=compressedBlob.type==='image/webp'?'webp':'jpg';
+          const upload=await api.uploadMenuMedia(new File([compressedBlob],`promo-${id('img')}.${ext}`,{type:compressedBlob.type}));
           values.imageUrl=upload.mediaUrl;values.imageFileId=upload.fileId;
           if(oldFileId&&oldFileId!==upload.fileId)api.removeMenuMedia(oldFileId).catch(()=>{});
         }
