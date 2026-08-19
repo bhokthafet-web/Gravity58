@@ -89,6 +89,8 @@ const orderKind=(ownerId)=>safeId('digit58_order_',ownerId,40);
 const promotionKind=(ownerId)=>safeId('digit58_promo_',ownerId,40);
 const courseKind=(ownerId)=>safeId('digit58_course_',ownerId,39);
 const REQUEST_KIND='digit58_requests',ENTITLEMENT_KIND='digit58_entitlements',SUBSCRIPTION_AMOUNT=399;
+const CARD_PURCHASE_KIND='digit58_card_purchases',FREE_PROMOTION_CARDS=3;
+const PROMOTION_CARD_PRICING={'30d':{label:'30 Days',amount:150,days:30},'6mo':{label:'6 Months',amount:750,days:182},'1yr':{label:'1 Year',amount:1200,days:365}};
 const ORDER_STEPS=[
   {key:'Requested',icon:'📝',label:'Requested'},
   {key:'Priced',icon:'💳',label:'Payment'},
@@ -171,7 +173,7 @@ let session=null,view='dashboard';
 let refreshView=()=>renderShell();
 let entitlement=null,myRequest=null,myStoreRequest=null;
 function storeSlotsAllowed(){return Math.max(1,Number(entitlement?.storeSlots)||1)}
-let state={activeStoreId:'',stores:[],customers:[],cards:[],orders:[],promotions:[]};
+let state={activeStoreId:'',stores:[],customers:[],cards:[],orders:[],promotions:[],cardPurchases:[]};
 function save(){try{localStorage.setItem('gravity58Digit58',JSON.stringify(state))}catch{}}
 function load(){try{return {...state,...JSON.parse(localStorage.getItem('gravity58Digit58')||'{}')}}catch{return state}}
 state=load();
@@ -599,16 +601,25 @@ function renderOwnerAuth(){
 
 async function loadOwnerData(){
   const ownerId=cloudOwnerId();if(!ownerId)return;
-  const [stores,customers,cards,orders,promotions]=await Promise.all([
+  const [stores,customers,cards,orders,promotions,cardPurchases]=await Promise.all([
     api.list(storeKind(ownerId)).catch(()=>[]),
     api.list(customerKind(ownerId)).catch(()=>[]),
     api.list(cardKind(ownerId)).catch(()=>[]),
     api.list(orderKind(ownerId)).catch(()=>[]),
     api.list(promotionKind(ownerId)).catch(()=>[]),
+    api.list(CARD_PURCHASE_KIND).catch(()=>[]),
   ]);
   state.stores=stores;state.customers=customers;state.cards=cards;state.orders=orders;state.promotions=await cleanupExpiredOwnerPromotions(ownerId,promotions);
+  state.cardPurchases=cardPurchases.filter(row=>row.ownerId===ownerId);
   if(!state.activeStoreId||!stores.some(row=>row.id===state.activeStoreId))state.activeStoreId=stores[0]?.id||'';
   save();
+}
+function promotionCardAllowance(storeId){
+  const now=Date.now();
+  return FREE_PROMOTION_CARDS+state.cardPurchases.filter(row=>row.storeId===storeId&&row.status==='Declared Paid'&&(!row.expiresAt||new Date(row.expiresAt).getTime()>now)).length;
+}
+function promotionCardsPaused(storeId){
+  return state.cardPurchases.some(row=>row.storeId===storeId&&row.status==='Paused');
 }
 
 function floatingSupportButton(source){return `<button type="button" class="floating-support-btn" data-support-source="${html(source)}" title="Support">🛟<span>Support</span></button>`}
@@ -813,12 +824,39 @@ function openStoreForm(storeId=''){
 }
 function promotionsView(){
   refreshView=promotionsView;
-  const store=activeStore(),promotions=storePromotions(store?.id).sort((a,b)=>new Date(b.createdAt||0)-new Date(a.createdAt||0));
-  $('#page').innerHTML=`<div class="section-head"><div><h1>Promotions</h1><p class="muted">Create compact offer tickets that scroll above customer orders for ${html(store?.name||'this store')}.</p></div><button class="btn" id="addPromotion">+ New Promotion</button></div><div class="promotion-owner-grid">${promotions.map(promotionOwnerCard).join('')||'<div class="empty">No promotions yet. Create your first offer ticket.</div>'}</div>`;
-  $('#addPromotion').onclick=()=>openPromotionForm();
+  const store=activeStore();if(!store){$('#page').innerHTML='<div class="empty">Create a store first.</div>';return}
+  const promotions=storePromotions(store.id).sort((a,b)=>new Date(b.createdAt||0)-new Date(a.createdAt||0));
+  const allowance=promotionCardAllowance(store.id),paused=promotionCardsPaused(store.id),atLimit=promotions.length>=allowance;
+  const pausedNotice=paused?`<div class="card"><p class="muted">Your paid promotion cards are currently paused by the G58 team pending payment verification. Contact G58 support to resolve this.</p></div>`:'';
+  const limitNote=`<p class="muted" style="margin-top:4px">${promotions.length} of ${allowance} card${allowance===1?'':'s'} used (${FREE_PROMOTION_CARDS} free).</p>`;
+  $('#page').innerHTML=`<div class="section-head"><div><h1>Promotions</h1><p class="muted">Create compact offer tickets that scroll above customer orders for ${html(store.name||'this store')}.</p>${limitNote}</div><button class="btn" id="addPromotion">${atLimit?'+ Buy More Cards':'+ New Promotion'}</button></div>${pausedNotice}<div class="promotion-owner-grid">${promotions.map(promotionOwnerCard).join('')||'<div class="empty">No promotions yet. Create your first offer ticket.</div>'}</div>`;
+  $('#addPromotion').onclick=()=>atLimit?openBuyPromotionCardForm(store):openPromotionForm();
   $$('[data-edit-promotion]').forEach(button=>button.onclick=()=>openPromotionForm(button.dataset.editPromotion));
   $$('[data-toggle-promotion]').forEach(button=>button.onclick=()=>togglePromotion(button.dataset.togglePromotion));
   $$('[data-delete-promotion]').forEach(button=>button.onclick=()=>deletePromotion(button.dataset.deletePromotion));
+}
+async function openBuyPromotionCardForm(store){
+  let selectedTier='30d',paymentLink='';
+  try{const pricingRows=await api.list('digit58_pricing');paymentLink=(pricingRows.find(row=>(row.id||row.$id)==='default')||pricingRows[0])?.paymentLink||''}catch{}
+  const tierOptions=Object.entries(PROMOTION_CARD_PRICING).map(([key,tier])=>`<label class="option-toggle"><input type="radio" name="cardTier" value="${key}" ${key===selectedTier?'checked':''}><span><strong>${tier.label}</strong><small>${money(tier.amount)}</small></span></label>`).join('');
+  modal('Buy a Promotion Card',`<div class="card-purchase-form"><p class="muted">You've used all ${FREE_PROMOTION_CARDS} free promotion cards for ${html(store.name)}. Choose a duration to unlock one more.</p><div class="card-purchase-tiers">${tierOptions}</div>${paymentLink?`<a class="btn full" id="cardPurchasePayLink" href="${html(paymentLink)}" target="_blank" rel="noopener noreferrer" style="margin-top:14px;text-align:center;text-decoration:none">Pay ${money(PROMOTION_CARD_PRICING[selectedTier].amount)}</a><p class="muted" style="margin-top:6px;font-size:12px">Opens securely in another tab. Come back and confirm below once paid.</p>`:'<p class="muted" style="margin-top:14px">Payment link is not configured yet. Contact G58 support.</p>'}<button type="button" class="btn full green" id="cardPurchaseConfirm" style="margin-top:10px" ${paymentLink?'':'disabled'}>I've Paid — Unlock Card</button></div>`,()=>{
+    const updatePayLink=()=>{
+      const tier=PROMOTION_CARD_PRICING[selectedTier];
+      const link=$('#cardPurchasePayLink');if(link)link.textContent=`Pay ${money(tier.amount)}`;
+    };
+    $$('input[name="cardTier"]').forEach(input=>input.onchange=()=>{selectedTier=input.value;updatePayLink()});
+    $('#cardPurchaseConfirm').onclick=async()=>{
+      const button=$('#cardPurchaseConfirm');button.disabled=true;
+      try{
+        const tier=PROMOTION_CARD_PRICING[selectedTier],ownerId=cloudOwnerId(),declaredPaidAt=now(),expiresAt=new Date(Date.now()+tier.days*86400000).toISOString();
+        const record={id:id('cardbuy'),ownerId,ownerEmail:session.email,ownerName:session.name||session.email.split('@')[0],storeId:store.id,storeName:store.name,duration:selectedTier,amount:tier.amount,status:'Declared Paid',declaredPaidAt,expiresAt,createdAt:declaredPaidAt};
+        const created=await api.create(CARD_PURCHASE_KIND,record,record.id,api.collaborativePermissionSet?.(ownerId));
+        state.cardPurchases.push(created);save();
+        closeModal();promotionsView();
+        toast(`Card unlocked for ${tier.label} — create your new promotion`);
+      }catch(error){button.disabled=false;toast(error.message||'Could not confirm your payment')}
+    };
+  });
 }
 function promotionIsExpired(promotion){
   if(!promotion?.endsOn)return false;
@@ -883,6 +921,7 @@ async function compressImageTo100Kb(file){
 }
 function openPromotionForm(promotionId=''){
   const store=activeStore(),promotion=state.promotions.find(row=>row.id===promotionId)||{};if(!store)return;
+  if(!promotionId&&storePromotions(store.id).length>=promotionCardAllowance(store.id))return openBuyPromotionCardForm(store);
   const defaultEnd=indiaDateValue(new Date(Date.now()+7*86400000)),today=indiaDateValue();
   modal(promotionId?'Edit Promotion':'Create Promotion',`<form id="promotionForm"><div class="field"><label>Product name</label><input name="name" value="${html(promotion.name||'')}" placeholder="Organic Honey" maxlength="80" required></div><div class="field"><label>Offer line</label><input name="offerText" value="${html(promotion.offerText||'')}" placeholder="Pure 500g jar · limited stock" maxlength="120"></div><div class="field local-image-field"><label>Product image <small>(optional · auto-compressed to fit)</small></label><input name="imageFile" type="file" accept="image/jpeg,image/png,image/webp"><div class="image-preview promotion-image-preview" id="promotionImagePreview">${promotion.imageUrl?`<img src="${html(promotion.imageUrl)}" alt="">`:''}</div></div><div class="form-grid"><div class="field"><label>Offer price</label><input name="price" type="number" min="0" step="0.01" value="${Number(promotion.price)||''}" placeholder="299" required></div><div class="field"><label>Offer ends</label><input name="endsOn" type="date" min="${today}" value="${html(promotion.endsOn||defaultEnd)}" required></div></div><label class="option-toggle"><input name="active" type="checkbox" ${promotion.active===false?'':'checked'}><span><strong>Show to customers</strong><small>Paused promotions remain saved but disappear from the customer portal.</small></span></label><button class="btn full" style="margin-top:14px">${promotionId?'Save Promotion':'Publish Promotion'}</button></form>`,()=>{
     const form=$('#promotionForm'),imageFile=form.imageFile,imagePreview=$('#promotionImagePreview');
@@ -1285,8 +1324,9 @@ function settingsView(){
   const acceptedAt=entitlement?.policyAcceptedAt?new Date(entitlement.policyAcceptedAt).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'}):'';
   $('#page').innerHTML=`<div class="section-head"><div><h1>Settings</h1><p class="muted">Signed in as ${html(session?.email||'')}</p></div></div><div class="card"><p class="muted">More store settings are coming soon. For now, manage your stores from the My Stores tab.</p></div><div class="section-head"><h2>Privacy & Payment Policy</h2></div><div class="card"><p class="muted">${html(DIGIT58_POLICY_TEXT)}</p>${acceptedAt?`<p class="muted" style="margin-top:10px">You accepted this policy on ${acceptedAt}.</p>`:''}</div>`;
 }
-function modal(title,body,ready){document.body.insertAdjacentHTML('beforeend',`<div class="modal-backdrop" id="modal"><section class="modal"><div class="section-head"><h2>${title}</h2><button class="btn small secondary" id="closeModal">✕</button></div>${body}</section></div>`);$('#closeModal').onclick=closeModal;ready?.()}
+function modal(title,body,ready){document.body.classList.add('modal-open');document.body.insertAdjacentHTML('beforeend',`<div class="modal-backdrop" id="modal"><section class="modal"><div class="section-head"><h2>${title}</h2><button class="btn small secondary" id="closeModal">✕</button></div>${body}</section></div>`);$('#closeModal').onclick=closeModal;ready?.()}
 function closeModal(){
+  document.body.classList.remove('modal-open');
   $('#modal')?.remove();
   if(customerRenderPending&&activeCustomerContext){
     customerRenderPending=false;

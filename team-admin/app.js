@@ -4,7 +4,7 @@ const esc=value=>String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&
 const digit58StoreKind=ownerId=>`digit58_store_${String(ownerId||'').replace(/[^a-zA-Z0-9._-]/g,'-').slice(0,40)}`;
 const AD_PLACEMENT_SPECS={right_rail:{label:'Right menu rail',size:'1080 × 1350 px',ratio:'4:5'},preparing:{label:'Preparing screen',size:'1200 × 628 px',ratio:'1.91:1'},thankyou:{label:'Thank-you screen',size:'1080 × 1080 px',ratio:'1:1'}};
 const placementSpec=slotId=>AD_PLACEMENT_SPECS[slotId]||{label:slotId||'Advertisement',size:'Confirm with G58',ratio:''};
-let user=null,view='overview',data={bookings:[],advertisements:[],profiles:[],slots:[],customers:[],businesses:[],postRows:[],legacyPostDocument:null,menuPricing:[],menuEntitlements:[],menuRequests:[],dinerOrders:[],dinerOrdersLoaded:false,digit58Stores:[],digit58Requests:[],digit58Entitlements:[],digit58Customers:[],digit58CustomersLoaded:false,digit58Pricing:[],supportTickets:[]};
+let user=null,view='overview',data={bookings:[],advertisements:[],profiles:[],slots:[],customers:[],businesses:[],postRows:[],legacyPostDocument:null,menuPricing:[],menuEntitlements:[],menuRequests:[],dinerOrders:[],dinerOrdersLoaded:false,digit58Stores:[],digit58Requests:[],digit58Entitlements:[],digit58Customers:[],digit58CustomersLoaded:false,digit58Pricing:[],digit58CardPurchases:[],supportTickets:[]};
 function toast(message){const target=$('#toast');target.textContent=message;target.classList.add('show');setTimeout(()=>target.classList.remove('show'),2200)}
 function timeLeft(expiresAt,lifetime=false){if(lifetime)return'Lifetime';if(!expiresAt)return'No expiry';const ms=new Date(expiresAt)-new Date();if(ms<=0)return'Expired';const days=Math.floor(ms/864e5),hours=Math.floor(ms%864e5/36e5),minutes=Math.floor(ms%36e5/6e4);return`${days?days+'d ':''}${hours}h ${minutes}m remaining`}
 async function boot(){if(!api.configured)return configurationRequired();user=await api.currentUser();if(!user)return login();if(!await api.isTeamAdmin())return accessDenied();await loadData();shell()}
@@ -20,7 +20,7 @@ const renderAdminLogin=login;
 login=function(){renderAdminLogin();installAdminPasswordRecovery()};
 function accessDenied(){app.innerHTML=`<main class="screen auth"><section class="auth-card glass"><h2>Access denied</h2><p>This signed-in account is not a G58 team member.</p><button class="btn full" id="leave">Sign out</button></section></main>`;$('#leave').onclick=async()=>{await api.logout();user=null;login()}}
 async function loadData(){
-  const [bookings,advertisements,profiles,slots,posts,menuPricing,menuEntitlements,menuRequests,digit58Stores,digit58Requests,digit58Entitlements,digit58Pricing,supportTickets]=await Promise.all([api.list('bookings'),api.list('advertisements'),api.list('profiles'),api.list('slots'),api.list('posts'),api.list('digital_menu_pricing').catch(()=>[]),api.list('digital_menu_entitlements').catch(()=>[]),api.list('digital_menu_requests').catch(()=>[]),api.list('digit58_owners').catch(()=>[]),api.list('digit58_requests').catch(()=>[]),api.list('digit58_entitlements').catch(()=>[]),api.list('digit58_pricing').catch(()=>[]),api.list('support_tickets').catch(()=>[])]);
+  const [bookings,advertisements,profiles,slots,posts,menuPricing,menuEntitlements,menuRequests,digit58Stores,digit58Requests,digit58Entitlements,digit58Pricing,digit58CardPurchases,supportTickets]=await Promise.all([api.list('bookings'),api.list('advertisements'),api.list('profiles'),api.list('slots'),api.list('posts'),api.list('digital_menu_pricing').catch(()=>[]),api.list('digital_menu_entitlements').catch(()=>[]),api.list('digital_menu_requests').catch(()=>[]),api.list('digit58_owners').catch(()=>[]),api.list('digit58_requests').catch(()=>[]),api.list('digit58_entitlements').catch(()=>[]),api.list('digit58_pricing').catch(()=>[]),api.list('digit58_card_purchases').catch(()=>[]),api.list('support_tickets').catch(()=>[])]);
   const uniqueStoreSummaries=[...new Map(digit58Stores.filter(row=>row.ownerId&&(row.storeId||row.id)).map(row=>[`${row.ownerId}:${row.storeId||row.id}`,row])).values()];
   const ownerIds=[...new Set([...uniqueStoreSummaries.map(row=>row.ownerId),...digit58Entitlements.map(row=>row.ownerId),...digit58Requests.map(row=>row.ownerId)].filter(Boolean))];
   const liveStoresByOwner=await Promise.all(ownerIds.map(async ownerId=>({ownerId,rows:await api.list(digit58StoreKind(ownerId)).catch(()=>[])})));
@@ -30,7 +30,7 @@ async function loadData(){
   const legacy=posts.find(row=>row.recordKey==='global'&&(row.customers||row.businesses));
   const postRows=posts.filter(row=>row.recordKey!=='global'),customers=[],businesses=[];
   postRows.forEach(row=>{const post=parsePost(row.payload);if(!post)return;post.userId||=row.userId||'';(row.postType==='business'?businesses:customers).push(post)});
-  data={bookings,advertisements,profiles,slots,postRows,legacyPostDocument:legacy||null,customers:legacy?parse(legacy.customers):customers,businesses:legacy?parse(legacy.businesses):businesses,menuPricing,menuEntitlements,menuRequests,digit58Stores:hydratedDigit58Stores,digit58Requests,digit58Entitlements,digit58Pricing,supportTickets,digit58Customers:data.digit58Customers||[],digit58CustomersLoaded:false};
+  data={bookings,advertisements,profiles,slots,postRows,legacyPostDocument:legacy||null,customers:legacy?parse(legacy.customers):customers,businesses:legacy?parse(legacy.businesses):businesses,menuPricing,menuEntitlements,menuRequests,digit58Stores:hydratedDigit58Stores,digit58Requests,digit58Entitlements,digit58Pricing,digit58CardPurchases,supportTickets,digit58Customers:data.digit58Customers||[],digit58CustomersLoaded:false};
   digit58OrdersCache=null;
   await reconcileExpiredCampaigns();
 }
@@ -263,12 +263,15 @@ function digit58(){
   const owners=new Set(stores.map(row=>row.ownerId)).size;
   const requests=[...data.digit58Requests].filter(row=>!['Activated','Rejected'].includes(row.status)).sort((a,b)=>new Date(b.createdAt||b.$createdAt)-new Date(a.createdAt||a.$createdAt));
   const entitlements=[...data.digit58Entitlements].sort((a,b)=>String(a.ownerEmail||a.ownerId).localeCompare(String(b.ownerEmail||b.ownerId)));
+  const cardPurchases=[...data.digit58CardPurchases].sort((a,b)=>new Date(b.declaredPaidAt||b.createdAt||0)-new Date(a.declaredPaidAt||a.createdAt||0));
   const pricing=digit58PricingConfig();
   $('#page').innerHTML=`<div class="section-head"><div><h1>Refills</h1><p class="muted">Store subscriptions, activation requests, stores and customers across every Refills owner.</p></div><button class="btn secondary" id="editDigit58Pricing">${pricing.paymentLink?'Edit':'Set'} Default Payment Link</button></div><div class="grid stats">${metric('Stores',stores.length)}${metric('Store Owners',owners)}${metric('Pending Requests',requests.length)}${metric('Active Subscriptions',entitlements.filter(row=>row.active&&!row.paused).length)}</div>
   <div class="section-head"><h2>Store owner requests</h2></div>
   <div class="card table-wrap"><table><thead><tr><th>Owner</th><th>Amount</th><th>Status</th><th>Actions</th></tr></thead><tbody>${requests.map(digit58RequestRow).join('')||'<tr><td colspan="4">No pending Refills requests.</td></tr>'}</tbody></table></div>
   <div class="section-head"><h2>Store owner subscriptions</h2></div>
   <div class="card table-wrap"><table><thead><tr><th>Owner</th><th>Status</th><th>Expiry</th><th>Store Slots</th><th>Policy</th><th>Actions</th></tr></thead><tbody>${entitlements.map(digit58EntitlementRow).join('')||'<tr><td colspan="6">No activated Refills subscriptions.</td></tr>'}</tbody></table></div>
+  <div class="section-head"><div><h2>Promotion card purchases</h2><p class="muted">Self-declared payments for extra promotion cards beyond the 3 free ones. Pause a purchase if payment was not actually received — this immediately revokes that card slot.</p></div></div>
+  <div class="card table-wrap"><table><thead><tr><th>Store</th><th>Owner</th><th>Duration</th><th>Amount</th><th>Declared Paid</th><th>Status</th><th>Actions</th></tr></thead><tbody>${cardPurchases.map(digit58CardPurchaseRow).join('')||'<tr><td colspan="7">No promotion card purchases yet.</td></tr>'}</tbody></table></div>
   <div class="section-head"><div><h2>Refills stores — individual management</h2><p class="muted">Each row controls only that store. Managing one store does not change another store belonging to the same owner.</p></div></div>
   <div class="admin-filter-bar"><input id="digit58Search" placeholder="Search store, ID, category or owner email"><select id="digit58Category"><option value="All">All categories</option>${[...new Set(stores.map(row=>row.category||'General store'))].map(category=>`<option>${esc(category)}</option>`).join('')}</select></div><div class="card table-wrap"><table><thead><tr><th>Store</th><th>Store ID</th><th>Category</th><th>City</th><th>Owner</th><th>Status</th><th>Created</th><th>Actions</th></tr></thead><tbody id="digit58Rows">${stores.map(digit58Row).join('')||'<tr><td colspan="8">No Refills stores yet.</td></tr>'}</tbody></table></div>
   <div class="section-head"><div><h2>Store customers</h2><p class="muted">Customers signed up across all Refills stores, with their last visit.</p></div><button class="btn" id="loadDigit58Customers">${data.digit58CustomersLoaded?'Refresh':'Load Customers'}</button></div>
@@ -283,6 +286,7 @@ function digit58(){
   $$('[data-edit-digit58-entitlement]').forEach(button=>button.onclick=()=>editDigit58Entitlement(button.dataset.editDigit58Entitlement));
   $$('[data-extend-digit58]').forEach(button=>button.onclick=()=>extendDigit58Entitlement(button.dataset.extendDigit58));
   $$('[data-pause-digit58]').forEach(button=>button.onclick=()=>toggleDigit58Pause(button.dataset.pauseDigit58));
+  $$('[data-pause-digit58-card]').forEach(button=>button.onclick=()=>toggleDigit58CardPurchasePause(button.dataset.pauseDigit58Card));
   bindStoreActions();
   $('#loadDigit58Customers').onclick=async()=>{$('#loadDigit58Customers').disabled=true;await loadDigit58Customers(true);digit58()};
 }
@@ -311,6 +315,18 @@ function digit58EntitlementRow(row){
   const policy=row.policyAcceptedAt?new Date(row.policyAcceptedAt).toLocaleDateString('en-IN',{dateStyle:'medium'}):'Not accepted yet';
   const stores=data.digit58Stores.filter(store=>store.ownerId===row.ownerId),storeButtons=stores.map(store=>`<button class="entitlement-store-btn ${store.suspended?'paused':''}" data-manage-digit58-store="${esc(store.storeId||store.id)}" data-owner-id="${esc(store.ownerId)}" type="button"><strong>${esc(store.storeName||store.name||'Store')}</strong><small>${store.suspended?'Paused':'Active'} · Manage</small></button>`).join('');
   return `<tr><td>${esc(row.ownerEmail||row.ownerId)}</td><td>${row.paused?'Paused':row.active?'Active':'Inactive'}</td><td>${timeLeft(row.expiresAt,row.lifetime)}</td><td><strong>${Math.max(1,Number(row.storeSlots)||1)} paid slot(s)</strong><div class="entitlement-store-list">${storeButtons||'<small class="muted">No live stores found</small>'}</div></td><td>${esc(policy)}</td><td><div class="actions"><button class="btn small" data-edit-digit58-entitlement="${esc(row.id)}">Edit</button><button class="btn small green" data-extend-digit58="${esc(row.id)}">+30 days</button><button class="btn small ${row.paused?'green':'secondary'}" data-pause-digit58="${esc(row.id)}">${row.paused?'Resume':'Pause'}</button></div></td></tr>`;
+}
+const DIGIT58_CARD_DURATION_LABELS={'30d':'30 Days','6mo':'6 Months','1yr':'1 Year'};
+function digit58CardPurchaseRow(row){
+  const paused=row.status==='Paused';
+  return `<tr><td>${esc(row.storeName||row.storeId)}</td><td>${esc(row.ownerEmail||row.ownerId)}</td><td>${esc(DIGIT58_CARD_DURATION_LABELS[row.duration]||row.duration)}</td><td>${money(row.amount)}</td><td>${row.declaredPaidAt?new Date(row.declaredPaidAt).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'}):''}</td><td><span class="chip ${paused?'due':'delivered'}">${paused?'Paused':'Declared Paid'}</span><br><small class="muted">${timeLeft(row.expiresAt)}</small></td><td><div class="actions"><button class="btn small ${paused?'green':'red'}" data-pause-digit58-card="${esc(row.id)}">${paused?'Resume':'Pause'}</button></div></td></tr>`;
+}
+async function toggleDigit58CardPurchasePause(id){
+  const row=data.digit58CardPurchases.find(item=>item.id===id);if(!row)return;
+  try{
+    await api.update('digit58_card_purchases',id,{status:row.status==='Paused'?'Declared Paid':'Paused',updatedAt:now()});
+    await refresh();toast(row.status==='Paused'?'Card purchase resumed':'Card purchase paused — that card slot is revoked');
+  }catch(error){toast(error.message||'Could not update this purchase')}
 }
 function sendDigit58PaymentLink(id){
   const row=data.digit58Requests.find(item=>item.id===id);if(!row)return;
