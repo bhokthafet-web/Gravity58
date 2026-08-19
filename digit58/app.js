@@ -93,6 +93,123 @@ const CARD_PURCHASE_KIND='digit58_card_purchases',FREE_PROMOTION_CARDS=3;
 const PROMOTION_CARD_PRICING={'30d':{label:'30 Days',amount:150,days:30},'6mo':{label:'6 Months',amount:750,days:182},'1yr':{label:'1 Year',amount:1200,days:365}};
 const BRAND_KIND='digit58_brand_owners',BRAND_REQUEST_KIND='digit58_brand_requests';
 const BRAND_CARD_PRICING={'30d':{label:'30 Days',amount:300,days:30},'6mo':{label:'6 Months',amount:1500,days:182},'1yr':{label:'1 Year',amount:2000,days:365}};
+const AI_IMAGE_PROMPT=`Create a high-resolution promotional product image using the uploaded product photo as the exact visual reference.
+The user will provide:
+
+* Product image
+* Offer percentage
+* Optional short offer text
+
+DESIGN REQUIREMENTS
+Preserve the original product identity completely, including:
+
+* Brand name
+* Logo
+* Packaging shape
+* Colors
+* Label details
+
+Do not redesign or replace the product.
+The product must remain instantly recognizable and unchanged in structure.
+Place the product as the main hero object with a premium commercial presentation:
+
+* studio-quality lighting
+* realistic glossy reflections
+* subtle 3D depth and perspective tilt
+* sharp, clean cutout edges
+* high-end advertising look
+* fully readable packaging
+* no human elements
+
+VISUAL ENHANCEMENT ELEMENTS
+Add subtle, category-appropriate decorative effects around the product to enhance appeal.
+Examples:
+
+* Toothpaste → mint leaves, water splash, freshness waves
+* Health drink → milk splash, wheat, chocolate/malt textures
+* Medicine/healthcare → clean clinical glow, soft medical light accents
+* FMCG/grocery → ingredient-based natural elements
+
+Keep effects minimal, elegant, and non-distracting.
+Do not overcrowd the composition.
+OFFER BADGE
+Add a premium, visually striking promotional badge or ribbon displaying:
+{{OFFER_PERCENTAGE}} OFF
+Example:
+
+* 20% OFF
+* 40% OFF
+* 50% OFF
+
+If additional offer text is provided, include it subtly as secondary text:
+{{OFFER_TEXT}}
+Otherwise, only display the discount percentage and "OFF".
+Design rules:
+
+* high contrast and easy readability
+* glossy, modern ribbon or badge style
+* integrated naturally with the product composition
+* must not block the main brand name or key label
+
+BACKGROUND REQUIREMENT
+The final output must have a fully transparent background (PNG style).
+Do NOT include:
+
+* white background
+* colored background
+* gradients as full backdrop
+* studio room environment
+* patterns or textures behind the product
+
+Only the following should remain:
+
+* product
+* decorative effects
+* offer badge/ribbon
+
+Everything else must be removed.
+COMPOSITION GUIDELINES
+Design for commercial use in:
+
+* promotional cards (G58 style)
+* e-commerce banners
+* social media ads
+* store offer displays
+* digital marketing creatives
+
+Recommended layout balance:
+
+* 65–75% product focus
+* 20–30% offer badge prominence
+* minimal supporting effects around edges
+
+Ensure the product remains fully visible and centered as the hero element.
+IMPORTANT RULES
+
+* Use ONLY the uploaded image as the product reference
+* Do NOT invent or modify the brand identity
+* Do NOT change packaging design
+* Do NOT add fake claims, pricing, or benefits
+* Keep all branding accurate and intact
+* Output must look like a professional transparent PNG product cutout advertisement
+
+The final result should be a clean, premium, 3D-style promotional product visual ready for direct use in marketing materials.`;
+function imageUploadFieldMarkup(previewId,initialPreviewHtml='',extraPreviewClass=''){
+  return `<div class="field local-image-field"><label>Product image <small>(optional · auto-compressed to fit)</small></label><div class="image-guide-tabs"><button type="button" class="image-guide-tab active" data-guide-tab="upload">Upload Photo</button><button type="button" class="image-guide-tab" data-guide-tab="ai">✨ AI Image Guide</button></div><div class="image-guide-panel" data-guide-panel="upload"><input name="imageFile" type="file" accept="image/jpeg,image/png,image/webp"><div class="image-preview ${extraPreviewClass}" id="${previewId}">${initialPreviewHtml}</div></div><div class="image-guide-panel hidden" data-guide-panel="ai">${aiImageGuideMarkup()}</div></div>`;
+}
+function aiImageGuideMarkup(){
+  return `<ol class="image-guide-steps"><li>Open <a href="https://chatgpt.com" target="_blank" rel="noopener noreferrer">ChatGPT</a> in a new tab (sign in if it asks).</li><li>Start a new chat and upload a plain photo of your product.</li><li>Tap <strong>Copy Prompt</strong> below, then paste it into the same chat.</li><li>In the pasted text, replace <code>{{OFFER_PERCENTAGE}}</code> with your discount (e.g. 20%) and <code>{{OFFER_TEXT}}</code> with a short offer line — or delete that line if you don't need one.</li><li>Send it. ChatGPT will generate a premium transparent-background product image with an offer badge.</li><li>Download the image, switch back to <strong>Upload Photo</strong> above, and upload it here.</li></ol><button type="button" class="btn small green" data-copy-ai-prompt>📋 Copy Prompt</button>`;
+}
+function bindImageGuideTabs(scope){
+  $$('[data-guide-tab]',scope).forEach(tab=>tab.onclick=()=>{
+    $$('[data-guide-tab]',scope).forEach(item=>item.classList.toggle('active',item===tab));
+    $$('[data-guide-panel]',scope).forEach(panel=>panel.classList.toggle('hidden',panel.dataset.guidePanel!==tab.dataset.guideTab));
+  });
+  $('[data-copy-ai-prompt]',scope)?.addEventListener('click',async()=>{
+    try{await navigator.clipboard.writeText(AI_IMAGE_PROMPT);toast('Prompt copied — paste it into ChatGPT')}
+    catch{toast('Could not copy automatically — select and copy the prompt manually')}
+  });
+}
 let brandSession=null,brandProfile=null,brandRequests=[],pendingBrandTarget=null;
 const ORDER_STEPS=[
   {key:'Requested',icon:'📝',label:'Requested'},
@@ -901,8 +1018,9 @@ async function openBrandRequestForm(prefillTarget){
   }
   const storeField=prefillStore?`<div class="field"><label>Store</label><input value="${html(prefillStore.name)}" disabled></div>`:`<div class="field"><label>Store link</label><input name="storeLink" placeholder="https://g58.in/digit58/#store&owner=...&store=..." required></div>`;
   const tierOptions=Object.entries(BRAND_CARD_PRICING).map(([key,tier])=>`<label class="option-toggle"><input type="radio" name="brandDuration" value="${key}" ${key==='30d'?'checked':''}><span><strong>${tier.label}</strong><small>${money(tier.amount)}</small></span></label>`).join('');
-  modal('New Card Request',`<form id="brandRequestForm">${storeField}<div class="field"><label>Product name</label><input name="promotionName" maxlength="80" required></div><div class="field"><label>Offer line</label><input name="offerText" maxlength="120" placeholder="Pure 500g jar · limited stock"></div><div class="field"><label>Price to display</label><input name="price" type="number" min="0" step="0.01" required></div><div class="field local-image-field"><label>Product image <small>(optional · auto-compressed to fit)</small></label><input name="imageFile" type="file" accept="image/jpeg,image/png,image/webp"><div class="image-preview" id="brandImagePreview"></div></div><div class="field"><label>Plan duration</label><div class="card-purchase-tiers">${tierOptions}</div></div><p class="muted">This request goes to the store owner for approval, then costs the plan amount above for that placement duration.</p><button class="btn full" style="margin-top:10px">Send Request</button></form>`,()=>{
+  modal('New Card Request',`<form id="brandRequestForm">${storeField}<div class="field"><label>Product name</label><input name="promotionName" maxlength="80" required></div><div class="field"><label>Offer line</label><input name="offerText" maxlength="120" placeholder="Pure 500g jar · limited stock"></div><div class="field"><label>Price to display</label><input name="price" type="number" min="0" step="0.01" required></div>${imageUploadFieldMarkup('brandImagePreview')}<div class="field"><label>Plan duration</label><div class="card-purchase-tiers">${tierOptions}</div></div><p class="muted">This request goes to the store owner for approval, then costs the plan amount above for that placement duration.</p><button class="btn full" style="margin-top:10px">Send Request</button></form>`,()=>{
     const form=$('#brandRequestForm'),imageFile=form.imageFile,imagePreview=$('#brandImagePreview');
+    bindImageGuideTabs(form);
     let compressedBlob=null,previewUrl='';
     imageFile.onchange=async()=>{
       const file=imageFile.files[0];if(!file)return;
@@ -1168,8 +1286,9 @@ function openPromotionForm(promotionId=''){
   const store=activeStore(),promotion=state.promotions.find(row=>row.id===promotionId)||{};if(!store)return;
   if(!promotionId&&storePromotions(store.id).length>=promotionCardAllowance(store.id))return openBuyPromotionCardForm(store);
   const defaultEnd=indiaDateValue(new Date(Date.now()+7*86400000)),today=indiaDateValue();
-  modal(promotionId?'Edit Promotion':'Create Promotion',`<form id="promotionForm"><div class="field"><label>Product name</label><input name="name" value="${html(promotion.name||'')}" placeholder="Organic Honey" maxlength="80" required></div><div class="field"><label>Offer line</label><input name="offerText" value="${html(promotion.offerText||'')}" placeholder="Pure 500g jar · limited stock" maxlength="120"></div><div class="field local-image-field"><label>Product image <small>(optional · auto-compressed to fit)</small></label><input name="imageFile" type="file" accept="image/jpeg,image/png,image/webp"><div class="image-preview promotion-image-preview" id="promotionImagePreview">${promotion.imageUrl?`<img src="${html(promotion.imageUrl)}" alt="">`:''}</div></div><div class="form-grid"><div class="field"><label>Offer price</label><input name="price" type="number" min="0" step="0.01" value="${Number(promotion.price)||''}" placeholder="299" required></div><div class="field"><label>Offer ends</label><input name="endsOn" type="date" min="${today}" value="${html(promotion.endsOn||defaultEnd)}" required></div></div><label class="option-toggle"><input name="active" type="checkbox" ${promotion.active===false?'':'checked'}><span><strong>Show to customers</strong><small>Paused promotions remain saved but disappear from the customer portal.</small></span></label><button class="btn full" style="margin-top:14px">${promotionId?'Save Promotion':'Publish Promotion'}</button></form>`,()=>{
+  modal(promotionId?'Edit Promotion':'Create Promotion',`<form id="promotionForm"><div class="field"><label>Product name</label><input name="name" value="${html(promotion.name||'')}" placeholder="Organic Honey" maxlength="80" required></div><div class="field"><label>Offer line</label><input name="offerText" value="${html(promotion.offerText||'')}" placeholder="Pure 500g jar · limited stock" maxlength="120"></div>${imageUploadFieldMarkup('promotionImagePreview',promotion.imageUrl?`<img src="${html(promotion.imageUrl)}" alt="">`:'','promotion-image-preview')}<div class="form-grid"><div class="field"><label>Offer price</label><input name="price" type="number" min="0" step="0.01" value="${Number(promotion.price)||''}" placeholder="299" required></div><div class="field"><label>Offer ends</label><input name="endsOn" type="date" min="${today}" value="${html(promotion.endsOn||defaultEnd)}" required></div></div><label class="option-toggle"><input name="active" type="checkbox" ${promotion.active===false?'':'checked'}><span><strong>Show to customers</strong><small>Paused promotions remain saved but disappear from the customer portal.</small></span></label><button class="btn full" style="margin-top:14px">${promotionId?'Save Promotion':'Publish Promotion'}</button></form>`,()=>{
     const form=$('#promotionForm'),imageFile=form.imageFile,imagePreview=$('#promotionImagePreview');
+    bindImageGuideTabs(form);
     let previewUrl='',compressedBlob=null;
     imageFile.onchange=async()=>{
       const file=imageFile.files[0];if(!file)return;
