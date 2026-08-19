@@ -1489,7 +1489,16 @@ function startPromotionAutoScroll(){
 }
 function promotionQuantityControl(promotionId){
   const qty=customerPromotionQuantities.get(promotionId)||0;
-  return qty>0?`<div class="promotion-stepper" aria-label="Selected quantity"><button type="button" data-promotion-minus="${html(promotionId)}" aria-label="Remove one">−</button><strong>${qty}</strong><button type="button" data-promotion-plus="${html(promotionId)}" aria-label="Add one">+</button></div>`:`<button type="button" class="promotion-add" data-promotion-add="${html(promotionId)}">Buy</button>`;
+  return qty>0?`<div class="promotion-stepper" aria-label="Selected quantity"><button type="button" data-promotion-minus="${html(promotionId)}" aria-label="Remove one">−</button><strong>${qty}</strong><button type="button" data-promotion-plus="${html(promotionId)}" aria-label="Add one">+</button></div>`:`<button type="button" class="promotion-add" data-promotion-add="${html(promotionId)}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>Add</button>`;
+}
+function refreshPromotionCartBar(promotions){
+  const bar=$('#promotionCartBar');if(!bar)return;
+  const count=[...customerPromotionQuantities.values()].reduce((sum,qty)=>sum+qty,0);
+  if(!count){bar.hidden=true;return}
+  const total=promotions.reduce((sum,promotion)=>sum+(customerPromotionQuantities.get(promotion.id)||0)*(Number(promotion.price)||0),0);
+  bar.hidden=false;
+  $('#promotionCartCount',bar).textContent=`${count} item${count===1?'':'s'} selected`;
+  $('#promotionCartTotal',bar).textContent=money(total);
 }
 function customerPromotionTicket(promotion,decorative=false){
   return `<article class="promotion-ticket customer-ticket" ${decorative?'aria-hidden="true"':''}>${promotion.imageUrl?`<div class="promotion-ticket-image"><img src="${html(promotion.imageUrl)}" alt="" loading="lazy"></div>`:''}<span class="promotion-ticket-badge">Special Offer</span><h3>${html(promotion.name)}</h3><p>${html(promotion.offerText||'Limited-time store offer')}</p>${Number(promotion.price)>0?`<strong class="promotion-offer-price">${offerPrice(promotion.price)}</strong>`:''}${promotion.endsOn?`<small class="promotion-end-date">Offer ends ${html(formatPromotionEnd(promotion.endsOn))}</small>`:''}<div class="promotion-ticket-foot"><div class="promotion-control" data-promotion-control="${html(promotion.id)}">${promotionQuantityControl(promotion.id)}</div></div></article>`;
@@ -1501,11 +1510,13 @@ function bindCustomerPromotionActions(promotions){
     const next=Math.max(0,Math.min(99,(customerPromotionQuantities.get(promotionId)||0)+delta));
     if(next)customerPromotionQuantities.set(promotionId,next);else customerPromotionQuantities.delete(promotionId);
     $$(`[data-promotion-control="${CSS.escape(promotionId)}"]`).forEach(control=>{control.innerHTML=promotionQuantityControl(promotionId)});
+    refreshPromotionCartBar(promotions);
     bindCustomerPromotionActions(promotions);
   };
   $$('[data-promotion-add]').forEach(button=>button.onclick=()=>update(button.dataset.promotionAdd,1));
   $$('[data-promotion-plus]').forEach(button=>button.onclick=()=>update(button.dataset.promotionPlus,1));
   $$('[data-promotion-minus]').forEach(button=>button.onclick=()=>update(button.dataset.promotionMinus,-1));
+  refreshPromotionCartBar(promotions);
 }
 function renderCustomerCards(store,customer,cards,orders=[],promotions=[],courses=[]){
   if(activePromotionStoreId!==store.id){activePromotionStoreId=store.id;customerPromotionQuantities.clear()}
@@ -1532,7 +1543,7 @@ function renderCustomerCards(store,customer,cards,orders=[],promotions=[],course
   <div class="customer-reminder-view reminder-view-${customerReminderView}" id="customerCardGrid">${cards.map(customerCardCardMarkup).join('')||'<div class="empty">Your store will add reminder cards here after your first purchase.</div>'}</div>
   ${medical?`<div class="section-head"><div><h2>Medicine Courses</h2><p class="muted">Set patient, medicine, time and days from your prescription — you'll get a daily alarm.</p></div><button class="btn small" id="newCourseBtn">+ New Course</button></div><div class="grid card-grid">${activeCourseList.map(courseMarkup).join('')||'<div class="empty">No active medicine courses yet.</div>'}</div>${completedCourseList.length?`<section class="order-history-section" id="courseHistorySection"><div class="section-head"><div><h2>Course History</h2><p class="muted">Latest course per patient is shown by default. Pick dates to see more.</p></div></div><div class="date-filter-bar"><label>From<input id="courseHistoryFrom" type="date" value="${html(courseHistoryFrom)}"></label><label>To<input id="courseHistoryTo" type="date" value="${html(courseHistoryTo)}"></label><button class="btn small secondary" id="courseHistoryClear" type="button">Show Latest</button></div><div class="card table-wrap"><table><thead><tr><th>Patient</th><th>Medicines</th><th>Completed</th></tr></thead><tbody>${courseHistoryFiltered.map(courseHistoryRow).join('')||'<tr><td colspan="3">No courses in this period.</td></tr>'}</tbody></table></div></section>`:''}`:''}
   ${history.length?`<section class="order-history-section" id="customerOrderHistory"><div class="section-head"><div><h2>Order History</h2><p class="muted">Today's history is shown by default. Select another date period when needed.</p></div><button class="btn small secondary" id="exportCustomerHistory" ${filteredHistory.length?'':'disabled'}>Export CSV</button></div><div class="date-filter-bar"><label>From<input id="customerHistoryFrom" type="date" value="${html(historyFrom)}" max="${html(historyTo)}"></label><label>To<input id="customerHistoryTo" type="date" value="${html(historyTo)}" min="${html(historyFrom)}"></label><button class="btn small secondary" id="customerHistoryToday" type="button">Today</button></div><div class="card table-wrap"><table><thead><tr><th>Items</th><th>Reorder</th><th>Amount</th><th>Status</th><th>Date</th></tr></thead><tbody>${filteredHistory.map(customerOrderHistoryRow).join('')||'<tr><td colspan="5">No orders in this period.</td></tr>'}</tbody></table></div></section>`:''}
-  <div class="actions" style="margin-top:20px"><button class="btn secondary" id="custLogout">Sign out</button></div></main>${siteFooter(true)}`;
+  <div class="actions" style="margin-top:20px"><button class="btn secondary" id="custLogout">Sign out</button></div></main><div class="promotion-cart-bar" id="promotionCartBar" hidden><div class="promotion-cart-info"><strong id="promotionCartCount">0 items selected</strong><span id="promotionCartTotal">₹0</span></div><button type="button" class="btn" id="promotionCartCheckout">Checkout</button></div>${siteFooter(true)}`;
   active.filter(order=>order.status==='Priced'&&order.upiUri).forEach(order=>{
     const target=document.getElementById(`qr-${order.id}`);
     if(target&&window.QRCode)new QRCode(target,{text:order.upiUri,width:180,height:180});
@@ -1543,6 +1554,7 @@ function renderCustomerCards(store,customer,cards,orders=[],promotions=[],course
   startPromotionAutoScroll();
   bindRazorpayPaymentActions(active,store,customer);
   $('#placeOrderBtn').onclick=()=>openPlaceOrderModal(store,customer,promotions);
+  $('#promotionCartCheckout').onclick=()=>openPlaceOrderModal(store,customer,promotions);
   $$('[data-accept-owner-order]').forEach(button=>button.onclick=()=>acceptOwnerOrder(store,customer,button.dataset.acceptOwnerOrder));
   $$('[data-reject-owner-order]').forEach(button=>button.onclick=()=>rejectOwnerOrder(store,customer,button.dataset.rejectOwnerOrder));
   $$('[data-buy-again]').forEach(button=>button.onclick=()=>{
