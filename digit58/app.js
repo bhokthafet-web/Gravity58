@@ -848,18 +848,33 @@ function imageHasTransparency(image,width,height){
   for(let i=3;i<data.length;i+=4)if(data[i]<250)return true;
   return false;
 }
+function stripNearWhiteBackground(canvas){
+  const context=canvas.getContext('2d');
+  const imageData=context.getImageData(0,0,canvas.width,canvas.height);
+  const data=imageData.data,low=225,high=250;
+  for(let i=0;i<data.length;i+=4){
+    const brightness=Math.min(data[i],data[i+1],data[i+2]);
+    if(brightness>=high)data[i+3]=0;
+    else if(brightness>low)data[i+3]=Math.round(data[i+3]*(1-(brightness-low)/(high-low)));
+  }
+  context.putImageData(imageData,0,0);
+}
 async function compressImageTo100Kb(file){
   const image=await loadBrowserImage(file);
   let width=Math.min(1600,image.naturalWidth||image.width),height=Math.max(1,Math.round((image.naturalHeight||image.height)*(width/(image.naturalWidth||image.width))));
-  const transparent=imageHasTransparency(image,width,height),outputType=transparent?'image/webp':'image/jpeg';
+  const alreadyTransparent=imageHasTransparency(image,width,height);
+  const sourceCanvas=document.createElement('canvas');
+  sourceCanvas.width=Math.max(1,Math.round(width));sourceCanvas.height=Math.max(1,Math.round(height));
+  const sourceContext=sourceCanvas.getContext('2d',{alpha:true});
+  sourceContext.drawImage(image,0,0,sourceCanvas.width,sourceCanvas.height);
+  if(!alreadyTransparent)stripNearWhiteBackground(sourceCanvas);
   for(let sizePass=0;sizePass<10;sizePass++){
     const canvas=document.createElement('canvas');
     canvas.width=Math.max(1,Math.round(width));canvas.height=Math.max(1,Math.round(height));
-    const context=canvas.getContext('2d',{alpha:transparent});
-    if(!transparent){context.fillStyle='#ffffff';context.fillRect(0,0,canvas.width,canvas.height)}
-    context.drawImage(image,0,0,canvas.width,canvas.height);
+    const context=canvas.getContext('2d',{alpha:true});
+    context.drawImage(sourceCanvas,0,0,canvas.width,canvas.height);
     for(let quality=.88;quality>=.3;quality-=.08){
-      const blob=await canvasImageBlob(canvas,outputType,quality);
+      const blob=await canvasImageBlob(canvas,'image/webp',quality);
       if(blob.size<=100*1024)return blob;
     }
     width*=.78;height*=.78;
