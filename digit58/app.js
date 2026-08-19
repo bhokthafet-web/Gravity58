@@ -835,13 +835,23 @@ function formatPromotionEnd(value){
 }
 function promotionOwnerCard(promotion){
   const expired=promotionIsExpired(promotion);
-  return `<article class="promotion-ticket owner-ticket ${promotion.active===false||expired?'promotion-disabled':''}"><span class="promotion-ticket-badge">Special Offer</span><h3>${html(promotion.name)}</h3><p>${html(promotion.offerText||'Limited-time store offer')}</p>${Number(promotion.price)>0?`<strong class="promotion-offer-price">${offerPrice(promotion.price)}</strong>`:''}${promotion.endsOn?`<small class="promotion-end-date">Offer ends ${html(formatPromotionEnd(promotion.endsOn))}</small>`:''}<div class="chips"><span class="chip ${promotion.active===false||expired?'due':'delivered'}">${expired?'Expired':promotion.active===false?'Paused':'Visible to customers'}</span></div><div class="actions"><button class="btn small" data-edit-promotion="${html(promotion.id)}">Edit</button><button class="btn small secondary" data-toggle-promotion="${html(promotion.id)}">${promotion.active===false?'Enable':'Pause'}</button><button class="btn small red" data-delete-promotion="${html(promotion.id)}">Delete</button></div></article>`;
+  return `<article class="promotion-ticket owner-ticket ${promotion.active===false||expired?'promotion-disabled':''}">${promotion.imageUrl?`<div class="promotion-ticket-image"><img src="${html(promotion.imageUrl)}" alt="" loading="lazy"></div>`:''}<span class="promotion-ticket-badge">Special Offer</span><h3>${html(promotion.name)}</h3><p>${html(promotion.offerText||'Limited-time store offer')}</p>${Number(promotion.price)>0?`<strong class="promotion-offer-price">${offerPrice(promotion.price)}</strong>`:''}${promotion.endsOn?`<small class="promotion-end-date">Offer ends ${html(formatPromotionEnd(promotion.endsOn))}</small>`:''}<div class="chips"><span class="chip ${promotion.active===false||expired?'due':'delivered'}">${expired?'Expired':promotion.active===false?'Paused':'Visible to customers'}</span></div><div class="actions"><button class="btn small" data-edit-promotion="${html(promotion.id)}">Edit</button><button class="btn small secondary" data-toggle-promotion="${html(promotion.id)}">${promotion.active===false?'Enable':'Pause'}</button><button class="btn small red" data-delete-promotion="${html(promotion.id)}">Delete</button></div></article>`;
 }
 function openPromotionForm(promotionId=''){
   const store=activeStore(),promotion=state.promotions.find(row=>row.id===promotionId)||{};if(!store)return;
   const defaultEnd=indiaDateValue(new Date(Date.now()+7*86400000)),today=indiaDateValue();
-  modal(promotionId?'Edit Promotion':'Create Promotion',`<form id="promotionForm"><div class="field"><label>Product name</label><input name="name" value="${html(promotion.name||'')}" placeholder="Organic Honey" maxlength="80" required></div><div class="field"><label>Offer line</label><input name="offerText" value="${html(promotion.offerText||'')}" placeholder="Pure 500g jar · limited stock" maxlength="120"></div><div class="form-grid"><div class="field"><label>Offer price</label><input name="price" type="number" min="0" step="0.01" value="${Number(promotion.price)||''}" placeholder="299" required></div><div class="field"><label>Offer ends</label><input name="endsOn" type="date" min="${today}" value="${html(promotion.endsOn||defaultEnd)}" required></div></div><label class="option-toggle"><input name="active" type="checkbox" ${promotion.active===false?'':'checked'}><span><strong>Show to customers</strong><small>Paused promotions remain saved but disappear from the customer portal.</small></span></label><button class="btn full" style="margin-top:14px">${promotionId?'Save Promotion':'Publish Promotion'}</button></form>`,()=>{
-    $('#promotionForm').onsubmit=async event=>{
+  modal(promotionId?'Edit Promotion':'Create Promotion',`<form id="promotionForm"><div class="field"><label>Product name</label><input name="name" value="${html(promotion.name||'')}" placeholder="Organic Honey" maxlength="80" required></div><div class="field"><label>Offer line</label><input name="offerText" value="${html(promotion.offerText||'')}" placeholder="Pure 500g jar · limited stock" maxlength="120"></div><div class="field local-image-field"><label>Product image <small>(optional · maximum 100 KB)</small></label><input name="imageFile" type="file" accept="image/jpeg,image/png,image/webp"><div class="image-preview promotion-image-preview" id="promotionImagePreview">${promotion.imageUrl?`<img src="${html(promotion.imageUrl)}" alt="">`:''}</div></div><div class="form-grid"><div class="field"><label>Offer price</label><input name="price" type="number" min="0" step="0.01" value="${Number(promotion.price)||''}" placeholder="299" required></div><div class="field"><label>Offer ends</label><input name="endsOn" type="date" min="${today}" value="${html(promotion.endsOn||defaultEnd)}" required></div></div><label class="option-toggle"><input name="active" type="checkbox" ${promotion.active===false?'':'checked'}><span><strong>Show to customers</strong><small>Paused promotions remain saved but disappear from the customer portal.</small></span></label><button class="btn full" style="margin-top:14px">${promotionId?'Save Promotion':'Publish Promotion'}</button></form>`,()=>{
+    const form=$('#promotionForm'),imageFile=form.imageFile,imagePreview=$('#promotionImagePreview');
+    let previewUrl='';
+    imageFile.onchange=()=>{
+      try{
+        api.validateMenuImage(imageFile.files[0]);
+        if(previewUrl)URL.revokeObjectURL(previewUrl);
+        previewUrl=URL.createObjectURL(imageFile.files[0]);
+        imagePreview.innerHTML=`<img src="${previewUrl}" alt="">`;
+      }catch(error){imageFile.value='';toast(error.message)}
+    };
+    form.onsubmit=async event=>{
       event.preventDefault();
       const raw=Object.fromEntries(new FormData(event.target)),button=event.submitter,ownerId=cloudOwnerId();
       const values={name:raw.name.trim(),offerText:raw.offerText.trim(),price:Math.max(0,Number(raw.price)||0),endsOn:raw.endsOn,badge:'Special Offer',active:$('input[name="active"]',event.target).checked,updatedAt:now()};
@@ -849,6 +859,14 @@ function openPromotionForm(promotionId=''){
       if(!values.endsOn||values.endsOn<today)return toast('Choose today or a future offer end date');
       button.disabled=true;
       try{
+        const selectedFile=imageFile.files[0];
+        if(selectedFile?.size){
+          api.validateMenuImage(selectedFile);
+          const oldFileId=promotion.imageFileId;
+          const upload=await api.uploadMenuMedia(selectedFile);
+          values.imageUrl=upload.mediaUrl;values.imageFileId=upload.fileId;
+          if(oldFileId&&oldFileId!==upload.fileId)api.removeMenuMedia(oldFileId).catch(()=>{});
+        }
         if(promotionId){await api.update(promotionKind(ownerId),promotionId,values);Object.assign(promotion,values)}
         else{
           const record={id:id('promo'),ownerId,storeId:store.id,...values,createdAt:now()};
@@ -868,7 +886,11 @@ async function togglePromotion(promotionId){
 }
 async function deletePromotion(promotionId){
   const promotion=state.promotions.find(row=>row.id===promotionId);if(!promotion||!confirm(`Delete the ${promotion.name} promotion?`))return;
-  try{await api.remove(promotionKind(promotion.ownerId),promotion.id);state.promotions=state.promotions.filter(row=>row.id!==promotion.id);save();promotionsView();toast('Promotion deleted')}
+  try{
+    await api.remove(promotionKind(promotion.ownerId),promotion.id);
+    if(promotion.imageFileId)api.removeMenuMedia(promotion.imageFileId).catch(()=>{});
+    state.promotions=state.promotions.filter(row=>row.id!==promotion.id);save();promotionsView();toast('Promotion deleted')
+  }
   catch(error){toast(error.message||'Could not delete promotion')}
 }
 function shareStoreModal(storeId){
@@ -1466,7 +1488,7 @@ function promotionQuantityControl(promotionId){
   return qty>0?`<div class="promotion-stepper" aria-label="Selected quantity"><button type="button" data-promotion-minus="${html(promotionId)}" aria-label="Remove one">−</button><strong>${qty}</strong><button type="button" data-promotion-plus="${html(promotionId)}" aria-label="Add one">+</button></div>`:`<button type="button" class="promotion-add" data-promotion-add="${html(promotionId)}">Buy</button>`;
 }
 function customerPromotionTicket(promotion,decorative=false){
-  return `<article class="promotion-ticket customer-ticket" ${decorative?'aria-hidden="true"':''}><span class="promotion-ticket-badge">Special Offer</span><h3>${html(promotion.name)}</h3><p>${html(promotion.offerText||'Limited-time store offer')}</p>${Number(promotion.price)>0?`<strong class="promotion-offer-price">${offerPrice(promotion.price)}</strong>`:''}${promotion.endsOn?`<small class="promotion-end-date">Offer ends ${html(formatPromotionEnd(promotion.endsOn))}</small>`:''}<div class="promotion-ticket-foot"><div class="promotion-control" data-promotion-control="${html(promotion.id)}">${promotionQuantityControl(promotion.id)}</div></div></article>`;
+  return `<article class="promotion-ticket customer-ticket" ${decorative?'aria-hidden="true"':''}>${promotion.imageUrl?`<div class="promotion-ticket-image"><img src="${html(promotion.imageUrl)}" alt="" loading="lazy"></div>`:''}<span class="promotion-ticket-badge">Special Offer</span><h3>${html(promotion.name)}</h3><p>${html(promotion.offerText||'Limited-time store offer')}</p>${Number(promotion.price)>0?`<strong class="promotion-offer-price">${offerPrice(promotion.price)}</strong>`:''}${promotion.endsOn?`<small class="promotion-end-date">Offer ends ${html(formatPromotionEnd(promotion.endsOn))}</small>`:''}<div class="promotion-ticket-foot"><div class="promotion-control" data-promotion-control="${html(promotion.id)}">${promotionQuantityControl(promotion.id)}</div></div></article>`;
 }
 function bindCustomerPromotionActions(promotions){
   const update=(promotionId,delta)=>{
