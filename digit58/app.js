@@ -837,19 +837,25 @@ function promotionOwnerCard(promotion){
   const expired=promotionIsExpired(promotion);
   return `<article class="promotion-ticket owner-ticket ${promotion.active===false||expired?'promotion-disabled':''}">${promotion.imageUrl?`<div class="promotion-ticket-image"><img src="${html(promotion.imageUrl)}" alt="" loading="lazy"></div>`:''}<span class="promotion-ticket-badge">Special Offer</span><h3>${html(promotion.name)}</h3><p>${html(promotion.offerText||'Limited-time store offer')}</p>${Number(promotion.price)>0?`<strong class="promotion-offer-price">${offerPrice(promotion.price)}</strong>`:''}${promotion.endsOn?`<small class="promotion-end-date">Offer ends ${html(formatPromotionEnd(promotion.endsOn))}</small>`:''}<div class="chips"><span class="chip ${promotion.active===false||expired?'due':'delivered'}">${expired?'Expired':promotion.active===false?'Paused':'Visible to customers'}</span></div><div class="actions"><button class="btn small" data-edit-promotion="${html(promotion.id)}">Edit</button><button class="btn small secondary" data-toggle-promotion="${html(promotion.id)}">${promotion.active===false?'Enable':'Pause'}</button><button class="btn small red" data-delete-promotion="${html(promotion.id)}">Delete</button></div></article>`;
 }
+function loadBrowserImage(file){return new Promise((resolve,reject)=>{if(!file?.type?.startsWith('image/'))return reject(new Error('Select a JPG, PNG or WebP image'));if(file.size>20*1024*1024)return reject(new Error('Source image must be below 20 MB'));const url=URL.createObjectURL(file),image=new Image();image.onload=()=>{URL.revokeObjectURL(url);resolve(image)};image.onerror=()=>{URL.revokeObjectURL(url);reject(new Error('This image could not be opened'))};image.src=url})}
+function canvasImageBlob(canvas,type,quality){return new Promise((resolve,reject)=>canvas.toBlob(blob=>blob?resolve(blob):reject(new Error('Image compression failed')),type,quality))}
+async function compressImageTo100Kb(file){const image=await loadBrowserImage(file);let width=Math.min(1600,image.naturalWidth||image.width),height=Math.max(1,Math.round((image.naturalHeight||image.height)*(width/(image.naturalWidth||image.width))));for(let sizePass=0;sizePass<10;sizePass++){const canvas=document.createElement('canvas');canvas.width=Math.max(1,Math.round(width));canvas.height=Math.max(1,Math.round(height));const context=canvas.getContext('2d',{alpha:false});context.fillStyle='#ffffff';context.fillRect(0,0,canvas.width,canvas.height);context.drawImage(image,0,0,canvas.width,canvas.height);for(let quality=.88;quality>=.3;quality-=.08){const blob=await canvasImageBlob(canvas,'image/jpeg',quality);if(blob.size<=100*1024)return blob}width*=.78;height*=.78}throw new Error('Could not reduce this image below 100 KB. Try a smaller source image.')}
 function openPromotionForm(promotionId=''){
   const store=activeStore(),promotion=state.promotions.find(row=>row.id===promotionId)||{};if(!store)return;
   const defaultEnd=indiaDateValue(new Date(Date.now()+7*86400000)),today=indiaDateValue();
-  modal(promotionId?'Edit Promotion':'Create Promotion',`<form id="promotionForm"><div class="field"><label>Product name</label><input name="name" value="${html(promotion.name||'')}" placeholder="Organic Honey" maxlength="80" required></div><div class="field"><label>Offer line</label><input name="offerText" value="${html(promotion.offerText||'')}" placeholder="Pure 500g jar · limited stock" maxlength="120"></div><div class="field local-image-field"><label>Product image <small>(optional · maximum 100 KB)</small></label><input name="imageFile" type="file" accept="image/jpeg,image/png,image/webp"><div class="image-preview promotion-image-preview" id="promotionImagePreview">${promotion.imageUrl?`<img src="${html(promotion.imageUrl)}" alt="">`:''}</div></div><div class="form-grid"><div class="field"><label>Offer price</label><input name="price" type="number" min="0" step="0.01" value="${Number(promotion.price)||''}" placeholder="299" required></div><div class="field"><label>Offer ends</label><input name="endsOn" type="date" min="${today}" value="${html(promotion.endsOn||defaultEnd)}" required></div></div><label class="option-toggle"><input name="active" type="checkbox" ${promotion.active===false?'':'checked'}><span><strong>Show to customers</strong><small>Paused promotions remain saved but disappear from the customer portal.</small></span></label><button class="btn full" style="margin-top:14px">${promotionId?'Save Promotion':'Publish Promotion'}</button></form>`,()=>{
+  modal(promotionId?'Edit Promotion':'Create Promotion',`<form id="promotionForm"><div class="field"><label>Product name</label><input name="name" value="${html(promotion.name||'')}" placeholder="Organic Honey" maxlength="80" required></div><div class="field"><label>Offer line</label><input name="offerText" value="${html(promotion.offerText||'')}" placeholder="Pure 500g jar · limited stock" maxlength="120"></div><div class="field local-image-field"><label>Product image <small>(optional · auto-compressed to fit)</small></label><input name="imageFile" type="file" accept="image/jpeg,image/png,image/webp"><div class="image-preview promotion-image-preview" id="promotionImagePreview">${promotion.imageUrl?`<img src="${html(promotion.imageUrl)}" alt="">`:''}</div></div><div class="form-grid"><div class="field"><label>Offer price</label><input name="price" type="number" min="0" step="0.01" value="${Number(promotion.price)||''}" placeholder="299" required></div><div class="field"><label>Offer ends</label><input name="endsOn" type="date" min="${today}" value="${html(promotion.endsOn||defaultEnd)}" required></div></div><label class="option-toggle"><input name="active" type="checkbox" ${promotion.active===false?'':'checked'}><span><strong>Show to customers</strong><small>Paused promotions remain saved but disappear from the customer portal.</small></span></label><button class="btn full" style="margin-top:14px">${promotionId?'Save Promotion':'Publish Promotion'}</button></form>`,()=>{
     const form=$('#promotionForm'),imageFile=form.imageFile,imagePreview=$('#promotionImagePreview');
-    let previewUrl='';
-    imageFile.onchange=()=>{
+    let previewUrl='',compressedBlob=null;
+    imageFile.onchange=async()=>{
+      const file=imageFile.files[0];if(!file)return;
+      compressedBlob=null;
+      imagePreview.innerHTML=`<span class="muted" style="font-size:12px">Compressing image…</span>`;
       try{
-        api.validateMenuImage(imageFile.files[0]);
+        compressedBlob=await compressImageTo100Kb(file);
         if(previewUrl)URL.revokeObjectURL(previewUrl);
-        previewUrl=URL.createObjectURL(imageFile.files[0]);
+        previewUrl=URL.createObjectURL(compressedBlob);
         imagePreview.innerHTML=`<img src="${previewUrl}" alt="">`;
-      }catch(error){imageFile.value='';toast(error.message)}
+      }catch(error){imageFile.value='';imagePreview.innerHTML=promotion.imageUrl?`<img src="${html(promotion.imageUrl)}" alt="">`:'';toast(error.message)}
     };
     form.onsubmit=async event=>{
       event.preventDefault();
@@ -859,11 +865,9 @@ function openPromotionForm(promotionId=''){
       if(!values.endsOn||values.endsOn<today)return toast('Choose today or a future offer end date');
       button.disabled=true;
       try{
-        const selectedFile=imageFile.files[0];
-        if(selectedFile?.size){
-          api.validateMenuImage(selectedFile);
+        if(compressedBlob){
           const oldFileId=promotion.imageFileId;
-          const upload=await api.uploadMenuMedia(selectedFile);
+          const upload=await api.uploadMenuMedia(new File([compressedBlob],`promo-${id('img')}.jpg`,{type:'image/jpeg'}));
           values.imageUrl=upload.mediaUrl;values.imageFileId=upload.fileId;
           if(oldFileId&&oldFileId!==upload.fileId)api.removeMenuMedia(oldFileId).catch(()=>{});
         }
