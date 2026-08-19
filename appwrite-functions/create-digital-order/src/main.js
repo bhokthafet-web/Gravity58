@@ -740,7 +740,7 @@ async function createDigit58Order(call, input, userId, options = {}) {
   const record = {
     id: digit58Id('order'), ownerId, storeId, customerAccountId: userId,
     customerName: text(input.customerName, 120), customerEmail: text(input.customerEmail, 250),
-    phone: phone.slice(0, 15),
+    phone: phone.slice(0, 15), address: text(input.address, 300),
     locationLat: hasLocation ? lat : '', locationLng: hasLocation ? lng : '',
     locationUrl: hasLocation ? `https://www.google.com/maps?q=${lat},${lng}` : '',
     items: cleanItems, amount: 0, upiUri: '', customerOrderValue,

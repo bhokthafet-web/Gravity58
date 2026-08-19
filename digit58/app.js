@@ -234,8 +234,8 @@ function updateOrderAlertSound(){
   });
   if(!ringingIds.size){if(orderAlertTimer)clearInterval(orderAlertTimer);orderAlertTimer=null;return}
   if(!orderAlertTimer){
-    if(!ownerPortalIsActive())playOwnerNotificationChime();
-    orderAlertTimer=setInterval(()=>{if(ringingIds.size&&!ownerPortalIsActive())playOwnerNotificationChime()},3500);
+    if(!ownerPortalIsActive()){playOwnerNotificationChime();pendingAlertReplay=playOwnerNotificationChime}
+    orderAlertTimer=setInterval(()=>{if(ringingIds.size&&!ownerPortalIsActive()){playOwnerNotificationChime();pendingAlertReplay=playOwnerNotificationChime}},3500);
   }
 }
 const dueReminderRung=new Set();
@@ -1996,7 +1996,7 @@ function openAddMedicineModal(store,customer,course){
   });
 }
 function openPlaceOrderModal(store,customer,promotions=[],rejectedDraft=null){
-  let capturedLocation=null;
+  let capturedLocation=(customer.savedLocationLat&&customer.savedLocationLng)?{lat:customer.savedLocationLat,lng:customer.savedLocationLng}:null;
   const selectedPromotions=promotions.filter(promotion=>customerPromotionQuantities.has(promotion.id)).map(promotion=>({name:promotion.name,qty:customerPromotionQuantities.get(promotion.id)}));
   const rejectedItems=Array.isArray(rejectedDraft?.items)?rejectedDraft.items.map(item=>({name:item.name,qty:item.qty})).filter(item=>item.name):[];
   const startingItems=rejectedItems.length?rejectedItems:(selectedPromotions.length?selectedPromotions:[{}]);
@@ -2004,7 +2004,8 @@ function openPlaceOrderModal(store,customer,promotions=[],rejectedDraft=null){
   const draftValue=Math.max(0,Number(rejectedDraft?.customerOrderValue)||0)||selectedPromotionValue;
   const minimumBlock=minimum?`<div class="minimum-order-notice"><strong>Minimum new order: ${money(minimum)}</strong><p>Enter the estimated value of these items. If it is lower, you can request one-order approval from the store.</p><div class="field"><label>Estimated order value (₹)</label><input id="customerOrderValue" name="customerOrderValue" type="number" min="0" step="0.01" value="${draftValue||''}" placeholder="${minimum}" required></div></div>`:'';
   const rejectedNote=rejectedDraft?`<div class="rejection-revise-note"><strong>Update the rejected order</strong><p>${html(rejectedDraft.rejectionReason||'Change the items or details before resubmitting.')}</p></div>`:'';
-  modal(rejectedDraft?'Revise Rejected Order':'Place New Order',`<form id="placeOrderForm">${rejectedNote}${selectedPromotions.length&&!rejectedItems.length?`<div class="selected-offer-note">${selectedPromotions.length} promotional item${selectedPromotions.length===1?'':'s'} added. You can change quantities below.</div>`:''}${minimumBlock}<div id="orderItemRows">${startingItems.map(orderItemRowMarkup).join('')}</div><button type="button" class="btn small secondary" id="addItemRow" style="margin-top:8px">+ Add another item</button><div class="field" style="margin-top:14px"><label>Contact number</label><input name="phone" type="tel" value="${html(customer.phone||rejectedDraft?.phone||'')}" placeholder="10-digit mobile number" required></div><div class="field"><button type="button" class="btn small secondary" id="shareLocationBtn">📍 Share My Location</button><p class="muted" id="locationStatus" style="margin-top:6px">Optional — helps the store guide your delivery.</p></div><div class="field"><label>Prescription image <small>(optional)</small></label><input id="prescriptionFile" type="file" accept="image/jpeg,image/png,image/webp"></div><div class="minimum-order-actions"><button class="btn full" type="submit" style="margin-top:14px">${rejectedDraft?'Resubmit Order':'Submit Order'}</button>${minimum?'<button class="btn full secondary" type="submit" data-request-minimum-approval="true">Request Owner Approval</button>':''}</div></form>`,()=>{
+  const hasSavedLocation=!!capturedLocation;
+  modal(rejectedDraft?'Revise Rejected Order':'Place New Order',`<form id="placeOrderForm">${rejectedNote}${selectedPromotions.length&&!rejectedItems.length?`<div class="selected-offer-note">${selectedPromotions.length} promotional item${selectedPromotions.length===1?'':'s'} added. You can change quantities below.</div>`:''}${minimumBlock}<div id="orderItemRows">${startingItems.map(orderItemRowMarkup).join('')}</div><button type="button" class="btn small secondary" id="addItemRow" style="margin-top:8px">+ Add another item</button><div class="field" style="margin-top:14px"><label>Contact number</label><input name="phone" type="tel" value="${html(customer.phone||rejectedDraft?.phone||'')}" placeholder="10-digit mobile number" required></div><div class="field"><label>Delivery address</label><textarea name="address" rows="2" placeholder="House/flat no., street, landmark, city" required>${html(customer.address||'')}</textarea></div><div class="field"><button type="button" class="btn small secondary" id="shareLocationBtn">📍 ${hasSavedLocation?'Update Location':'Share My Location'}</button><p class="muted ${hasSavedLocation?'location-captured':''}" id="locationStatus" style="margin-top:6px">${hasSavedLocation?'📍 Using your saved location — it will be sent with your order.':'Optional — helps the store guide your delivery.'}</p></div><div class="field"><label>Prescription image <small>(optional)</small></label><input id="prescriptionFile" type="file" accept="image/jpeg,image/png,image/webp"></div><div class="minimum-order-actions"><button class="btn full" type="submit" style="margin-top:14px">${rejectedDraft?'Resubmit Order':'Submit Order'}</button>${minimum?'<button class="btn full secondary" type="submit" data-request-minimum-approval="true">Request Owner Approval</button>':''}</div></form>`,()=>{
     $('#addItemRow').onclick=()=>$('#orderItemRows').insertAdjacentHTML('beforeend',orderItemRowMarkup());
     $('#orderItemRows').addEventListener('click',event=>{const row=event.target.closest('.remove-item-row');if(row&&$$('.order-item-row').length>1)row.closest('.order-item-row').remove()});
     bindShareLocationButton($('#shareLocationBtn'),$('#locationStatus'),point=>{capturedLocation=point});
@@ -2019,6 +2020,7 @@ function openPlaceOrderModal(store,customer,promotions=[],rejectedDraft=null){
       if(minimum&&customerOrderValue<minimum&&!requestMinimumApproval){$('#customerOrderValue').focus();return toast(`Minimum new order value is ${money(minimum)} — or request owner approval`)}
       if(requestMinimumApproval&&customerOrderValue>=minimum)return toast('This order already meets the minimum. Use Submit Order.');
       const phone=$('input[name="phone"]',event.target).value.trim();
+      const address=$('textarea[name="address"]',event.target).value.trim();
       const button=event.submitter;button.disabled=true;
       try{
         let prescription={};
@@ -2027,8 +2029,12 @@ function openPlaceOrderModal(store,customer,promotions=[],rejectedDraft=null){
           const uploaded=await api.uploadAdMedia(file);
           prescription={prescriptionUrl:uploaded.mediaUrl,prescriptionFileId:uploaded.fileId,prescriptionName:uploaded.mediaName,prescriptionType:uploaded.mediaType};
         }
-        await api.executeFunction(api.config.digitalOrderFunctionId,{action:'digit58-create-order',ownerId:store.ownerId,storeId:store.id,customerName:customer.customerName,customerEmail:customer.customerEmail,items,customerOrderValue,requestMinimumApproval,phone,locationLat:capturedLocation?.lat,locationLng:capturedLocation?.lng,...prescription});
-        if(phone&&phone!==customer.phone){await api.update(customerKind(store.ownerId),customer.id,{phone}).catch(()=>{});customer.phone=phone}
+        await api.executeFunction(api.config.digitalOrderFunctionId,{action:'digit58-create-order',ownerId:store.ownerId,storeId:store.id,customerName:customer.customerName,customerEmail:customer.customerEmail,items,customerOrderValue,requestMinimumApproval,phone,address,locationLat:capturedLocation?.lat,locationLng:capturedLocation?.lng,...prescription});
+        const profileUpdates={};
+        if(phone&&phone!==customer.phone)profileUpdates.phone=phone;
+        if(address&&address!==customer.address)profileUpdates.address=address;
+        if(capturedLocation&&(capturedLocation.lat!==customer.savedLocationLat||capturedLocation.lng!==customer.savedLocationLng)){profileUpdates.savedLocationLat=capturedLocation.lat;profileUpdates.savedLocationLng=capturedLocation.lng}
+        if(Object.keys(profileUpdates).length){await api.update(customerKind(store.ownerId),customer.id,profileUpdates).catch(()=>{});Object.assign(customer,profileUpdates)}
         customerPromotionQuantities.clear();
         closeModal();toast(requestMinimumApproval?'Minimum-order approval requested from the store':'Order sent to the store');
         await loadAndRenderCustomerView(store,customer);
