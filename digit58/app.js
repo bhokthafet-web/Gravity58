@@ -644,7 +644,7 @@ function siteFooter(forCustomer){
 }
 function renderShell(){
   const store=activeStore();
-  app.innerHTML=`<div class="shell"><aside class="sidebar"><a class="brand" href="../"><svg class="brand-mark" viewBox="0 0 120 120" fill="none" stroke="#7fffd4" stroke-width="8" aria-hidden="true"><circle cx="60" cy="26" r="15"/><circle cx="28" cy="82" r="15"/><circle cx="92" cy="82" r="15"/></svg><div><strong>Refills</strong><small class="muted">Store workspace</small></div></a><nav class="nav">${navButton('dashboard','◉','Dashboard')}${navButton('stores','◫','My Stores')}${navButton('promotions','✦','Promotions')}${navButton('wall','☰','Customer Wall')}${navButton('orders','🧾','Orders')}${navButton('orderHistory','🕘','Order History')}${navButton('subscription','♢','Subscription')}${navButton('settings','⚙','Settings')}<button id="logout">⇥ Logout</button></nav></aside><main class="main"><header class="topbar"><div>${state.stores.length?`<select id="storeSwitch">${state.stores.map(row=>`<option value="${html(row.id)}" ${row.id===state.activeStoreId?'selected':''}>${html(row.name)}</option>`).join('')}</select>`:'<strong>No store yet</strong>'}</div><a class="g58-topbar-home" href="https://www.g58.in/" aria-label="Open the Gravity58 home page">www.g58.in</a><span class="status-pill"><span class="dot"></span>${html(session?.email||'')}</span></header><section class="content" id="page"></section></main></div>${siteFooter()}${floatingSupportButton('digit58')}`;
+  app.innerHTML=`<div class="shell"><aside class="sidebar"><a class="brand" href="../"><svg class="brand-mark" viewBox="0 0 120 120" fill="none" stroke="#7fffd4" stroke-width="8" aria-hidden="true"><circle cx="60" cy="26" r="15"/><circle cx="28" cy="82" r="15"/><circle cx="92" cy="82" r="15"/></svg><div><strong>Refills</strong><small class="muted">Store workspace</small></div></a><nav class="nav">${navButton('dashboard','◉','Dashboard')}${navButton('stores','◫','My Stores')}${navButton('promotions','✦','Promotions')}${navButton('brands','♟','Brand Partners')}${navButton('wall','☰','Customer Wall')}${navButton('orders','🧾','Orders')}${navButton('orderHistory','🕘','Order History')}${navButton('subscription','♢','Subscription')}${navButton('settings','⚙','Settings')}<button id="logout">⇥ Logout</button></nav></aside><main class="main"><header class="topbar"><div>${state.stores.length?`<select id="storeSwitch">${state.stores.map(row=>`<option value="${html(row.id)}" ${row.id===state.activeStoreId?'selected':''}>${html(row.name)}</option>`).join('')}</select>`:'<strong>No store yet</strong>'}</div><a class="g58-topbar-home" href="https://www.g58.in/" aria-label="Open the Gravity58 home page">www.g58.in</a><span class="status-pill"><span class="dot"></span>${html(session?.email||'')}</span></header><section class="content" id="page"></section></main></div>${siteFooter()}${floatingSupportButton('digit58')}`;
   $$('[data-view]').forEach(button=>button.onclick=()=>{view=button.dataset.view;renderShell()});
   $('#logout').onclick=async()=>{stopOwnerRealtime();await api.logout();session=null;renderOwnerAuth()};
   $('#storeSwitch')?.addEventListener('change',event=>{state.activeStoreId=event.target.value;save();renderShell()});
@@ -652,7 +652,7 @@ function renderShell(){
   renderView();
 }
 function navButton(key,icon,label){return `<button data-view="${key}" class="${view===key?'active':''}"><span>${icon}</span>${label}</button>`}
-function renderView(){if(!activeStore()&&view!=='stores'&&view!=='settings'&&view!=='subscription'){view='stores';return renderShell()}({dashboard:dashboardView,stores:storesView,promotions:promotionsView,wall:customerWallView,orders:ordersView,orderHistory:orderHistoryView,subscription:subscriptionView,settings:settingsView}[view]||dashboardView)()}
+function renderView(){if(!activeStore()&&view!=='stores'&&view!=='settings'&&view!=='subscription'){view='stores';return renderShell()}({dashboard:dashboardView,stores:storesView,promotions:promotionsView,brands:brandPartnersView,wall:customerWallView,orders:ordersView,orderHistory:orderHistoryView,subscription:subscriptionView,settings:settingsView}[view]||dashboardView)()}
 function ordersView(){
   refreshView=ordersView;
   const orders=activeOrders(state.orders).sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
@@ -992,7 +992,7 @@ async function rejectBrandRequest(requestId){
   const row=state.brandRequests.find(item=>item.id===requestId);if(!row||!confirm(`Reject the "${row.promotionName}" request?`))return;
   try{
     await api.update(BRAND_REQUEST_KIND,requestId,{status:'Rejected',updatedAt:now()});
-    row.status='Rejected';promotionsView();toast('Request rejected');
+    row.status='Rejected';refreshView();toast('Request rejected');
   }catch(error){toast(error.message||'Could not reject this request')}
 }
 async function approveBrandRequest(requestId){
@@ -1009,11 +1009,54 @@ async function approveBrandRequest(requestId){
         if(nextStatus==='Live')changes.expiresAt=new Date(Date.now()+BRAND_CARD_DAYS*86400000).toISOString();
         await api.update(BRAND_REQUEST_KIND,requestId,changes);
         Object.assign(row,changes);
-        closeModal();promotionsView();
+        closeModal();refreshView();
         toast(nextStatus==='Live'?'Card is now live for customers!':'Approved — waiting for the brand to pay their share');
       }catch(error){button.disabled=false;toast(error.message||'Could not approve this request')}
     };
   });
+}
+function brandPartnersView(){
+  refreshView=brandPartnersView;
+  const rows=state.brandRequests.slice().sort((a,b)=>new Date(b.createdAt||0)-new Date(a.createdAt||0));
+  const pending=rows.filter(row=>row.status==='Pending Store Approval');
+  const live=rows.filter(row=>row.status==='Live');
+  const approvedCount=rows.filter(row=>row.storePaidAt).length;
+  const brandSpend=approvedCount*STORE_APPROVAL_FEE;
+  const ownSpend=state.cardPurchases.filter(row=>row.status==='Declared Paid').reduce((sum,row)=>sum+Number(row.amount||0),0);
+  const brandOwnersMap=new Map();
+  rows.forEach(row=>{
+    if(!row.brandOwnerId)return;
+    if(!brandOwnersMap.has(row.brandOwnerId))brandOwnersMap.set(row.brandOwnerId,{name:row.brandOwnerName||row.brandOwnerEmail,email:row.brandOwnerEmail,requests:[]});
+    brandOwnersMap.get(row.brandOwnerId).requests.push(row);
+  });
+  const brandOwners=[...brandOwnersMap.values()];
+  const pendingSection=pending.length?`<div class="section-head"><h2>Pending your approval</h2></div><div class="grid card-grid">${pending.map(brandRequestOwnerCard).join('')}</div>`:'';
+  $('#page').innerHTML=`<div class="section-head"><div><h1>Brand Partners</h1><p class="muted">Brand accounts connected to your stores, and promotion spend tracked separately from your own cards.</p></div></div>
+  <div class="grid stats">${metric('Your Own Cards — Spent',money(ownSpend))}${metric('Brand Partner Cards — Spent',money(brandSpend))}${metric('Connected Brand Accounts',brandOwners.length)}${metric('Live Brand Cards',live.length)}</div>
+  ${pendingSection}
+  <div class="section-head"><h2>Connected brand accounts</h2></div>
+  <div class="card table-wrap">${brandOwnersTable(brandOwners)}</div>
+  <div class="section-head"><h2>All brand card requests</h2></div>
+  <div class="card table-wrap">${brandRequestsTable(rows)}</div>`;
+  $$('[data-approve-brand-request]').forEach(button=>button.onclick=()=>approveBrandRequest(button.dataset.approveBrandRequest));
+  $$('[data-reject-brand-request]').forEach(button=>button.onclick=()=>rejectBrandRequest(button.dataset.rejectBrandRequest));
+  $$('[data-pause-brand-request]').forEach(button=>button.onclick=()=>toggleBrandRequestPause(button.dataset.pauseBrandRequest));
+}
+function brandOwnersTable(brandOwners){
+  if(!brandOwners.length)return `<div class="empty">No brand accounts connected yet. Share your Brand QR from My Stores so a brand can request a card.</div>`;
+  return `<table><thead><tr><th>Brand</th><th>Email</th><th>Requests</th><th>Live Cards</th></tr></thead><tbody>${brandOwners.map(row=>`<tr><td><strong>${html(row.name)}</strong></td><td>${html(row.email||'')}</td><td>${row.requests.length}</td><td>${row.requests.filter(item=>item.status==='Live').length}</td></tr>`).join('')}</tbody></table>`;
+}
+function brandRequestsTable(rows){
+  if(!rows.length)return `<div class="empty">No brand card requests yet.</div>`;
+  return `<table><thead><tr><th>Product</th><th>Store</th><th>Brand</th><th>Price</th><th>Status</th><th>Action</th></tr></thead><tbody>${rows.map(row=>`<tr><td>${html(row.promotionName)}</td><td>${html(row.storeName)}</td><td>${html(row.brandOwnerName||row.brandOwnerEmail)}</td><td>${money(row.price)}</td><td>${html(row.status)}</td><td>${row.status==='Live'?`<button class="btn small secondary" data-pause-brand-request="${html(row.id)}">Pause</button>`:row.status==='Paused'?`<button class="btn small green" data-pause-brand-request="${html(row.id)}">Resume</button>`:''}</td></tr>`).join('')}</tbody></table>`;
+}
+async function toggleBrandRequestPause(requestId){
+  const row=state.brandRequests.find(item=>item.id===requestId);if(!row)return;
+  const nextStatus=row.status==='Paused'?'Live':'Paused';
+  try{
+    await api.update(BRAND_REQUEST_KIND,requestId,{status:nextStatus,updatedAt:now()});
+    row.status=nextStatus;refreshView();toast(nextStatus==='Paused'?'Brand card paused':'Brand card resumed');
+  }catch(error){toast(error.message||'Could not update this request')}
 }
 async function openBuyPromotionCardForm(store){
   let selectedTier='30d',paymentLink='';
