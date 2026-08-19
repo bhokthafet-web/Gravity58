@@ -11,7 +11,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/css/style.css?v=34">
+  <link rel="stylesheet" href="/css/style.css?v=35">
   <link rel="stylesheet" href="/css/mobile.css">
   <link rel="canonical" href="https://g58.in/" />
   <meta name="robots" content="index, follow, max-image-preview:large" />
@@ -891,21 +891,46 @@
   </div>
 </div>
 
-<button class="g58-whatsapp-round" type="button"
-        onclick="shareG58CardToWhatsApp()"
-        aria-label="Share GRAVITY58 card on WhatsApp"
-        title="Share on WhatsApp">
-  <svg viewBox="0 0 32 32" aria-hidden="true">
-    <path d="M16 3C9.1 3 3.5 8.4 3.5 15.1c0 2.4.7 4.7 2.1 6.6L4 29l7.6-2c1.8 1 3.8 1.5 5.9 1.5 6.9 0 12.5-5.4 12.5-12.1C30 8.4 24.4 3 17.5 3H16zm1.5 22.9c-1.9 0-3.8-.5-5.4-1.5l-.4-.2-4.5 1.2 1.2-4.2-.3-.4c-1.2-1.7-1.8-3.7-1.8-5.7 0-5.3 4.5-9.6 10.1-9.6 5.6 0 10.1 4.3 10.1 9.6s-4.5 9.6-10 9.6zm5.6-7.2c-.3-.1-1.8-.9-2.1-1-.3-.1-.5-.1-.7.2-.2.3-.8 1-1 1.2-.2.2-.4.2-.7.1-1.9-.9-3.1-1.7-4.4-3.8-.3-.5.3-.5.9-1.7.1-.2.1-.4 0-.6-.1-.2-.7-1.7-1-2.3-.3-.6-.5-.6-.7-.6h-.6c-.2 0-.6.1-.9.4-.3.3-1.2 1.1-1.2 2.8 0 1.6 1.2 3.2 1.4 3.4.2.2 2.4 3.5 5.8 4.9 2.2.9 3.1 1 4.2.8.7-.1 1.8-.7 2.1-1.4.3-.7.3-1.3.2-1.4-.1-.2-.3-.3-.6-.4z"/>
+<button class="g58-contact-round" type="button"
+        onclick="openG58ContactModal()"
+        aria-label="Contact G58"
+        title="Contact Us">
+  <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M4 4h16v14H7l-3 3V4z"/>
+    <path d="M8 9h8M8 12.5h5"/>
   </svg>
+  <span class="g58-contact-round-label">Contact Us</span>
 </button>
+
+<div class="phone-modal" id="g58ContactModal" aria-hidden="true" onclick="if(event.target===this) closeG58ContactModal()">
+  <div class="phone-dialog" role="dialog" aria-modal="true" aria-labelledby="g58ContactModalTitle">
+    <h3 id="g58ContactModalTitle">Contact Us</h3>
+    <p>Tell us what you're interested in and we'll get back to you.</p>
+    <form id="g58ContactForm">
+      <div class="g58-contact-field"><label for="g58ContactName">Name</label><input id="g58ContactName" name="name" required></div>
+      <div class="g58-contact-field"><label for="g58ContactPhone">Contact number</label><input id="g58ContactPhone" name="phone" type="tel" inputmode="numeric" maxlength="15" required></div>
+      <div class="g58-contact-field"><label for="g58ContactInterest">Interested in</label>
+        <select id="g58ContactInterest" name="interest" required>
+          <option value="" disabled selected>Select an option</option>
+          <option value="POS">POS</option>
+          <option value="Digital Menu">Digital Menu</option>
+          <option value="Refills">Refills</option>
+        </select>
+      </div>
+      <div class="phone-actions">
+        <button class="btn" type="button" id="g58ContactCancel">Cancel</button>
+        <button class="btn orange" type="submit" id="g58ContactSubmit">Send</button>
+      </div>
+    </form>
+  </div>
+</div>
 
 
 <script src="https://cdn.jsdelivr.net/npm/appwrite@26.2.0"></script>
 <script src="/js/config.js"></script>
 <script src="/js/appwrite-ads.js?v=19"></script>
 <script src="/js/database.js"></script>
-<script src="/js/app.js?v=24"></script>
+<script src="/js/app.js?v=25"></script>
 <script src="/js/site-auth.js?v=3"></script>
 <script>
 (function(){

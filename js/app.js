@@ -3228,44 +3228,58 @@ async function initialiseGravity58() {
 }
 
 initialiseGravity58();
-async function shareG58CardToWhatsApp() {
-  const shareText = `GRAVITY58 — India's Local Business Platform
-
-✅ Free Ad Post
-✅ Free Digital Business Card
-✅ Free POS
-
-Visit: https://g58.in`;
-  const imageUrl = window.location.origin + "/assets/g58-whatsapp-card.png";
-
-  try {
-    const response = await fetch(imageUrl, { cache: "no-store" });
-    if (!response.ok) throw new Error("Image could not be loaded");
-    const blob = await response.blob();
-    const imageFile = new File([blob], "GRAVITY58-Digital-Card.png", {
-      type: blob.type || "image/png",
-    });
-
-    if (navigator.canShare && navigator.canShare({ files: [imageFile] })) {
-      await navigator.share({
-        title: "GRAVITY58",
-        text: shareText,
-        files: [imageFile],
-      });
-      return;
-    }
-  } catch (error) {
-    if (error && error.name === "AbortError") return;
-    console.warn("Direct image sharing is unavailable:", error);
-  }
-
-  const fallbackText = shareText + "\n\nCard image: " + imageUrl;
-  window.open(
-    "https://wa.me/?text=" + encodeURIComponent(fallbackText),
-    "_blank",
-    "noopener",
-  );
+function openG58ContactModal() {
+  document.getElementById("g58ContactModal")?.classList.add("open");
 }
+function closeG58ContactModal() {
+  document.getElementById("g58ContactModal")?.classList.remove("open");
+}
+document.addEventListener("DOMContentLoaded", () => {
+  document
+    .getElementById("g58ContactCancel")
+    ?.addEventListener("click", closeG58ContactModal);
+  document
+    .getElementById("g58ContactForm")
+    ?.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const api = window.Gravity58Ads;
+      const button = document.getElementById("g58ContactSubmit");
+      const name = document.getElementById("g58ContactName").value.trim();
+      const phone = document.getElementById("g58ContactPhone").value.trim();
+      const interest = document.getElementById("g58ContactInterest").value;
+      if (!name || !phone || !interest) return;
+      if (!api?.configured) {
+        alert("Contact service is temporarily unavailable. Please try again shortly.");
+        return;
+      }
+      button.disabled = true;
+      button.textContent = "Sending…";
+      try {
+        const user = await api.ensureUser();
+        if (!user) throw new Error("Could not start a secure session.");
+        const Role = window.Appwrite.Role, Permission = window.Appwrite.Permission;
+        const permissions = [
+          Permission.read(Role.users()),
+          Permission.update(Role.users()),
+          Permission.delete(Role.users()),
+        ];
+        await api.create(
+          "g58_contact_requests",
+          { name, phone, interest, createdAt: new Date().toISOString() },
+          undefined,
+          permissions,
+        );
+        closeG58ContactModal();
+        document.getElementById("g58ContactForm").reset();
+        alert("Thanks! Your message has been sent to the G58 team.");
+      } catch (error) {
+        alert(error.message || "Could not send your message. Please try again.");
+      } finally {
+        button.disabled = false;
+        button.textContent = "Send";
+      }
+    });
+});
 
 let pendingCardUnlock = null;
 function requestBusinessCardUnlock(id) {

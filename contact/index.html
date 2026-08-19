@@ -20,7 +20,9 @@
 *{box-sizing:border-box}body{margin:0;background:linear-gradient(145deg,#07111f,#111827);color:var(--text);font-family:Inter,Arial,sans-serif}
 main{width:min(1100px,calc(100% - 32px));margin:auto;padding:42px 0 70px}
 a{color:#ffb16f}.brand{display:inline-flex;align-items:center;gap:9px;font-size:24px;font-weight:900;text-decoration:none;color:#fff;margin-bottom:35px}.brand span{color:var(--orange)}.brand-icon{width:28px;height:28px;flex-shrink:0}
-.hero,.card{border:1px solid var(--border);border-radius:22px;background:rgba(255,255,255,.045);padding:28px}.hero h1{font-size:clamp(32px,6vw,62px);line-height:1.05;margin:0 0 16px}.hero p,.card p{color:var(--muted);line-height:1.7}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;margin-top:22px}.card h2{margin-top:0}.button{display:inline-block;padding:12px 18px;border-radius:12px;background:var(--orange);color:#07111f;text-decoration:none;font-weight:800}.breadcrumbs{font-size:13px;color:var(--muted);margin-bottom:15px}.footer{margin-top:30px;color:var(--muted);font-size:13px}@media(max-width:700px){.grid{grid-template-columns:1fr}}
+.hero,.card{border:1px solid var(--border);border-radius:22px;background:rgba(255,255,255,.045);padding:28px}.hero h1{font-size:clamp(32px,6vw,62px);line-height:1.05;margin:0 0 16px}.hero p,.card p{color:var(--muted);line-height:1.7}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;margin-top:22px}.card h2{margin-top:0}.button{display:inline-block;padding:12px 18px;border-radius:12px;background:var(--orange);color:#07111f;text-decoration:none;font-weight:800;border:0;font-size:15px;cursor:pointer}.breadcrumbs{font-size:13px;color:var(--muted);margin-bottom:15px}.footer{margin-top:30px;color:var(--muted);font-size:13px}@media(max-width:700px){.grid{grid-template-columns:1fr}}
+.field{margin:0 0 16px}.field label{display:block;font-size:13px;color:var(--muted);margin-bottom:6px}.field input,.field select{width:100%;padding:13px 14px;border-radius:12px;border:1px solid var(--border);background:#0b1626;color:var(--text);font-size:15px;outline:none;box-sizing:border-box}.field input:focus,.field select:focus{border-color:var(--orange);box-shadow:0 0 0 3px rgba(249,115,22,.18)}
+.form-note{font-size:13px;margin-top:12px;min-height:18px}.form-note.error{color:#fca5a5}.form-note.success{color:#86efac}
 </style>
 <script type="application/ld+json">{"@context": "https://schema.org", "@type": "ContactPage", "name": "Contact GRAVITY58", "url": "https://g58.in/contact/"}</script>
 </head>
@@ -32,9 +34,70 @@ a{color:#ffb16f}.brand{display:inline-flex;align-items:center;gap:9px;font-size:
 <h1>Contact GRAVITY58</h1>
 <p>Contact GRAVITY58 for support related to customer requirements, business cards and marketplace access.</p>
 </section>
-<article class="card" style="margin-top:22px"><h2>Support</h2><p>Use the contact details published on the official GRAVITY58 website or reach the administrator through the platform support channel.</p><a class="button" href="/">Return to GRAVITY58</a></article>
+<article class="card" style="margin-top:22px">
+<h2>Send us a message</h2>
+<p>Tell us what you're interested in and the G58 team will get back to you.</p>
+<form id="contactForm">
+  <div class="field"><label for="contactName">Name</label><input id="contactName" name="name" required></div>
+  <div class="field"><label for="contactPhone">Contact number</label><input id="contactPhone" name="phone" type="tel" inputmode="numeric" maxlength="15" required></div>
+  <div class="field"><label for="contactInterest">Interested in</label>
+    <select id="contactInterest" name="interest" required>
+      <option value="" disabled selected>Select an option</option>
+      <option value="POS">POS</option>
+      <option value="Digital Menu">Digital Menu</option>
+      <option value="Refills">Refills</option>
+    </select>
+  </div>
+  <button class="button" type="submit" id="contactSubmit">Send Message</button>
+  <p class="form-note" id="contactNote"></p>
+</form>
+</article>
 <div class="footer">© 2026 GRAVITY58 · <a href="/privacy-policy/">Privacy</a> · <a href="/terms/">Terms</a> · <a href="/contact/">Contact</a></div>
 </main>
+  <script src="https://cdn.jsdelivr.net/npm/appwrite@26.2.0"></script>
+  <script src="/js/config.js"></script>
+  <script src="/js/appwrite-ads.js?v=19"></script>
   <script src="/js/server-status.js?v=1"></script>
+  <script>
+    document.getElementById('contactForm').addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const api = window.Gravity58Ads;
+      const button = document.getElementById('contactSubmit');
+      const note = document.getElementById('contactNote');
+      const name = document.getElementById('contactName').value.trim();
+      const phone = document.getElementById('contactPhone').value.trim();
+      const interest = document.getElementById('contactInterest').value;
+      note.className = 'form-note';
+      note.textContent = '';
+      if (!name || !phone || !interest) return;
+      if (!api?.configured) {
+        note.className = 'form-note error';
+        note.textContent = 'Contact service is temporarily unavailable. Please try again shortly.';
+        return;
+      }
+      button.disabled = true;
+      button.textContent = 'Sending…';
+      try {
+        const user = await api.ensureUser();
+        if (!user) throw new Error('Could not start a secure session.');
+        const Role = window.Appwrite.Role, Permission = window.Appwrite.Permission;
+        const permissions = [
+          Permission.read(Role.users()),
+          Permission.update(Role.users()),
+          Permission.delete(Role.users()),
+        ];
+        await api.create('g58_contact_requests', { name, phone, interest, createdAt: new Date().toISOString() }, undefined, permissions);
+        document.getElementById('contactForm').reset();
+        note.className = 'form-note success';
+        note.textContent = 'Thanks! Your message has been sent to the G58 team.';
+      } catch (error) {
+        note.className = 'form-note error';
+        note.textContent = error.message || 'Could not send your message. Please try again.';
+      } finally {
+        button.disabled = false;
+        button.textContent = 'Send Message';
+      }
+    });
+  </script>
 </body>
 </html>

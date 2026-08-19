@@ -4,7 +4,7 @@ const esc=value=>String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&
 const digit58StoreKind=ownerId=>`digit58_store_${String(ownerId||'').replace(/[^a-zA-Z0-9._-]/g,'-').slice(0,40)}`;
 const AD_PLACEMENT_SPECS={right_rail:{label:'Right menu rail',size:'1080 × 1350 px',ratio:'4:5'},preparing:{label:'Preparing screen',size:'1200 × 628 px',ratio:'1.91:1'},thankyou:{label:'Thank-you screen',size:'1080 × 1080 px',ratio:'1:1'}};
 const placementSpec=slotId=>AD_PLACEMENT_SPECS[slotId]||{label:slotId||'Advertisement',size:'Confirm with G58',ratio:''};
-let user=null,view='overview',data={bookings:[],advertisements:[],profiles:[],slots:[],customers:[],businesses:[],postRows:[],legacyPostDocument:null,menuPricing:[],menuEntitlements:[],menuRequests:[],dinerOrders:[],dinerOrdersLoaded:false,digit58Stores:[],digit58Requests:[],digit58Entitlements:[],digit58Customers:[],digit58CustomersLoaded:false,digit58Pricing:[],digit58CardPurchases:[],digit58BrandRequests:[],digit58BrandOwners:[],supportTickets:[]};
+let user=null,view='overview',data={bookings:[],advertisements:[],profiles:[],slots:[],customers:[],businesses:[],postRows:[],legacyPostDocument:null,menuPricing:[],menuEntitlements:[],menuRequests:[],dinerOrders:[],dinerOrdersLoaded:false,digit58Stores:[],digit58Requests:[],digit58Entitlements:[],digit58Customers:[],digit58CustomersLoaded:false,digit58Pricing:[],digit58CardPurchases:[],digit58BrandRequests:[],digit58BrandOwners:[],supportTickets:[],contactRequests:[]};
 function toast(message){const target=$('#toast');target.textContent=message;target.classList.add('show');setTimeout(()=>target.classList.remove('show'),2200)}
 function timeLeft(expiresAt,lifetime=false){if(lifetime)return'Lifetime';if(!expiresAt)return'No expiry';const ms=new Date(expiresAt)-new Date();if(ms<=0)return'Expired';const days=Math.floor(ms/864e5),hours=Math.floor(ms%864e5/36e5),minutes=Math.floor(ms%36e5/6e4);return`${days?days+'d ':''}${hours}h ${minutes}m remaining`}
 async function boot(){if(!api.configured)return configurationRequired();user=await api.currentUser();if(!user)return login();if(!await api.isTeamAdmin())return accessDenied();await loadData();shell()}
@@ -20,7 +20,7 @@ const renderAdminLogin=login;
 login=function(){renderAdminLogin();installAdminPasswordRecovery()};
 function accessDenied(){app.innerHTML=`<main class="screen auth"><section class="auth-card glass"><h2>Access denied</h2><p>This signed-in account is not a G58 team member.</p><button class="btn full" id="leave">Sign out</button></section></main>`;$('#leave').onclick=async()=>{await api.logout();user=null;login()}}
 async function loadData(){
-  const [bookings,advertisements,profiles,slots,posts,menuPricing,menuEntitlements,menuRequests,digit58Stores,digit58Requests,digit58Entitlements,digit58Pricing,digit58CardPurchases,digit58BrandRequests,digit58BrandOwners,supportTickets]=await Promise.all([api.list('bookings'),api.list('advertisements'),api.list('profiles'),api.list('slots'),api.list('posts'),api.list('digital_menu_pricing').catch(()=>[]),api.list('digital_menu_entitlements').catch(()=>[]),api.list('digital_menu_requests').catch(()=>[]),api.list('digit58_owners').catch(()=>[]),api.list('digit58_requests').catch(()=>[]),api.list('digit58_entitlements').catch(()=>[]),api.list('digit58_pricing').catch(()=>[]),api.list('digit58_card_purchases').catch(()=>[]),api.list('digit58_brand_requests').catch(()=>[]),api.list('digit58_brand_owners').catch(()=>[]),api.list('support_tickets').catch(()=>[])]);
+  const [bookings,advertisements,profiles,slots,posts,menuPricing,menuEntitlements,menuRequests,digit58Stores,digit58Requests,digit58Entitlements,digit58Pricing,digit58CardPurchases,digit58BrandRequests,digit58BrandOwners,supportTickets,contactRequests]=await Promise.all([api.list('bookings'),api.list('advertisements'),api.list('profiles'),api.list('slots'),api.list('posts'),api.list('digital_menu_pricing').catch(()=>[]),api.list('digital_menu_entitlements').catch(()=>[]),api.list('digital_menu_requests').catch(()=>[]),api.list('digit58_owners').catch(()=>[]),api.list('digit58_requests').catch(()=>[]),api.list('digit58_entitlements').catch(()=>[]),api.list('digit58_pricing').catch(()=>[]),api.list('digit58_card_purchases').catch(()=>[]),api.list('digit58_brand_requests').catch(()=>[]),api.list('digit58_brand_owners').catch(()=>[]),api.list('support_tickets').catch(()=>[]),api.list('g58_contact_requests').catch(()=>[])]);
   const uniqueStoreSummaries=[...new Map(digit58Stores.filter(row=>row.ownerId&&(row.storeId||row.id)).map(row=>[`${row.ownerId}:${row.storeId||row.id}`,row])).values()];
   const ownerIds=[...new Set([...uniqueStoreSummaries.map(row=>row.ownerId),...digit58Entitlements.map(row=>row.ownerId),...digit58Requests.map(row=>row.ownerId)].filter(Boolean))];
   const liveStoresByOwner=await Promise.all(ownerIds.map(async ownerId=>({ownerId,rows:await api.list(digit58StoreKind(ownerId)).catch(()=>[])})));
@@ -30,7 +30,7 @@ async function loadData(){
   const legacy=posts.find(row=>row.recordKey==='global'&&(row.customers||row.businesses));
   const postRows=posts.filter(row=>row.recordKey!=='global'),customers=[],businesses=[];
   postRows.forEach(row=>{const post=parsePost(row.payload);if(!post)return;post.userId||=row.userId||'';(row.postType==='business'?businesses:customers).push(post)});
-  data={bookings,advertisements,profiles,slots,postRows,legacyPostDocument:legacy||null,customers:legacy?parse(legacy.customers):customers,businesses:legacy?parse(legacy.businesses):businesses,menuPricing,menuEntitlements,menuRequests,digit58Stores:hydratedDigit58Stores,digit58Requests,digit58Entitlements,digit58Pricing,digit58CardPurchases,digit58BrandRequests,digit58BrandOwners,supportTickets,digit58Customers:data.digit58Customers||[],digit58CustomersLoaded:false};
+  data={bookings,advertisements,profiles,slots,postRows,legacyPostDocument:legacy||null,customers:legacy?parse(legacy.customers):customers,businesses:legacy?parse(legacy.businesses):businesses,menuPricing,menuEntitlements,menuRequests,digit58Stores:hydratedDigit58Stores,digit58Requests,digit58Entitlements,digit58Pricing,digit58CardPurchases,digit58BrandRequests,digit58BrandOwners,supportTickets,contactRequests,digit58Customers:data.digit58Customers||[],digit58CustomersLoaded:false};
   digit58OrdersCache=null;
   await reconcileExpiredCampaigns();
 }
@@ -48,9 +48,9 @@ async function reconcileExpiredCampaigns(){
 }
 function parse(value){try{return Array.isArray(value)?value:JSON.parse(value||'[]')}catch{return[]}}
 function parsePost(value){try{return typeof value==='string'?JSON.parse(value):value}catch{return null}}
-function shell(){app.innerHTML=`<div class="shell"><aside class="sidebar"><a class="brand" href="../"><svg class="brand-mark" viewBox="0 0 120 120" fill="none" stroke="#6d5ef0" stroke-width="8" aria-hidden="true"><circle cx="60" cy="26" r="15"/><circle cx="28" cy="82" r="15"/><circle cx="92" cy="82" r="15"/></svg><div><strong>Gravity58</strong><small class="muted">Team Administration</small></div></a><nav class="nav">${nav('overview','◉','Overview')}${nav('bookings','▣','Ad Bookings')}${nav('campaigns','✦','Campaigns')}${nav('digitalMenus','◇','Digital Menu Plans')}${nav('diners','☎','Customer Details')}${nav('digit58','⬡','Refills')}${nav('brandOwners','◈','Brand Owners')}${nav('support','☏','Support Tickets')}${nav('marketplace','⌘','Public Posts')}${nav('accounts','◎','Accounts')}${nav('slots','▦','Ad Placements')}${nav('system','⌗','System')}<button id="logout">⇥ Logout</button></nav></aside><main class="main"><header class="topbar"><strong>Private Gravity58 Team Portal</strong><span class="status-pill"><span class="dot"></span>${esc(user.email)}</span></header><section class="content" id="page"></section></main></div>`;$$('[data-view]').forEach(button=>button.onclick=()=>{view=button.dataset.view;shell()});$('#logout').onclick=async()=>{await api.logout();user=null;login()};renderView()}
+function shell(){app.innerHTML=`<div class="shell"><aside class="sidebar"><a class="brand" href="../"><svg class="brand-mark" viewBox="0 0 120 120" fill="none" stroke="#6d5ef0" stroke-width="8" aria-hidden="true"><circle cx="60" cy="26" r="15"/><circle cx="28" cy="82" r="15"/><circle cx="92" cy="82" r="15"/></svg><div><strong>Gravity58</strong><small class="muted">Team Administration</small></div></a><nav class="nav">${nav('overview','◉','Overview')}${nav('bookings','▣','Ad Bookings')}${nav('campaigns','✦','Campaigns')}${nav('digitalMenus','◇','Digital Menu Plans')}${nav('diners','☎','Customer Details')}${nav('digit58','⬡','Refills')}${nav('brandOwners','◈','Brand Owners')}${nav('contactRequests','✉','Contact Requests')}${nav('support','☏','Support Tickets')}${nav('marketplace','⌘','Public Posts')}${nav('accounts','◎','Accounts')}${nav('slots','▦','Ad Placements')}${nav('system','⌗','System')}<button id="logout">⇥ Logout</button></nav></aside><main class="main"><header class="topbar"><strong>Private Gravity58 Team Portal</strong><span class="status-pill"><span class="dot"></span>${esc(user.email)}</span></header><section class="content" id="page"></section></main></div>`;$$('[data-view]').forEach(button=>button.onclick=()=>{view=button.dataset.view;shell()});$('#logout').onclick=async()=>{await api.logout();user=null;login()};renderView()}
 function nav(key,icon,label){return`<button data-view="${key}" class="${view===key?'active':''}"><span>${icon}</span>${label}</button>`}
-function renderView(){({overview,bookings,campaigns,digitalMenus,diners,digit58,brandOwners:digit58BrandOwnersView,support:supportTicketsView,marketplace,accounts,slots,system:systemView}[view]||overview)()}
+function renderView(){({overview,bookings,campaigns,digitalMenus,diners,digit58,brandOwners:digit58BrandOwnersView,contactRequests:contactRequestsView,support:supportTicketsView,marketplace,accounts,slots,system:systemView}[view]||overview)()}
 function metric(title,value){return`<article class="metric"><span>${title}</span><strong>${value}</strong></article>`}
 function overview(){
   const adRevenue=data.bookings.filter(row=>['Live','Expired'].includes(row.status)).reduce((sum,row)=>sum+Number(row.amount||0),0);
@@ -373,6 +373,28 @@ async function toggleDigit58BrandOwnerBlock(id){
     await api.update('digit58_brand_owners',id,{blocked:!row.blocked,updatedAt:now()});
     await refresh();toast(row.blocked?'Brand account unblocked':'Brand account blocked');
   }catch(error){toast(error.message||'Could not update this brand account')}
+}
+function contactRequestsView(){
+  const requests=[...data.contactRequests].sort((a,b)=>new Date(b.createdAt||b.$createdAt||0)-new Date(a.createdAt||a.$createdAt||0));
+  const interests=['All','POS','Digital Menu','Refills'];
+  $('#page').innerHTML=`<div class="section-head"><div><h1>Contact Requests</h1><p class="muted">Submissions from the "Contact Us" form on the main landing page.</p></div><button class="btn" id="refresh">Refresh</button></div><div class="grid stats">${metric('Total',requests.length)}${metric('POS',requests.filter(row=>row.interest==='POS').length)}${metric('Digital Menu',requests.filter(row=>row.interest==='Digital Menu').length)}${metric('Refills',requests.filter(row=>row.interest==='Refills').length)}</div><div class="admin-filter-bar"><input id="contactSearch" placeholder="Search name or phone"><select id="contactInterestFilter">${interests.map(item=>`<option>${item}</option>`).join('')}</select></div><div class="card table-wrap"><table><thead><tr><th>Name</th><th>Contact Number</th><th>Interested In</th><th>Submitted</th><th>Actions</th></tr></thead><tbody id="contactRows">${requests.map(contactRequestRow).join('')||'<tr><td colspan="5">No contact requests yet.</td></tr>'}</tbody></table></div>`;
+  const draw=()=>{const q=$('#contactSearch').value.toLowerCase(),interest=$('#contactInterestFilter').value,rows=requests.filter(row=>(interest==='All'||row.interest===interest)&&`${row.name||''} ${row.phone||''}`.toLowerCase().includes(q));$('#contactRows').innerHTML=rows.map(contactRequestRow).join('')||'<tr><td colspan="5">No matching contact requests.</td></tr>';bindContactRequestActions()};
+  $('#contactSearch').oninput=draw;$('#contactInterestFilter').onchange=draw;
+  $('#refresh').onclick=refresh;
+  bindContactRequestActions();
+}
+function contactRequestRow(row){
+  return `<tr><td><strong>${esc(row.name||'')}</strong></td><td>${esc(row.phone||'')}</td><td><span class="chip">${esc(row.interest||'')}</span></td><td>${row.createdAt?new Date(row.createdAt).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'}):''}</td><td><div class="actions"><button class="btn small red" data-delete-contact="${esc(row.id)}">Delete</button></div></td></tr>`;
+}
+function bindContactRequestActions(){$$('[data-delete-contact]').forEach(button=>button.onclick=()=>deleteContactRequest(button.dataset.deleteContact))}
+async function deleteContactRequest(id){
+  const row=data.contactRequests.find(item=>item.id===id);if(!row)return;
+  if(!confirm(`Permanently delete the contact request from ${row.name||'this person'}? This cannot be undone.`))return;
+  try{
+    await api.remove('g58_contact_requests',id);
+    data.contactRequests=data.contactRequests.filter(item=>item.id!==id);
+    contactRequestsView();toast('Contact request permanently deleted');
+  }catch(error){toast(error.message||'Could not delete this contact request')}
 }
 function sendDigit58PaymentLink(id){
   const row=data.digit58Requests.find(item=>item.id===id);if(!row)return;
