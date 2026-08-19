@@ -195,7 +195,7 @@ th,td{text-align:left;padding:12px;border-bottom:1px solid var(--line);white-spa
 .promotion-ticket::before{left:-10px}.promotion-ticket::after{right:-10px}
 .promotion-ticket:nth-child(4n+2){--ticket-a:#66e4ca;--ticket-b:#42a5f5}.promotion-ticket:nth-child(4n+3){--ticket-a:#dc72ff;--ticket-b:#ff6b98}.promotion-ticket:nth-child(4n+4){--ticket-a:#ffda63;--ticket-b:#8bd450}
 .promotion-ticket-image{position:relative;z-index:1;flex:1;min-height:110px;margin:0 0 10px;display:flex}
-.promotion-ticket-ribbon{position:absolute;top:16px;right:-34px;z-index:3;transform:rotate(45deg);background:#101018;color:#fff;font-size:11px;font-weight:900;padding:4px 38px;box-shadow:0 2px 8px rgba(0,0,0,.35);letter-spacing:.02em}
+.promotion-ticket-ribbon{position:absolute;top:16px;right:-34px;z-index:3;transform:rotate(45deg);background:#d31414;color:#fff;font-size:11px;font-weight:900;padding:4px 38px;box-shadow:0 2px 8px rgba(0,0,0,.35);letter-spacing:.02em}
 .promotion-ticket-image img{width:100%;height:100%;object-fit:contain;display:block;background:none;border:none}
 .promotion-ticket h3{margin:0 0 6px;font-size:18px;line-height:1.08}
 .promotion-ticket-foot{display:flex;align-items:center;justify-content:center;padding-top:10px;border-top:1px dashed rgba(23,16,25,.38)}

@@ -92,7 +92,7 @@ const REQUEST_KIND='digit58_requests',ENTITLEMENT_KIND='digit58_entitlements',SU
 const CARD_PURCHASE_KIND='digit58_card_purchases',FREE_PROMOTION_CARDS=3;
 const PROMOTION_CARD_PRICING={'30d':{label:'30 Days',amount:150,days:30},'6mo':{label:'6 Months',amount:750,days:182},'1yr':{label:'1 Year',amount:1200,days:365}};
 const BRAND_KIND='digit58_brand_owners',BRAND_REQUEST_KIND='digit58_brand_requests',BRAND_CARD_AMOUNT=300,BRAND_CARD_DAYS=30,STORE_APPROVAL_FEE=150;
-let brandSession=null,brandProfile=null,brandRequests=[];
+let brandSession=null,brandProfile=null,brandRequests=[],pendingBrandTarget=null;
 const ORDER_STEPS=[
   {key:'Requested',icon:'📝',label:'Requested'},
   {key:'Priced',icon:'💳',label:'Payment'},
@@ -761,13 +761,22 @@ function storesView(){
   $('#addStore').onclick=()=>{if(!canCreate)return toast('Request and pay for an additional store slot first');openStoreForm()};
   $('#requestStoreSlot')?.addEventListener('click',requestAdditionalStore);
   $$('[data-share-store]').forEach(button=>button.onclick=()=>shareStoreModal(button.dataset.shareStore));
+  $$('[data-share-brand]').forEach(button=>button.onclick=()=>shareBrandModal(button.dataset.shareBrand));
   $$('[data-edit-store]').forEach(button=>button.onclick=()=>openStoreForm(button.dataset.editStore));
 }
 function storeCard(store){
   const link=publicStoreLink(store);
-  return `<article class="card"><h3>${html(store.name)}</h3>${storeMinimum(store)?`<p class="store-minimum-order">Minimum new order ${money(storeMinimum(store))}</p>`:''}<p class="muted">${html(store.category)}${store.city?' · '+html(store.city):''}</p>${store.highlightText?`<p class="store-highlight-text">${html(store.highlightText)}</p>`:''}<p>${html(store.description||'')}</p><div class="chips"><span class="chip">${ownerCustomers(store.id).length} customers</span>${store.razorpayEnabled&&validRazorpayLink(store.razorpayLink)?'<span class="chip delivered">Razorpay enabled</span>':''}${store.suspended?'<span class="chip due">Paused by G58 admin</span>':''}</div><div class="actions"><button class="btn small" data-share-store="${html(store.id)}">Share Link / QR</button><button class="btn small secondary" data-edit-store="${html(store.id)}">Edit</button></div></article>`;
+  return `<article class="card"><h3>${html(store.name)}</h3>${storeMinimum(store)?`<p class="store-minimum-order">Minimum new order ${money(storeMinimum(store))}</p>`:''}<p class="muted">${html(store.category)}${store.city?' · '+html(store.city):''}</p>${store.highlightText?`<p class="store-highlight-text">${html(store.highlightText)}</p>`:''}<p>${html(store.description||'')}</p><div class="chips"><span class="chip">${ownerCustomers(store.id).length} customers</span>${store.razorpayEnabled&&validRazorpayLink(store.razorpayLink)?'<span class="chip delivered">Razorpay enabled</span>':''}${store.suspended?'<span class="chip due">Paused by G58 admin</span>':''}</div><div class="actions"><button class="btn small" data-share-store="${html(store.id)}">Share Link / QR</button><button class="btn small secondary" data-share-brand="${html(store.id)}">Brand QR</button><button class="btn small secondary" data-edit-store="${html(store.id)}">Edit</button></div></article>`;
 }
 function publicStoreLink(store){return `${location.origin}${location.pathname.replace(/index\.html$/,'')}#store&owner=${encodeURIComponent(store.ownerId)}&store=${encodeURIComponent(store.id)}`}
+function publicBrandLink(store){return `${location.origin}${location.pathname.replace(/index\.html$/,'')}#brand&owner=${encodeURIComponent(store.ownerId)}&store=${encodeURIComponent(store.id)}`}
+function parseBrandTargetFromHash(){
+  const text=String(location.hash||'').replace(/^#/,'');
+  if(!text.startsWith('brand&'))return null;
+  const params=new URLSearchParams(text.replace(/^brand&?/,''));
+  const ownerId=params.get('owner'),storeId=params.get('store');
+  return ownerId&&storeId?{ownerId,storeId}:null;
+}
 function parseStoreLinkHash(input){
   const text=String(input||'').trim();
   if(!text)return null;
@@ -798,11 +807,19 @@ function parseStoreLinkOwnerStore(input){
   return ownerId&&storeId?{ownerId,storeId}:null;
 }
 async function bootBrand(){
+  pendingBrandTarget=parseBrandTargetFromHash();
   brandSession=await api.currentUser().catch(()=>null);
   if(!brandSession)return renderBrandAuth();
   await ensureBrandProfile();
   await loadBrandData();
   renderBrandDashboard();
+  openPendingBrandTarget();
+}
+function openPendingBrandTarget(){
+  if(!pendingBrandTarget)return;
+  const target=pendingBrandTarget;pendingBrandTarget=null;
+  history.replaceState(null,'','#brand');
+  openBrandRequestForm(target);
 }
 function renderBrandAuth(){
   app.innerHTML=`<main class="screen"><section class="auth-card"><a class="brand" href="../"><svg class="brand-mark" viewBox="0 0 120 120" fill="none" stroke="#7fffd4" stroke-width="8" aria-hidden="true"><circle cx="60" cy="26" r="15"/><circle cx="28" cy="82" r="15"/><circle cx="92" cy="82" r="15"/></svg><div><h2>G58 Brand Partners</h2><p class="tagline">Get your product's promotion card placed on Refills stores.</p></div></a><div class="actions" style="margin-bottom:14px"><button class="btn small" id="brandTabLogin">Sign in</button><button class="btn small secondary" id="brandTabSignup">Create brand account</button></div><form id="brandAuthForm"><div class="field full-name-field hidden"><label>Brand / contact name</label><input name="name"></div><div class="field"><label>Email</label><input name="email" type="email" required></div><div class="field"><label>Password</label><input name="password" type="password" minlength="8" required></div><button class="btn full" id="brandAuthSubmit" type="submit">Sign In</button></form></section></main>${siteFooter()}`;
@@ -823,6 +840,7 @@ function renderBrandAuth(){
       await ensureBrandProfile();
       await loadBrandData();
       renderBrandDashboard();
+      openPendingBrandTarget();
     }catch(error){button.disabled=false;toast(error.message||'Could not sign in')}
   };
 }
@@ -857,8 +875,14 @@ function renderBrandDashboard(){
 function brandRequestCard(row){
   return `<article class="card brand-request-card"><h3>${html(row.promotionName)}</h3><p class="muted">${html(row.storeName)} · ${money(row.price)}</p>${brandRequestStatusNote(row)}${row.status==='Awaiting Payment'&&!row.brandPaidAt?`<button type="button" class="btn small green" style="margin-top:10px" data-pay-brand-request="${html(row.id)}">Pay ${money(BRAND_CARD_AMOUNT)}</button>`:''}</article>`;
 }
-async function openBrandRequestForm(){
-  modal('New Card Request',`<form id="brandRequestForm"><div class="field"><label>Store link</label><input name="storeLink" placeholder="https://g58.in/digit58/#store&owner=...&store=..." required></div><div class="field"><label>Product name</label><input name="promotionName" maxlength="80" required></div><div class="field"><label>Offer line</label><input name="offerText" maxlength="120" placeholder="Pure 500g jar · limited stock"></div><div class="field"><label>Price to display</label><input name="price" type="number" min="0" step="0.01" required></div><div class="field local-image-field"><label>Product image <small>(optional · auto-compressed to fit)</small></label><input name="imageFile" type="file" accept="image/jpeg,image/png,image/webp"><div class="image-preview" id="brandImagePreview"></div></div><p class="muted">This request goes to the store owner for approval, then costs ${money(BRAND_CARD_AMOUNT)} for a 30-day placement.</p><button class="btn full" style="margin-top:10px">Send Request</button></form>`,()=>{
+async function openBrandRequestForm(prefillTarget){
+  let prefillStore=null;
+  if(prefillTarget){
+    prefillStore=await api.get(storeKind(prefillTarget.ownerId),prefillTarget.storeId).catch(()=>null);
+    if(!prefillStore)toast("Couldn't load that store — paste the link manually");
+  }
+  const storeField=prefillStore?`<div class="field"><label>Store</label><input value="${html(prefillStore.name)}" disabled></div>`:`<div class="field"><label>Store link</label><input name="storeLink" placeholder="https://g58.in/digit58/#store&owner=...&store=..." required></div>`;
+  modal('New Card Request',`<form id="brandRequestForm">${storeField}<div class="field"><label>Product name</label><input name="promotionName" maxlength="80" required></div><div class="field"><label>Offer line</label><input name="offerText" maxlength="120" placeholder="Pure 500g jar · limited stock"></div><div class="field"><label>Price to display</label><input name="price" type="number" min="0" step="0.01" required></div><div class="field local-image-field"><label>Product image <small>(optional · auto-compressed to fit)</small></label><input name="imageFile" type="file" accept="image/jpeg,image/png,image/webp"><div class="image-preview" id="brandImagePreview"></div></div><p class="muted">This request goes to the store owner for approval, then costs ${money(BRAND_CARD_AMOUNT)} for a 30-day placement.</p><button class="btn full" style="margin-top:10px">Send Request</button></form>`,()=>{
     const form=$('#brandRequestForm'),imageFile=form.imageFile,imagePreview=$('#brandImagePreview');
     let compressedBlob=null,previewUrl='';
     imageFile.onchange=async()=>{
@@ -874,11 +898,11 @@ async function openBrandRequestForm(){
     form.onsubmit=async event=>{
       event.preventDefault();
       const raw=Object.fromEntries(new FormData(event.target)),button=event.submitter;
-      const target=parseStoreLinkOwnerStore(raw.storeLink);
+      const target=prefillTarget||parseStoreLinkOwnerStore(raw.storeLink);
       if(!target)return toast("That doesn't look like a valid store link");
       button.disabled=true;
       try{
-        const store=await api.get(storeKind(target.ownerId),target.storeId);
+        const store=prefillStore||await api.get(storeKind(target.ownerId),target.storeId);
         const record={id:id('brandreq'),brandOwnerId:brandSession.$id,brandOwnerName:brandProfile?.name||brandSession.email.split('@')[0],brandOwnerEmail:brandSession.email,ownerId:target.ownerId,storeId:target.storeId,storeName:store.name,promotionName:raw.promotionName.trim(),offerText:raw.offerText.trim(),price:Math.max(0,Number(raw.price)||0),status:'Pending Store Approval',createdAt:now()};
         if(compressedBlob){
           const upload=await api.uploadMenuMedia(new File([compressedBlob],`brand-${id('img')}.webp`,{type:compressedBlob.type}));
@@ -1141,6 +1165,15 @@ function shareStoreModal(storeId){
   modal('Share With Customers',`<p class="muted">Customers open this link, sign up, and see their reminder cards.</p><div class="field"><label>Customer link</label><input id="storeLinkOutput" readonly value="${html(link)}"></div><div class="actions"><button class="btn small green" id="copyStoreLink">Copy Link</button><a class="btn small" href="https://wa.me/?text=${whatsappText}" target="_blank" rel="noopener noreferrer">Share via WhatsApp</a></div><div class="qr-wrap" id="storeQr" style="margin-top:16px"></div>`,()=>{
     $('#copyStoreLink').onclick=async()=>{try{await navigator.clipboard.writeText(link);toast('Link copied')}catch{toast('Could not copy link')}};
     if(window.QRCode)new QRCode($('#storeQr'),{text:link,width:180,height:180});
+  });
+}
+function shareBrandModal(storeId){
+  const store=state.stores.find(row=>row.id===storeId);if(!store)return;
+  const link=publicBrandLink(store);
+  const whatsappText=encodeURIComponent(`Put your product's promotion card on ${store.name} — request it here: ${link}`);
+  modal('Share With Brand Owners',`<p class="muted">Brand owners open this link, sign in (or create a brand account), and their request comes straight to you for approval — this store is pre-selected.</p><div class="field"><label>Brand link</label><input id="brandLinkOutput" readonly value="${html(link)}"></div><div class="actions"><button class="btn small green" id="copyBrandLink">Copy Link</button><a class="btn small" href="https://wa.me/?text=${whatsappText}" target="_blank" rel="noopener noreferrer">Share via WhatsApp</a></div><div class="qr-wrap" id="brandQr" style="margin-top:16px"></div>`,()=>{
+    $('#copyBrandLink').onclick=async()=>{try{await navigator.clipboard.writeText(link);toast('Link copied')}catch{toast('Could not copy link')}};
+    if(window.QRCode)new QRCode($('#brandQr'),{text:link,width:180,height:180});
   });
 }
 
