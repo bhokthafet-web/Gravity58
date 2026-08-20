@@ -3213,7 +3213,6 @@ async function initialiseGravity58() {
   updateStateUI();
   renderRecentJobs();
   renderWall();
-  if (!selectedState) setTimeout(() => openStateSelection(true), 150);
   if (!matchSeoRoute()) checkDeepLinks();
 
   Gravity58DB.subscribe((state) => {

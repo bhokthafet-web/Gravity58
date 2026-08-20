@@ -4,8 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="theme-color" content="#07111F" />
-  <title>GRAVITY58 — Local Customer & Business Marketplace</title>
-  <meta name="description" content="GRAVITY58 helps verified users post requirements and business cards while everyone can browse local opportunities." />
+  <title>GRAVITY58 — Refills, Digital Menu &amp; POS for Local Business</title>
+  <meta name="description" content="GRAVITY58 helps local stores and restaurants take orders online with Refills, Digital Menu and a free POS — no setup cost." />
   <link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32.png?v=5" />
   <link rel="apple-touch-icon" sizes="180x180" href="/assets/apple-touch-icon.png?v=5" />
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -17,25 +17,20 @@
   <meta name="robots" content="index, follow, max-image-preview:large" />
   <meta property="og:type" content="website" />
   <meta property="og:site_name" content="GRAVITY58" />
-  <meta property="og:title" content="GRAVITY58 — Find Local Jobs and Businesses Across India" />
-  <meta property="og:description" content="Post service requirements, compare local business bids, and discover digital business cards by State and District." />
+  <meta property="og:title" content="GRAVITY58 — Refills, Digital Menu &amp; POS for Local Business" />
+  <meta property="og:description" content="Take repeat orders with Refills, run table ordering with Digital Menu, and bill customers with a free POS — all in one place." />
   <meta property="og:url" content="https://g58.in/" />
   <meta property="og:image" content="https://g58.in/assets/g58-whatsapp-card.png" />
   <meta name="twitter:card" content="summary_large_image" />
-  <meta name="twitter:title" content="GRAVITY58 — Local Jobs and Business Cards" />
-  <meta name="twitter:description" content="Post requirements, receive bids, and find local businesses across India." />
+  <meta name="twitter:title" content="GRAVITY58 — Refills, Digital Menu &amp; POS" />
+  <meta name="twitter:description" content="Take your local store or restaurant online with Refills, Digital Menu and a free POS." />
   <meta name="twitter:image" content="https://g58.in/assets/g58-whatsapp-card.png" />
   <script type="application/ld+json" id="websiteStructuredData">
   {
     "@context":"https://schema.org",
     "@type":"WebSite",
     "name":"GRAVITY58",
-    "url":"https://g58.in/",
-    "potentialAction":{
-      "@type":"SearchAction",
-      "target":"https://g58.in/business/?q={search_term_string}",
-      "query-input":"required name=search_term_string"
-    }
+    "url":"https://g58.in/"
   }
   </script>
 
@@ -47,35 +42,28 @@
       <svg class="logo3d" viewBox="0 0 120 120" fill="none" stroke="#F97316" stroke-width="8" aria-hidden="true"><circle cx="60" cy="26" r="15"/><circle cx="28" cy="82" r="15"/><circle cx="92" cy="82" r="15"/></svg>
       <div class="gravity-wordmark">
         <div class="gravity-main">GRAVITY<span>58</span></div>
-        <small>POST · BID · CONNECT</small>
+        <small>REFILLS · MENU · POS</small>
       </div>
     </a>
 
     <nav class="nav-center" aria-label="Primary">
-      <button type="button" class="nav-link" onclick="document.querySelector('.how-it-works-section')?.scrollIntoView({behavior:'smooth'})">How It Works</button>
-      <button type="button" class="nav-link" onclick="selectMode('customer')">For Customers</button>
-      <button type="button" class="nav-link" onclick="selectMode('business')">For Businesses</button>
+      <button type="button" class="nav-link" onclick="document.querySelector('.product-workflow-section')?.scrollIntoView({behavior:'smooth'})">How It Works</button>
       <div class="nav-mega-wrap">
         <button type="button" class="nav-link nav-mega-trigger" aria-expanded="false" aria-haspopup="true">Products <span class="mega-caret">⌄</span></button>
         <div class="nav-mega-menu" role="menu">
-          <a href="/business/" role="menuitem"><strong>Business Cards</strong><small>Professional digital cards</small></a>
+          <a href="/digit58/" role="menuitem"><strong>Refills</strong><small>Take any store online</small></a>
           <a href="/digital-menu/" role="menuitem"><strong>Digital Menu</strong><small>Manage orders and menus online</small></a>
           <a href="/pos/" role="menuitem"><strong>Free POS</strong><small>Simple billing, no setup</small></a>
-          <a href="/digit58/" role="menuitem"><strong>Refills</strong><small>Take any store online</small></a>
         </div>
       </div>
     </nav>
 
     <div class="header-account-controls" aria-label="Account controls">
-      <button class="g58-bell-btn hidden" id="bidBellButton" type="button" onclick="openBidBellPanel()" aria-label="New bids on your posts">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
-        <span class="g58-bell-badge" id="bidBellBadge"></span>
-      </button>
       <button class="header-account-btn login" id="siteLoginButton" type="button" onclick="window.G58AccountAction?.()">Login</button>
       <span class="header-user-name hidden" id="siteUserName"></span>
       <button class="header-account-btn hidden" id="myPostsButton" type="button" onclick="openMyPostsPage()">My Posts</button>
       <button class="header-account-btn logout hidden" id="siteLogoutButton" type="button" onclick="window.G58LogoutAction?.()">Logout</button>
-      <button class="btn primary nav-post-cta" type="button" onclick="openCustomerPostCreator()">Post Requirement</button>
+      <a class="btn primary nav-post-cta" href="/digit58/">Explore Refills</a>
     </div>
 
     <button type="button" class="mobile-nav-toggle" id="mobileNavToggle" aria-expanded="false" aria-label="Menu" onclick="toggleMobileNav()">
@@ -86,65 +74,30 @@
 
 <div class="mobile-nav-overlay" id="mobileNavOverlay" onclick="closeMobileNav()"></div>
 <nav class="mobile-nav-panel" id="mobileNavPanel" aria-label="Mobile">
-  <button type="button" class="mobile-nav-link" onclick="closeMobileNav();document.querySelector('.how-it-works-section')?.scrollIntoView({behavior:'smooth'})">How It Works</button>
-  <button type="button" class="mobile-nav-link" onclick="closeMobileNav();selectMode('customer')">For Customers</button>
-  <button type="button" class="mobile-nav-link" onclick="closeMobileNav();selectMode('business')">For Businesses</button>
+  <button type="button" class="mobile-nav-link" onclick="closeMobileNav();document.querySelector('.product-workflow-section')?.scrollIntoView({behavior:'smooth'})">How It Works</button>
   <div class="mobile-nav-group-label">Products</div>
-  <a class="mobile-nav-link mobile-nav-sublink" href="/business/" onclick="closeMobileNav()">Business Cards</a>
+  <a class="mobile-nav-link mobile-nav-sublink" href="/digit58/" onclick="closeMobileNav()">Refills</a>
   <a class="mobile-nav-link mobile-nav-sublink" href="/digital-menu/" onclick="closeMobileNav()">Digital Menu</a>
   <a class="mobile-nav-link mobile-nav-sublink" href="/pos/" onclick="closeMobileNav()">Free POS</a>
-  <a class="mobile-nav-link mobile-nav-sublink" href="/digit58/" onclick="closeMobileNav()">Refills</a>
 </nav>
 
 <main>
 <section class="landing" id="home">
 
   <div class="hero-v2 shell reveal">
-    <span class="hero-badge">A smarter local marketplace</span>
-    <h1 class="hero-v2-heading">Need Something?<br>Let Businesses Come to You.</h1>
-    <p class="hero-v2-sub">Post your requirement once, receive offers from relevant businesses, compare them and choose the one that works for you.</p>
+    <span class="hero-badge">Everyday tools for local business</span>
+    <h1 class="hero-v2-heading">Take Your Store Online.<br>Refills &amp; Digital Menu, Built In.</h1>
+    <p class="hero-v2-sub">Refills brings repeat customers back with a store link and reminders. Digital Menu turns any table into a live QR ordering point. Free POS handles the billing.</p>
     <div class="hero-v2-ctas">
-      <button class="btn primary hero-primary-cta" type="button" onclick="openCustomerPostCreator()">Post a Requirement <span class="cta-arrow">→</span></button>
-      <button class="btn hero-secondary-cta" type="button" onclick="selectMode('business')">Browse Businesses</button>
+      <a class="btn primary hero-primary-cta" href="/digit58/">Explore Refills <span class="cta-arrow">→</span></a>
+      <a class="btn hero-secondary-cta" href="/digital-menu/">Explore Digital Menu</a>
     </div>
     <ul class="hero-trust-row">
-      <li>Location-based discovery</li>
-      <li>Compare multiple offers</li>
-      <li>Direct business connection</li>
-      <li>Free to browse</li>
+      <li>No setup cost</li>
+      <li>Works on any phone</li>
+      <li>Repeat orders, automatically</li>
+      <li>Free to start</li>
     </ul>
-
-    <div class="hero-demo" aria-hidden="true">
-      <svg class="hero-demo-lines" viewBox="0 0 640 260" preserveAspectRatio="none">
-        <path class="demo-line" d="M180,70 C260,70 260,130 340,130" fill="none"/>
-        <path class="demo-line" d="M340,130 C420,130 420,190 500,190" fill="none"/>
-      </svg>
-      <article class="hero-demo-card demo-card-1">
-        <span class="demo-card-label">Customer Requirement</span>
-        <strong>Interior Work Required</strong>
-        <p class="demo-card-loc">Hyderabad · Manikonda</p>
-        <div class="demo-card-row"><small>Budget</small><strong>₹2L – ₹3L</strong></div>
-        <div class="demo-card-row"><small>Status</small><span class="demo-status-pill">Receiving Offers</span></div>
-      </article>
-      <article class="hero-demo-card demo-card-2" id="heroDemoOfferCard">
-        <span class="demo-card-label">Business Offer</span>
-        <strong id="heroDemoOfferName">Urban Interiors</strong>
-        <div class="demo-stars">★★★★★</div>
-        <div class="demo-card-row"><small>Quote</small><strong id="heroDemoOfferQuote">₹3,45,000</strong></div>
-        <div class="demo-card-row"><small>Timeline</small><strong id="heroDemoOfferTime">25 Days</strong></div>
-        <span class="demo-view-btn">View Offer</span>
-      </article>
-      <article class="hero-demo-card demo-card-3" id="heroDemoAcceptedCard">
-        <span class="demo-status-dot"></span>
-        <strong>Offer Accepted</strong>
-        <p class="demo-card-loc" id="heroDemoAcceptedName">Urban Interiors</p>
-        <small>Customer &amp; Business Connected</small>
-      </article>
-      <span class="hero-float-badge float-badge-1" aria-hidden="true">+ New Bid ₹3,20,000</span>
-      <span class="hero-float-badge float-badge-2" aria-hidden="true">5 Businesses Interested</span>
-      <span class="hero-float-badge float-badge-3" aria-hidden="true">✓ Verified Business</span>
-      <span class="hero-float-badge float-badge-4" aria-hidden="true">📍 Nearby</span>
-    </div>
   </div>
 
   <section class="product-workflow-section shell reveal" aria-labelledby="productWorkflowTitle">
@@ -216,18 +169,6 @@
           <p>GST-ready billing, UPI QR and daily reports — free to use.</p>
           <a href="/pos/" class="g58-vcard-cta">Open Free POS →</a>
         </article>
-        <article class="g58-vcard g58-vcard-card">
-          <div class="g58-vcard-top"><span class="g58-vcard-mark">🪪</span><span class="g58-vcard-badge">Business Card</span></div>
-          <h4>Your Business, Everywhere</h4>
-          <p>A free digital business card customers can find, save and share.</p>
-          <button type="button" class="g58-vcard-cta" onclick="openBusinessCardCreator()">Create Your Card →</button>
-        </article>
-        <article class="g58-vcard g58-vcard-ad">
-          <div class="g58-vcard-top"><span class="g58-vcard-mark">📣</span><span class="g58-vcard-badge">Post Requirement</span></div>
-          <h4>Post It. Get Offers.</h4>
-          <p>Tell G58 what you need and let nearby businesses send their offers.</p>
-          <button type="button" class="g58-vcard-cta" onclick="openCustomerPostCreator()">Post a Requirement →</button>
-        </article>
         <article class="g58-vcard g58-vcard-refills" aria-hidden="true">
           <div class="g58-vcard-top"><span class="g58-vcard-mark">⬡</span><span class="g58-vcard-badge">Refills</span></div>
           <h4>Take Any Store Online</h4>
@@ -240,102 +181,23 @@
           <p>QR ordering, live kitchen tickets and menu management in one place.</p>
           <a href="/digital-menu/" class="g58-vcard-cta" tabindex="-1">Explore Digital Menu →</a>
         </article>
-        <article class="g58-vcard g58-vcard-pos" aria-hidden="true">
-          <div class="g58-vcard-top"><span class="g58-vcard-mark">₹</span><span class="g58-vcard-badge">Free POS</span></div>
-          <h4>Simple Billing, No Setup</h4>
-          <p>GST-ready billing, UPI QR and daily reports — free to use.</p>
-          <a href="/pos/" class="g58-vcard-cta" tabindex="-1">Open Free POS →</a>
-        </article>
-        <article class="g58-vcard g58-vcard-card" aria-hidden="true">
-          <div class="g58-vcard-top"><span class="g58-vcard-mark">🪪</span><span class="g58-vcard-badge">Business Card</span></div>
-          <h4>Your Business, Everywhere</h4>
-          <p>A free digital business card customers can find, save and share.</p>
-          <button type="button" class="g58-vcard-cta" tabindex="-1">Create Your Card →</button>
-        </article>
-        <article class="g58-vcard g58-vcard-ad" aria-hidden="true">
-          <div class="g58-vcard-top"><span class="g58-vcard-mark">📣</span><span class="g58-vcard-badge">Post Requirement</span></div>
-          <h4>Post It. Get Offers.</h4>
-          <p>Tell G58 what you need and let nearby businesses send their offers.</p>
-          <button type="button" class="g58-vcard-cta" tabindex="-1">Post a Requirement →</button>
-        </article>
       </div>
     </div>
   </div>
 
-  <section class="g58-marquee-section reveal">
-    <p class="marquee-kicker">Built for everyday local requirements</p>
-    <div class="marquee-track">
-      <div class="marquee-track-inner">
-        <span>Interior Design</span><span>Construction</span><span>Electrical</span><span>Plumbing</span><span>Catering</span><span>Repairs</span><span>Automobile</span><span>Events</span><span>Home Services</span><span>Professional Services</span>
-        <span aria-hidden="true">Interior Design</span><span aria-hidden="true">Construction</span><span aria-hidden="true">Electrical</span><span aria-hidden="true">Plumbing</span><span aria-hidden="true">Catering</span><span aria-hidden="true">Repairs</span><span aria-hidden="true">Automobile</span><span aria-hidden="true">Events</span><span aria-hidden="true">Home Services</span><span aria-hidden="true">Professional Services</span>
-      </div>
-    </div>
-  </section>
-
-  <section class="how-it-works-section">
-    <div class="shell">
-      <div class="section-heading reveal">
-        <h2>One requirement.<br>Multiple possibilities.</h2>
-        <p class="section-sub">Stop searching business after business. Tell G58 what you need and let businesses compete for your requirement.</p>
-      </div>
-      <div class="workflow-steps">
-        <article class="workflow-step reveal">
-          <span class="step-num">01</span><h3>Post</h3>
-          <p>Tell us what you need, where you need it and your expected budget.</p>
-        </article>
-        <article class="workflow-step reveal">
-          <span class="step-num">02</span><h3>Receive Bids</h3>
-          <p>Relevant businesses discover the requirement and submit their offers.</p>
-          <div class="bid-chip-stack"><span>₹2,50,000</span><span>₹2,35,000</span><span>₹2,70,000</span><span>₹2,42,000</span></div>
-        </article>
-        <article class="workflow-step reveal">
-          <span class="step-num">03</span><h3>Compare</h3>
-          <p>See price, rating, experience, completion time and proposal — side by side.</p>
-        </article>
-        <article class="workflow-step reveal">
-          <span class="step-num">04</span><h3>Connect</h3>
-          <p>Accept the offer that works for you and connect directly on WhatsApp.</p>
-          <span class="accepted-pill">Offer Accepted ✓</span>
-        </article>
-      </div>
-    </div>
-  </section>
-
-  <section class="live-activity-section reveal">
-    <div class="shell">
-      <div class="section-heading">
-        <h2>Live on G58</h2>
-        <p class="section-sub">Real requirements posted by customers near you, right now.</p>
-      </div>
-      <div class="live-activity-grid" id="liveActivityGrid">
-        <div class="live-activity-empty">Loading nearby activity…</div>
-      </div>
-    </div>
-  </section>
-
-  <section class="comparison-section">
-    <div class="shell">
-      <h2 class="reveal">G58 works differently.</h2>
-      <div class="comparison-grid reveal">
-        <div class="comparison-col old">
-          <h4>Traditional Search</h4>
-          <ol><li>Search Google</li><li>Call businesses one by one</li><li>Explain requirement repeatedly</li><li>Collect quotes manually</li><li>Compare everything yourself</li></ol>
-        </div>
-        <div class="comparison-col new">
-          <h4>G58</h4>
-          <ol><li>Post once</li><li>Receive bids</li><li>Compare</li><li>Choose</li></ol>
-        </div>
-      </div>
-    </div>
-  </section>
-
   <section class="tools-showcase">
     <div class="shell">
       <div class="section-heading reveal">
-        <h2>More than a marketplace.</h2>
+        <h2>Everyday tools for local business.</h2>
         <p class="section-sub">G58 gives businesses practical tools to run and grow digitally.</p>
       </div>
       <div class="tools-grid">
+        <article class="tool-card reveal">
+          <span class="tool-kicker">Refills</span>
+          <h3>Take Repeat Orders Online.</h3>
+          <p>Create refill-based ordering experiences for repeat customers.</p>
+          <a class="tool-cta" href="/digit58/">Explore Refills <span class="cta-arrow">→</span></a>
+        </article>
         <article class="tool-card reveal">
           <span class="tool-kicker">Digital Menu</span>
           <h3>Turn Any Table Into a Digital Ordering Point.</h3>
@@ -348,58 +210,17 @@
           <div class="tool-flow"><span>Billing</span><span>·</span><span>GST</span><span>·</span><span>UPI QR</span><span>·</span><span>Receipts</span><span>·</span><span>Daily Reports</span></div>
           <a class="tool-cta" href="/pos/">Open Free POS <span class="cta-arrow">→</span></a>
         </article>
-        <article class="tool-card reveal">
-          <span class="tool-kicker">Refills</span>
-          <h3>Take Repeat Orders Online.</h3>
-          <p>Create refill-based ordering experiences for repeat customers.</p>
-          <a class="tool-cta" href="/digit58/">Explore Refills <span class="cta-arrow">→</span></a>
-        </article>
-        <article class="tool-card reveal">
-          <span class="tool-kicker">Business Card</span>
-          <h3>Your Business Everywhere.</h3>
-          <p>Share your digital card by QR — scanned, opened, contacted.</p>
-          <button type="button" class="tool-cta" onclick="openBusinessCardCreator()">Create Your Card <span class="cta-arrow">→</span></button>
-        </article>
-      </div>
-    </div>
-  </section>
-
-  <section class="card-promo-section reveal">
-    <div class="shell card-promo-shell">
-      <div class="card-promo-copy">
-        <span class="tool-kicker">Business Card</span>
-        <h2>Scanned. Opened. Contacted.</h2>
-        <p class="section-sub">Share one QR code and let customers see your ratings, catalogue and contact details instantly — no app download required.</p>
-        <button type="button" class="btn primary" onclick="openBusinessCardCreator()">Create Your Free Card <span class="cta-arrow">→</span></button>
-      </div>
-      <div class="card-promo-flow" aria-hidden="true">
-        <div class="card-promo-step"><span class="card-promo-icon">▦</span><small>QR Code</small></div>
-        <span class="card-promo-arrow">→</span>
-        <div class="card-promo-step"><span class="card-promo-icon">🪪</span><small>Business Card</small></div>
-        <span class="card-promo-arrow">→</span>
-        <div class="card-promo-step"><span class="card-promo-icon">💬</span><small>Direct Contact</small></div>
       </div>
     </div>
   </section>
 
   <section class="business-cta-dark reveal">
     <div class="shell">
-      <h2>Customers are already looking.<br>Make sure they can find you.</h2>
+      <h2>Ready to take your store online?<br>Start with Refills or Digital Menu.</h2>
       <div class="dark-cta-actions">
-        <button class="btn primary" type="button" onclick="openBusinessCardCreator()">Create Business Card</button>
-        <button class="btn ghost-light" type="button" onclick="selectMode('customer')">Browse Requirements</button>
+        <a class="btn primary" href="/digit58/">Explore Refills</a>
+        <a class="btn ghost-light" href="/digital-menu/">Explore Digital Menu</a>
       </div>
-    </div>
-  </section>
-
-  <section class="customer-cta-search reveal">
-    <div class="shell">
-      <h2>What do you need today?</h2>
-      <form class="cta-search-form" id="ctaSearchForm" onsubmit="return g58HomeSearchSubmit(event)">
-        <input id="ctaSearchInput" type="text" placeholder="Describe what you're looking for…">
-        <button class="btn primary" type="submit">Search <span class="cta-arrow">→</span></button>
-      </form>
-      <p class="cta-search-hint">Or <button type="button" class="link-btn" onclick="openCustomerPostCreator()">post it as a new requirement →</button></p>
     </div>
   </section>
 
@@ -508,8 +329,6 @@
 </main>
 <nav class="seo-link-strip hidden" aria-label="SEO pages">
   <a href="/business/telangana/hyderabad/">Hyderabad Businesses</a>
-  <a href="/category/plumbing/">Plumbers</a>
-  <a href="/category/interior-design/">Interior Designers</a>
 </nav>
 
 <footer class="g58-footer-v2">
@@ -519,21 +338,13 @@
         <svg class="logo3d" viewBox="0 0 120 120" fill="none" stroke="#F97316" stroke-width="8" aria-hidden="true"><circle cx="60" cy="26" r="15"/><circle cx="28" cy="82" r="15"/><circle cx="92" cy="82" r="15"/></svg>
         <div class="gravity-wordmark">
           <div class="gravity-main">GRAVITY<span>58</span></div>
-          <small>POST · BID · CONNECT</small>
+          <small>REFILLS · MENU · POS</small>
         </div>
       </a>
-      <p class="footer-tagline">A smarter way for customers and businesses to find each other.</p>
+      <p class="footer-tagline">Everyday tools to take your local business online.</p>
       <div class="g58-site-footer-badge">
         <a class="g58-app-badge" href="/downloads/GRAVITY58-Android-v1.3.apk" download aria-label="Download the Gravity58 Android app"><span class="g58-app-badge-icon">▶</span><span class="g58-app-badge-text"><small>Download Android</small><strong>Get G58 App</strong></span></a>
       </div>
-    </div>
-
-    <div class="footer-col">
-      <h5>Platform</h5>
-      <a href="/jobs/">Customer Wall</a>
-      <button type="button" onclick="selectMode('business')">Business Wall</button>
-      <button type="button" onclick="openCustomerPostCreator()">Post Requirement</button>
-      <a href="/business/">Business Cards</a>
     </div>
 
     <div class="footer-col">
@@ -930,7 +741,7 @@
 <script src="/js/config.js"></script>
 <script src="/js/appwrite-ads.js?v=19"></script>
 <script src="/js/database.js"></script>
-<script src="/js/app.js?v=25"></script>
+<script src="/js/app.js?v=26"></script>
 <script src="/js/site-auth.js?v=3"></script>
 <script>
 (function(){
