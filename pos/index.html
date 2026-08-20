@@ -445,7 +445,7 @@
         <svg class="logo" viewBox="0 0 120 120" fill="none" stroke="#F97316" stroke-width="8" aria-hidden="true"><circle cx="60" cy="26" r="15"/><circle cx="28" cy="82" r="15"/><circle cx="92" cy="82" r="15"/></svg>
         <div>
           <h1 class="brand-title">GRAVITY<span>58</span></h1>
-          <p class="tagline">POST. BID. CONNECT.</p>
+          <p class="tagline">REFILLS · MENU · POS</p>
         </div>
       </a>
       
@@ -470,11 +470,12 @@
       <div class="pos-security-badge">✓</div>
       <div>
         <strong>Secure Gravity58 billing for Free and Premium users</strong>
-        <p>Your account keeps settings, bills, menu and inventory available across signed-in devices.</p>
+        <p>Your account keeps settings, bills, menu and inventory available across signed-in devices. Premium POS features are included automatically with a Refills store subscription or Digital Menu Premium — no separate purchase.</p>
       </div>
       <div class="pos-banner-actions">
         <button class="pos-how-button" id="openPosGuideBtn" type="button">How It Works</button>
-        <button class="pos-premium-button" id="openPremiumPlansBtn" type="button" onclick="document.getElementById('premiumPlansModal').classList.add('open');document.getElementById('premiumPlansModal').setAttribute('aria-hidden','false');document.body.style.overflow='hidden'">Go Premium</button>
+        <a class="pos-premium-button" href="/digit58/">Explore Refills</a>
+        <a class="pos-premium-button" href="/digital-menu/">Explore Digital Menu</a>
       </div>
     </section>
 
@@ -1724,7 +1725,7 @@
 <script src="https://cdn.jsdelivr.net/npm/appwrite@26.2.0"></script>
 <script src="/js/config.js?v=22"></script>
 <script src="/js/appwrite-ads.js?v=17"></script>
-<script src="/js/pos-premium.js?v=33"></script>
+<script src="/js/pos-premium.js?v=34"></script>
 
   <script>
   document.addEventListener("DOMContentLoaded", () => {
@@ -1741,18 +1742,6 @@
 
 
 
-  <div class="upgrade-modal" id="premiumPlansModal" aria-hidden="true">
-    <div class="upgrade-dialog" role="dialog" aria-modal="true" aria-labelledby="premiumPlansTitle">
-      <div class="upgrade-head"><div><h2 id="premiumPlansTitle">Choose your G58 POS plan</h2><p>Free billing stays simple. Premium adds CSV menu tools, optional inventory and cloud dashboard insights.</p></div><button type="button" class="modal-close" id="closePremiumPlansBtn" aria-label="Close" onclick="document.getElementById('premiumPlansModal').classList.remove('open');document.body.style.overflow=''">×</button></div>
-      <div class="plan-grid">
-        <article class="plan-card free"><span class="plan-label">FREE</span><h3>G58 POS</h3><div class="plan-price">₹0</div><div class="plan-term">Forever</div><div class="plan-features"><div class="plan-feature">Account-synced settings and bills</div><div class="plan-feature">Manual billing, GST and UPI QR</div><div class="plan-feature">Receipts and daily reports</div><div class="plan-feature">Received and cancelled settlement</div><div class="plan-feature">Secure signed-in history</div></div><button class="plan-action continue-free-trigger">Current Plan</button></article>
-        <article class="plan-card monthly"><span class="plan-label">MONTHLY</span><h3>Monthly Premium</h3><div class="plan-price">₹299</div><div class="plan-term">Valid for 1 month</div><div class="plan-features"><div class="plan-feature">Reusable local menu</div><div class="plan-feature">CSV menu import and removal</div><div class="plan-feature">Quantity-based automatic pricing</div><div class="plan-feature">Optional inventory tracking</div><div class="plan-feature">Local dashboard insights</div></div><button class="plan-action buy-plan" data-plan="Monthly" data-amount="299">Purchase</button></article>
-        <article class="plan-card half"><span class="plan-label">6 MONTHS</span><h3>6-Month Premium</h3><div class="plan-price">₹1,599</div><div class="plan-term">Valid for 6 months</div><div class="plan-features"><div class="plan-feature">Reusable local menu</div><div class="plan-feature">CSV menu import and removal</div><div class="plan-feature">Quantity-based automatic pricing</div><div class="plan-feature">Optional inventory tracking</div><div class="plan-feature">Sales dashboard and insights</div></div><button class="plan-action buy-plan" data-plan="6 Months" data-amount="1599">Purchase</button></article>
-        <article class="plan-card yearly"><span class="plan-label">1 YEAR</span><h3>Yearly Premium</h3><div class="plan-price">₹2,999</div><div class="plan-term">Valid for 1 year</div><div class="plan-features"><div class="plan-feature">Reusable local menu</div><div class="plan-feature">CSV menu import and removal</div><div class="plan-feature">Quantity-based automatic pricing</div><div class="plan-feature">Optional inventory tracking</div><div class="plan-feature">Dashboard and item performance</div></div><button class="plan-action buy-plan" data-plan="1 Year" data-amount="2999">Purchase</button></article>
-      </div>
-      <div class="upgrade-footer"><button class="already-premium" id="alreadyPremiumBtn">Already a Premium User</button><button class="continue-free continue-free-trigger">Continue with Free Version</button></div>
-    </div>
-  </div>
 
   <script src="/js/server-status.js?v=1"></script>
 </body>

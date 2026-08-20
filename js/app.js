@@ -2435,6 +2435,16 @@ async function hasBusinessCardAccess(user) {
   );
   return isRefillsOwner || isMenuPremium || isPosPremium;
 }
+async function refreshPosNavVisibility() {
+  const user = window.G58SiteUser;
+  const show = user ? await hasBusinessCardAccess(user) : false;
+  document.getElementById("navProductsPos")?.classList.toggle("hidden", !show);
+  document.getElementById("mobileNavPos")?.classList.toggle("hidden", !show);
+}
+window.addEventListener("g58-auth-changed", refreshPosNavVisibility);
+document.addEventListener("DOMContentLoaded", () => {
+  if (window.G58SiteUser) refreshPosNavVisibility();
+});
 async function openBusinessCardCreator() {
   const user = window.G58SiteUser;
   if (!user) return window.G58RequestAuth?.("business");

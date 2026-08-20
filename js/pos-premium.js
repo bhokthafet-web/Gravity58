@@ -324,18 +324,7 @@
     if (tab === "license") {
       const linkedPremium = entitlementPremium() || digit58Premium();
       const linkedPremiumSource = entitlementPremium() ? "Digital Menu Premium" : digit58Premium() ? "your Refills store subscription" : "";
-      box(`<div class="premium-grid"><article class="premium-box"><h3>${linkedPremium ? "Premium Included" : "Activate Premium"}</h3><p>${linkedPremium ? `Premium POS is included with ${linkedPremiumSource}.` : "Enter the activation key supplied by the G58 team."}</p>${linkedPremium ? "" : '<div class="field" style="margin-top:14px"><label>Activation key</label><input id="localPremiumKey" placeholder="G58-POS-XXXX-XXXX"></div><button class="btn btn-primary" id="activateLocalPremium">Activate for this account</button>'}<p id="premiumMessage" style="margin-top:12px">${premiumExpiryLabel()}</p></article><article class="premium-box"><h3>Premium includes</h3><p>Reusable menu, CSV import, item removal, availability control, optional inventory, item performance and an account-synced restaurant dashboard.</p></article></div>`);
-      if (entitlementPremium()) return;
-      $("activateLocalPremium").onclick = () => {
-        const key = $("localPremiumKey").value.trim().toUpperCase();
-        if (!/^G58-POS-[A-Z0-9-]{4,}$/.test(key)) return void ($("premiumMessage").textContent = "Enter a valid G58-POS activation key.");
-        const expires = new Date(); expires.setFullYear(expires.getFullYear() + 1);
-        premium = { active: true, key, activatedAt: new Date().toISOString(), expiresAt: expires.toISOString() };
-        write(KEYS.premium, premium);
-        scheduleWorkspaceSync();
-        renderShell();
-        toast("Premium activated for this account");
-      };
+      box(`<div class="premium-grid"><article class="premium-box"><h3>${linkedPremium ? "Premium Included" : "Get Premium"}</h3><p>${linkedPremium ? `Premium POS is included with ${linkedPremiumSource}.` : "Premium POS is included automatically with a Refills store subscription or Digital Menu Premium — there is no separate POS purchase."}</p>${linkedPremium ? "" : '<div class="pos-license-links" style="display:flex;gap:10px;flex-wrap:wrap;margin-top:14px"><a class="btn btn-outline" href="/digit58/">Explore Refills</a><a class="btn btn-outline" href="/digital-menu/">Explore Digital Menu</a></div>'}<p id="premiumMessage" style="margin-top:12px">${premiumExpiryLabel()}</p></article><article class="premium-box"><h3>Premium includes</h3><p>Reusable menu, CSV import, item removal, availability control, optional inventory, item performance and an account-synced restaurant dashboard.</p></article></div>`);
     }
 
     if (tab === "menu") {
@@ -590,15 +579,6 @@
 
   window.G58Premium = {
     menu,
-    requestPlan: async (plan, amount) => {
-      if (!session) { renderGate(); return false; }
-      const request = { plan, amount: Number(amount), status: "requested", requestedAt: new Date().toISOString(), email: session.email };
-      write(KEYS.subscription, request);
-      await syncWorkspace();
-      toast("Premium request saved. The G58 team can issue your activation key.");
-      renderShell();
-      return true;
-    },
     syncSettings: async () => { scheduleWorkspaceSync(); return true; },
     syncBill: async (bill) => {
       if (linkedRestaurant) Object.assign(bill, { restaurantId: linkedRestaurant.id, restaurantName: linkedRestaurant.name, source: "Counter POS" });
@@ -615,21 +595,6 @@
       await syncWorkspace(); return true;
     },
   };
-
-  const openPlans = () => { const modal = $("premiumPlansModal"); if (modal) { modal.classList.add("open"); modal.setAttribute("aria-hidden", "false"); document.body.style.overflow = "hidden"; } };
-  const closePlans = () => { const modal = $("premiumPlansModal"); if (modal) { modal.classList.remove("open"); modal.setAttribute("aria-hidden", "true"); document.body.style.overflow = ""; } };
-  document.addEventListener("click", async (event) => {
-    const button = event.target.closest("button");
-    if (!button) return;
-    if (button.id === "openPremiumPlansBtn") { event.preventDefault(); openPlans(); }
-    if (button.id === "closePremiumPlansBtn" || button.classList.contains("continue-free-trigger")) { event.preventDefault(); closePlans(); }
-    if (button.classList.contains("buy-plan")) {
-      event.preventDefault();
-      const plan = button.dataset.plan === "Monthly" ? "monthly" : button.dataset.plan === "6 Months" ? "half_yearly" : "yearly";
-      if (await window.G58Premium.requestPlan(plan, button.dataset.amount)) closePlans();
-    }
-    if (button.id === "alreadyPremiumBtn") { event.preventDefault(); closePlans(); $("premiumShell")?.scrollIntoView({ behavior: "smooth" }); }
-  });
 
   const extraStyle = document.createElement("style");
   extraStyle.textContent = `.local-account-gate{position:fixed;inset:0;z-index:20000;background:radial-gradient(circle at 15% 10%,rgba(249,115,22,.2),transparent 35%),rgba(3,9,17,.97);display:grid;place-items:center;padding:18px}.local-account-card{width:min(580px,100%);padding:28px}.local-account-brand{display:flex;gap:16px;align-items:center;margin-bottom:22px}.local-account-brand h2{margin:0 0 7px}.local-account-brand p,.local-storage-note{color:var(--muted);line-height:1.6}.gate-actions{display:flex;gap:10px;flex-wrap:wrap}.gate-actions .btn-primary{width:auto}.local-account-message{min-height:24px;color:#ffd0ae}.premium-menu-quick-add{padding:15px;border:1px solid rgba(249,115,22,.25);border-radius:16px;background:rgba(249,115,22,.06);margin-bottom:12px}.premium-menu-quick-add>div{display:grid;grid-template-columns:1fr 88px auto;gap:9px}.premium-menu-quick-add select,.premium-menu-quick-add input{min-height:45px}.menu-admin-row{grid-template-columns:minmax(0,1fr) auto auto}.danger-mini{color:#ffaaaa!important;border-color:rgba(239,68,68,.35)!important}.digital-menu-tab{color:#fff!important;background:linear-gradient(135deg,#ef2b2b,#9d1010)!important;box-shadow:0 0 20px rgba(239,43,43,.28)}.dashboard-filter{display:flex;justify-content:space-between;align-items:end;gap:18px;margin-bottom:14px}.dashboard-filter p{margin:6px 0 0;color:var(--muted)}.dashboard-filter-controls{display:grid;grid-template-columns:1.25fr 1fr 1fr;gap:8px;min-width:min(520px,100%)}.dashboard-filter-controls>*{min-height:44px}.dashboard-metrics{margin-bottom:14px}.dashboard-metrics em{display:block;margin-top:7px;font-size:11px;font-style:normal}.dashboard-metrics .positive{color:#86efac}.dashboard-metrics .negative{color:#fca5a5}.dashboard-detail-grid{grid-template-columns:1.2fr .8fr}.dashboard-bars{height:210px;display:grid;grid-template-columns:repeat(7,1fr);gap:9px;align-items:end;padding-top:25px}.dashboard-bar{height:100%;display:grid;grid-template-rows:24px 1fr 20px;align-items:end;text-align:center;gap:5px}.dashboard-bar strong{font-size:10px;color:var(--muted);white-space:nowrap}.dashboard-bar span{display:block;min-height:5px;border-radius:8px 8px 3px 3px;background:linear-gradient(180deg,#fb923c,#c2410c);box-shadow:0 0 16px rgba(249,115,22,.22)}.dashboard-bar small{font-size:10px;color:var(--muted)}@media(max-width:760px){.dashboard-filter{display:block}.dashboard-filter-controls{grid-template-columns:1fr;margin-top:14px;min-width:0}.dashboard-detail-grid{grid-template-columns:1fr}.dashboard-bar strong{font-size:8px}}@media(max-width:600px){.local-account-card{padding:20px}.gate-actions>*{width:100%!important}.premium-menu-quick-add>div{grid-template-columns:1fr 78px}.premium-menu-quick-add button{grid-column:1/-1}.menu-admin-row{grid-template-columns:1fr auto}.menu-admin-row [data-remove-menu]{grid-column:1/-1}}`;

@@ -11,7 +11,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/css/style.css?v=35">
+  <link rel="stylesheet" href="/css/style.css?v=36">
   <link rel="stylesheet" href="/css/mobile.css">
   <link rel="canonical" href="https://g58.in/" />
   <meta name="robots" content="index, follow, max-image-preview:large" />
@@ -47,15 +47,9 @@
     </a>
 
     <nav class="nav-center" aria-label="Primary">
-      <button type="button" class="nav-link" onclick="document.querySelector('.product-workflow-section')?.scrollIntoView({behavior:'smooth'})">How It Works</button>
-      <div class="nav-mega-wrap">
-        <button type="button" class="nav-link nav-mega-trigger" aria-expanded="false" aria-haspopup="true">Products <span class="mega-caret">⌄</span></button>
-        <div class="nav-mega-menu" role="menu">
-          <a href="/digit58/" role="menuitem"><strong>Refills</strong><small>Take any store online</small></a>
-          <a href="/digital-menu/" role="menuitem"><strong>Digital Menu</strong><small>Manage orders and menus online</small></a>
-          <a href="/pos/" role="menuitem"><strong>Free POS</strong><small>Simple billing, no setup</small></a>
-        </div>
-      </div>
+      <button type="button" class="nav-link" onclick="document.querySelector('.tools-showcase')?.scrollIntoView({behavior:'smooth'})">How It Works</button>
+      <a class="btn primary nav-explore-btn" href="/digit58/">Explore Refills</a>
+      <a class="btn nav-explore-btn nav-explore-secondary" href="/digital-menu/">Explore Digital Menu</a>
     </nav>
 
     <div class="header-account-controls" aria-label="Account controls">
@@ -63,7 +57,15 @@
       <span class="header-user-name hidden" id="siteUserName"></span>
       <button class="header-account-btn hidden" id="myPostsButton" type="button" onclick="openMyBusinessCard()">Business Card</button>
       <button class="header-account-btn logout hidden" id="siteLogoutButton" type="button" onclick="window.G58LogoutAction?.()">Logout</button>
-      <a class="btn primary nav-post-cta" href="/digit58/">Explore Refills</a>
+    </div>
+
+    <div class="nav-mega-wrap nav-mega-last">
+      <button type="button" class="nav-link nav-mega-trigger" aria-expanded="false" aria-haspopup="true">Products <span class="mega-caret">⌄</span></button>
+      <div class="nav-mega-menu" role="menu">
+        <a href="/digit58/" role="menuitem"><strong>Refills</strong><small>Take any store online</small></a>
+        <a href="/digital-menu/" role="menuitem"><strong>Digital Menu</strong><small>Manage orders and menus online</small></a>
+        <a href="/pos/" role="menuitem" id="navProductsPos" class="hidden"><strong>POS</strong><small>Included with Refills &amp; Digital Menu Premium</small></a>
+      </div>
     </div>
 
     <button type="button" class="mobile-nav-toggle" id="mobileNavToggle" aria-expanded="false" aria-label="Menu" onclick="toggleMobileNav()">
@@ -74,15 +76,22 @@
 
 <div class="mobile-nav-overlay" id="mobileNavOverlay" onclick="closeMobileNav()"></div>
 <nav class="mobile-nav-panel" id="mobileNavPanel" aria-label="Mobile">
-  <button type="button" class="mobile-nav-link" onclick="closeMobileNav();document.querySelector('.product-workflow-section')?.scrollIntoView({behavior:'smooth'})">How It Works</button>
+  <button type="button" class="mobile-nav-link" onclick="closeMobileNav();document.querySelector('.tools-showcase')?.scrollIntoView({behavior:'smooth'})">How It Works</button>
+  <a class="mobile-nav-link" href="/digit58/" onclick="closeMobileNav()">Explore Refills</a>
+  <a class="mobile-nav-link" href="/digital-menu/" onclick="closeMobileNav()">Explore Digital Menu</a>
   <div class="mobile-nav-group-label">Products</div>
   <a class="mobile-nav-link mobile-nav-sublink" href="/digit58/" onclick="closeMobileNav()">Refills</a>
   <a class="mobile-nav-link mobile-nav-sublink" href="/digital-menu/" onclick="closeMobileNav()">Digital Menu</a>
-  <a class="mobile-nav-link mobile-nav-sublink" href="/pos/" onclick="closeMobileNav()">Free POS</a>
+  <a class="mobile-nav-link mobile-nav-sublink hidden" href="/pos/" id="mobileNavPos" onclick="closeMobileNav()">POS</a>
 </nav>
 
 <main>
 <section class="landing" id="home">
+
+  <nav class="g58-product-quicklinks" aria-label="Products">
+    <a href="/digit58/" class="g58-quicklink-btn">Refills</a>
+    <a href="/digital-menu/" class="g58-quicklink-btn">Digital Menu</a>
+  </nav>
 
   <div class="hero-v2 shell reveal">
     <span class="hero-badge">Everyday tools for local business</span>
@@ -100,90 +109,6 @@
     </ul>
   </div>
 
-  <section class="product-workflow-section shell reveal" aria-labelledby="productWorkflowTitle">
-    <div class="product-workflow-heading">
-      <span class="product-workflow-kicker">Built for everyday business</span>
-      <h2 id="productWorkflowTitle">See how G58 products work</h2>
-      <p>Simple customer journeys that turn repeat needs and table visits into trackable orders.</p>
-    </div>
-    <div class="product-workflow-grid">
-      <article class="product-workflow-card workflow-refills">
-        <div class="product-workflow-copy">
-          <span class="product-workflow-product">G58 Refills</span>
-          <h3>Bring repeat customers back automatically</h3>
-          <p>Create a store link, remind customers when essentials are due and receive their repeat-order request.</p>
-          <a href="/digit58/" class="product-workflow-cta">Explore Refills <span aria-hidden="true">→</span></a>
-          <a class="g58-app-badge" href="/downloads/Refills_Customer.apk" download aria-label="Download the Refills Customer Android app" style="margin-top:14px"><span class="g58-app-badge-icon">▶</span><span class="g58-app-badge-text"><small>For customers</small><strong>Download Android App</strong></span></a>
-        </div>
-        <div class="product-workflow-demo" aria-label="Refills process: store link, refill reminder and repeat order">
-          <span class="product-workflow-line line-one" aria-hidden="true"></span>
-          <span class="product-workflow-line line-two" aria-hidden="true"></span>
-          <div class="product-flow-node node-one"><span>Store Link</span><strong>Monthly Essentials</strong><small>Customer opens your catalogue</small></div>
-          <div class="product-flow-node node-two"><span>Refill Reminder</span><strong>3 items due</strong><small>Reminder sent on time</small></div>
-          <div class="product-flow-node node-three success"><i aria-hidden="true"></i><strong>Repeat Order</strong><small>Order #R-104 received</small></div>
-          <span class="product-flow-badge badge-one">Reminder sent</span>
-          <span class="product-flow-badge badge-two">Buy again</span>
-        </div>
-      </article>
-
-      <article class="product-workflow-card workflow-menu">
-        <div class="product-workflow-copy">
-          <span class="product-workflow-product">G58 Digital Menu</span>
-          <h3>Move every table order from scan to kitchen</h3>
-          <p>Customers scan the table QR, choose dishes and receive a live token while the restaurant manages the order.</p>
-          <a href="/digital-menu/" class="product-workflow-cta">Explore Digital Menu <span aria-hidden="true">→</span></a>
-          <a href="/digital-menu/" class="g58-app-badge" style="margin-top:14px"><span class="g58-app-badge-icon">▶</span><span class="g58-app-badge-text"><small>For restaurants</small><strong>Create Restaurant Menu</strong></span></a>
-        </div>
-        <div class="product-workflow-demo" aria-label="Digital Menu process: table QR, customer order and kitchen acceptance">
-          <span class="product-workflow-line line-one" aria-hidden="true"></span>
-          <span class="product-workflow-line line-two" aria-hidden="true"></span>
-          <div class="product-flow-node node-one"><span>Table QR</span><strong>Table 08</strong><small>Scan to open the live menu</small></div>
-          <div class="product-flow-node node-two"><span>Customer Order</span><strong>2 items · ₹398</strong><small>Sent directly to the kitchen</small></div>
-          <div class="product-flow-node node-three success"><i aria-hidden="true"></i><strong>Kitchen Accepted</strong><small>Token 024 · preparing</small></div>
-          <span class="product-flow-badge badge-one">Live order</span>
-          <span class="product-flow-badge badge-two">Ready in 18 min</span>
-        </div>
-      </article>
-    </div>
-  </section>
-
-
-  <div class="g58-vcard-section">
-    <div class="g58-vcard-track">
-      <div class="g58-vcard-track-inner">
-        <article class="g58-vcard g58-vcard-refills">
-          <div class="g58-vcard-top"><span class="g58-vcard-mark">⬡</span><span class="g58-vcard-badge">Refills</span></div>
-          <h4>Take Any Store Online</h4>
-          <p>Repeat orders, reminders and a store link customers can reorder from.</p>
-          <a href="/digit58/" class="g58-vcard-cta">Explore Refills →</a>
-        </article>
-        <article class="g58-vcard g58-vcard-menu">
-          <div class="g58-vcard-top"><span class="g58-vcard-mark">☰</span><span class="g58-vcard-badge">Digital Menu</span></div>
-          <h4>Turn Any Table Digital</h4>
-          <p>QR ordering, live kitchen tickets and menu management in one place.</p>
-          <a href="/digital-menu/" class="g58-vcard-cta">Explore Digital Menu →</a>
-        </article>
-        <article class="g58-vcard g58-vcard-pos">
-          <div class="g58-vcard-top"><span class="g58-vcard-mark">₹</span><span class="g58-vcard-badge">Free POS</span></div>
-          <h4>Simple Billing, No Setup</h4>
-          <p>GST-ready billing, UPI QR and daily reports — free to use.</p>
-          <a href="/pos/" class="g58-vcard-cta">Open Free POS →</a>
-        </article>
-        <article class="g58-vcard g58-vcard-refills" aria-hidden="true">
-          <div class="g58-vcard-top"><span class="g58-vcard-mark">⬡</span><span class="g58-vcard-badge">Refills</span></div>
-          <h4>Take Any Store Online</h4>
-          <p>Repeat orders, reminders and a store link customers can reorder from.</p>
-          <a href="/digit58/" class="g58-vcard-cta" tabindex="-1">Explore Refills →</a>
-        </article>
-        <article class="g58-vcard g58-vcard-menu" aria-hidden="true">
-          <div class="g58-vcard-top"><span class="g58-vcard-mark">☰</span><span class="g58-vcard-badge">Digital Menu</span></div>
-          <h4>Turn Any Table Digital</h4>
-          <p>QR ordering, live kitchen tickets and menu management in one place.</p>
-          <a href="/digital-menu/" class="g58-vcard-cta" tabindex="-1">Explore Digital Menu →</a>
-        </article>
-      </div>
-    </div>
-  </div>
 
   <section class="tools-showcase">
     <div class="shell">
@@ -349,9 +274,8 @@
 
     <div class="footer-col">
       <h5>Business Tools</h5>
-      <a href="/digital-menu/">Digital Menu</a>
-      <a href="/pos/">Free POS</a>
       <a href="/digit58/">Refills</a>
+      <a href="/digital-menu/">Digital Menu</a>
     </div>
 
     <div class="footer-col">
@@ -741,7 +665,7 @@
 <script src="/js/config.js"></script>
 <script src="/js/appwrite-ads.js?v=19"></script>
 <script src="/js/database.js"></script>
-<script src="/js/app.js?v=28"></script>
+<script src="/js/app.js?v=29"></script>
 <script src="/js/site-auth.js?v=3"></script>
 <script>
 (function(){
