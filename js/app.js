@@ -2535,6 +2535,19 @@ async function loadPremiumShowcase() {
   }
 }
 document.addEventListener("DOMContentLoaded", loadPremiumShowcase);
+
+function scheduleHeroHeadingDots() {
+  const heading = document.getElementById("heroHeading");
+  if (!heading || window.matchMedia("(prefers-reduced-motion: reduce)").matches)
+    return;
+  const run = () => {
+    heading.classList.add("dots-active");
+    setTimeout(() => heading.classList.remove("dots-active"), 1200);
+    setTimeout(run, 25000 + Math.random() * 20000);
+  };
+  setTimeout(run, 6000);
+}
+document.addEventListener("DOMContentLoaded", scheduleHeroHeadingDots);
 async function openBusinessCardCreator() {
   const user = window.G58SiteUser;
   if (!user) return window.G58RequestAuth?.("business");

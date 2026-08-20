@@ -1449,8 +1449,16 @@ body{background:
 .hero-v2{max-width:900px;margin:0 auto;text-align:center;padding-bottom:64px}
 .hero-badge{display:inline-flex;padding:7px 16px;border-radius:999px;background:rgba(29,78,216,.08);
   border:1px solid rgba(29,78,216,.22);color:var(--accent);font-size:12px;font-weight:700;letter-spacing:.02em;margin-bottom:22px}
-.hero-v2-heading{font-family:Manrope,sans-serif;font-weight:800;letter-spacing:-.03em;line-height:1.04;
+.hero-v2-heading{position:relative;font-family:Manrope,sans-serif;font-weight:800;letter-spacing:-.03em;line-height:1.04;
   font-size:clamp(38px,6vw,72px);color:var(--ink);margin:0 0 20px}
+.hero-heading-dots{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;opacity:0;pointer-events:none;transition:opacity .35s ease}
+.hero-heading-dots svg{width:15vw;max-width:100px;min-width:52px}
+.hero-heading-text{display:inline-block;opacity:1;transition:opacity .35s ease}
+.hero-v2-heading.dots-active .hero-heading-dots{opacity:1}
+.hero-v2-heading.dots-active .hero-heading-dots svg{animation:heroDotsSpin 1.1s linear}
+.hero-v2-heading.dots-active .hero-heading-text{opacity:0}
+@keyframes heroDotsSpin{from{transform:rotate(0)}to{transform:rotate(360deg)}}
+@media(prefers-reduced-motion:reduce){.hero-heading-dots{display:none!important}.hero-heading-text{opacity:1!important}}
 .hero-v2-sub{max-width:560px;margin:0 auto 30px;color:var(--ink-muted);font-size:17px;line-height:1.6}
 .hero-v2-ctas{display:flex;align-items:center;justify-content:center;gap:12px;flex-wrap:wrap;margin-bottom:26px}
 .hero-primary-cta{padding:15px 24px!important;font-size:15px!important}
