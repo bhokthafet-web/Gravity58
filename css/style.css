@@ -1452,29 +1452,27 @@ body{background:
 .hero-v2{max-width:900px;margin:0 auto;text-align:center;padding-bottom:64px}
 .hero-badge{display:inline-flex;padding:7px 16px;border-radius:999px;background:rgba(29,78,216,.08);
   border:1px solid rgba(29,78,216,.22);color:var(--accent);font-size:12px;font-weight:700;letter-spacing:.02em;margin-bottom:22px}
-.hero-v2-heading{position:relative;font-family:Manrope,sans-serif;font-weight:800;letter-spacing:-.03em;line-height:1.04;
+.hero-v2-heading{font-family:Manrope,sans-serif;font-weight:800;letter-spacing:-.03em;line-height:1.04;
   font-size:clamp(38px,6vw,72px);color:var(--ink);margin:0 0 20px}
-.hero-heading-text{display:inline-block;opacity:1;transition:opacity .3s ease}
-.hero-flow-dots{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;gap:0;opacity:0;pointer-events:none;transition:opacity .25s ease}
-.flow-dot-node{display:flex;flex-direction:column;align-items:center;gap:4px;opacity:0;transition:opacity .45s ease,transform .45s cubic-bezier(.34,1.56,.64,1)}
-.flow-dot-ring{display:flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:50%;border:1.3px dashed color-mix(in srgb,var(--orange) 55%,var(--hero-border))}
-.flow-dot-node svg{width:11px;height:11px}
-.flow-dot-node small{font-size:9px;font-weight:700;color:var(--ink-muted);white-space:nowrap;opacity:0;transition:opacity .35s ease}
-.flow-dot-logo{opacity:0}
-.flow-dot-logo svg{width:10px;height:10px}
-#flowDotStore{transform:translateX(18px)}
-#flowDotCart{transform:translateX(-18px)}
-.flow-dot-line{width:0;height:0;border-top:1.3px dashed color-mix(in srgb,var(--orange) 45%,var(--hero-border));transition:width .35s ease}
-.hero-v2-heading.dots-active .hero-heading-text{opacity:0}
-.hero-v2-heading.dots-active .hero-flow-dots{opacity:1;pointer-events:auto}
-.hero-v2-heading.dots-active .flow-dot-logo{opacity:1;transition-delay:0s}
-.hero-v2-heading.dots-active .flow-dot-logo svg{animation:heroDotsSpin 1s linear}
-.hero-v2-heading.dots-active #flowDotStore{opacity:1;transform:translateX(0);transition-delay:1s}
-.hero-v2-heading.dots-active #flowDotCart{opacity:1;transform:translateX(0);transition-delay:1s}
-.hero-v2-heading.dots-active #flowLineOne,.hero-v2-heading.dots-active #flowLineTwo{width:11px;transition-delay:1.3s}
-.hero-v2-heading.dots-active #flowDotStore small,.hero-v2-heading.dots-active #flowDotCart small{opacity:1;transition-delay:1.85s}
+.hero-flow-dots{display:flex;align-items:center;justify-content:center;gap:0;width:min(85%,1200px);margin:clamp(40px,6vw,70px) auto 22px}
+.flow-dot-node{display:flex;flex-direction:column;align-items:center;gap:12px;opacity:0;transition:opacity .45s ease,transform .45s cubic-bezier(.34,1.56,.64,1)}
+.flow-dot-ring{display:flex;align-items:center;justify-content:center;width:clamp(76px,9vw,135px);height:clamp(76px,9vw,135px);border-radius:50%;border:1.6px dashed color-mix(in srgb,var(--orange) 55%,var(--hero-border));flex-shrink:0}
+.flow-dot-node svg{width:clamp(30px,3.4vw,52px);height:clamp(30px,3.4vw,52px)}
+.flow-dot-node small{font-size:clamp(16px,1.6vw,30px);font-weight:600;color:var(--ink-muted);white-space:nowrap;opacity:0;transition:opacity .35s ease}
+.flow-dot-logo svg{width:clamp(28px,3.2vw,48px);height:clamp(28px,3.2vw,48px)}
+#flowDotStore{transform:translateX(clamp(70px,9vw,140px))}
+#flowDotCart{transform:translateX(clamp(-140px,-9vw,-70px))}
+.flow-dot-line{width:0;height:0;border-top:1.5px dashed color-mix(in srgb,var(--orange) 45%,var(--hero-border));transition:width .4s ease;flex-shrink:1}
+.hero-flow-dots .flow-dot-logo{opacity:1}
+.hero-flow-dots.dots-active .flow-dot-logo svg{animation:heroDotsSpin 1s linear}
+.hero-flow-dots.dots-active #flowDotStore{opacity:1;transform:translateX(0);transition-delay:1s}
+.hero-flow-dots.dots-active #flowDotCart{opacity:1;transform:translateX(0);transition-delay:1s}
+.hero-flow-dots.dots-active #flowLineOne{width:clamp(50px,7vw,130px);transition-delay:1.5s}
+.hero-flow-dots.dots-active #flowLineTwo{width:clamp(50px,7vw,130px);transition-delay:1.9s}
+.hero-flow-dots.dots-active #flowDotStore small,.hero-flow-dots.dots-active #flowDotCart small{opacity:1;transition-delay:2.3s}
 @keyframes heroDotsSpin{from{transform:rotate(0)}to{transform:rotate(360deg)}}
-@media(prefers-reduced-motion:reduce){.hero-flow-dots{display:none!important}.hero-heading-text{opacity:1!important}}
+@media(max-width:760px){.hero-flow-dots{width:94vw}}
+@media(prefers-reduced-motion:reduce){.hero-flow-dots{display:none!important}}
 .hero-v2-sub{max-width:560px;margin:0 auto 30px;color:var(--ink-muted);font-size:17px;line-height:1.6}
 .hero-v2-ctas{display:flex;align-items:center;justify-content:center;gap:12px;flex-wrap:wrap;margin-bottom:26px}
 .hero-primary-cta{padding:15px 24px!important;font-size:15px!important}
