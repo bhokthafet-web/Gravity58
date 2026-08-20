@@ -2376,6 +2376,10 @@ function closePublishSuccess() {
 }
 function viewPublishedPost() {
   closeModal("publishSuccessModal");
+  if (lastPublishedPostType === "business") {
+    showFloatingBusiness(lastPublishedPostId);
+    return;
+  }
   selectMode(lastPublishedPostType);
   setTimeout(() => {
     const card = document.querySelector(
@@ -2397,7 +2401,7 @@ function openCustomerPostCreator() {
   updateFormType();
 }
 function openBusinessCardCreator() {
-  selectMode("business");
+  activeMode = "business";
   openCreateModal();
   const type = document.getElementById("postType");
   if (type) type.value = "business";
@@ -3098,6 +3102,20 @@ function openMyPostsPage() {
     });
   });
   modal.classList.add("show");
+}
+function openMyBusinessCard() {
+  const user = window.G58SiteUser;
+  if (!user) return window.G58RequestAuth?.("business");
+  const mine = businesses.filter(
+    (x) =>
+      x.userId === user.id ||
+      normalize(x.accountEmail) === normalize(user.email),
+  );
+  if (mine.length) {
+    showFloatingBusiness(mine[0].id);
+  } else {
+    openBusinessCardCreator();
+  }
 }
 function adminLogin() {
   window.location.href = "/admin/";
