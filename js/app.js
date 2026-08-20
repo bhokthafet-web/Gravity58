@@ -2537,12 +2537,12 @@ async function loadPremiumShowcase() {
 document.addEventListener("DOMContentLoaded", loadPremiumShowcase);
 
 function scheduleHeroFlowDots() {
-  const flow = document.getElementById("heroFlowDots");
-  if (!flow || window.matchMedia("(prefers-reduced-motion: reduce)").matches)
+  const heading = document.getElementById("heroHeading");
+  if (!heading || window.matchMedia("(prefers-reduced-motion: reduce)").matches)
     return;
   const run = () => {
-    flow.classList.add("bump-active");
-    setTimeout(() => flow.classList.remove("bump-active"), 2600);
+    heading.classList.add("dots-active");
+    setTimeout(() => heading.classList.remove("dots-active"), 3200);
     setTimeout(run, 6000 + Math.random() * 4000);
   };
   setTimeout(run, 1500);
