@@ -224,3 +224,8 @@ body{color:var(--text);background:radial-gradient(circle at 10% 10%,#ffe8bd 0,tr
 .g58-site-footer-badge{display:flex;justify-content:center;margin-bottom:14px}
 .g58-site-footer-note{color:#a99a86;font-size:12px;margin:0}
 @media(max-width:980px){.g58-site-footer{margin-bottom:78px}}
+.g58-portal-icon-nav{display:flex;gap:8px}
+.g58-portal-icon-nav a{display:inline-flex;align-items:center;gap:5px;padding:6px 10px;border-radius:999px;border:1px solid var(--line);background:var(--panel2);color:var(--muted);text-decoration:none;font-size:11.5px;font-weight:700;white-space:nowrap}
+.g58-portal-icon-nav a:hover{color:var(--text);border-color:var(--gold)}
+.g58-portal-icon-nav svg{width:14px;height:14px;flex-shrink:0}
+@media(max-width:620px){.g58-portal-icon-nav span{display:none}}

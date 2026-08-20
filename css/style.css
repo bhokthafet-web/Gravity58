@@ -1507,8 +1507,6 @@ body{background:
 .product-workflow-copy h3{margin:0 0 8px;color:var(--ink);font-family:Manrope,sans-serif;font-size:21px;line-height:1.25}
 .product-workflow-copy p{margin:0;color:var(--ink-muted);font-size:13.5px;line-height:1.55}
 .product-workflow-cta{display:inline-flex;align-items:center;gap:6px;margin-top:14px;color:var(--workflow-accent);font-size:13px;font-weight:800;text-decoration:none}
-.product-workflow-secondary-link{display:block;margin-top:6px;color:var(--ink-muted);font-size:12px;font-weight:600;text-decoration:none}
-.product-workflow-secondary-link:hover{color:var(--workflow-accent);text-decoration:underline}
 .product-workflow-cta:hover span{transform:translateX(3px)}
 .product-workflow-cta span{transition:transform .18s ease}
 .product-workflow-demo{position:relative;height:276px;margin:8px 16px 16px;border-radius:18px;background:linear-gradient(145deg,color-mix(in srgb,var(--workflow-accent) 7%,var(--hero-bg)),var(--hero-bg));border:1px solid color-mix(in srgb,var(--workflow-accent) 18%,var(--hero-border))}
