@@ -451,15 +451,13 @@
       <a class="nav-icon-btn" href="/digital-menu/" aria-label="Digital Menu" title="Digital Menu">
         <span class="nav-symbol">🍽</span><span class="nav-tooltip">Digital Menu</span>
       </a>
-      <a class="nav-icon-btn pos-nav-btn" href="/pos/" aria-label="Secure Billing POS" title="Secure Billing">
-        <span class="nav-symbol">₹</span><span class="nav-tooltip">Secure Billing</span>
-      </a>
+      <button class="nav-icon-btn pos-nav-btn" type="button" id="scrollToAccountBtn" aria-label="Account & Plan" title="Account & Plan">
+        <span class="nav-symbol">⚙</span><span class="nav-tooltip">Account & Plan</span>
+      </button>
     </div>
     <button class="pos-how-link" id="openPosGuideBtn" type="button">How It Works</button>
 
     </header>
-
-    <section class="premium-shell" id="premiumShell" style="display:none" aria-live="polite"></section>
 
     <section class="screen active" id="setupScreen">
       <div class="card setup-card">
@@ -710,6 +708,8 @@
         </div>
       </section>
     </section>
+
+    <section class="premium-shell" id="premiumShell" style="display:none" aria-live="polite"></section>
   </div>
 
   <div class="modal" id="qrModal" role="dialog" aria-modal="true" aria-labelledby="qrModalTitle">
@@ -1692,6 +1692,9 @@
       if(localStorage.getItem("g58HidePosGuide")==="1"){
         posGuideModal.classList.remove("show");
       }
+      $("scrollToAccountBtn")?.addEventListener("click",()=>{
+        $("premiumShell")?.scrollIntoView({behavior:"smooth",block:"start"});
+      });
 
       loadSavedSettings();
       $("reportDate").value=localDateKey(new Date());
