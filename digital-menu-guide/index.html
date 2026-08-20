@@ -45,41 +45,116 @@ a{color:var(--accent)}.brand{display:inline-flex;align-items:center;gap:9px;font
 .role-steps li:last-child{padding-bottom:0}
 .role-steps li:before{content:counter(step);position:absolute;left:0;top:0;width:22px;height:22px;border-radius:50%;background:color-mix(in srgb,var(--accent) 12%,transparent);color:var(--accent);font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center}
 
-/* Demo (reused from landing page product workflow component) */
-.product-workflow-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px}
-.product-workflow-card{--workflow-accent:#d65b18;overflow:hidden;border:1px solid var(--hero-border);border-radius:24px;background:var(--hero-surface);box-shadow:0 18px 46px rgba(18,24,31,.08)}
-.product-workflow-copy{padding:25px 26px 12px}
-.product-workflow-product{display:inline-flex;align-items:center;gap:8px;margin-bottom:9px;padding:5px 10px;border-radius:999px;background:color-mix(in srgb,var(--workflow-accent) 11%,transparent);color:var(--workflow-accent);font-size:10px;font-weight:900;letter-spacing:.09em;text-transform:uppercase}
-.product-workflow-copy h3{margin:0 0 8px;color:var(--ink);font-family:Manrope,sans-serif;font-size:21px;line-height:1.25}
-.product-workflow-copy p{margin:0;color:var(--ink-muted);font-size:13.5px;line-height:1.55}
-.product-workflow-cta{display:inline-flex;align-items:center;gap:6px;margin-top:14px;color:var(--workflow-accent);font-size:13px;font-weight:800;text-decoration:none}
-.product-workflow-demo{position:relative;height:276px;margin:8px 16px 16px;border-radius:18px;background:linear-gradient(145deg,color-mix(in srgb,var(--workflow-accent) 7%,var(--hero-bg)),var(--hero-bg));border:1px solid color-mix(in srgb,var(--workflow-accent) 18%,var(--hero-border))}
-.product-workflow-line{position:absolute;height:0;border-top:1.5px dashed color-mix(in srgb,var(--workflow-accent) 38%,transparent);transform-origin:left center;z-index:0}
-.product-workflow-line.line-one{width:145px;left:124px;top:89px;transform:rotate(20deg)}
-.product-workflow-line.line-two{width:128px;left:275px;top:149px;transform:rotate(16deg)}
-.product-flow-node{position:absolute;z-index:1;width:174px;padding:14px 15px;border:1px solid var(--hero-border);border-radius:14px;background:var(--hero-surface);box-shadow:0 14px 30px rgba(18,24,31,.1);animation:heroFloat 5s ease-in-out infinite}
-.product-flow-node span{display:block;margin-bottom:5px;color:var(--workflow-accent);font-size:9px;font-weight:900;letter-spacing:.07em;text-transform:uppercase}
-.product-flow-node strong{display:block;color:var(--ink);font-size:13.5px}
-.product-flow-node small{display:block;margin-top:4px;color:var(--ink-muted);font-size:10px;line-height:1.35}
-.product-flow-node.node-one{left:18px;top:24px}
-.product-flow-node.node-two{left:50%;top:106px;transform:translateX(-50%);animation-delay:.6s}
-.product-flow-node.node-three{right:18px;bottom:18px;text-align:center;border-color:rgba(34,197,94,.36);animation-delay:1.2s}
-.product-flow-node.node-three i{display:block;width:9px;height:9px;margin:0 auto 7px;border-radius:50%;background:#22c55e;box-shadow:0 0 0 5px rgba(34,197,94,.16)}
-.product-flow-badge{position:absolute;z-index:2;padding:6px 10px;border:1px solid var(--hero-border);border-radius:999px;background:var(--hero-surface);box-shadow:0 8px 20px rgba(18,24,31,.08);color:var(--ink-muted);font-size:9.5px;font-weight:800;white-space:nowrap}
-.product-flow-badge.badge-one{right:18px;top:26px}
-.product-flow-badge.badge-two{left:22px;bottom:24px}
-@keyframes heroFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-9px)}}
-@media(prefers-reduced-motion:reduce){.product-flow-node{animation:none}}
-
 @media(max-width:700px){.role-grid{grid-template-columns:1fr}}
-@media(max-width:980px){.product-workflow-grid{grid-template-columns:1fr}.product-workflow-card{max-width:680px;width:100%;margin:0 auto}}
-@media(max-width:540px){
-  .product-workflow-copy{padding:21px 19px 10px}
-  .product-workflow-demo{height:auto;display:grid;gap:10px;padding:16px}
-  .product-workflow-line,.product-flow-badge{display:none}
-  .product-flow-node,.product-flow-node.node-one,.product-flow-node.node-two,.product-flow-node.node-three{position:relative;inset:auto;width:auto;transform:none;animation:none;text-align:left}
-  .product-flow-node.node-three{display:grid;grid-template-columns:auto 1fr;column-gap:9px;align-items:center}
-  .product-flow-node.node-three i{grid-row:1/3;margin:0}
+
+/* Interactive explainer demo */
+.demo-section{--demo-accent:#0f8f7c;margin-top:32px}
+.demo-header{max-width:640px;margin:0 auto 22px;text-align:center}
+.demo-header .chip{display:block}
+.demo-header h2{margin:6px 0 10px;font-family:Manrope,sans-serif;font-size:clamp(24px,3.4vw,34px);letter-spacing:-.02em;color:var(--ink)}
+.demo-header p{color:var(--ink-muted);font-size:15px;line-height:1.6;margin:0 0 14px}
+.demo-cta{display:inline-flex;align-items:center;gap:6px;color:var(--demo-accent);font-weight:800;text-decoration:none;font-size:14px}
+.demo-cta:hover{text-decoration:underline}
+
+.demo-player{max-width:900px;margin:0 auto;border:1px solid color-mix(in srgb,var(--demo-accent) 22%,var(--border));border-radius:26px;background:var(--surface);box-shadow:0 24px 60px rgba(18,24,31,.10);overflow:hidden}
+.demo-stage{position:relative;width:100%;aspect-ratio:16/9;overflow:hidden;background:linear-gradient(150deg,color-mix(in srgb,var(--demo-accent) 8%,var(--surface)),var(--surface))}
+
+.demo-preview{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;z-index:20;background:linear-gradient(150deg,color-mix(in srgb,var(--demo-accent) 9%,var(--surface)),var(--surface));transition:opacity .35s ease,visibility .35s}
+.demo-play-btn{width:76px;height:76px;border-radius:50%;border:0;background:var(--demo-accent);display:grid;place-items:center;cursor:pointer;box-shadow:0 14px 34px rgba(15,143,124,.35);transition:transform .2s ease,box-shadow .2s ease}
+.demo-play-btn:hover{transform:scale(1.06);box-shadow:0 18px 40px rgba(15,143,124,.45)}
+.demo-play-btn svg{width:26px;height:26px;fill:#fff;margin-left:4px}
+.demo-preview-label{font-size:12.5px;font-weight:700;color:var(--ink-muted)}
+.demo-player.playing .demo-preview{opacity:0;visibility:hidden;pointer-events:none}
+
+.demo-scene{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:26px;opacity:0;transform:translateY(10px);transition:opacity .4s ease,transform .4s ease;pointer-events:none}
+.demo-scene.active{opacity:1;transform:translateY(0);pointer-events:auto}
+
+.demo-caption{position:absolute;left:0;right:0;bottom:0;padding:11px 18px;background:linear-gradient(0deg,rgba(18,24,31,.6),transparent);color:#fff;font-size:12.5px;font-weight:700;text-align:center;opacity:0;transition:opacity .3s ease;z-index:10}
+.demo-player.playing .demo-caption.show{opacity:1}
+
+/* mockups */
+.mockup-browser{width:min(100%,440px);border-radius:16px;border:1px solid var(--border);background:var(--surface);box-shadow:0 16px 40px rgba(18,24,31,.14)}
+.mockup-browser-bar{display:flex;gap:5px;padding:9px 12px;background:#F3F1EA;border-bottom:1px solid var(--border);border-radius:16px 16px 0 0}
+.mockup-browser-bar span{width:8px;height:8px;border-radius:50%;background:#D8D3C6}
+.mockup-browser-body{padding:16px}
+.mockup-phone{width:216px;border-radius:26px;border:6px solid #1b1b1b;background:var(--surface);box-shadow:0 20px 44px rgba(18,24,31,.2)}
+.mockup-phone-notch{height:16px;display:flex;align-items:center;justify-content:center}
+.mockup-phone-notch span{width:44px;height:5px;border-radius:4px;background:#1b1b1b}
+.mockup-phone-body{padding:13px;min-height:170px}
+.mockup-phone-body.center{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;min-height:186px}
+.mockup-eyebrow{font-size:10px;font-weight:900;letter-spacing:.06em;text-transform:uppercase;color:var(--demo-accent);margin-bottom:9px}
+.mockup-item-row{display:flex;align-items:center;gap:9px;padding:7px 0;border-bottom:1px solid var(--border);font-size:12.5px;font-weight:600;color:var(--ink)}
+.mockup-item-row:last-of-type{border-bottom:0}
+.mockup-item-row .emoji{font-size:15px}
+.mockup-item-row.small{font-size:11px;padding:5px 0}
+.mockup-toggle-row{display:flex;align-items:center;justify-content:space-between;margin-top:12px;font-size:12.5px;font-weight:700;color:var(--ink)}
+.mockup-switch{width:34px;height:19px;border-radius:999px;background:var(--border);position:relative;transition:background .25s ease}
+.mockup-switch i{position:absolute;top:2px;left:2px;width:15px;height:15px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.25);transition:left .25s ease}
+.mockup-switch.on{background:var(--demo-accent)}
+.mockup-switch.on i{left:17px}
+.mockup-note{margin:8px 0 0;font-size:11px;color:var(--ink-muted)}
+.mockup-btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;margin-top:12px;padding:9px 16px;border-radius:11px;border:0;background:var(--demo-accent);color:#fff;font-size:12px;font-weight:800;cursor:default;text-decoration:none;transition:transform .15s ease,background .2s ease,color .2s ease}
+.mockup-btn.ghost{background:transparent;color:var(--ink-muted);border:1px solid var(--border)}
+.mockup-btn.wide{width:100%}
+.mockup-btn.tapped{transform:scale(.94)}
+.mockup-actions{display:flex;gap:8px;margin-top:12px}
+.mockup-actions .mockup-btn{margin-top:0;flex:1}
+.mockup-confirm{display:flex;align-items:center;gap:10px;transition:opacity .3s ease}
+.mockup-confirm .ico-lg{width:30px;height:30px;flex-shrink:0;padding:6px;border-radius:50%;background:color-mix(in srgb,var(--demo-accent) 14%,transparent);color:var(--demo-accent);box-sizing:border-box}
+.mockup-confirm strong{font-size:13px;color:var(--ink)}
+.mockup-timeline{margin-top:16px;text-align:center}
+.mockup-timeline-track{display:block;position:relative;height:3px;border-radius:999px;background:var(--border);margin-bottom:8px}
+.mockup-timeline-track i{position:absolute;top:50%;left:0;width:9px;height:9px;border-radius:50%;background:var(--demo-accent);transform:translate(-50%,-50%);box-shadow:0 0 0 4px color-mix(in srgb,var(--demo-accent) 18%,transparent)}
+.mockup-timeline small{font-size:10.5px;font-weight:700;color:var(--ink-muted)}
+.mockup-notification{display:flex;gap:10px;align-items:flex-start;padding:11px;border-radius:13px;border:1px solid var(--border);background:color-mix(in srgb,var(--demo-accent) 6%,var(--surface));opacity:0;transform:translateY(-14px);transition:opacity .35s ease,transform .35s ease}
+.mockup-notification.show{opacity:1;transform:translateY(0)}
+.mockup-notification .ico{width:16px;height:16px;flex-shrink:0;color:var(--demo-accent);margin-top:2px}
+.mockup-notification strong{display:block;font-size:12px;color:var(--ink)}
+.mockup-notification small{display:block;margin-top:2px;font-size:10.5px;color:var(--ink-muted);line-height:1.4}
+.notif-body{display:flex;flex-direction:column;justify-content:center;min-height:170px}
+.mockup-check-row{display:flex;align-items:center;gap:8px;padding:6px 0;font-size:12px;font-weight:600;color:var(--ink);position:relative}
+.mockup-check-row.select-all{font-weight:800;border-bottom:1px solid var(--border);padding-bottom:9px;margin-bottom:6px}
+.mockup-check-row input{width:15px;height:15px;accent-color:var(--demo-accent);flex-shrink:0}
+.mockup-check-row span:first-of-type{flex:1}
+.mockup-qty{padding:2px 8px;border-radius:999px;background:var(--bg);border:1px solid var(--border);font-size:10.5px;font-weight:800}
+.mockup-flow{width:min(100%,420px);text-align:center}
+.mockup-flow-step{display:flex;align-items:center;gap:10px;padding:6px 0;text-align:left;opacity:.4;transition:opacity .3s ease}
+.mockup-flow-step i{width:18px;height:18px;flex-shrink:0;border-radius:50%;border:2px solid var(--border);transition:.3s ease}
+.mockup-flow-step span{font-size:12px;font-weight:700;color:var(--ink)}
+.mockup-flow-step.done{opacity:1}
+.mockup-flow-step.done i{background:var(--demo-accent);border-color:var(--demo-accent)}
+.mockup-flow-final{margin-top:14px;padding-top:14px;border-top:1px solid var(--border)}
+.mockup-flow-final strong{display:block;font-size:15px;color:var(--ink)}
+.mockup-flow-final p{margin:5px 0 12px;font-size:11px;color:var(--ink-muted)}
+.mockup-cook{font-size:34px;line-height:1}
+.demo-scene[data-scene="7"].active .mockup-cook{animation:cookPulse 1s ease-in-out infinite}
+@keyframes cookPulse{0%,100%{transform:scale(1) rotate(0deg)}50%{transform:scale(1.15) rotate(-6deg)}}
+
+/* controls */
+.demo-controls{display:flex;align-items:center;gap:10px;padding:12px 16px;border-top:1px solid var(--border)}
+.demo-controls button{border:0;background:none;color:var(--ink-muted);cursor:pointer;display:grid;place-items:center;width:32px;height:32px;border-radius:8px;flex-shrink:0}
+.demo-controls button svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.demo-controls button:hover{color:var(--demo-accent);background:color-mix(in srgb,var(--demo-accent) 10%,transparent)}
+#demoPlayPause svg{fill:currentColor;stroke:none}
+.demo-progress-track{flex:1;height:5px;border-radius:999px;background:var(--border);cursor:pointer;position:relative}
+.demo-progress-fill{height:100%;width:0;border-radius:999px;background:var(--demo-accent)}
+
+/* timeline */
+.demo-timeline{display:flex;justify-content:center;gap:6px;list-style:none;margin:18px auto 0;padding:0;max-width:760px;flex-wrap:wrap}
+.demo-timeline li{padding:7px 12px;border-radius:999px;border:1px solid var(--border);font-size:11px;font-weight:800;color:var(--ink-muted);cursor:pointer;transition:.2s ease}
+.demo-timeline li:hover{border-color:var(--demo-accent);color:var(--demo-accent)}
+.demo-timeline li.active{background:var(--demo-accent);color:#fff;border-color:var(--demo-accent)}
+
+@media(max-width:640px){
+  .demo-player{border-radius:20px}
+  .mockup-browser{width:100%}
+  .demo-scene{padding:16px}
+  .demo-controls{padding:10px 12px;gap:7px}
+  .demo-timeline{gap:5px}
+  .demo-timeline li{padding:6px 9px;font-size:10px}
+}
+@media(prefers-reduced-motion:reduce){
+  .demo-scene,.mockup-switch,.mockup-switch i,.mockup-btn,.mockup-notification,.mockup-flow-step,.mockup-timeline-track i,.demo-play-btn,.mockup-cook{transition:none!important;animation:none!important}
 }
 </style>
 <script type="application/ld+json">{"@context": "https://schema.org", "@type": "HowTo", "name": "How G58 Digital Menu Works", "url": "https://g58.in/digital-menu-guide/"}</script>
@@ -121,26 +196,186 @@ a{color:var(--accent)}.brand{display:inline-flex;align-items:center;gap:9px;font
 </div>
 </section>
 
-<section class="product-workflow-section" style="margin-top:32px" aria-label="Digital Menu demo">
-  <div class="product-workflow-grid" style="grid-template-columns:1fr">
-    <article class="product-workflow-card">
-      <div class="product-workflow-copy">
-        <span class="product-workflow-product">Live Demo</span>
-        <h3>See the scan-to-kitchen flow</h3>
-        <p>This is exactly what a customer sees: scan the table QR, order, and track a live kitchen token.</p>
-        <a href="/digital-menu/" class="product-workflow-cta">Create your menu <span aria-hidden="true">→</span></a>
-      </div>
-      <div class="product-workflow-demo" aria-label="Digital Menu process: table QR, customer order and kitchen acceptance">
-        <span class="product-workflow-line line-one" aria-hidden="true"></span>
-        <span class="product-workflow-line line-two" aria-hidden="true"></span>
-        <div class="product-flow-node node-one"><span>Table QR</span><strong>Table 08</strong><small>Scan to open the live menu</small></div>
-        <div class="product-flow-node node-two"><span>Customer Order</span><strong>2 items · ₹398</strong><small>Sent directly to the kitchen</small></div>
-        <div class="product-flow-node node-three success"><i aria-hidden="true"></i><strong>Kitchen Accepted</strong><small>Token 024 · preparing</small></div>
-        <span class="product-flow-badge badge-one">Live order</span>
-        <span class="product-flow-badge badge-two">Ready in 18 min</span>
-      </div>
-    </article>
+<section class="demo-section" aria-label="Digital Menu interactive demo">
+  <div class="demo-header">
+    <span class="chip">Live Demo</span>
+    <h2>See How G58 Digital Menu Works</h2>
+    <p>Watch how a QR menu takes a customer from browsing to a ready order in just a few taps.</p>
+    <a href="/digital-menu/" class="demo-cta">Create your menu <span aria-hidden="true">→</span></a>
   </div>
+
+  <div class="demo-player" id="demoPlayer">
+    <div class="demo-stage" id="demoStage">
+      <div class="demo-preview" id="demoPreview">
+        <button class="demo-play-btn" id="demoPlayBtn" type="button" aria-label="Play demo">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 4.5v15l14-7.5-14-7.5z"/></svg>
+        </button>
+        <span class="demo-preview-label">Watch 43 sec demo</span>
+      </div>
+
+      <div class="demo-scene" data-scene="1">
+        <div class="mockup-browser">
+          <div class="mockup-browser-bar"><span></span><span></span><span></span></div>
+          <div class="mockup-browser-body">
+            <div class="mockup-eyebrow">Starters</div>
+            <div class="mockup-item-row"><span class="emoji">🥗</span><span>Veg Salad — ₹149</span></div>
+            <div class="mockup-eyebrow" style="margin-top:10px">Main Course</div>
+            <div class="mockup-item-row"><span class="emoji">🍛</span><span>Chicken Biryani — ₹249</span></div>
+            <div class="mockup-item-row"><span class="emoji">🍛</span><span>Paneer Biryani — ₹219</span></div>
+            <div class="mockup-eyebrow" style="margin-top:10px">Beverages</div>
+            <div class="mockup-item-row"><span class="emoji">🥤</span><span>Coke — ₹60</span></div>
+            <div class="mockup-actions">
+              <button class="mockup-btn ghost" type="button">+ Add Item</button>
+              <button class="mockup-btn" id="s1Save" type="button">Save Menu</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="demo-scene" data-scene="2">
+        <div class="mockup-browser">
+          <div class="mockup-browser-bar"><span></span><span></span><span></span></div>
+          <div class="mockup-browser-body" style="text-align:center">
+            <div class="mockup-eyebrow" style="text-align:left">Table Access</div>
+            <div style="width:88px;height:88px;margin:6px auto 12px;border-radius:10px;background:repeating-conic-gradient(var(--ink) 0% 25%,var(--surface) 0% 50%) 0 0/16px 16px;border:1px solid var(--border)" aria-hidden="true"></div>
+            <div class="mockup-actions">
+              <button class="mockup-btn" id="s2ChipQr" type="button">QR Code</button>
+              <button class="mockup-btn ghost" id="s2ChipNfc" type="button">NFC Tag</button>
+              <button class="mockup-btn ghost" id="s2ChipLink" type="button">Link</button>
+            </div>
+            <p class="mockup-note">Ready for Table 08</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="demo-scene" data-scene="3">
+        <div class="mockup-phone">
+          <div class="mockup-phone-notch"><span></span></div>
+          <div class="mockup-phone-body center">
+            <div class="mockup-eyebrow" style="margin-bottom:0">Table 08</div>
+            <p class="mockup-note" style="margin:0">Enter your name to start</p>
+            <button class="mockup-btn wide" id="s3Btn" type="button">Continue</button>
+            <div class="mockup-confirm" id="s3Confirm" style="opacity:0">
+              <svg class="ico-lg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 13l4 4L19 7"/></svg>
+              <strong>Table 08 confirmed</strong>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="demo-scene" data-scene="4">
+        <div class="mockup-phone">
+          <div class="mockup-phone-notch"><span></span></div>
+          <div class="mockup-phone-body">
+            <div class="mockup-eyebrow">Main Course</div>
+            <div class="mockup-item-row small"><span class="emoji">🍛</span><span>Chicken Biryani — ₹249</span><span class="mockup-qty" id="s4Qty1">+</span></div>
+            <div class="mockup-item-row small"><span class="emoji">🥗</span><span>Veg Salad — ₹149</span><span class="mockup-qty" id="s4Qty2">+</span></div>
+            <div class="mockup-item-row small"><span class="emoji">🥤</span><span>Coke — ₹60</span><span class="mockup-qty" id="s4Qty3">+</span></div>
+            <button class="mockup-btn wide" id="s4CartBtn" type="button">View Cart (0)</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="demo-scene" data-scene="5">
+        <div class="mockup-phone">
+          <div class="mockup-phone-notch"><span></span></div>
+          <div class="mockup-phone-body">
+            <div class="mockup-eyebrow">Your Order — Table 08</div>
+            <div class="mockup-check-row"><input type="checkbox" checked disabled><span>Chicken Biryani</span><span class="mockup-qty">1</span></div>
+            <div class="mockup-check-row"><input type="checkbox" checked disabled><span>Veg Salad</span><span class="mockup-qty">1</span></div>
+            <div class="mockup-check-row"><input type="checkbox" checked disabled><span>Coke</span><span class="mockup-qty">1</span></div>
+            <button class="mockup-btn wide" id="s5Btn" type="button">Send Order — ₹458</button>
+            <div class="mockup-confirm" id="s5Confirm" style="opacity:0">
+              <svg class="ico-lg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 13l4 4L19 7"/></svg>
+              <strong>Order sent to the kitchen</strong>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="demo-scene" data-scene="6">
+        <div class="mockup-browser">
+          <div class="mockup-browser-bar"><span></span><span></span><span></span></div>
+          <div class="mockup-browser-body">
+            <div class="mockup-notification" id="s6Notif">
+              <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22a2 2 0 0 0 2-2h-4a2 2 0 0 0 2 2z"/><path d="M18 16v-5a6 6 0 1 0-12 0v5l-2 2v1h16v-1l-2-2z"/></svg>
+              <div><strong>New Order — Table 08</strong><small>3 items · ₹458</small></div>
+            </div>
+            <div class="mockup-item-row small"><span>Chicken Biryani × 1</span></div>
+            <div class="mockup-item-row small"><span>Veg Salad × 1</span></div>
+            <div class="mockup-item-row small"><span>Coke × 1</span></div>
+            <div class="mockup-actions">
+              <button class="mockup-btn" id="s6Accept" type="button">Accept Order</button>
+              <button class="mockup-btn ghost" type="button">View Order</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="demo-scene" data-scene="7">
+        <div class="mockup-phone">
+          <div class="mockup-phone-notch"><span></span></div>
+          <div class="mockup-phone-body center">
+            <div class="mockup-eyebrow" style="margin-bottom:0">Table 08 · Token 024</div>
+            <div class="mockup-cook" aria-hidden="true">🍳</div>
+            <strong style="font-size:13px;color:var(--ink)">Preparing your order…</strong>
+            <div class="mockup-timeline">
+              <span class="mockup-timeline-track"><i id="s7Dot"></i></span>
+              <small>Kitchen is cooking</small>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="demo-scene" data-scene="8">
+        <div class="mockup-phone">
+          <div class="mockup-phone-notch"><span></span></div>
+          <div class="mockup-phone-body notif-body">
+            <div class="mockup-notification" id="s8Notif">
+              <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22a2 2 0 0 0 2-2h-4a2 2 0 0 0 2 2z"/><path d="M18 16v-5a6 6 0 1 0-12 0v5l-2 2v1h16v-1l-2-2z"/></svg>
+              <div><strong>Order Ready!</strong><small>Token 024 · Table 08</small></div>
+            </div>
+            <p class="mockup-note" style="text-align:center;margin-top:10px">Please collect from the counter</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="demo-scene" data-scene="9">
+        <div class="mockup-flow" id="s9Flow">
+          <div class="mockup-flow-step"><i></i><span>Create Menu</span></div>
+          <div class="mockup-flow-step"><i></i><span>Share QR / NFC / Link</span></div>
+          <div class="mockup-flow-step"><i></i><span>Customer Orders</span></div>
+          <div class="mockup-flow-step"><i></i><span>Restaurant Accepts</span></div>
+          <div class="mockup-flow-step"><i></i><span>Food Ready</span></div>
+          <div class="mockup-flow-final">
+            <strong>Your Menu. Your Orders. One Simple Flow.</strong>
+            <p>Digital Menu by G58</p>
+            <a href="/digital-menu/" class="mockup-btn wide">Create Your Digital Menu</a>
+          </div>
+        </div>
+      </div>
+
+      <div class="demo-caption" id="demoCaption"></div>
+    </div>
+
+    <div class="demo-controls" id="demoControls">
+      <button id="demoPlayPause" type="button" aria-label="Play"><svg id="demoPlayPauseIcon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 4.5v15l14-7.5-14-7.5z"/></svg></button>
+      <div class="demo-progress-track" id="demoProgressTrack" role="slider" aria-label="Demo progress" tabindex="0"><div class="demo-progress-fill" id="demoProgressFill"></div></div>
+      <button id="demoReplay" type="button" aria-label="Replay"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4v6h6"/><path d="M20 20v-6h-6"/><path d="M4.5 15a8 8 0 0 0 14.9-3"/><path d="M19.5 9a8 8 0 0 0-14.9 3"/></svg></button>
+      <button id="demoMute" type="button" aria-label="Sound" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9v6h4l5 5V4L8 9H4z"/></svg></button>
+      <button id="demoFullscreen" type="button" aria-label="Fullscreen"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5"/><path d="M20 9V4h-5"/><path d="M4 15v5h5"/><path d="M20 15v5h-5"/></svg></button>
+    </div>
+  </div>
+
+  <ol class="demo-timeline" id="demoTimeline">
+    <li data-step="1" class="active" tabindex="0">Create Menu</li>
+    <li data-step="2" tabindex="0">Share</li>
+    <li data-step="3" tabindex="0">Browse</li>
+    <li data-step="4" tabindex="0">Order</li>
+    <li data-step="5" tabindex="0">Accept</li>
+    <li data-step="6" tabindex="0">Preparing</li>
+    <li data-step="7" tabindex="0">Ready</li>
+  </ol>
 </section>
 
 <div class="card" style="margin-top:26px;text-align:center">
@@ -152,5 +387,227 @@ a{color:var(--accent)}.brand{display:inline-flex;align-items:center;gap:9px;font
 <div class="footer">© 2026 GRAVITY58 · <a href="/privacy-policy/">Privacy</a> · <a href="/terms/">Terms</a> · <a href="/contact/">Contact</a></div>
 </main>
   <script src="/js/server-status.js?v=1"></script>
+  <script>
+  (function(){
+    const player = document.getElementById('demoPlayer');
+    if (!player) return;
+    const preview = document.getElementById('demoPreview');
+    const playBtn = document.getElementById('demoPlayBtn');
+    const scenes = [...document.querySelectorAll('.demo-scene')];
+    const caption = document.getElementById('demoCaption');
+    const timelineItems = [...document.querySelectorAll('#demoTimeline li')];
+    const playPauseBtn = document.getElementById('demoPlayPause');
+    const playPauseIcon = document.getElementById('demoPlayPauseIcon');
+    const progressFill = document.getElementById('demoProgressFill');
+    const progressTrack = document.getElementById('demoProgressTrack');
+    const replayBtn = document.getElementById('demoReplay');
+    const muteBtn = document.getElementById('demoMute');
+    const fullscreenBtn = document.getElementById('demoFullscreen');
+
+    const PLAY_PATH = 'M6 4.5v15l14-7.5-14-7.5z';
+    const PAUSE_PATH = 'M6 4h4v16H6zM14 4h4v16h-4z';
+
+    const SCENES = [
+      { step: 1, duration: 5000, caption: '1. Create your digital menu', run: runScene1 },
+      { step: 2, duration: 5000, caption: '2. Generate QR, NFC & link access', run: runScene2 },
+      { step: 3, duration: 5000, caption: '3. Customer scans and identifies their table', run: runScene3 },
+      { step: 3, duration: 6000, caption: '4. Customer browses and adds items', run: runScene4 },
+      { step: 4, duration: 5000, caption: '5. Cart reviewed, order sent', run: runScene5 },
+      { step: 5, duration: 5000, caption: '6. Restaurant receives and accepts', run: runScene6 },
+      { step: 6, duration: 5000, caption: '7. Kitchen starts preparing', run: runScene7 },
+      { step: 7, duration: 4000, caption: '8. Food is ready', run: runScene8 },
+      { step: 7, duration: 3000, caption: '', run: runScene9 },
+    ];
+    const TOTAL = SCENES.reduce((sum, s) => sum + s.duration, 0);
+
+    let currentIndex = 0, playing = false, paused = false, sceneTimer = null, sceneStart = 0, sceneRemaining = 0, progressRaf = null;
+
+    function totalUpTo(index) { return SCENES.slice(0, index).reduce((sum, s) => sum + s.duration, 0); }
+
+    function showScene(index) {
+      scenes.forEach((el) => el.classList.toggle('active', Number(el.dataset.scene) === index + 1));
+      const cfg = SCENES[index];
+      caption.textContent = cfg.caption;
+      caption.classList.toggle('show', !!cfg.caption);
+      timelineItems.forEach((li) => li.classList.toggle('active', Number(li.dataset.step) === cfg.step));
+      cfg.run?.();
+    }
+
+    function setPlayIcon(isPlaying) {
+      playPauseIcon.querySelector('path').setAttribute('d', isPlaying ? PAUSE_PATH : PLAY_PATH);
+      playPauseBtn.setAttribute('aria-label', isPlaying ? 'Pause' : 'Play');
+    }
+
+    function scheduleNext(delay) {
+      clearTimeout(sceneTimer);
+      sceneStart = Date.now();
+      sceneRemaining = delay;
+      sceneTimer = setTimeout(() => {
+        currentIndex++;
+        if (currentIndex >= SCENES.length) { finishDemo(); return; }
+        showScene(currentIndex);
+        scheduleNext(SCENES[currentIndex].duration);
+      }, delay);
+    }
+
+    function startProgressLoop() {
+      cancelAnimationFrame(progressRaf);
+      function tick() {
+        if (!playing || paused) return;
+        const elapsed = totalUpTo(currentIndex) + (Date.now() - sceneStart);
+        progressFill.style.width = Math.min(100, (elapsed / TOTAL) * 100) + '%';
+        progressRaf = requestAnimationFrame(tick);
+      }
+      progressRaf = requestAnimationFrame(tick);
+    }
+
+    function playDemo(fromIndex) {
+      playing = true; paused = false;
+      player.classList.add('playing');
+      setPlayIcon(true);
+      currentIndex = fromIndex || 0;
+      showScene(currentIndex);
+      scheduleNext(SCENES[currentIndex].duration);
+      startProgressLoop();
+    }
+
+    function pauseDemo() {
+      if (!playing || paused) return;
+      paused = true;
+      clearTimeout(sceneTimer);
+      sceneRemaining -= (Date.now() - sceneStart);
+      setPlayIcon(false);
+      cancelAnimationFrame(progressRaf);
+    }
+
+    function resumeDemo() {
+      if (!playing || !paused) return;
+      paused = false;
+      setPlayIcon(true);
+      sceneStart = Date.now();
+      const remaining = Math.max(50, sceneRemaining);
+      sceneTimer = setTimeout(() => {
+        currentIndex++;
+        if (currentIndex >= SCENES.length) { finishDemo(); return; }
+        showScene(currentIndex);
+        scheduleNext(SCENES[currentIndex].duration);
+      }, remaining);
+      startProgressLoop();
+    }
+
+    function finishDemo() {
+      playing = false; paused = false;
+      progressFill.style.width = '100%';
+      setPlayIcon(false);
+      cancelAnimationFrame(progressRaf);
+    }
+
+    playBtn.addEventListener('click', () => playDemo(0));
+    playPauseBtn.addEventListener('click', () => {
+      if (!playing) { playDemo(0); return; }
+      if (paused) resumeDemo(); else pauseDemo();
+    });
+    replayBtn.addEventListener('click', () => playDemo(0));
+    timelineItems.forEach((li) => li.addEventListener('click', () => {
+      const step = Number(li.dataset.step);
+      const idx = SCENES.findIndex((s) => s.step === step);
+      if (idx > -1) playDemo(idx);
+    }));
+    muteBtn.addEventListener('click', () => {
+      const pressed = muteBtn.getAttribute('aria-pressed') === 'true';
+      muteBtn.setAttribute('aria-pressed', String(!pressed));
+      muteBtn.querySelector('path').setAttribute('d', pressed
+        ? 'M4 9v6h4l5 5V4L8 9H4z'
+        : 'M4 9v6h4l5 5V4L8 9H4zM16 9l4 6M20 9l-4 6');
+    });
+    fullscreenBtn.addEventListener('click', () => {
+      if (document.fullscreenElement) document.exitFullscreen?.();
+      else player.requestFullscreen?.();
+    });
+    progressTrack.addEventListener('click', (event) => {
+      const rect = progressTrack.getBoundingClientRect();
+      const pct = Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width));
+      const targetMs = pct * TOTAL;
+      let acc = 0, idx = 0;
+      for (let i = 0; i < SCENES.length; i++) {
+        if (targetMs < acc + SCENES[i].duration) { idx = i; break; }
+        acc += SCENES[i].duration;
+        idx = i;
+      }
+      playDemo(idx);
+    });
+
+    function runScene1() {
+      const save = document.getElementById('s1Save');
+      save.classList.remove('tapped');
+      setTimeout(() => save.classList.add('tapped'), 2600);
+      setTimeout(() => save.classList.remove('tapped'), 3000);
+    }
+    function runScene2() {
+      const qr = document.getElementById('s2ChipQr');
+      const nfc = document.getElementById('s2ChipNfc');
+      const link = document.getElementById('s2ChipLink');
+      qr.classList.remove('ghost'); nfc.classList.add('ghost'); link.classList.add('ghost');
+      setTimeout(() => { qr.classList.add('ghost'); nfc.classList.remove('ghost'); }, 1700);
+      setTimeout(() => { nfc.classList.add('ghost'); link.classList.remove('ghost'); }, 3400);
+    }
+    function runScene3() {
+      const btn = document.getElementById('s3Btn');
+      const confirmEl = document.getElementById('s3Confirm');
+      confirmEl.style.opacity = 0;
+      btn.style.display = '';
+      btn.classList.remove('tapped');
+      setTimeout(() => btn.classList.add('tapped'), 1400);
+      setTimeout(() => { btn.style.display = 'none'; confirmEl.style.opacity = 1; }, 2000);
+    }
+    function runScene4() {
+      const q1 = document.getElementById('s4Qty1');
+      const q2 = document.getElementById('s4Qty2');
+      const q3 = document.getElementById('s4Qty3');
+      const cart = document.getElementById('s4CartBtn');
+      q1.textContent = '+'; q2.textContent = '+'; q3.textContent = '+'; cart.textContent = 'View Cart (0)';
+      setTimeout(() => { q1.textContent = '1'; cart.textContent = 'View Cart (1)'; }, 1400);
+      setTimeout(() => { q2.textContent = '1'; cart.textContent = 'View Cart (2)'; }, 2900);
+      setTimeout(() => { q3.textContent = '1'; cart.textContent = 'View Cart (3)'; }, 4400);
+    }
+    function runScene5() {
+      const btn = document.getElementById('s5Btn');
+      const confirmEl = document.getElementById('s5Confirm');
+      confirmEl.style.opacity = 0;
+      btn.style.display = '';
+      btn.classList.remove('tapped');
+      setTimeout(() => btn.classList.add('tapped'), 1700);
+      setTimeout(() => { btn.style.display = 'none'; confirmEl.style.opacity = 1; }, 2300);
+    }
+    function runScene6() {
+      const notif = document.getElementById('s6Notif');
+      const accept = document.getElementById('s6Accept');
+      notif.classList.remove('show');
+      accept.classList.remove('tapped');
+      accept.textContent = 'Accept Order';
+      setTimeout(() => notif.classList.add('show'), 200);
+      setTimeout(() => { accept.classList.add('tapped'); accept.textContent = 'Accepted ✓'; }, 3400);
+    }
+    function runScene7() {
+      const dot = document.getElementById('s7Dot');
+      dot.style.transition = 'none';
+      dot.style.left = '0%';
+      requestAnimationFrame(() => {
+        dot.style.transition = 'left 4.2s ease';
+        dot.style.left = '100%';
+      });
+    }
+    function runScene8() {
+      const notif = document.getElementById('s8Notif');
+      notif.classList.remove('show');
+      setTimeout(() => notif.classList.add('show'), 200);
+    }
+    function runScene9() {
+      const steps = [...document.querySelectorAll('#s9Flow .mockup-flow-step')];
+      steps.forEach((s) => s.classList.remove('done'));
+      steps.forEach((s, i) => setTimeout(() => s.classList.add('done'), 220 * i));
+    }
+  })();
+  </script>
 </body>
 </html>
