@@ -29,11 +29,10 @@ a{color:var(--accent)}.brand{display:inline-flex;align-items:center;gap:9px;font
 
 /* Nav bar */
 .guide-header{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:14px;margin-bottom:26px}
-.guide-nav{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
-.guide-nav-link{border:0;background:none;color:var(--ink);font-size:14px;font-weight:700;cursor:pointer;padding:8px 4px;font-family:inherit}
-.guide-nav-link:hover{color:var(--accent)}
-.guide-nav-btn{display:inline-flex;align-items:center;padding:9px 18px;border-radius:999px;background:linear-gradient(135deg,#2563EB,#06B6D4);color:#fff;font-weight:800;font-size:13px;text-decoration:none;transition:.15s ease}
-.guide-nav-btn:hover{transform:translateY(-1px)}
+.guide-nav{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.guide-nav a{display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border-radius:999px;border:1px solid var(--border);background:var(--surface);color:var(--ink);text-decoration:none;font-size:12.5px;font-weight:700;transition:.15s ease}
+.guide-nav a:hover{border-color:var(--accent);color:var(--accent)}
+.guide-nav svg{width:16px;height:16px;flex-shrink:0}
 @media(max-width:480px){.guide-header{flex-direction:column;align-items:flex-start}}
 
 /* Role sections */
@@ -89,10 +88,10 @@ a{color:var(--accent)}.brand{display:inline-flex;align-items:center;gap:9px;font
 <main>
 <header class="guide-header">
   <a class="brand" href="/"><svg class="brand-icon" viewBox="0 0 120 120" fill="none" stroke="#F97316" stroke-width="8" aria-hidden="true"><circle cx="60" cy="26" r="15"/><circle cx="28" cy="82" r="15"/><circle cx="92" cy="82" r="15"/></svg>GRAVITY<span>58</span></a>
-  <nav class="guide-nav" aria-label="Primary">
-    <button type="button" class="guide-nav-link" onclick="document.querySelector('.role-section')?.scrollIntoView({behavior:'smooth'})">How It Works</button>
-    <a class="guide-nav-btn" href="/digit58/">Refills</a>
-    <a class="guide-nav-btn" href="/digital-menu/">Digital Menu</a>
+  <nav class="guide-nav" aria-label="Quick links">
+    <a href="/" aria-label="Home"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10v9a1 1 0 0 0 1 1h11a1 1 0 0 0 1-1v-9"/><path d="M9.5 20v-6h5v6"/></svg><span>Home</span></a>
+    <a href="/digit58/" aria-label="Refills"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11A8 8 0 0 0 6.3 6.3L4 8.6"/><path d="M4 4v4.6h4.6"/><path d="M4 13a8 8 0 0 0 13.7 4.7L20 15.4"/><path d="M20 20v-4.6h-4.6"/></svg><span>Refills</span></a>
+    <a href="/digital-menu/" aria-label="Digital Menu"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 3v6a2 2 0 0 0 2 2h0"/><path d="M9 3v18"/><path d="M7 3v5"/><path d="M15 3c-1.2 1.4-1.2 6.6 0 8 .5.6 1 .8 1 1.5V21"/></svg><span>Digital Menu</span></a>
   </nav>
 </header>
 <section class="hero">
