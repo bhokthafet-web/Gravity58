@@ -1434,12 +1434,18 @@ body{background:
 .nav-explore-secondary:hover{background:rgba(18,24,31,.03)!important}
 @media(max-width:980px){.nav-center{display:none}.nav-mega-last{display:none}}
 
-/* Product quicklinks (small, professional) */
-.g58-product-quicklinks{display:flex;justify-content:center;gap:10px;flex-wrap:wrap;padding:18px 0 0}
-.g58-quicklink-btn{display:inline-flex;align-items:center;gap:6px;padding:8px 18px;border-radius:999px;
-  border:1px solid var(--hero-border);background:var(--hero-surface);color:var(--ink);
-  font-size:13px;font-weight:700;text-decoration:none;transition:.15s ease}
-.g58-quicklink-btn:hover{border-color:var(--accent);color:var(--accent)}
+/* Premium showcase: real Refills stores and Digital Menu restaurants (small, professional, monochrome) */
+.g58-premium-showcase{padding:18px 20px 6px}
+.g58-premium-showcase.hidden{display:none}
+.g58-premium-showcase-track{display:flex;justify-content:center;gap:10px;flex-wrap:wrap;max-width:1000px;margin:0 auto}
+.g58-premium-showcase-empty{color:var(--ink-muted);font-size:12.5px;text-align:center;width:100%}
+.g58-premium-card{display:flex;flex-direction:column;gap:2px;min-width:150px;max-width:210px;padding:9px 16px;
+  border-radius:14px;border:1px solid var(--hero-border);background:var(--hero-surface);color:var(--ink);
+  text-decoration:none;transition:.15s ease}
+.g58-premium-card:hover{border-color:var(--accent)}
+.g58-premium-card-badge{font-size:9.5px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-muted)}
+.g58-premium-card-name{font-size:13px;font-weight:700;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.g58-premium-card-meta{font-size:11px;color:var(--ink-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 
 /* Hero v2 */
 .hero-v2{max-width:900px;margin:0 auto;text-align:center;padding-bottom:64px}
