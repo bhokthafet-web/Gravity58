@@ -88,6 +88,7 @@ const cardKind=(ownerId)=>safeId('digit58_card_',ownerId,40);
 const orderKind=(ownerId)=>safeId('digit58_order_',ownerId,40);
 const promotionKind=(ownerId)=>safeId('digit58_promo_',ownerId,40);
 const courseKind=(ownerId)=>safeId('digit58_course_',ownerId,39);
+const catalogKind=(ownerId)=>safeId('digit58_catalog_',ownerId,38);
 const REQUEST_KIND='digit58_requests',ENTITLEMENT_KIND='digit58_entitlements',SUBSCRIPTION_AMOUNT=399;
 const CARD_PURCHASE_KIND='digit58_card_purchases',FREE_PROMOTION_CARDS=3;
 const PROMOTION_CARD_PRICING={'30d':{label:'30 Days',amount:150,days:30},'6mo':{label:'6 Months',amount:750,days:182},'1yr':{label:'1 Year',amount:1200,days:365}};
@@ -736,7 +737,7 @@ function renderOwnerAuth(){
 
 async function loadOwnerData(){
   const ownerId=cloudOwnerId();if(!ownerId)return;
-  const [stores,customers,cards,orders,promotions,cardPurchases,incomingBrandRequests]=await Promise.all([
+  const [stores,customers,cards,orders,promotions,cardPurchases,incomingBrandRequests,catalog]=await Promise.all([
     api.list(storeKind(ownerId)).catch(()=>[]),
     api.list(customerKind(ownerId)).catch(()=>[]),
     api.list(cardKind(ownerId)).catch(()=>[]),
@@ -744,8 +745,10 @@ async function loadOwnerData(){
     api.list(promotionKind(ownerId)).catch(()=>[]),
     api.list(CARD_PURCHASE_KIND).catch(()=>[]),
     api.list(BRAND_REQUEST_KIND).catch(()=>[]),
+    api.list(catalogKind(ownerId)).catch(()=>[]),
   ]);
   state.stores=stores;state.customers=customers;state.cards=cards;state.orders=orders;state.promotions=await cleanupExpiredOwnerPromotions(ownerId,promotions);
+  state.catalog=catalog;
   state.cardPurchases=cardPurchases.filter(row=>row.ownerId===ownerId);
   state.brandRequests=incomingBrandRequests.filter(row=>row.ownerId===ownerId);
   if(!state.activeStoreId||!stores.some(row=>row.id===state.activeStoreId))state.activeStoreId=stores[0]?.id||'';
@@ -785,7 +788,7 @@ function siteFooter(forCustomer){
 }
 function renderShell(){
   const store=activeStore();
-  app.innerHTML=`<div class="shell"><aside class="sidebar"><a class="brand" href="../"><svg class="brand-mark" viewBox="0 0 120 120" fill="none" stroke="#7fffd4" stroke-width="8" aria-hidden="true"><circle cx="60" cy="26" r="15"/><circle cx="28" cy="82" r="15"/><circle cx="92" cy="82" r="15"/></svg><div><strong>Refills</strong><small class="muted">Store workspace</small></div></a><nav class="nav">${navButton('dashboard','◉','Dashboard')}${navButton('stores','◫','My Stores')}${navButton('promotions','✦','Promotions')}${navButton('brands','♟','Brand Orders')}${navButton('wall','☰','Customer Wall')}${navButton('orders','🧾','Orders')}${navButton('orderHistory','🕘','Order History')}${navButton('subscription','♢','Subscription')}${navButton('settings','⚙','Settings')}${hasActiveEntitlement()?`<a class="btn small" style="text-align:center;text-decoration:none" href="../pos/?source=digit58" target="_blank" rel="noopener">▣ Open POS</a>`:''}<button id="logout">⇥ Logout</button></nav></aside><main class="main"><header class="topbar"><div>${state.stores.length?`<select id="storeSwitch">${state.stores.map(row=>`<option value="${html(row.id)}" ${row.id===state.activeStoreId?'selected':''}>${html(row.name)}</option>`).join('')}</select>`:'<strong>No store yet</strong>'}</div><nav class="g58-topbar-home" aria-label="Quick links"><a href="https://www.g58.in/" aria-label="Home"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10v9a1 1 0 0 0 1 1h11a1 1 0 0 0 1-1v-9"/><path d="M9.5 20v-6h5v6"/></svg><span>Home</span></a><a href="/digit58/" aria-label="Refills"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11A8 8 0 0 0 6.3 6.3L4 8.6"/><path d="M4 4v4.6h4.6"/><path d="M4 13a8 8 0 0 0 13.7 4.7L20 15.4"/><path d="M20 20v-4.6h-4.6"/></svg><span>Refills</span></a><a href="/digital-menu/" aria-label="Digital Menu"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 3v6a2 2 0 0 0 2 2h0"/><path d="M9 3v18"/><path d="M7 3v5"/><path d="M15 3c-1.2 1.4-1.2 6.6 0 8 .5.6 1 .8 1 1.5V21"/></svg><span>Digital Menu</span></a></nav><span class="status-pill"><span class="dot"></span>${html(session?.email||'')}</span></header><section class="content" id="page"></section></main></div>${siteFooter()}${floatingSupportButton('digit58')}`;
+  app.innerHTML=`<div class="shell"><aside class="sidebar"><a class="brand" href="../"><svg class="brand-mark" viewBox="0 0 120 120" fill="none" stroke="#7fffd4" stroke-width="8" aria-hidden="true"><circle cx="60" cy="26" r="15"/><circle cx="28" cy="82" r="15"/><circle cx="92" cy="82" r="15"/></svg><div><strong>Refills</strong><small class="muted">Store workspace</small></div></a><nav class="nav">${navButton('dashboard','◉','Dashboard')}${navButton('stores','◫','My Stores')}${navButton('promotions','✦','Promotions')}${navButton('brands','♟','Brand Orders')}${navButton('wall','☰','Customer Wall')}${navButton('orders','🧾','Orders')}${navButton('orderHistory','🕘','Order History')}${navButton('catalog','▦','Catalog')}${navButton('subscription','♢','Subscription')}${navButton('settings','⚙','Settings')}${hasActiveEntitlement()?`<a class="btn small" style="text-align:center;text-decoration:none" href="../pos/?source=digit58" target="_blank" rel="noopener">▣ Open POS</a>`:''}<button id="logout">⇥ Logout</button></nav></aside><main class="main"><header class="topbar"><div>${state.stores.length?`<select id="storeSwitch">${state.stores.map(row=>`<option value="${html(row.id)}" ${row.id===state.activeStoreId?'selected':''}>${html(row.name)}</option>`).join('')}</select>`:'<strong>No store yet</strong>'}</div><nav class="g58-topbar-home" aria-label="Quick links"><a href="https://www.g58.in/" aria-label="Home"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10v9a1 1 0 0 0 1 1h11a1 1 0 0 0 1-1v-9"/><path d="M9.5 20v-6h5v6"/></svg><span>Home</span></a><a href="/digit58/" aria-label="Refills"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11A8 8 0 0 0 6.3 6.3L4 8.6"/><path d="M4 4v4.6h4.6"/><path d="M4 13a8 8 0 0 0 13.7 4.7L20 15.4"/><path d="M20 20v-4.6h-4.6"/></svg><span>Refills</span></a><a href="/digital-menu/" aria-label="Digital Menu"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 3v6a2 2 0 0 0 2 2h0"/><path d="M9 3v18"/><path d="M7 3v5"/><path d="M15 3c-1.2 1.4-1.2 6.6 0 8 .5.6 1 .8 1 1.5V21"/></svg><span>Digital Menu</span></a></nav><span class="status-pill"><span class="dot"></span>${html(session?.email||'')}</span></header><section class="content" id="page"></section></main></div>${siteFooter()}${floatingSupportButton('digit58')}`;
   $$('[data-view]').forEach(button=>button.onclick=()=>{view=button.dataset.view;renderShell()});
   $('#logout').onclick=async()=>{stopOwnerRealtime();await api.logout();session=null;renderOwnerAuth()};
   $('#storeSwitch')?.addEventListener('change',event=>{state.activeStoreId=event.target.value;save();renderShell()});
@@ -793,7 +796,7 @@ function renderShell(){
   renderView();
 }
 function navButton(key,icon,label){return `<button data-view="${key}" class="${view===key?'active':''}"><span>${icon}</span>${label}</button>`}
-function renderView(){if(!activeStore()&&view!=='stores'&&view!=='settings'&&view!=='subscription'){view='stores';return renderShell()}({dashboard:dashboardView,stores:storesView,promotions:promotionsView,brands:brandPartnersView,wall:customerWallView,orders:ordersView,orderHistory:orderHistoryView,subscription:subscriptionView,settings:settingsView}[view]||dashboardView)()}
+function renderView(){if(!activeStore()&&view!=='stores'&&view!=='settings'&&view!=='subscription'){view='stores';return renderShell()}({dashboard:dashboardView,stores:storesView,promotions:promotionsView,brands:brandPartnersView,wall:customerWallView,orders:ordersView,orderHistory:orderHistoryView,catalog:catalogView,subscription:subscriptionView,settings:settingsView}[view]||dashboardView)()}
 function ordersView(){
   refreshView=ordersView;
   const orders=activeOrders(state.orders).sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
@@ -1395,9 +1398,42 @@ function customerWallView(){
   refreshView=customerWallView;
   const store=activeStore();
   const customers=ownerCustomers(store?.id);
-  $('#page').innerHTML=`<div class="section-head"><div><h1>Customer Wall</h1><p class="muted">Customers who signed up under ${html(store?.name||'this store')}.</p></div></div><div class="grid customer-grid">${customers.map(customerCardMarkup).join('')||'<div class="empty">No customers yet. Share your store link to get started.</div>'}</div>`;
+  $('#page').innerHTML=`<div class="section-head"><div><h1>Customer Wall</h1><p class="muted">Customers who signed up under ${html(store?.name||'this store')}.</p></div><button class="btn secondary" id="openBulkOrder" ${customers.length?'':'disabled'}>+ Bulk Create Orders</button></div><div class="grid customer-grid">${customers.map(customerCardMarkup).join('')||'<div class="empty">No customers yet. Share your store link to get started.</div>'}</div>`;
   $$('[data-open-customer]').forEach(button=>button.onclick=()=>customerDetailView(button.dataset.openCustomer));
   $$('[data-remove-customer]').forEach(button=>button.onclick=()=>removeCustomer(button.dataset.removeCustomer));
+  $('#openBulkOrder')?.addEventListener('click',()=>openBulkOrderForm(store,customers));
+}
+function bulkOrderCustomerRowMarkup(customer){
+  return `<label class="bulk-order-customer-row"><input type="checkbox" name="customerId[]" value="${html(customer.id)}"><span>${html(customer.customerName||'Customer')}${customer.phone?` · ${html(customer.phone)}`:''}</span></label>`;
+}
+function openBulkOrderForm(store,customers){
+  if(!customers.length)return;
+  modal('Bulk Create Orders',`<form id="bulkOrderForm"><p class="muted">Creates the same order for every customer you select below. Each one still needs to accept it before it enters your normal queue.</p><label class="bulk-order-select-all"><input type="checkbox" id="bulkOrderSelectAll" checked> <span>Select all (${customers.length})</span></label><div class="bulk-order-customer-list">${customers.map(bulkOrderCustomerRowMarkup).join('')}</div><div id="bulkOrderItemRows">${orderItemRowMarkup()}</div><button type="button" class="btn small secondary" id="addBulkOrderItemRow" style="margin-top:8px">+ Add another item</button><button class="btn full" type="submit" style="margin-top:14px">Send Orders</button></form>`,()=>{
+    $$('input[name="customerId[]"]').forEach(box=>box.checked=true);
+    $('#bulkOrderSelectAll').onchange=event=>{$$('input[name="customerId[]"]').forEach(box=>box.checked=event.target.checked)};
+    $('#addBulkOrderItemRow').onclick=()=>$('#bulkOrderItemRows').insertAdjacentHTML('beforeend',orderItemRowMarkup());
+    $('#bulkOrderItemRows').addEventListener('click',event=>{const row=event.target.closest('.remove-item-row');if(row&&$$('#bulkOrderItemRows .order-item-row').length>1)row.closest('.order-item-row').remove()});
+    $('#bulkOrderForm').onsubmit=async event=>{
+      event.preventDefault();
+      const customerIds=$$('input[name="customerId[]"]:checked').map(box=>box.value);
+      if(!customerIds.length)return toast('Select at least one customer');
+      const names=$$('#bulkOrderItemRows [name="itemName[]"]').map(input=>input.value.trim());
+      const qtys=$$('#bulkOrderItemRows [name="itemQty[]"]').map(input=>Math.max(1,Number(input.value)||1));
+      const items=names.map((name,index)=>({name,qty:qtys[index]})).filter(item=>item.name);
+      if(!items.length)return toast('Add at least one item');
+      const ownerId=cloudOwnerId(),button=event.submitter;button.disabled=true;
+      let sent=0,failed=0;
+      for(const customerId of customerIds){
+        const customer=customers.find(row=>row.id===customerId);if(!customer)continue;
+        try{
+          const result=await api.executeFunction(api.config.digitalOrderFunctionId,{action:'digit58-owner-create-order',ownerId,storeId:customer.storeId,customerAccountId:customer.customerAccountId,items});
+          state.orders.push(result.order);sent++;
+        }catch{failed++}
+      }
+      save();closeModal();customerWallView();
+      toast(failed?`${sent} order(s) sent, ${failed} failed`:`${sent} order(s) sent — waiting for customers to accept`);
+    };
+  });
 }
 function customerCardMarkup(customer){
   const cards=customerCards(customer.customerAccountId,customer.storeId);
@@ -1689,8 +1725,8 @@ function openOwnerOrderForm(customer){
     $('#ownerOrderItemRows').addEventListener('click',event=>{const row=event.target.closest('.remove-item-row');if(row&&$$('.order-item-row').length>1)row.closest('.order-item-row').remove()});
     $('#ownerOrderForm').onsubmit=async event=>{
       event.preventDefault();
-      const names=$$('input[name="itemName[]"]').map(input=>input.value.trim());
-      const qtys=$$('input[name="itemQty[]"]').map(input=>Math.max(1,Number(input.value)||1));
+      const names=$$('[name="itemName[]"]').map(input=>input.value.trim());
+      const qtys=$$('[name="itemQty[]"]').map(input=>Math.max(1,Number(input.value)||1));
       const items=names.map((name,index)=>({name,qty:qtys[index]})).filter(item=>item.name);
       if(!items.length)return toast('Add at least one item');
       const ownerId=cloudOwnerId(),button=event.submitter;button.disabled=true;
@@ -2232,7 +2268,105 @@ function openReorderOrderModal(order,store,customer){
     };
   });
 }
-function orderItemRowMarkup(item={}){return `<div class="order-item-row"><input name="itemName[]" placeholder="Item name" value="${html(item.name||'')}" required><input name="itemQty[]" type="number" min="1" value="${Math.max(1,Number(item.qty)||1)}" aria-label="Quantity"><button type="button" class="btn small secondary remove-item-row" aria-label="Remove item">✕</button></div>`}
+function orderItemRowMarkup(item={}){
+  const catalog=(state.catalog||[]).filter(row=>!activeStore()||row.storeId===activeStore().id);
+  const nameField=catalog.length
+    ?`<select name="itemName[]" required><option value="" ${item.name?'':'selected'} disabled>Select item</option>${catalog.map(row=>`<option value="${html(row.name)}" ${item.name===row.name?'selected':''}>${html(row.name)}${row.price?` — ${money(row.price)}`:''}${row.unit?` / ${html(row.unit)}`:''}</option>`).join('')}</select>`
+    :`<input name="itemName[]" placeholder="Item name" value="${html(item.name||'')}" required>`;
+  return `<div class="order-item-row">${nameField}<input name="itemQty[]" type="number" min="1" value="${Math.max(1,Number(item.qty)||1)}" aria-label="Quantity"><button type="button" class="btn small secondary remove-item-row" aria-label="Remove item">✕</button></div>`;
+}
+const CATALOG_CSV_TEMPLATE='item_name,price,unit\r\nMilk 1L,60,pack\r\nDrinking Water 20L,80,can\r\n';
+function parseCsvText(text){
+  const rows=[];let row=[],cell='',inQuotes=false;
+  const clean=String(text||'').replace(/^﻿/,'').replace(/\r\n/g,'\n').replace(/\r/g,'\n');
+  for(let i=0;i<clean.length;i++){
+    const ch=clean[i];
+    if(inQuotes){
+      if(ch==='"'){if(clean[i+1]==='"'){cell+='"';i++}else inQuotes=false}
+      else cell+=ch;
+    }else if(ch==='"')inQuotes=true;
+    else if(ch===','){row.push(cell);cell=''}
+    else if(ch==='\n'){row.push(cell);rows.push(row);row=[];cell=''}
+    else cell+=ch;
+  }
+  if(cell.length||row.length){row.push(cell);rows.push(row)}
+  return rows.filter(r=>r.some(c=>c.trim()!==''));
+}
+function parseCatalogCsv(text){
+  const rows=parseCsvText(text);
+  if(!rows.length)throw new Error('CSV file is empty');
+  const headers=rows[0].map(h=>h.trim().toLowerCase());
+  const nameIdx=headers.indexOf('item_name'),priceIdx=headers.indexOf('price'),unitIdx=headers.indexOf('unit');
+  if(nameIdx===-1||priceIdx===-1)throw new Error('CSV must have item_name and price columns');
+  return rows.slice(1).map(cells=>{
+    const name=(cells[nameIdx]||'').trim().slice(0,120);
+    if(!name)return null;
+    const price=Number(cells[priceIdx]);
+    if(!Number.isFinite(price)||price<0)throw new Error(`Invalid price for "${name}"`);
+    return {name,price,unit:unitIdx>-1?(cells[unitIdx]||'').trim().slice(0,20):''};
+  }).filter(Boolean);
+}
+function catalogItemMarkup(item){
+  return `<article class="card catalog-item-card"><h3>${html(item.name)}</h3><p class="muted">${money(item.price)}${item.unit?` / ${html(item.unit)}`:''}</p><div class="actions"><button class="btn small red" data-remove-catalog-item="${html(item.id)}">Remove</button></div></article>`;
+}
+function catalogView(){
+  refreshView=catalogView;
+  const store=activeStore();
+  const items=(state.catalog||[]).filter(row=>row.storeId===store?.id);
+  $('#page').innerHTML=`<div class="section-head"><div><h1>Catalog</h1><p class="muted">Items here appear as dropdown choices when you create an order for a customer.</p></div><div class="actions"><button class="btn" id="addCatalogItem">+ Add Item</button><button class="btn secondary" id="downloadCatalogCsv">Download CSV Template</button><button class="btn secondary" id="importCatalogCsv">Import Catalog CSV</button><input id="catalogCsvFile" type="file" accept=".csv,text/csv" hidden></div></div><div class="grid catalog-grid">${items.map(catalogItemMarkup).join('')||'<div class="empty">No catalog items yet. Add items manually or import a CSV so they show up as order dropdown choices.</div>'}</div>`;
+  $('#addCatalogItem').onclick=()=>openCatalogItemForm(store);
+  $('#downloadCatalogCsv').onclick=()=>{
+    const url=URL.createObjectURL(new Blob(['﻿'+CATALOG_CSV_TEMPLATE],{type:'text/csv;charset=utf-8'})),link=document.createElement('a');
+    link.href=url;link.download='g58-refills-catalog-template.csv';document.body.appendChild(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
+  };
+  $('#importCatalogCsv').onclick=()=>$('#catalogCsvFile').click();
+  $('#catalogCsvFile').onchange=e=>importCatalogCsvFile(store,e.target.files[0]);
+  $$('[data-remove-catalog-item]').forEach(button=>button.onclick=()=>removeCatalogItem(button.dataset.removeCatalogItem));
+}
+function openCatalogItemForm(store){
+  modal('Add Catalog Item',`<form id="catalogItemForm"><div class="field"><label>Item name</label><input name="name" required></div><div class="form-grid"><div class="field"><label>Price (₹)</label><input name="price" type="number" min="0" step="0.01" required></div><div class="field"><label>Unit <small>(optional)</small></label><input name="unit" placeholder="Example: kg, pack, bottle"></div></div><button class="btn full" type="submit" style="margin-top:14px">Add Item</button></form>`,()=>{
+    $('#catalogItemForm').onsubmit=async event=>{
+      event.preventDefault();
+      const values=Object.fromEntries(new FormData(event.target)),name=values.name.trim(),price=Number(values.price),button=event.submitter;
+      if(!name)return toast('Enter the item name');
+      if(!Number.isFinite(price)||price<0)return toast('Enter a valid price');
+      button.disabled=true;
+      try{
+        const record={id:id('catalog'),ownerId:store.ownerId,storeId:store.id,name,price,unit:(values.unit||'').trim(),createdAt:now()};
+        await api.create(catalogKind(store.ownerId),record,record.id,api.permissionSet?.(catalogKind(store.ownerId),store.ownerId,true));
+        state.catalog=[...(state.catalog||[]),record];save();
+        closeModal();catalogView();toast('Item added to catalog');
+      }catch(error){button.disabled=false;toast(error.message||'Could not add item')}
+    };
+  });
+}
+async function removeCatalogItem(itemId){
+  if(!confirm('Remove this item from the catalog?'))return;
+  try{
+    await api.remove(catalogKind(cloudOwnerId()),itemId);
+    state.catalog=(state.catalog||[]).filter(row=>row.id!==itemId);save();
+    catalogView();toast('Item removed');
+  }catch(error){toast(error.message||'Could not remove item')}
+}
+async function importCatalogCsvFile(store,file){
+  if(!file)return;
+  if(file.size>1024*1024){$('#catalogCsvFile').value='';return toast('CSV file must be below 1 MB')}
+  try{
+    const rows=parseCatalogCsv(await file.text());
+    if(!rows.length)throw new Error('No valid rows found in CSV');
+    if(rows.length>200)throw new Error('Import up to 200 items at a time');
+    const created=[];
+    for(const row of rows){
+      const record={id:id('catalog'),ownerId:store.ownerId,storeId:store.id,name:row.name,price:row.price,unit:row.unit,createdAt:now()};
+      await api.create(catalogKind(store.ownerId),record,record.id,api.permissionSet?.(catalogKind(store.ownerId),store.ownerId,true));
+      created.push(record);
+    }
+    state.catalog=[...(state.catalog||[]),...created];save();
+    catalogView();toast(`${created.length} item(s) imported`);
+  }catch(error){
+    toast(error.message||'Could not import catalog CSV');
+  }finally{$('#catalogCsvFile')&&($('#catalogCsvFile').value='')}
+}
 function medicineFieldsMarkup(){return `<div class="form-grid"><div class="field"><label>Medicine name</label><input name="medName" required></div><div class="field"><label>Time</label><input name="medTime" type="time" required></div></div><div class="field"><label>Days</label><input name="medDays" type="number" min="1" step="1" value="5" required></div>`}
 function openCreateCourseModal(store,customer){
   modal('New Medicine Course',`<form id="createCourseForm"><div class="field"><label>Patient name</label><input name="patientName" value="${html(customer.customerName||'')}" required></div>${medicineFieldsMarkup()}<button class="btn full" type="submit" style="margin-top:14px">Start Course</button></form>`,()=>{
@@ -2279,8 +2413,8 @@ function openPlaceOrderModal(store,customer,promotions=[],rejectedDraft=null){
     bindShareLocationButton($('#shareLocationBtn'),$('#locationStatus'),point=>{capturedLocation=point});
     $('#placeOrderForm').onsubmit=async event=>{
       event.preventDefault();
-      const names=$$('input[name="itemName[]"]').map(input=>input.value.trim());
-      const qtys=$$('input[name="itemQty[]"]').map(input=>Math.max(1,Number(input.value)||1));
+      const names=$$('[name="itemName[]"]').map(input=>input.value.trim());
+      const qtys=$$('[name="itemQty[]"]').map(input=>Math.max(1,Number(input.value)||1));
       const items=names.map((name,index)=>({name,qty:qtys[index]})).filter(item=>item.name);
       if(!items.length)return toast('Add at least one item');
       const customerOrderValue=minimum?Math.max(0,Number($('#customerOrderValue').value)||0):0;
