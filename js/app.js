@@ -2536,18 +2536,18 @@ async function loadPremiumShowcase() {
 }
 document.addEventListener("DOMContentLoaded", loadPremiumShowcase);
 
-function scheduleHeroHeadingDots() {
-  const heading = document.getElementById("heroHeading");
-  if (!heading || window.matchMedia("(prefers-reduced-motion: reduce)").matches)
+function scheduleHeroFlowDots() {
+  const flow = document.getElementById("heroFlowDots");
+  if (!flow || window.matchMedia("(prefers-reduced-motion: reduce)").matches)
     return;
   const run = () => {
-    heading.classList.add("dots-active");
-    setTimeout(() => heading.classList.remove("dots-active"), 1200);
-    setTimeout(run, 25000 + Math.random() * 20000);
+    flow.classList.add("bump-active");
+    setTimeout(() => flow.classList.remove("bump-active"), 2600);
+    setTimeout(run, 6000 + Math.random() * 4000);
   };
-  setTimeout(run, 6000);
+  setTimeout(run, 1500);
 }
-document.addEventListener("DOMContentLoaded", scheduleHeroHeadingDots);
+document.addEventListener("DOMContentLoaded", scheduleHeroFlowDots);
 async function openBusinessCardCreator() {
   const user = window.G58SiteUser;
   if (!user) return window.G58RequestAuth?.("business");
