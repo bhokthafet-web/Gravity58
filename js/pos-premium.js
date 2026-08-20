@@ -224,7 +224,7 @@
     gate.id = "posAccountGate";
     gate.className = "local-account-gate";
     gate.innerHTML = `<section class="card local-account-card">
-      <div class="local-account-brand"><a href="/" aria-label="G58 home"><svg class="logo" viewBox="0 0 120 120" fill="none" stroke="#F97316" stroke-width="8"><circle cx="60" cy="26" r="15"/><circle cx="28" cy="82" r="15"/><circle cx="92" cy="82" r="15"/></svg></a><div><h2>${restaurantIntegrationRequested ? "Premium Restaurant POS" : "Restaurant workspace"}</h2><p>${restaurantIntegrationRequested ? "Sign in with the same restaurant-owner account used for Digital Menu." : "Sign in to open your account-synced G58 POS workspace."}</p></div></div>
+      <div class="local-account-brand"><a href="/" aria-label="G58 home"><svg class="logo" viewBox="0 0 120 120" fill="none" stroke="#F97316" stroke-width="8"><circle cx="60" cy="26" r="15"/><circle cx="28" cy="82" r="15"/><circle cx="92" cy="82" r="15"/></svg></a><div><h2>${restaurantIntegrationRequested ? "Restaurant POS" : "Restaurant workspace"}</h2><p>${restaurantIntegrationRequested ? "Sign in with the same restaurant-owner account used for Digital Menu." : "Sign in to open your account-synced G58 POS workspace."}</p></div></div>
       <div class="field"><label>Email</label><input id="gateEmail" type="email" autocomplete="email" placeholder="owner@restaurant.com"></div>
       <div class="field"><label>Password</label><input id="gatePassword" type="password" autocomplete="current-password" placeholder="Minimum 6 characters"></div>
       <div class="gate-actions"><button class="btn btn-primary" id="gateLogin">Login</button>${restaurantIntegrationRequested ? "" : '<button class="btn btn-outline" id="gateSignup">Create account</button>'}<button class="btn btn-dark" id="gateForgot">Forgot password</button></div>
@@ -277,12 +277,11 @@
     shell.style.setProperty("display", "block", "important");
     shell.innerHTML = `<div class="premium-bar">
       <div class="premium-title"><a href="/" aria-label="G58 home"><svg class="logo" viewBox="0 0 120 120" fill="none" stroke="#F97316" stroke-width="8"><circle cx="60" cy="26" r="15"/><circle cx="28" cy="82" r="15"/><circle cx="92" cy="82" r="15"/></svg></a><div><strong>${esc(linkedRestaurant ? `${restaurantName} POS` : "G58 Restaurant POS")}</strong><small>${esc(session?.email || "G58 account")} · ${linkedRestaurant ? "restaurant-synced workspace" : "cloud workspace"}</small></div></div>
-      <span class="premium-badge ${isPremium() ? "active" : ""}">${isPremium() ? "PREMIUM ACTIVE" : "FREE POS"}</span>
     </div>
     ${linkedRestaurant ? `<div class="restaurant-sync-banner"><div><span class="restaurant-sync-dot"></span><strong>Live sync: ${esc(restaurantName)}</strong><small>Menu, availability, counter bills and online orders use this restaurant workspace only.</small></div><a href="/digital-menu/">Back to Restaurant Dashboard</a></div>` : ""}
     <div class="premium-tabs">
       <button class="premium-tab active" data-p="account">Account</button>
-      <button class="premium-tab" data-p="license">Premium</button>
+      <button class="premium-tab" data-p="license">Plan</button>
       <button class="premium-tab" data-p="menu">Menu & Inventory</button>
       <button class="premium-tab" data-p="dashboard">Dashboard</button>
       ${linkedOrderTab}
@@ -308,7 +307,7 @@
 
   const box = (html) => { $("pp").innerHTML = `<div class="premium-panel active">${html}</div>`; };
   const premiumExpiryLabel = () => {
-    if (linkedMenuEntitlement?.lifetime) return "Lifetime Premium access";
+    if (linkedMenuEntitlement?.lifetime) return "Lifetime access";
     const expiry = linkedMenuEntitlement?.expiresAt || premium?.expiresAt;
     return expiry ? `Active until ${new Date(expiry).toLocaleDateString("en-IN")}` : isPremium() ? "Premium active" : "Premium is not active.";
   };
@@ -316,22 +315,22 @@
   function renderTab(tab) {
     if (tab === "account") {
       const request = read(KEYS.subscription, null);
-      box(`<div class="premium-grid"><article class="premium-box"><h3>Signed in securely</h3><p><strong>${esc(session?.email)}</strong></p><p style="margin-top:10px">${linkedRestaurant ? `${esc(linkedRestaurant.name)} has its own POS settings, received bills, cancelled bills and inventory. Digital Menu items and orders are synced live.` : "Your POS settings, received bills, cancelled bills, menu and inventory sync to this account."}</p><button class="btn btn-outline" id="localLogout" style="margin-top:14px">Sign out</button></article><article class="premium-box"><h3>${linkedRestaurant ? "Restaurant sync" : "Account status"}</h3><p>${linkedRestaurant ? `Connected to ${esc(linkedRestaurant.name)} · ${esc(linkedRestaurant.city || "")}. Switching restaurants in Digital Menu opens a different POS workspace.` : "Changes sync automatically. Restaurant and menu images have a 100 KB file limit."}</p>${request ? `<div class="locked-note" style="margin-top:12px">Premium request: ${esc(request.plan)} · ${esc(request.status)}</div>` : ""}</article></div>`);
+      box(`<div class="premium-grid"><article class="premium-box"><h3>Signed in securely</h3><p><strong>${esc(session?.email)}</strong></p><p style="margin-top:10px">${linkedRestaurant ? `${esc(linkedRestaurant.name)} has its own POS settings, received bills, cancelled bills and inventory. Digital Menu items and orders are synced live.` : "Your POS settings, received bills, cancelled bills, menu and inventory sync to this account."}</p><button class="btn btn-outline" id="localLogout" style="margin-top:14px">Sign out</button></article><article class="premium-box"><h3>${linkedRestaurant ? "Restaurant sync" : "Account status"}</h3><p>${linkedRestaurant ? `Connected to ${esc(linkedRestaurant.name)} · ${esc(linkedRestaurant.city || "")}. Switching restaurants in Digital Menu opens a different POS workspace.` : "Changes sync automatically. Restaurant and menu images have a 100 KB file limit."}</p>${request ? `<div class="locked-note" style="margin-top:12px">Access request: ${esc(request.plan)} · ${esc(request.status)}</div>` : ""}</article></div>`);
       $("localLogout").onclick = async () => { try { await syncWorkspace(); await Gravity58Ads.logout(); } catch {} digitalOrderUnsubscribe?.(); digitalMenuUnsubscribe?.(); localStorage.removeItem(KEYS.session); session = null; renderShell(); renderGate(); };
     }
 
     if (tab === "license") {
       const linkedPremium = entitlementPremium() || digit58Premium();
       const linkedPremiumSource = entitlementPremium() ? "Digital Menu Premium" : digit58Premium() ? "your Refills store subscription" : "";
-      box(`<div class="premium-grid"><article class="premium-box"><h3>${linkedPremium ? "Premium Included" : "Get Premium"}</h3><p>${linkedPremium ? `Premium POS is included with ${linkedPremiumSource}.` : "Premium POS is included automatically with a Refills store subscription or Digital Menu Premium — there is no separate POS purchase."}</p>${linkedPremium ? "" : '<div class="pos-license-links" style="display:flex;gap:10px;flex-wrap:wrap;margin-top:14px"><a class="btn btn-outline" href="/digit58/">Explore Refills</a><a class="btn btn-outline" href="/digital-menu/">Explore Digital Menu</a></div>'}<p id="premiumMessage" style="margin-top:12px">${premiumExpiryLabel()}</p></article><article class="premium-box"><h3>Premium includes</h3><p>Reusable menu, CSV import, item removal, availability control, optional inventory, item performance and an account-synced restaurant dashboard.</p></article></div>`);
+      box(`<div class="premium-grid"><article class="premium-box"><h3>${linkedPremium ? "Extra features unlocked" : "Unlock more features"}</h3><p>${linkedPremium ? `These are included with ${linkedPremiumSource}.` : "Menu import, inventory and the sales dashboard unlock automatically with a Refills store subscription or Digital Menu Premium account — there is no separate POS purchase."}</p>${linkedPremium ? "" : '<div class="pos-license-links" style="display:flex;gap:10px;flex-wrap:wrap;margin-top:14px"><a class="btn btn-outline" href="/digit58/">Explore Refills</a><a class="btn btn-outline" href="/digital-menu/">Explore Digital Menu</a></div>'}<p id="premiumMessage" style="margin-top:12px">${premiumExpiryLabel()}</p></article><article class="premium-box"><h3>Included</h3><p>Reusable menu, CSV import, item removal, availability control, optional inventory, item performance and an account-synced restaurant dashboard.</p></article></div>`);
     }
 
     if (tab === "menu") {
-      if (!isPremium()) return box('<div class="locked-note">Activate Premium to use menu import and optional inventory.</div>');
+      if (!isPremium()) return box('<div class="locked-note">Menu import and optional inventory unlock with a Refills store subscription or Digital Menu Premium account.</div>');
       box(`<div class="premium-grid"><article class="premium-box"><h3>Import menu CSV</h3>
         <p>${linkedRestaurant ? `Items and availability sync in both directions with <b>${esc(linkedRestaurant.name)}</b>. ` : ""}CSV is the only menu-item input. Required columns: <b>name, category, price</b>. Optional columns: <b>gst, available, stock</b>.</p>
         <div class="field" style="margin-top:14px"><label>Import method</label><select id="posMenuImportMode"><option value="merge">Add or update existing menu</option><option value="replace">Overwrite entire menu</option></select></div>
-        <input id="menuImportFile" type="file" accept=".csv,text/csv"><div class="gate-actions"><button class="btn btn-outline" id="importMenu">Import CSV</button><button class="btn btn-dark" id="sampleMenu">Download sample</button></div><p id="importStatus">Add/update keeps current items. Overwrite replaces the complete Premium POS menu after confirmation.</p>
+        <input id="menuImportFile" type="file" accept=".csv,text/csv"><div class="gate-actions"><button class="btn btn-outline" id="importMenu">Import CSV</button><button class="btn btn-dark" id="sampleMenu">Download sample</button></div><p id="importStatus">Add/update keeps current items. Overwrite replaces your complete POS menu after confirmation.</p>
         <label class="option-card" style="margin-top:18px"><input id="inventoryToggle" type="checkbox" ${inventoryEnabled() ? "checked" : ""}><span><strong>Enable inventory</strong><small>Optional. Stock is reduced only after a bill is marked Payment Received.</small></span></label>
       </article><article class="premium-box"><div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap"><h3>${linkedRestaurant ? "Synced restaurant menu" : "Configured menu"}</h3><button class="btn btn-outline" id="openAddMenuItem" type="button">+ Add item</button></div>${linkedRestaurant ? '<div class="menu-sync-state"><span></span> Digital Menu + POS</div>' : ""}<div class="menu-list" id="localMenuList"></div></article></div>`);
       $("sampleMenu").onclick = downloadMenuSample;
@@ -342,12 +341,12 @@
     }
 
     if (tab === "dashboard") {
-      if (!isPremium()) return box('<div class="locked-note">The sales dashboard is a Premium feature. Free POS billing remains available.</div>');
+      if (!isPremium()) return box('<div class="locked-note">The sales dashboard unlocks with a Refills store subscription or Digital Menu Premium account. Billing stays available either way.</div>');
       renderDashboardPanel();
     }
 
     if (tab === "orders") {
-      if (!linkedRestaurant || !isPremium()) return box('<div class="locked-note">Open POS from a Premium Digital Menu restaurant to view synced orders.</div>');
+      if (!linkedRestaurant || !isPremium()) return box('<div class="locked-note">Open POS from a Digital Menu Premium restaurant to view synced orders.</div>');
       renderDigitalOrdersPanel();
     }
   }
@@ -516,7 +515,7 @@
     const file = $("menuImportFile").files[0];
     if (!file) return void ($("importStatus").textContent = "Choose a CSV file first.");
     const mode = $("posMenuImportMode")?.value || "merge";
-    if (mode === "replace" && menu.length && !confirm("Overwrite every current Premium POS menu item?")) return;
+    if (mode === "replace" && menu.length && !confirm("Overwrite every current POS menu item?")) return;
     const lines = (await file.text()).split(/\r?\n/).filter(Boolean);
     const headers = (lines.shift() || "").split(",").map((x) => x.trim().toLowerCase());
     if (["name", "category", "price"].some((field) => !headers.includes(field))) return void ($("importStatus").textContent = "Required columns: name, category, price.");
@@ -557,7 +556,7 @@
       strip.className = "premium-menu-quick-add";
       entry.parentElement.insertBefore(strip, entry);
     }
-    strip.innerHTML = `<label>Premium menu item</label><div><select id="premiumItemPicker"><option value="">Choose an available item</option>${menu.filter((item) => item.available && (!inventoryEnabled() || Number(item.stock || 0) > 0)).map((item) => `<option value="${item.id}">${esc(item.category)} · ${esc(item.name)} · ${money(item.price)}</option>`).join("")}</select><input id="premiumItemQty" type="number" min="1" step="1" value="1" aria-label="Menu quantity"><button class="btn btn-outline" id="premiumAddItem">Add item</button></div>`;
+    strip.innerHTML = `<label>Menu item</label><div><select id="premiumItemPicker"><option value="">Choose an available item</option>${menu.filter((item) => item.available && (!inventoryEnabled() || Number(item.stock || 0) > 0)).map((item) => `<option value="${item.id}">${esc(item.category)} · ${esc(item.name)} · ${money(item.price)}</option>`).join("")}</select><input id="premiumItemQty" type="number" min="1" step="1" value="1" aria-label="Menu quantity"><button class="btn btn-outline" id="premiumAddItem">Add item</button></div>`;
     $("premiumAddItem").onclick = () => {
       const item = menu.find((row) => row.id === $("premiumItemPicker").value);
       const quantity = Math.max(1, Math.floor(Number($("premiumItemQty").value || 1)));
