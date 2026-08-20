@@ -2537,15 +2537,15 @@ async function loadPremiumShowcase() {
 document.addEventListener("DOMContentLoaded", loadPremiumShowcase);
 
 function scheduleHeroFlowDots() {
-  const flow = document.getElementById("heroFlowDots");
-  if (!flow || window.matchMedia("(prefers-reduced-motion: reduce)").matches)
+  const heading = document.getElementById("heroHeading");
+  if (!heading || window.matchMedia("(prefers-reduced-motion: reduce)").matches)
     return;
   const run = () => {
-    flow.classList.add("dots-active");
-    setTimeout(() => flow.classList.remove("dots-active"), 5000);
-    setTimeout(run, 7500 + Math.random() * 4000);
+    heading.classList.add("dots-active");
+    setTimeout(() => heading.classList.remove("dots-active"), 5000);
+    setTimeout(run, 6000 + Math.random() * 6000);
   };
-  setTimeout(run, 1200);
+  setTimeout(run, 1200 + Math.random() * 2000);
 }
 document.addEventListener("DOMContentLoaded", scheduleHeroFlowDots);
 async function openBusinessCardCreator() {
