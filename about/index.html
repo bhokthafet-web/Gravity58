@@ -22,6 +22,10 @@ main{width:min(1100px,calc(100% - 32px));margin:auto;padding:42px 0 70px}
 a{color:var(--accent)}.brand{display:inline-flex;align-items:center;gap:9px;font-size:24px;font-weight:900;text-decoration:none;color:var(--ink);margin-bottom:35px}.brand span{color:var(--orange)}.brand-icon{width:28px;height:28px;flex-shrink:0}
 .hero,.card{border:1px solid var(--border);border-radius:22px;background:var(--surface);padding:28px}.hero h1{font-size:clamp(32px,6vw,62px);line-height:1.05;margin:0 0 16px}.hero p,.card p{color:var(--ink-muted);line-height:1.7}.grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin-top:22px}.card h2{margin-top:0}.button{display:inline-block;padding:12px 18px;border-radius:12px;background:var(--orange);color:#fff;text-decoration:none;font-weight:800}.breadcrumbs{font-size:13px;color:var(--ink-muted);margin-bottom:15px}.footer{margin-top:30px;color:var(--ink-muted);font-size:13px}
 .chip{display:inline-block;font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--accent);margin-bottom:8px}
+.g58-icon-nav{display:flex;gap:10px;flex-wrap:wrap;margin:0 0 22px}
+.g58-icon-nav a{display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border-radius:999px;border:1px solid var(--border);background:var(--surface);color:var(--ink);text-decoration:none;font-size:12.5px;font-weight:700;transition:.15s ease}
+.g58-icon-nav a:hover{border-color:var(--accent);color:var(--accent)}
+.g58-icon-nav svg{width:16px;height:16px;flex-shrink:0}
 @media(max-width:800px){.grid{grid-template-columns:1fr}}
 </style>
 <script type="application/ld+json">{"@context": "https://schema.org", "@type": "AboutPage", "name": "About GRAVITY58", "url": "https://g58.in/about/"}</script>
@@ -30,6 +34,11 @@ a{color:var(--accent)}.brand{display:inline-flex;align-items:center;gap:9px;font
 <main>
 <a class="brand" href="/"><svg class="brand-icon" viewBox="0 0 120 120" fill="none" stroke="#F97316" stroke-width="8" aria-hidden="true"><circle cx="60" cy="26" r="15"/><circle cx="28" cy="82" r="15"/><circle cx="92" cy="82" r="15"/></svg>GRAVITY<span>58</span></a>
 <div class="breadcrumbs"><a href="/">Home</a> / About GRAVITY58</div>
+<nav class="g58-icon-nav" aria-label="Quick links">
+  <a href="/" aria-label="Home"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10v9a1 1 0 0 0 1 1h11a1 1 0 0 0 1-1v-9"/><path d="M9.5 20v-6h5v6"/></svg><span>Home</span></a>
+  <a href="/digit58/" aria-label="Refills"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11A8 8 0 0 0 6.3 6.3L4 8.6"/><path d="M4 4v4.6h4.6"/><path d="M4 13a8 8 0 0 0 13.7 4.7L20 15.4"/><path d="M20 20v-4.6h-4.6"/></svg><span>Refills</span></a>
+  <a href="/digital-menu/" aria-label="Digital Menu"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 3v6a2 2 0 0 0 2 2h0"/><path d="M9 3v18"/><path d="M7 3v5"/><path d="M15 3c-1.2 1.4-1.2 6.6 0 8 .5.6 1 .8 1 1.5V21"/></svg><span>Digital Menu</span></a>
+</nav>
 <section class="hero">
 <h1>About GRAVITY58</h1>
 <p>GRAVITY58 gives local stores and restaurants three everyday tools: Refills to bring customers back automatically, a Digital Menu for QR table ordering, and a free POS to bill and track it all.</p>

@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+  <link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32.png?v=5" />
+  <link rel="apple-touch-icon" sizes="180x180" href="/assets/apple-touch-icon.png?v=5" />
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>How Digital Menu Works | GRAVITY58</title>
+<meta name="description" content="See how G58 Digital Menu works for restaurant owners and customers — with a live demo of the scan-to-kitchen ordering flow.">
+<meta name="robots" content="index, follow, max-image-preview:large">
+<link rel="canonical" href="https://g58.in/digital-menu-guide/">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="GRAVITY58">
+<meta property="og:title" content="How Digital Menu Works | GRAVITY58">
+<meta property="og:description" content="See how G58 Digital Menu works for restaurant owners and customers — with a live demo of the scan-to-kitchen ordering flow.">
+<meta property="og:url" content="https://g58.in/digital-menu-guide/">
+<meta property="og:image" content="https://g58.in/assets/og-gravity58.svg">
+<style>
+:root{--ink:#12181F;--ink-muted:#5B6472;--accent:#1D4ED8;--bg:#F5F4EF;--surface:#FFFFFF;--orange:#F97316;--border:rgba(18,24,31,.10);--hero-bg:var(--bg);--hero-surface:var(--surface);--hero-border:var(--border)}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font-family:Inter,Arial,sans-serif}
+main{width:min(1100px,calc(100% - 32px));margin:auto;padding:42px 0 70px}
+a{color:var(--accent)}.brand{display:inline-flex;align-items:center;gap:9px;font-size:24px;font-weight:900;text-decoration:none;color:var(--ink);margin-bottom:22px}.brand span{color:var(--orange)}.brand-icon{width:28px;height:28px;flex-shrink:0}
+.hero,.card{border:1px solid var(--border);border-radius:22px;background:var(--surface);padding:28px}
+.hero h1{font-size:clamp(30px,5.5vw,54px);line-height:1.08;margin:0 0 14px;font-family:Manrope,sans-serif;letter-spacing:-.02em}
+.hero p,.card p{color:var(--ink-muted);line-height:1.7}
+.breadcrumbs{font-size:13px;color:var(--ink-muted);margin-bottom:15px}
+.footer{margin-top:30px;color:var(--ink-muted);font-size:13px}
+.button{display:inline-block;padding:12px 20px;border-radius:12px;background:var(--orange);color:#fff;text-decoration:none;font-weight:800}
+.chip{display:inline-block;font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--accent);margin-bottom:8px}
+
+/* Icon nav */
+.g58-icon-nav{display:flex;gap:10px;flex-wrap:wrap;margin:0 0 22px}
+.g58-icon-nav a{display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border-radius:999px;border:1px solid var(--border);background:var(--surface);color:var(--ink);text-decoration:none;font-size:12.5px;font-weight:700;transition:.15s ease}
+.g58-icon-nav a:hover{border-color:var(--accent);color:var(--accent)}
+.g58-icon-nav svg{width:16px;height:16px;flex-shrink:0}
+
+/* Role sections */
+.role-section{margin-top:26px}
+.role-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;margin-top:18px}
+.role-card{border:1px solid var(--border);border-radius:20px;background:var(--surface);padding:24px}
+.role-card h3{margin:0 0 12px;font-family:Manrope,sans-serif;font-size:18px}
+.role-steps{margin:0;padding:0;list-style:none;counter-reset:step}
+.role-steps li{counter-increment:step;position:relative;padding:0 0 16px 34px;color:var(--ink-muted);font-size:13.5px;line-height:1.55}
+.role-steps li:last-child{padding-bottom:0}
+.role-steps li:before{content:counter(step);position:absolute;left:0;top:0;width:22px;height:22px;border-radius:50%;background:color-mix(in srgb,var(--accent) 12%,transparent);color:var(--accent);font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center}
+
+/* Demo (reused from landing page product workflow component) */
+.product-workflow-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px}
+.product-workflow-card{--workflow-accent:#d65b18;overflow:hidden;border:1px solid var(--hero-border);border-radius:24px;background:var(--hero-surface);box-shadow:0 18px 46px rgba(18,24,31,.08)}
+.product-workflow-copy{padding:25px 26px 12px}
+.product-workflow-product{display:inline-flex;align-items:center;gap:8px;margin-bottom:9px;padding:5px 10px;border-radius:999px;background:color-mix(in srgb,var(--workflow-accent) 11%,transparent);color:var(--workflow-accent);font-size:10px;font-weight:900;letter-spacing:.09em;text-transform:uppercase}
+.product-workflow-copy h3{margin:0 0 8px;color:var(--ink);font-family:Manrope,sans-serif;font-size:21px;line-height:1.25}
+.product-workflow-copy p{margin:0;color:var(--ink-muted);font-size:13.5px;line-height:1.55}
+.product-workflow-cta{display:inline-flex;align-items:center;gap:6px;margin-top:14px;color:var(--workflow-accent);font-size:13px;font-weight:800;text-decoration:none}
+.product-workflow-demo{position:relative;height:276px;margin:8px 16px 16px;border-radius:18px;background:linear-gradient(145deg,color-mix(in srgb,var(--workflow-accent) 7%,var(--hero-bg)),var(--hero-bg));border:1px solid color-mix(in srgb,var(--workflow-accent) 18%,var(--hero-border))}
+.product-workflow-line{position:absolute;height:0;border-top:1.5px dashed color-mix(in srgb,var(--workflow-accent) 38%,transparent);transform-origin:left center;z-index:0}
+.product-workflow-line.line-one{width:145px;left:124px;top:89px;transform:rotate(20deg)}
+.product-workflow-line.line-two{width:128px;left:275px;top:149px;transform:rotate(16deg)}
+.product-flow-node{position:absolute;z-index:1;width:174px;padding:14px 15px;border:1px solid var(--hero-border);border-radius:14px;background:var(--hero-surface);box-shadow:0 14px 30px rgba(18,24,31,.1);animation:heroFloat 5s ease-in-out infinite}
+.product-flow-node span{display:block;margin-bottom:5px;color:var(--workflow-accent);font-size:9px;font-weight:900;letter-spacing:.07em;text-transform:uppercase}
+.product-flow-node strong{display:block;color:var(--ink);font-size:13.5px}
+.product-flow-node small{display:block;margin-top:4px;color:var(--ink-muted);font-size:10px;line-height:1.35}
+.product-flow-node.node-one{left:18px;top:24px}
+.product-flow-node.node-two{left:50%;top:106px;transform:translateX(-50%);animation-delay:.6s}
+.product-flow-node.node-three{right:18px;bottom:18px;text-align:center;border-color:rgba(34,197,94,.36);animation-delay:1.2s}
+.product-flow-node.node-three i{display:block;width:9px;height:9px;margin:0 auto 7px;border-radius:50%;background:#22c55e;box-shadow:0 0 0 5px rgba(34,197,94,.16)}
+.product-flow-badge{position:absolute;z-index:2;padding:6px 10px;border:1px solid var(--hero-border);border-radius:999px;background:var(--hero-surface);box-shadow:0 8px 20px rgba(18,24,31,.08);color:var(--ink-muted);font-size:9.5px;font-weight:800;white-space:nowrap}
+.product-flow-badge.badge-one{right:18px;top:26px}
+.product-flow-badge.badge-two{left:22px;bottom:24px}
+@keyframes heroFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-9px)}}
+@media(prefers-reduced-motion:reduce){.product-flow-node{animation:none}}
+
+@media(max-width:700px){.role-grid{grid-template-columns:1fr}}
+@media(max-width:980px){.product-workflow-grid{grid-template-columns:1fr}.product-workflow-card{max-width:680px;width:100%;margin:0 auto}}
+@media(max-width:540px){
+  .product-workflow-copy{padding:21px 19px 10px}
+  .product-workflow-demo{height:auto;display:grid;gap:10px;padding:16px}
+  .product-workflow-line,.product-flow-badge{display:none}
+  .product-flow-node,.product-flow-node.node-one,.product-flow-node.node-two,.product-flow-node.node-three{position:relative;inset:auto;width:auto;transform:none;animation:none;text-align:left}
+  .product-flow-node.node-three{display:grid;grid-template-columns:auto 1fr;column-gap:9px;align-items:center}
+  .product-flow-node.node-three i{grid-row:1/3;margin:0}
+}
+</style>
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "HowTo", "name": "How G58 Digital Menu Works", "url": "https://g58.in/digital-menu-guide/"}</script>
+</head>
+<body>
+<main>
+<a class="brand" href="/"><svg class="brand-icon" viewBox="0 0 120 120" fill="none" stroke="#F97316" stroke-width="8" aria-hidden="true"><circle cx="60" cy="26" r="15"/><circle cx="28" cy="82" r="15"/><circle cx="92" cy="82" r="15"/></svg>GRAVITY<span>58</span></a>
+<div class="breadcrumbs"><a href="/">Home</a> / How Digital Menu Works</div>
+<nav class="g58-icon-nav" aria-label="Quick links">
+  <a href="/" aria-label="Home"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10v9a1 1 0 0 0 1 1h11a1 1 0 0 0 1-1v-9"/><path d="M9.5 20v-6h5v6"/></svg><span>Home</span></a>
+  <a href="/digit58/" aria-label="Refills"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11A8 8 0 0 0 6.3 6.3L4 8.6"/><path d="M4 4v4.6h4.6"/><path d="M4 13a8 8 0 0 0 13.7 4.7L20 15.4"/><path d="M20 20v-4.6h-4.6"/></svg><span>Refills</span></a>
+  <a href="/digital-menu/" aria-label="Digital Menu"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 3v6a2 2 0 0 0 2 2h0"/><path d="M9 3v18"/><path d="M7 3v5"/><path d="M15 3c-1.2 1.4-1.2 6.6 0 8 .5.6 1 .8 1 1.5V21"/></svg><span>Digital Menu</span></a>
+</nav>
+<section class="hero">
+<span class="chip">Digital Menu</span>
+<h1>How G58 Digital Menu Works</h1>
+<p>Digital Menu turns any table into a live QR ordering point. Customers scan, browse and order — the restaurant manages everything from one live kitchen dashboard.</p>
+</section>
+
+<section class="role-section">
+<div class="role-grid">
+  <article class="role-card">
+    <h3>Restaurant Owner</h3>
+    <ol class="role-steps">
+      <li>Build your digital menu — categories, items, photos and prices — from your dashboard.</li>
+      <li>Print or place the table QR code G58 generates for your restaurant on each table.</li>
+      <li>Manage live orders as they arrive, update the menu anytime, and track orders from your kitchen dashboard.</li>
+    </ol>
+  </article>
+  <article class="role-card">
+    <h3>Customer</h3>
+    <ol class="role-steps">
+      <li>Scan the QR code on the table — no app install needed.</li>
+      <li>Browse the live menu, choose dishes and place your order.</li>
+      <li>Track a live token as the kitchen prepares and serves your order.</li>
+    </ol>
+  </article>
+</div>
+</section>
+
+<section class="product-workflow-section" style="margin-top:32px" aria-label="Digital Menu demo">
+  <div class="product-workflow-grid" style="grid-template-columns:1fr">
+    <article class="product-workflow-card">
+      <div class="product-workflow-copy">
+        <span class="product-workflow-product">Live Demo</span>
+        <h3>See the scan-to-kitchen flow</h3>
+        <p>This is exactly what a customer sees: scan the table QR, order, and track a live kitchen token.</p>
+        <a href="/digital-menu/" class="product-workflow-cta">Create your menu <span aria-hidden="true">→</span></a>
+      </div>
+      <div class="product-workflow-demo" aria-label="Digital Menu process: table QR, customer order and kitchen acceptance">
+        <span class="product-workflow-line line-one" aria-hidden="true"></span>
+        <span class="product-workflow-line line-two" aria-hidden="true"></span>
+        <div class="product-flow-node node-one"><span>Table QR</span><strong>Table 08</strong><small>Scan to open the live menu</small></div>
+        <div class="product-flow-node node-two"><span>Customer Order</span><strong>2 items · ₹398</strong><small>Sent directly to the kitchen</small></div>
+        <div class="product-flow-node node-three success"><i aria-hidden="true"></i><strong>Kitchen Accepted</strong><small>Token 024 · preparing</small></div>
+        <span class="product-flow-badge badge-one">Live order</span>
+        <span class="product-flow-badge badge-two">Ready in 18 min</span>
+      </div>
+    </article>
+  </div>
+</section>
+
+<div class="card" style="margin-top:26px;text-align:center">
+  <h2 style="margin-top:0">Ready to put a QR menu on every table?</h2>
+  <p>Free to start — Premium unlocks extras like POS, included at no extra cost.</p>
+  <a class="button" href="/digital-menu/">Explore Digital Menu</a>
+</div>
+
+<div class="footer">© 2026 GRAVITY58 · <a href="/privacy-policy/">Privacy</a> · <a href="/terms/">Terms</a> · <a href="/contact/">Contact</a></div>
+</main>
+  <script src="/js/server-status.js?v=1"></script>
+</body>
+</html>

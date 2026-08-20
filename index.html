@@ -11,7 +11,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/css/style.css?v=38">
+  <link rel="stylesheet" href="/css/style.css?v=39">
   <link rel="stylesheet" href="/css/mobile.css">
   <link rel="canonical" href="https://g58.in/" />
   <meta name="robots" content="index, follow, max-image-preview:large" />
@@ -48,8 +48,8 @@
 
     <nav class="nav-center" aria-label="Primary">
       <button type="button" class="nav-link" onclick="document.querySelector('.product-workflow-section')?.scrollIntoView({behavior:'smooth'})">How It Works</button>
-      <a class="btn primary nav-explore-btn" href="/digit58/">Explore Refills</a>
-      <a class="btn nav-explore-btn nav-explore-secondary" href="/digital-menu/">Explore Digital Menu</a>
+      <a class="btn primary nav-explore-btn" href="/digit58/">Refills</a>
+      <a class="btn primary nav-explore-btn" href="/digital-menu/">Digital Menu</a>
     </nav>
 
     <div class="header-account-controls" aria-label="Account controls">
@@ -77,8 +77,10 @@
 <div class="mobile-nav-overlay" id="mobileNavOverlay" onclick="closeMobileNav()"></div>
 <nav class="mobile-nav-panel" id="mobileNavPanel" aria-label="Mobile">
   <button type="button" class="mobile-nav-link" onclick="closeMobileNav();document.querySelector('.product-workflow-section')?.scrollIntoView({behavior:'smooth'})">How It Works</button>
-  <a class="mobile-nav-link" href="/digit58/" onclick="closeMobileNav()">Explore Refills</a>
-  <a class="mobile-nav-link" href="/digital-menu/" onclick="closeMobileNav()">Explore Digital Menu</a>
+  <a class="mobile-nav-link" href="/digit58/" onclick="closeMobileNav()">Refills</a>
+  <a class="mobile-nav-link mobile-nav-sublink" href="/refills-guide/" onclick="closeMobileNav()">How Refills Works</a>
+  <a class="mobile-nav-link" href="/digital-menu/" onclick="closeMobileNav()">Digital Menu</a>
+  <a class="mobile-nav-link mobile-nav-sublink" href="/digital-menu-guide/" onclick="closeMobileNav()">How Digital Menu Works</a>
   <div class="mobile-nav-group-label">Products</div>
   <a class="mobile-nav-link mobile-nav-sublink" href="/digit58/" onclick="closeMobileNav()">Refills</a>
   <a class="mobile-nav-link mobile-nav-sublink" href="/digital-menu/" onclick="closeMobileNav()">Digital Menu</a>
@@ -112,6 +114,7 @@
           <h3>Bring repeat customers back automatically</h3>
           <p>Create a store link, remind customers when essentials are due and receive their repeat-order request. Your first month of store access is free.</p>
           <a href="/digit58/" class="product-workflow-cta">Explore Refills <span aria-hidden="true">→</span></a>
+          <a href="/refills-guide/" class="product-workflow-secondary-link">How Refills Works</a>
           <a class="g58-app-badge" href="/downloads/Refills_Customer.apk" download aria-label="Download the Refills Customer Android app" style="margin-top:14px"><span class="g58-app-badge-icon">▶</span><span class="g58-app-badge-text"><small>For customers</small><strong>Download Android App</strong></span></a>
         </div>
         <div class="product-workflow-demo" aria-label="Refills process: store link, refill reminder and repeat order">
@@ -131,6 +134,7 @@
           <h3>Move every table order from scan to kitchen</h3>
           <p>Customers scan the table QR, choose dishes and receive a live token while the restaurant manages the order.</p>
           <a href="/digital-menu/" class="product-workflow-cta">Explore Digital Menu <span aria-hidden="true">→</span></a>
+          <a href="/digital-menu-guide/" class="product-workflow-secondary-link">How Digital Menu Works</a>
           <a href="/digital-menu/" class="g58-app-badge" style="margin-top:14px"><span class="g58-app-badge-icon">▶</span><span class="g58-app-badge-text"><small>For restaurants</small><strong>Create Restaurant Menu</strong></span></a>
         </div>
         <div class="product-workflow-demo" aria-label="Digital Menu process: table QR, customer order and kitchen acceptance">
