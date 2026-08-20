@@ -2542,7 +2542,7 @@ function scheduleHeroFlowDots() {
     return;
   const run = () => {
     heading.classList.add("dots-active");
-    setTimeout(() => heading.classList.remove("dots-active"), 3200);
+    setTimeout(() => heading.classList.remove("dots-active"), 4200);
     setTimeout(run, 6000 + Math.random() * 4000);
   };
   setTimeout(run, 1500);
