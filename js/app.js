@@ -2400,7 +2400,51 @@ function openCustomerPostCreator() {
   if (type) type.value = "customer";
   updateFormType();
 }
-function openBusinessCardCreator() {
+function posWorkspaceSafeId(value, length) {
+  return String(value || "account")
+    .replace(/[^a-zA-Z0-9._-]/g, "-")
+    .slice(0, length);
+}
+async function hasBusinessCardAccess(user) {
+  const api = window.Gravity58Ads;
+  if (!api?.configured || !user) return false;
+  const now = Date.now();
+  const notExpired = (row) =>
+    row.lifetime || !row.expiresAt || new Date(row.expiresAt).getTime() > now;
+  const [digit58Entitlements, menuEntitlements, posWorkspace] =
+    await Promise.all([
+      api.list("digit58_entitlements").catch(() => []),
+      api.list("digital_menu_entitlements").catch(() => []),
+      api
+        .list(`pos_workspace_${posWorkspaceSafeId(user.id, 45)}`)
+        .catch(() => []),
+    ]);
+  const isRefillsOwner = digit58Entitlements.some(
+    (row) =>
+      row.ownerId === user.id && row.active && !row.paused && notExpired(row),
+  );
+  const isMenuPremium = menuEntitlements.some(
+    (row) =>
+      row.ownerId === user.id && row.plan === "premium" && notExpired(row),
+  );
+  const posRecord = posWorkspace.find((row) => row.ownerId === user.id);
+  const isPosPremium = Boolean(
+    posRecord?.premium?.active &&
+      (!posRecord.premium.expiresAt ||
+        new Date(posRecord.premium.expiresAt).getTime() > now),
+  );
+  return isRefillsOwner || isMenuPremium || isPosPremium;
+}
+async function openBusinessCardCreator() {
+  const user = window.G58SiteUser;
+  if (!user) return window.G58RequestAuth?.("business");
+  const allowed = await hasBusinessCardAccess(user);
+  if (!allowed) {
+    alert(
+      "A digital business card is available for Refills store owners, Digital Menu Premium accounts and POS Premium accounts. Upgrade one of these plans to create your card.",
+    );
+    return;
+  }
   activeMode = "business";
   openCreateModal();
   const type = document.getElementById("postType");

@@ -30,6 +30,7 @@
   let menu = read(KEYS.menu, []);
   let premium = read(KEYS.premium, null);
   let linkedMenuEntitlement = read("g58DigitalMenuEntitlement", null);
+  let linkedDigit58Entitlement = read("g58RefillsEntitlement", null);
   let linkedMenuRecord = null;
   let linkedRestaurant = null;
   let linkedDigitalOrders = [];
@@ -42,7 +43,8 @@
   let activePremiumTab = "account";
 
   const entitlementPremium = () => Boolean(linkedMenuEntitlement?.ownerId === session?.id && linkedMenuEntitlement?.plan === "premium" && (linkedMenuEntitlement.lifetime || !linkedMenuEntitlement.expiresAt || new Date(linkedMenuEntitlement.expiresAt) > new Date()));
-  const isPremium = () => entitlementPremium() || Boolean(premium?.active && (!premium.expiresAt || new Date(premium.expiresAt) > new Date()));
+  const digit58Premium = () => Boolean(linkedDigit58Entitlement?.ownerId === session?.id && linkedDigit58Entitlement?.active && !linkedDigit58Entitlement?.paused && (linkedDigit58Entitlement.lifetime || !linkedDigit58Entitlement.expiresAt || new Date(linkedDigit58Entitlement.expiresAt) > new Date()));
+  const isPremium = () => entitlementPremium() || digit58Premium() || Boolean(premium?.active && (!premium.expiresAt || new Date(premium.expiresAt) > new Date()));
   const inventoryEnabled = () => localStorage.getItem(KEYS.inventory) === "1";
 
   const safeId = (value, length) => String(value || "account").replace(/[^a-zA-Z0-9._-]/g, "-").slice(0, length);
@@ -60,9 +62,14 @@
   });
   async function loadWorkspace() {
     if (!session || !window.Gravity58Ads?.configured) return;
-    const entitlements = await Gravity58Ads.list("digital_menu_entitlements").catch(() => []);
+    const [entitlements, digit58Entitlements] = await Promise.all([
+      Gravity58Ads.list("digital_menu_entitlements").catch(() => []),
+      Gravity58Ads.list("digit58_entitlements").catch(() => []),
+    ]);
     linkedMenuEntitlement = entitlements.find((row) => row.ownerId === session.id) || null;
     write("g58DigitalMenuEntitlement", linkedMenuEntitlement);
+    linkedDigit58Entitlement = digit58Entitlements.find((row) => row.ownerId === session.id) || null;
+    write("g58RefillsEntitlement", linkedDigit58Entitlement);
     if (restaurantIntegrationRequested && session.id !== linkedOwnerId) throw new Error("Sign in with the restaurant owner account that opened this POS link.");
     const records = await Gravity58Ads.list(workspaceKind());
     const record = records.find((row) => row.ownerId === session.id && (restaurantIntegrationRequested ? row.restaurantId === linkedRestaurantId : !row.restaurantId))
@@ -315,7 +322,9 @@
     }
 
     if (tab === "license") {
-      box(`<div class="premium-grid"><article class="premium-box"><h3>${entitlementPremium() ? "Digital Menu Premium" : "Activate Premium"}</h3><p>${entitlementPremium() ? "Premium POS is included with this restaurant owner's Digital Menu Premium plan." : "Enter the activation key supplied by the G58 team."}</p>${entitlementPremium() ? "" : '<div class="field" style="margin-top:14px"><label>Activation key</label><input id="localPremiumKey" placeholder="G58-POS-XXXX-XXXX"></div><button class="btn btn-primary" id="activateLocalPremium">Activate for this account</button>'}<p id="premiumMessage" style="margin-top:12px">${premiumExpiryLabel()}</p></article><article class="premium-box"><h3>Premium includes</h3><p>Reusable menu, CSV import, item removal, availability control, optional inventory, item performance and an account-synced restaurant dashboard.</p></article></div>`);
+      const linkedPremium = entitlementPremium() || digit58Premium();
+      const linkedPremiumSource = entitlementPremium() ? "Digital Menu Premium" : digit58Premium() ? "your Refills store subscription" : "";
+      box(`<div class="premium-grid"><article class="premium-box"><h3>${linkedPremium ? "Premium Included" : "Activate Premium"}</h3><p>${linkedPremium ? `Premium POS is included with ${linkedPremiumSource}.` : "Enter the activation key supplied by the G58 team."}</p>${linkedPremium ? "" : '<div class="field" style="margin-top:14px"><label>Activation key</label><input id="localPremiumKey" placeholder="G58-POS-XXXX-XXXX"></div><button class="btn btn-primary" id="activateLocalPremium">Activate for this account</button>'}<p id="premiumMessage" style="margin-top:12px">${premiumExpiryLabel()}</p></article><article class="premium-box"><h3>Premium includes</h3><p>Reusable menu, CSV import, item removal, availability control, optional inventory, item performance and an account-synced restaurant dashboard.</p></article></div>`);
       if (entitlementPremium()) return;
       $("activateLocalPremium").onclick = () => {
         const key = $("localPremiumKey").value.trim().toUpperCase();
