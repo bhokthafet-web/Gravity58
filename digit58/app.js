@@ -600,7 +600,19 @@ async function boot(){
   session=await api.currentUser().catch(()=>null);
   if(!session)return renderOwnerAuth();
   await loadEntitlement();
-  if(!hasActiveEntitlement())return renderAccessGate();
+  if(!hasActiveEntitlement())return grantFreeTrialOrGate();
+  await proceedAfterEntitlement();
+}
+const FREE_TRIAL_DAYS=30;
+async function grantFreeTrialOrGate(){
+  if(entitlement)return renderAccessGate();
+  const ownerId=cloudOwnerId();
+  try{
+    const expiresAt=new Date(Date.now()+FREE_TRIAL_DAYS*86400000).toISOString();
+    entitlement=await api.create(ENTITLEMENT_KIND,{ownerId,ownerEmail:session?.email||'',active:true,paused:false,lifetime:false,storeSlots:1,freeTrial:true,activatedAt:now(),expiresAt,updatedAt:now()},`d58-${String(ownerId).slice(0,30)}`,api.managedPermissionSet?.()||api.collaborativePermissionSet(ownerId));
+  }catch{
+    return renderAccessGate();
+  }
   await proceedAfterEntitlement();
 }
 const DIGIT58_POLICY_TEXT='Refills generates a payment QR code from the UPI ID you provide, to help you collect payment from your customers. G58 only facilitates this QR generation — we are not a party to any payment and are not responsible for any fraud, dispute or disagreement between you and your customer. Please verify payments independently before fulfilling any order.';
@@ -691,6 +703,7 @@ function renderConfigError(){app.innerHTML=`<main class="screen"><section class=
 function renderOwnerAuth(){
   app.innerHTML=`<main class="screen"><section class="auth-card">
     <a class="brand" href="../"><svg class="brand-mark" viewBox="0 0 120 120" fill="none" stroke="#7fffd4" stroke-width="8" aria-hidden="true"><circle cx="60" cy="26" r="15"/><circle cx="28" cy="82" r="15"/><circle cx="92" cy="82" r="15"/></svg><div><h2>Refills</h2><p class="tagline">Turn your store digital — orders, customers and reminders in one place.</p></div></a>
+    <span class="chip" style="display:inline-block;margin-bottom:14px">Your first month is free</span>
     <div class="actions" style="margin-bottom:14px"><button class="btn small" id="tabLogin">Sign in</button><button class="btn small secondary" id="tabSignup">Create store account</button></div>
     <form id="ownerAuthForm">
       <div class="field full-name-field hidden"><label>Your name</label><input name="name"></div>
@@ -715,7 +728,7 @@ function renderOwnerAuth(){
       else await api.login(values.email.trim(),values.password);
       session=await api.currentUser();
       await loadEntitlement();
-      if(!hasActiveEntitlement())return renderAccessGate();
+      if(!hasActiveEntitlement())return grantFreeTrialOrGate();
       await proceedAfterEntitlement();
     }catch(error){button.disabled=false;toast(error.message||'Could not sign in')}
   };
@@ -795,7 +808,8 @@ function subscriptionView(){
   refreshView=subscriptionView;
   const expiry=entitlement?.lifetime?'Lifetime access':entitlement?.expiresAt?new Date(entitlement.expiresAt).toLocaleDateString('en-IN',{dateStyle:'medium'}):'—';
   const status=entitlement?.paused?'Paused':hasActiveEntitlement()?'Active':'Inactive';
-  $('#page').innerHTML=`<div class="section-head"><div><h1>Subscription</h1><p class="muted">Your Refills store portal access.</p></div></div><div class="card" style="max-width:420px"><span class="chip">Refills Store Access</span><h2 style="margin:10px 0">${money(SUBSCRIPTION_AMOUNT)}<small class="muted" style="font-size:14px"> /month</small></h2><div class="chips"><span class="chip ${status==='Active'?'delivered':status==='Paused'?'due':''}">${status}</span></div><p class="muted" style="margin-top:12px">${entitlement?.lifetime?'Your subscription never expires.':`Renews / expires: ${expiry}`}</p>${status==='Paused'?'<p class="muted">Contact the G58 team to resume access.</p>':''}</div>`;
+  const onFreeTrial=entitlement?.freeTrial&&status==='Active';
+  $('#page').innerHTML=`<div class="section-head"><div><h1>Subscription</h1><p class="muted">Your Refills store portal access.</p></div></div><div class="card" style="max-width:420px"><span class="chip">${onFreeTrial?'Free Trial':'Refills Store Access'}</span><h2 style="margin:10px 0">${onFreeTrial?'Free':money(SUBSCRIPTION_AMOUNT)}<small class="muted" style="font-size:14px"> ${onFreeTrial?'for your first month':'/month'}</small></h2><div class="chips"><span class="chip ${status==='Active'?'delivered':status==='Paused'?'due':''}">${status}</span></div><p class="muted" style="margin-top:12px">${entitlement?.lifetime?'Your subscription never expires.':`${onFreeTrial?'Free trial ends':'Renews / expires'}: ${expiry}`}</p>${onFreeTrial?`<p class="muted">After your free trial, continuing store access is ${money(SUBSCRIPTION_AMOUNT)}/month.</p>`:''}${status==='Paused'?'<p class="muted">Contact the G58 team to resume access.</p>':''}</div>`;
 }
 
 function metric(title,value){return `<article class="card metric"><span>${html(title)}</span><strong>${value}</strong></article>`}

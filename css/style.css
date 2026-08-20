@@ -1504,7 +1504,8 @@ body{background:
 .product-workflow-card{--workflow-accent:#0f8f7c;overflow:hidden;border:1px solid var(--hero-border);border-radius:24px;background:var(--hero-surface);box-shadow:0 18px 46px rgba(18,24,31,.08)}
 .workflow-menu{--workflow-accent:#d65b18}
 .product-workflow-copy{padding:25px 26px 12px}
-.product-workflow-product{display:inline-flex;margin-bottom:9px;padding:5px 10px;border-radius:999px;background:color-mix(in srgb,var(--workflow-accent) 11%,transparent);color:var(--workflow-accent);font-size:10px;font-weight:900;letter-spacing:.09em;text-transform:uppercase}
+.product-workflow-product{display:inline-flex;align-items:center;gap:8px;margin-bottom:9px;padding:5px 10px;border-radius:999px;background:color-mix(in srgb,var(--workflow-accent) 11%,transparent);color:var(--workflow-accent);font-size:10px;font-weight:900;letter-spacing:.09em;text-transform:uppercase}
+.product-workflow-promo{padding:3px 9px;border-radius:999px;background:var(--orange);color:#fff;font-size:9.5px;font-weight:800;letter-spacing:.04em}
 .product-workflow-copy h3{margin:0 0 8px;color:var(--ink);font-family:Manrope,sans-serif;font-size:21px;line-height:1.25}
 .product-workflow-copy p{margin:0;color:var(--ink-muted);font-size:13.5px;line-height:1.55}
 .product-workflow-cta{display:inline-flex;align-items:center;gap:6px;margin-top:14px;color:var(--workflow-accent);font-size:13px;font-weight:800;text-decoration:none}
