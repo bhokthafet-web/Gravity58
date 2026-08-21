@@ -329,6 +329,21 @@ document.addEventListener('keydown',unlockOrderAlertAudio,{once:true});
 const ringingIds=new Set();
 let knownOrderIds=new Set(),knownBuyRequestIds=new Set(),knownBookingIds=new Set();
 let ownerOrdersUnsubscribe=null,ownerCardsUnsubscribe=null,ownerPromotionsUnsubscribe=null,ownerBookingsUnsubscribe=null;
+const knownMessageCounts=new Map();
+function checkForNewMessages(rows,otherRole){
+  let heard=false;
+  for(const row of rows||[]){
+    const messages=row.messages||[];
+    const prevCount=knownMessageCounts.has(row.id)?knownMessageCounts.get(row.id):messages.length;
+    if(messages.length>prevCount){
+      const newest=messages[messages.length-1];
+      if(newest&&newest.senderRole===otherRole)heard=true;
+    }
+    knownMessageCounts.set(row.id,messages.length);
+  }
+  return heard;
+}
+function playChatMessageBeep(){orderAlertBeep(.14,720)}
 function orderAlertBeep(duration=.18,frequency=880){
   try{
     orderAlertContext||=new (window.AudioContext||window.webkitAudioContext)();
@@ -534,6 +549,45 @@ function showMedicineAlarm(store,customer,course,medicine){
     checkMedicineAlarms(store,customer);
   };
 }
+let bookingReminderTimer=null,customerBookingsCache=[];
+const bookingReminderRung=new Set();
+function bookingReminderKey(bookingId){return `${bookingId}:${indiaDateValue()}`}
+function startBookingReminderTimer(store,customer){
+  stopBookingReminderTimer();
+  if(!isServiceStore(store))return;
+  bookingReminderTimer=setInterval(()=>checkBookingReminders(store,customer),20000);
+}
+function stopBookingReminderTimer(){if(bookingReminderTimer){clearInterval(bookingReminderTimer);bookingReminderTimer=null}}
+function isApproachingTime(scheduledTime,nowTime,leadMinutes=15){
+  const [sh,sm]=scheduledTime.split(':').map(Number),[nh,nm]=nowTime.split(':').map(Number);
+  if([sh,sm,nh,nm].some(Number.isNaN))return false;
+  const scheduledMinutes=sh*60+sm,nowMinutes=nh*60+nm;
+  return nowMinutes>=scheduledMinutes-leadMinutes&&nowMinutes<scheduledMinutes;
+}
+function checkBookingReminders(store,customer){
+  if($('.incoming-call-overlay')||$('.modal-backdrop'))return;
+  const today=indiaDateValue(),nowTime=indiaTimeValue();
+  for(const booking of customerBookingsCache){
+    if(booking.status!=='Confirmed'||booking.date!==today)continue;
+    const key=bookingReminderKey(booking.id);
+    if(bookingReminderRung.has(key))continue;
+    if(booking.startTime&&isApproachingTime(booking.startTime,nowTime)){
+      bookingReminderRung.add(key);
+      showBookingReminder(store,customer,booking);
+      return;
+    }
+  }
+}
+function showBookingReminder(store,customer,booking){
+  stopIncomingCallRing();
+  const wrap=document.createElement('div');
+  wrap.className='incoming-call-overlay';
+  wrap.innerHTML=`<div class="incoming-call-card"><div class="incoming-call-rings"><span></span><span></span><span></span><div class="incoming-call-avatar medicine-alarm-avatar" aria-hidden="true">📅</div></div><h2>Booking time approaching!</h2><p class="muted">${html(booking.serviceName)} at ${html(booking.startTime)}${booking.expertName?` with ${html(booking.expertName)}`:''}</p><button type="button" class="incoming-call-accept-btn" aria-label="Dismiss"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M6.6 10.8c1.5 3 3.9 5.4 6.9 6.9l2.3-2.3c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.5.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1C10.6 21 3 13.4 3 4c0-.6.4-1 1-1h3.2c.6 0 1 .4 1 1 0 1.2.2 2.4.6 3.5.1.4 0 .8-.2 1L6.6 10.8z"/></svg></button><p class="incoming-call-hint">Tap to dismiss</p></div>`;
+  document.body.appendChild(wrap);
+  playIncomingCallRing();
+  incomingCallTimer=setInterval(playIncomingCallRing,1900);
+  wrap.querySelector('.incoming-call-accept-btn').onclick=()=>stopIncomingCallRing();
+}
 let motionRequested=false;
 function triggerVialShake(){$$('.vial-liquid').forEach(node=>{node.classList.remove('slosh');void node.offsetWidth;node.classList.add('slosh')})}
 function attachShakeListener(){
@@ -572,7 +626,7 @@ function startOwnerRealtime(){
   ownerBookingsUnsubscribe?.();
   ownerBookingsUnsubscribe=api.subscribeKind(bookingKind(ownerId),()=>refreshOwnerBookingsRealtime());
 }
-function stopOwnerRealtime(){ownerOrdersUnsubscribe?.();ownerCardsUnsubscribe?.();ownerPromotionsUnsubscribe?.();ownerBookingsUnsubscribe?.();ownerOrdersUnsubscribe=ownerCardsUnsubscribe=ownerPromotionsUnsubscribe=ownerBookingsUnsubscribe=null;ringingIds.clear();knownOrderIds.clear();knownBuyRequestIds.clear();knownBookingIds.clear();updateOrderAlertSound()}
+function stopOwnerRealtime(){ownerOrdersUnsubscribe?.();ownerCardsUnsubscribe?.();ownerPromotionsUnsubscribe?.();ownerBookingsUnsubscribe?.();ownerOrdersUnsubscribe=ownerCardsUnsubscribe=ownerPromotionsUnsubscribe=ownerBookingsUnsubscribe=null;ringingIds.clear();knownOrderIds.clear();knownBuyRequestIds.clear();knownBookingIds.clear();knownMessageCounts.clear();updateOrderAlertSound()}
 async function refreshOwnerOrdersRealtime(){
   const ownerId=cloudOwnerId();if(!ownerId)return;
   const orders=await api.list(orderKind(ownerId)).catch(()=>null);
@@ -581,6 +635,7 @@ async function refreshOwnerOrdersRealtime(){
   orders.forEach(order=>{if(['Requested','Minimum Approval Requested'].includes(order.status)&&!knownOrderIds.has(order.id)){ringingIds.add(order.id);isNew=true}knownOrderIds.add(order.id)});
   state.orders=orders;save();
   updateOrderAlertSound();
+  if(checkForNewMessages(orders,'customer'))playChatMessageBeep();
   if(isNew)toast('🔔 New order or minimum approval request received');
   if(!$('.modal-backdrop'))refreshView();
 }
@@ -592,6 +647,7 @@ async function refreshOwnerBookingsRealtime(){
   bookings.forEach(booking=>{if(['Requested','Pending Payment'].includes(booking.status)&&!knownBookingIds.has(booking.id)){ringingIds.add(booking.id);isNew=true}knownBookingIds.add(booking.id)});
   state.bookings=bookings;save();
   updateOrderAlertSound();
+  if(checkForNewMessages(bookings,'customer'))playChatMessageBeep();
   if(isNew)toast('🔔 New booking received');
   if(!$('.modal-backdrop'))refreshView();
 }
@@ -603,6 +659,7 @@ async function refreshOwnerCardsRealtime(){
   cards.forEach(card=>{if(card.status==='Buy Requested'&&!knownBuyRequestIds.has(card.id)){ringingIds.add(card.id);isNew=true}knownBuyRequestIds.add(card.id)});
   state.cards=cards;save();
   updateOrderAlertSound();
+  if(checkForNewMessages(cards,'customer'))playChatMessageBeep();
   if(isNew)toast('🔔 Buy again request received');
   if(!$('.modal-backdrop'))refreshView();
 }
@@ -2076,6 +2133,9 @@ async function loadAndRenderCustomerView(store,customer){
   const myServices=services.filter(row=>row.storeId===store.id&&row.active!==false);
   const myExperts=experts.filter(row=>row.storeId===store.id&&row.active!==false);
   const myBookings=bookings.filter(row=>row.storeId===store.id&&row.customerAccountId===customer.customerAccountId);
+  customerBookingsCache=myBookings;
+  const heardNewMessage=[checkForNewMessages(myOrders,'owner'),checkForNewMessages(myCards,'owner'),checkForNewMessages(myBookings,'owner')].some(Boolean);
+  if(heardNewMessage)playChatMessageBeep();
   if($('.modal-backdrop')){customerRenderPending=true;return}
   customerRenderPending=false;
   renderCustomerCards(store,customer,myCards,myOrders,myPromotions,myCourses,myServices,myExperts,myBookings);
@@ -2084,6 +2144,7 @@ let customerOrdersUnsubscribe=null,customerCardsUnsubscribe=null,customerPromoti
 function startCustomerRealtime(store,customer){
   activeCustomerContext={store,customer};
   startMedicineAlarmTimer(store,customer);
+  startBookingReminderTimer(store,customer);
   if(!api?.subscribeKind)return;
   customerOrdersUnsubscribe?.();
   customerOrdersUnsubscribe=api.subscribeKind(orderKind(store.ownerId),()=>loadAndRenderCustomerView(store,customer));
@@ -2096,7 +2157,7 @@ function startCustomerRealtime(store,customer){
   customerBookingsUnsubscribe?.();
   if(isServiceStore(store))customerBookingsUnsubscribe=api.subscribeKind(bookingKind(store.ownerId),()=>loadAndRenderCustomerView(store,customer));
 }
-function stopCustomerRealtime(){customerOrdersUnsubscribe?.();customerCardsUnsubscribe?.();customerPromotionsUnsubscribe?.();customerCoursesUnsubscribe?.();customerBookingsUnsubscribe?.();customerOrdersUnsubscribe=customerCardsUnsubscribe=customerPromotionsUnsubscribe=customerCoursesUnsubscribe=customerBookingsUnsubscribe=null;stopPromotionAutoScroll();clearTimeout(promotionAutoScrollResumeTimer);stopMedicineAlarmTimer();dueReminderRung.clear();pendingDueBeep=false;pendingOwnerOrderRung.clear();medicineAlarmRung.clear();activeCustomerContext=null;customerRenderPending=false;stopIncomingCallRing()}
+function stopCustomerRealtime(){customerOrdersUnsubscribe?.();customerCardsUnsubscribe?.();customerPromotionsUnsubscribe?.();customerCoursesUnsubscribe?.();customerBookingsUnsubscribe?.();customerOrdersUnsubscribe=customerCardsUnsubscribe=customerPromotionsUnsubscribe=customerCoursesUnsubscribe=customerBookingsUnsubscribe=null;stopPromotionAutoScroll();clearTimeout(promotionAutoScrollResumeTimer);stopMedicineAlarmTimer();stopBookingReminderTimer();dueReminderRung.clear();pendingDueBeep=false;pendingOwnerOrderRung.clear();medicineAlarmRung.clear();bookingReminderRung.clear();knownMessageCounts.clear();activeCustomerContext=null;customerRenderPending=false;stopIncomingCallRing()}
 const VAPID_PUBLIC_KEY='BBWHhjt1keQag3HnZIooxS1pJvelQ8CuQ6eWBxFp9AStQLDpTzZqwKHmwj_gomaCpNBykqJRo6AsmfbC0roZoEY';
 function urlBase64ToUint8Array(base64String){
   const padding='='.repeat((4-base64String.length%4)%4);
