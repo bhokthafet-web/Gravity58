@@ -905,13 +905,14 @@ async function createDigit58Booking(call, input, userId) {
   const lunch = digit58LunchBreakRange(store);
   if (lunch && rangesOverlap(startMinutes, endMinutes, lunch.start, lunch.end)) throw new Error('This time falls in the store\'s lunch break. Choose another slot.');
 
-  let expertName = '';
+  let expertName = '', expertPhone = '';
   if (expertId) {
     const expertRow = await call(`/tablesdb/${DATABASE_ID}/tables/${TABLE_ID}/rows/${encodeURIComponent(expertId)}`).catch(() => null);
     if (!expertRow || expertRow.kind !== digit58ExpertKind(ownerId)) throw new Error('This expert could not be found.');
     const expert = cleanRow(expertRow);
     if (expert.storeId !== storeId) throw new Error('This expert does not belong to the selected store.');
     expertName = expert.name || '';
+    expertPhone = text(expert.phone, 20);
   }
 
   const existingBookings = (await listRowsByKind(call, digit58BookingKind(ownerId))).map(cleanRow);
@@ -933,7 +934,7 @@ async function createDigit58Booking(call, input, userId) {
   const upiId = text(store.upiId, 120);
   const createdAt = new Date().toISOString();
   const record = {
-    id: bookingId, ownerId, storeId, serviceId, serviceName: service.name, expertId, expertName,
+    id: bookingId, ownerId, storeId, serviceId, serviceName: service.name, expertId, expertName, expertPhone,
     customerAccountId: userId, customerName: text(input.customerName, 120), customerEmail: text(input.customerEmail, 250),
     phone: normalisePhone(input.phone).slice(0, 15),
     date, startTime, durationMinutes, price, prepaymentPercent, prepaymentAmount, cancellationChargeAmount, upfrontAmount, balanceAmount,

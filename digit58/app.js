@@ -848,6 +848,11 @@ function bindFloatingSupportButton(){
 function customerBrandStrip(){
   return `<div class="customer-brand-strip"><svg class="brand-mark" viewBox="0 0 120 120" fill="none" stroke="#7fffd4" stroke-width="8" aria-hidden="true"><circle cx="60" cy="26" r="15"/><circle cx="28" cy="82" r="15"/><circle cx="92" cy="82" r="15"/></svg><div><strong>Refills</strong><small>powered by <a href="https://www.g58.in/" target="_blank" rel="noopener noreferrer">g58.in</a></small></div></div>`;
 }
+function whatsappLink(phone,message){
+  const digits=String(phone||'').replace(/[^\d+]/g,'').replace(/^\+/,'');
+  if(!digits)return '';
+  return `https://wa.me/${digits}?text=${encodeURIComponent(message)}`;
+}
 function floatingStoreWhatsappButton(store){
   const phone=String(store?.phone||'').replace(/[^\d+]/g,'').replace(/^\+/,'');
   if(!phone)return '';
@@ -2433,7 +2438,9 @@ function customerBookingMarkup(booking,store){
     ?`<p class="muted" style="text-align:center">No payment needed yet — waiting for the store to accept your booking. You'll pay ${money(booking.price)} after the service is done.</p>`
     :'';
   const canCancel=['Requested','Pending Payment','Confirmed'].includes(status);
-  return `<article class="card order-item-card premium-card"><div class="section-head"><h3>${html(booking.serviceName)}</h3><span class="chip">${html(status)}</span></div><p class="muted">${html(booking.date)} · ${html(booking.startTime)}${booking.expertName?` · with ${html(booking.expertName)}`:''}</p><p class="muted">Price ${money(booking.price)}${upfrontAmount>0?` · Prepaid ${money(upfrontAmount)}`:''}</p>${balanceNote}${paymentBlock}${canCancel?`<div class="actions"><button class="btn small red" data-cancel-my-booking="${html(booking.id)}">Cancel Booking</button></div>`:''}${bookingChatMarkup(booking,'customer')}</article>`;
+  const expertWaHref=whatsappLink(booking.expertPhone,`Hi ${booking.expertName||'there'}, this is regarding my ${booking.serviceName} booking on ${booking.date} at ${booking.startTime}.`);
+  const bookingActions=[expertWaHref?`<a class="btn small whatsapp-btn" href="${expertWaHref}" target="_blank" rel="noopener noreferrer">💬 WhatsApp ${html(booking.expertName||'Expert')}</a>`:'',canCancel?`<button class="btn small red" data-cancel-my-booking="${html(booking.id)}">Cancel Booking</button>`:''].filter(Boolean).join('');
+  return `<article class="card order-item-card premium-card"><div class="section-head"><h3>${html(booking.serviceName)}</h3><span class="chip">${html(status)}</span></div><p class="muted">${html(booking.date)} · ${html(booking.startTime)}${booking.expertName?` · with ${html(booking.expertName)}`:''}</p><p class="muted">Price ${money(booking.price)}${upfrontAmount>0?` · Prepaid ${money(upfrontAmount)}`:''}</p>${balanceNote}${paymentBlock}${bookingActions?`<div class="actions">${bookingActions}</div>`:''}${bookingChatMarkup(booking,'customer')}</article>`;
 }
 async function cancelCustomerBooking(booking,store,customer){
   try{
@@ -2824,17 +2831,17 @@ function expertsView(){
   $$('[data-remove-expert]').forEach(button=>button.onclick=()=>removeExpert(button.dataset.removeExpert));
 }
 function expertItemMarkup(item){
-  return `<article class="card catalog-item-card"><h3>${html(item.name)}</h3><p class="muted">${item.active===false?'Inactive':'Active'}</p><div class="actions"><button class="btn small" data-edit-expert="${html(item.id)}">Edit</button><button class="btn small red" data-remove-expert="${html(item.id)}">Remove</button></div></article>`;
+  return `<article class="card catalog-item-card"><h3>${html(item.name)}</h3><p class="muted">${item.active===false?'Inactive':'Active'}${item.phone?` · ${html(item.phone)}`:''}</p><div class="actions"><button class="btn small" data-edit-expert="${html(item.id)}">Edit</button><button class="btn small red" data-remove-expert="${html(item.id)}">Remove</button></div></article>`;
 }
 function openExpertForm(store,expertId=''){
   const expert=(state.experts||[]).find(row=>row.id===expertId)||{};
-  modal(expertId?'Edit Expert':'Add Expert',`<form id="expertForm"><div class="field"><label>Expert name</label><input name="name" value="${html(expert.name||'')}" required></div><label class="option-toggle"><input name="active" type="checkbox" ${expert.active===false?'':'checked'}><span><strong>Active</strong><small>Customers can only book experts marked active.</small></span></label><button class="btn full" type="submit" style="margin-top:14px">${expertId?'Save Expert':'Add Expert'}</button></form>`,()=>{
+  modal(expertId?'Edit Expert':'Add Expert',`<form id="expertForm"><div class="field"><label>Expert name</label><input name="name" value="${html(expert.name||'')}" required></div><div class="field"><label>WhatsApp number <small>(optional)</small></label><input name="phone" type="tel" value="${html(expert.phone||'')}" placeholder="10-digit mobile number"><small class="muted">Lets customers message this expert directly on WhatsApp about their booking.</small></div><label class="option-toggle"><input name="active" type="checkbox" ${expert.active===false?'':'checked'}><span><strong>Active</strong><small>Customers can only book experts marked active.</small></span></label><button class="btn full" type="submit" style="margin-top:14px">${expertId?'Save Expert':'Add Expert'}</button></form>`,()=>{
     $('#expertForm').onsubmit=async event=>{
       event.preventDefault();
-      const values=Object.fromEntries(new FormData(event.target)),name=(values.name||'').trim(),active=values.active==='on',button=event.submitter;
+      const values=Object.fromEntries(new FormData(event.target)),name=(values.name||'').trim(),phone=(values.phone||'').trim(),active=values.active==='on',button=event.submitter;
       if(!name)return toast('Enter the expert name');
       button.disabled=true;
-      const changes={name,active};
+      const changes={name,phone,active};
       try{
         if(expertId){
           await api.update(expertKind(store.ownerId),expertId,changes);
@@ -2882,7 +2889,8 @@ async function applyEmergencyDelay(store,minutes){
 function confirmedBookingCompactMarkup(booking){
   const ringing=ringingIds.has(booking.id);
   const balance=Number(booking.balanceAmount)||0;
-  return `<div class="booking-compact-card ${ringing?'incoming-order':''}">${ringing?'<span class="incoming-order-beacon" aria-label="New booking" title="New booking"></span>':''}<div class="booking-compact-info"><strong>${html(booking.serviceName)}</strong><span class="muted">${html(booking.date)} · ${html(booking.startTime)}${booking.expertName?` · ${html(booking.expertName)}`:''} · ${html(booking.customerName||'Customer')}</span>${balance>0?`<span class="chip due">Balance ${money(balance)}</span>`:''}</div><div class="actions"><button class="btn small green" data-complete-booking="${html(booking.id)}">Complete</button><button class="btn small red" data-cancel-booking="${html(booking.id)}">Cancel</button></div></div>`;
+  const waHref=whatsappLink(booking.phone,`Hi ${booking.customerName||'there'}, this is regarding your ${booking.serviceName} booking on ${booking.date} at ${booking.startTime}.`);
+  return `<div class="booking-compact-card ${ringing?'incoming-order':''}">${ringing?'<span class="incoming-order-beacon" aria-label="New booking" title="New booking"></span>':''}<div class="booking-compact-info"><strong>${html(booking.serviceName)}</strong><span class="muted">${html(booking.date)} · ${html(booking.startTime)}${booking.expertName?` · ${html(booking.expertName)}`:''} · ${html(booking.customerName||'Customer')}</span>${balance>0?`<span class="chip due">Balance ${money(balance)}</span>`:''}</div><div class="actions">${waHref?`<a class="btn small whatsapp-btn" href="${waHref}" target="_blank" rel="noopener noreferrer" title="Chat with ${html(booking.customerName||'customer')} on WhatsApp">💬</a>`:''}<button class="btn small green" data-complete-booking="${html(booking.id)}">Complete</button><button class="btn small red" data-cancel-booking="${html(booking.id)}">Cancel</button></div></div>`;
 }
 function bookingsView(){
   refreshView=bookingsView;
