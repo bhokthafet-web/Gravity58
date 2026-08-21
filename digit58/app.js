@@ -932,7 +932,7 @@ async function loadDigit58MyReferrals(){
   const wrap=$('#referralsTableWrap');if(!wrap)return;
   try{
     const ownerId=cloudOwnerId();
-    const rows=(await api.list('digit58_referrals').catch(()=>[])).filter(row=>row.referrerOwnerId===ownerId).sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
+    const rows=(await api.list('digit58_referrals').catch(()=>[])).filter(row=>row.referrerUserId===ownerId).sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
     wrap.innerHTML=`<table><thead><tr><th>Referred Store Owner</th><th>Plan</th><th>Status</th><th>Date</th></tr></thead><tbody>${rows.map(row=>`<tr><td>${html(row.referredEmail||'Store owner')}</td><td>${html(DIGIT58_PLAN_PERIODS.find(period=>period.id===row.plan)?.label||row.plan||'—')}</td><td><span class="chip ${row.status==='Paid'?'delivered':'due'}">${html(row.status||'Eligible')}</span></td><td>${row.createdAt?new Date(row.createdAt).toLocaleDateString('en-IN',{dateStyle:'medium'}):''}</td></tr>`).join('')||'<tr><td colspan="4">No referrals yet.</td></tr>'}</tbody></table>`;
   }catch{
     wrap.innerHTML='<table><thead><tr><th>Referred Store Owner</th><th>Plan</th><th>Status</th><th>Date</th></tr></thead><tbody><tr><td colspan="4">Could not load referrals.</td></tr></tbody></table>';

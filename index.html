@@ -186,7 +186,8 @@
         <li>Share it with a friend who owns a store</li>
         <li>They sign up and complete a paid Refills plan</li>
       </ol>
-      <a class="btn primary" href="/digit58/">Get My Referral Link</a>
+      <button class="btn primary" id="getReferralLinkBtn" type="button" onclick="openReferAndEarn()">Get My Referral Link</button>
+      <div class="refer-link-box hidden" id="referralLinkBox"></div>
       <p class="g58-refer-note">Reward is credited only once your friend's referred store completes a successful paid subscription — a free trial alone doesn't qualify.</p>
     </div>
     <div class="g58-refer-visual" aria-hidden="true">
@@ -754,7 +755,7 @@
 <script src="/js/config.js"></script>
 <script src="/js/appwrite-ads.js?v=19"></script>
 <script src="/js/database.js"></script>
-<script src="/js/app.js?v=38"></script>
+<script src="/js/app.js?v=39"></script>
 <script src="/js/site-auth.js?v=3"></script>
 <script>
 (function(){

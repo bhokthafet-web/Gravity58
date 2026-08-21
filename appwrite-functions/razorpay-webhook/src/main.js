@@ -75,17 +75,17 @@ async function recordDigit58ReferralIfNeeded(call, entitlement) {
   const codeRow = await call(`/tablesdb/${DATABASE_ID}/tables/${TABLE_ID}/rows/${encodeURIComponent(`ref-${entitlement.referredByCode}`)}`).catch(() => null);
   if (!codeRow || codeRow.kind !== DIGIT58_REFERRAL_CODE_KIND) return true;
   const codeData = cleanRow(codeRow);
-  if (!codeData.ownerId || codeData.ownerId === entitlement.ownerId) return true;
+  if (!codeData.referrerUserId || codeData.referrerUserId === entitlement.ownerId) return true;
   const referralId = `refr-${String(entitlement.ownerId).slice(0, 30)}`;
   await createRow(call, referralId, DIGIT58_REFERRAL_KIND, {
-    referrerOwnerId: codeData.ownerId,
+    referrerUserId: codeData.referrerUserId,
     referredOwnerId: entitlement.ownerId,
     referredEmail: entitlement.ownerEmail || '',
     plan: entitlement.pendingPlan || entitlement.plan || '',
     rewardAmount: DIGIT58_REFERRAL_REWARD,
     status: 'Eligible',
     createdAt: new Date().toISOString(),
-  }, [`read("user:${codeData.ownerId}")`, `read("team:${ADMIN_TEAM_ID}")`, `update("team:${ADMIN_TEAM_ID}")`]).catch(caughtError => {
+  }, [`read("user:${codeData.referrerUserId}")`, `read("team:${ADMIN_TEAM_ID}")`, `update("team:${ADMIN_TEAM_ID}")`]).catch(caughtError => {
     if (caughtError?.code !== 409) throw caughtError;
   });
   return true;

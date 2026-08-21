@@ -747,18 +747,24 @@ async function cancelDigit58Subscription(call, input, userId) {
 }
 
 const DIGIT58_REFERRAL_CODE_KIND = 'digit58_referral_codes';
+const DIGIT58_REFERRER_PROFILE_KIND = 'digit58_referrer_profiles';
 const REFERRAL_CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 function generateReferralCode() {
   let code = '';
   for (let i = 0; i < 6; i += 1) code += REFERRAL_CODE_CHARS[Math.floor(Math.random() * REFERRAL_CODE_CHARS.length)];
   return code;
 }
-async function getOrCreateDigit58ReferralCode(call, ownerId) {
-  const rowId = digit58EntitlementRowId(ownerId);
-  const row = await call(`/tablesdb/${DATABASE_ID}/tables/${TABLE_ID}/rows/${encodeURIComponent(rowId)}`).catch(() => null);
-  if (!row) throw new Error('No Refills account found for this owner.');
-  const entitlement = cleanRow(row);
-  if (entitlement.referralCode) return entitlement.referralCode;
+function digit58ReferrerProfileRowId(userId) {
+  return `refp-${String(userId).slice(0, 30)}`;
+}
+// Any signed-in G58 account can become a referrer — this is intentionally
+// not tied to owning a Refills store, so it looks up/creates a lightweight
+// per-user profile row instead of a digit58_entitlements row.
+async function getOrCreateDigit58ReferralCode(call, userId, email, name) {
+  const profileRowId = digit58ReferrerProfileRowId(userId);
+  const existingRow = await call(`/tablesdb/${DATABASE_ID}/tables/${TABLE_ID}/rows/${encodeURIComponent(profileRowId)}`).catch(() => null);
+  const profile = existingRow ? cleanRow(existingRow) : null;
+  if (profile?.referralCode) return profile.referralCode;
   let code = '';
   for (let attempt = 0; attempt < 8 && !code; attempt += 1) {
     const candidate = generateReferralCode();
@@ -766,14 +772,20 @@ async function getOrCreateDigit58ReferralCode(call, ownerId) {
     if (!existing) code = candidate;
   }
   if (!code) throw new Error('Could not generate a referral code. Try again.');
-  await createRow(call, `ref-${code}`, DIGIT58_REFERRAL_CODE_KIND, { code, ownerId }, rowPermissions(ownerId, ownerId));
-  await updateRow(call, rowId, { ...entitlement, referralCode: code });
+  await createRow(call, `ref-${code}`, DIGIT58_REFERRAL_CODE_KIND, { code, referrerUserId: userId }, rowPermissions(userId, userId));
+  if (profile) await updateRow(call, profileRowId, { ...profile, referralCode: code });
+  else await createRow(call, profileRowId, DIGIT58_REFERRER_PROFILE_KIND, {
+    userId, referralCode: code, email: text(email, 250), name: text(name, 120), createdAt: new Date().toISOString(),
+  }, rowPermissions(userId, userId));
   return code;
 }
 async function getDigit58ReferralCode(call, input, userId) {
-  const ownerId = text(input.ownerId, 64);
-  if (!ownerId || ownerId !== userId) { const denied = new Error('Only the store owner can view this referral link.'); denied.code = 403; throw denied; }
-  return { code: await getOrCreateDigit58ReferralCode(call, ownerId) };
+  if (!userId) { const denied = new Error('Sign in to get your referral link.'); denied.code = 401; throw denied; }
+  let verifiedUser = null;
+  try { verifiedUser = await call(`/users/${encodeURIComponent(userId)}`); } catch {}
+  const email = verifiedUser?.email || input.ownerEmail || input.userEmail;
+  const name = verifiedUser?.name || input.ownerName || input.userName;
+  return { code: await getOrCreateDigit58ReferralCode(call, userId, email, name) };
 }
 
 async function deleteDigit58Entitlement(call, input, userId) {
