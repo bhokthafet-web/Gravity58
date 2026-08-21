@@ -2954,8 +2954,9 @@ async function applyEmergencyDelay(store,minutes){
 function confirmedBookingCompactMarkup(booking){
   const ringing=ringingIds.has(booking.id);
   const balance=Number(booking.balanceAmount)||0;
-  const waHref=whatsappLink(booking.phone,`Hi ${booking.customerName||'there'}, this is regarding your ${booking.serviceName} booking on ${booking.date} at ${booking.startTime}.`);
-  return `<div class="booking-compact-card ${ringing?'incoming-order':''}">${ringing?'<span class="incoming-order-beacon" aria-label="New booking" title="New booking"></span>':''}<div class="booking-compact-info"><strong>${html(booking.serviceName)}</strong><span class="muted">${html(booking.date)} · ${html(booking.startTime)}${booking.expertName?` · ${html(booking.expertName)}`:''} · ${html(booking.customerName||'Customer')}</span>${balance>0?`<span class="chip due">Balance ${money(balance)}</span>`:''}</div><div class="actions">${waHref?`<a class="btn small whatsapp-btn" href="${waHref}" target="_blank" rel="noopener noreferrer" title="Chat with ${html(booking.customerName||'customer')} on WhatsApp">${WHATSAPP_ICON_SVG}</a>`:''}<button class="btn small green" data-complete-booking="${html(booking.id)}">Complete</button><button class="btn small red" data-cancel-booking="${html(booking.id)}">Cancel</button></div></div>`;
+  const phone=booking.phone||(state.customers||[]).find(row=>row.storeId===booking.storeId&&row.customerAccountId===booking.customerAccountId)?.phone||'';
+  const waHref=whatsappLink(phone,`Hi ${booking.customerName||'there'}, this is regarding your ${booking.serviceName} booking on ${booking.date} at ${booking.startTime}.`);
+  return `<div class="booking-compact-card ${ringing?'incoming-order':''}">${ringing?'<span class="incoming-order-beacon" aria-label="New booking" title="New booking"></span>':''}<div class="booking-compact-info"><strong>${html(booking.serviceName)}</strong><span class="muted">${html(booking.date)} · ${html(booking.startTime)}${booking.expertName?` · ${html(booking.expertName)}`:''} · ${html(booking.customerName||'Customer')}</span>${balance>0?`<span class="chip due">Balance ${money(balance)}</span>`:''}</div><div class="actions">${waHref?`<a class="btn small whatsapp-btn" href="${waHref}" target="_blank" rel="noopener noreferrer" title="Chat with ${html(booking.customerName||'customer')} on WhatsApp">${WHATSAPP_ICON_SVG}</a>`:''}<button class="btn small green" data-complete-booking="${html(booking.id)}">Complete</button><button class="btn small red" data-cancel-booking="${html(booking.id)}">Cancel</button></div>${bookingChatMarkup(booking,'owner')}</div>`;
 }
 function bookingsView(){
   refreshView=bookingsView;
@@ -2984,7 +2985,7 @@ function bookingsView(){
   $$('[data-complete-booking]').forEach(button=>button.onclick=()=>completeBooking(button.dataset.completeBooking));
   $$('[data-cancel-booking]').forEach(button=>button.onclick=()=>cancelBooking(button.dataset.cancelBooking));
   $$('[data-reopen-booking-payment]').forEach(button=>button.onclick=()=>reopenBookingPayment(button.dataset.reopenBookingPayment));
-  bindBookingChatForms(pending,'owner',refreshView);
+  bindBookingChatForms(filtered,'owner',refreshView);
 }
 function bookingHistoryTimestamp(booking){return booking.completedAt||booking.cancelledAt||booking.updatedAt||booking.createdAt}
 function filterBookingsByIndiaDate(bookings,fromDate,toDate){
