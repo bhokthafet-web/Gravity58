@@ -2364,19 +2364,29 @@ function generateSlotOptions(store){
   while(mins<endMins){slots.push(`${String(Math.floor(mins/60)).padStart(2,'0')}:${String(mins%60).padStart(2,'0')}`);mins+=duration}
   return slots;
 }
+function dateValueFromNow(msFromNow){const target=new Date(Date.now()+msFromNow);return new Date(target.getTime()-target.getTimezoneOffset()*60000).toISOString().slice(0,10)}
+function bookingWindowForService(store,service){
+  const windowDays=Math.max(1,Number(store.preBookingWindowDays)||30);
+  const storeMin=dateValueFromNow(5*60000),storeMax=dateValueFromNow(windowDays*86400000);
+  if(service?.bookingFromDate&&service?.bookingUntilDate){
+    const today=dateValueFromNow(0);
+    return {min:service.bookingFromDate>today?service.bookingFromDate:storeMin,max:service.bookingUntilDate};
+  }
+  return {min:storeMin,max:storeMax};
+}
 function openBookingModal(store,customer,services,experts){
   if(!services.length)return toast('This store has not added any services yet');
-  const windowDays=Math.max(1,Number(store.preBookingWindowDays)||30);
-  const minDate=new Date(Date.now()+5*60000),maxDate=new Date(Date.now()+windowDays*86400000);
-  const minDateValue=new Date(minDate.getTime()-minDate.getTimezoneOffset()*60000).toISOString().slice(0,10);
-  const maxDateValue=new Date(maxDate.getTime()-maxDate.getTimezoneOffset()*60000).toISOString().slice(0,10);
+  const initialWindow=bookingWindowForService(store,services[0]);
   const slotOptions=generateSlotOptions(store);
-  modal('Book a Service',`<form id="bookingForm"><div class="field"><label>Service</label><select name="serviceId" id="bookingServiceSelect" required>${services.map(service=>`<option value="${html(service.id)}">${html(service.name)} — ${money(service.price)}</option>`).join('')}</select></div>${experts.length?`<div class="field"><label>Expert <small>(optional)</small></label><select name="expertId"><option value="">No preference</option>${experts.map(expert=>`<option value="${html(expert.id)}">${html(expert.name)}</option>`).join('')}</select></div>`:''}<div class="form-grid"><div class="field"><label>Date</label><input name="date" type="date" min="${minDateValue}" max="${maxDateValue}" required></div><div class="field"><label>Time</label><select name="startTime" required>${slotOptions.map(slot=>`<option value="${slot}">${slot}</option>`).join('')}</select></div></div><div class="field"><label>Phone</label><input name="phone" value="${html(customer.phone||'')}" required></div><p class="muted" id="bookingPriceNote"></p><button class="btn full" type="submit" style="margin-top:14px">Book &amp; Pay Prepayment</button></form>`,()=>{
+  modal('Book a Service',`<form id="bookingForm"><div class="field"><label>Service</label><select name="serviceId" id="bookingServiceSelect" required>${services.map(service=>`<option value="${html(service.id)}">${html(service.name)} — ${money(service.price)}</option>`).join('')}</select></div>${experts.length?`<div class="field"><label>Expert <small>(optional)</small></label><select name="expertId"><option value="">No preference</option>${experts.map(expert=>`<option value="${html(expert.id)}">${html(expert.name)}</option>`).join('')}</select></div>`:''}<div class="form-grid"><div class="field"><label>Date</label><input name="date" type="date" id="bookingDateInput" min="${initialWindow.min}" max="${initialWindow.max}" required></div><div class="field"><label>Time</label><select name="startTime" required>${slotOptions.map(slot=>`<option value="${slot}">${slot}</option>`).join('')}</select></div></div><div class="field"><label>Phone</label><input name="phone" value="${html(customer.phone||'')}" required></div><p class="muted" id="bookingPriceNote"></p><button class="btn full" type="submit" style="margin-top:14px">Book &amp; Pay Prepayment</button></form>`,()=>{
     const updateNote=()=>{
       const service=services.find(row=>row.id===$('#bookingServiceSelect').value);if(!service)return;
       const prepay=Math.round(service.price*(service.prepaymentPercent||100))/100;
       const balance=Math.round((service.price*100-prepay*100))/100;
       $('#bookingPriceNote').textContent=balance>0?`Pay ${money(prepay)} now, ${money(balance)} balance after service.`:`Pay ${money(prepay)} now (full payment).`;
+      const window=bookingWindowForService(store,service),dateInput=$('#bookingDateInput');
+      dateInput.min=window.min;dateInput.max=window.max;
+      if(dateInput.value&&(dateInput.value<window.min||dateInput.value>window.max))dateInput.value='';
     };
     $('#bookingServiceSelect').onchange=updateNote;updateNote();
     $('#bookingForm').onsubmit=async event=>{
@@ -2551,18 +2561,21 @@ function servicesView(){
 }
 function serviceItemMarkup(item){
   const prepay=Number(item.prepaymentPercent)||100;
-  return `<article class="card catalog-item-card"><h3>${html(item.name)}</h3><p class="muted">${money(item.price)}${item.durationMinutes?` · ${item.durationMinutes} min`:''}</p><p class="muted">${prepay>=100?'Full payment at booking':`${prepay}% prepayment, balance after service`}</p>${item.description?`<p class="muted">${html(item.description)}</p>`:''}<div class="actions"><button class="btn small" data-edit-service="${html(item.id)}">Edit</button><button class="btn small red" data-remove-service="${html(item.id)}">Remove</button></div></article>`;
+  return `<article class="card catalog-item-card"><h3>${html(item.name)}</h3><p class="muted">${money(item.price)}${item.durationMinutes?` · ${item.durationMinutes} min`:''}</p><p class="muted">${prepay>=100?'Full payment at booking':`${prepay}% prepayment, balance after service`}</p>${item.bookingFromDate&&item.bookingUntilDate?`<p class="muted">Bookable ${html(item.bookingFromDate)} → ${html(item.bookingUntilDate)}</p>`:''}${item.description?`<p class="muted">${html(item.description)}</p>`:''}<div class="actions"><button class="btn small" data-edit-service="${html(item.id)}">Edit</button><button class="btn small red" data-remove-service="${html(item.id)}">Remove</button></div></article>`;
 }
 function openServiceForm(store,serviceId=''){
   const service=(state.services||[]).find(row=>row.id===serviceId)||{};
-  modal(serviceId?'Edit Service':'Add Service',`<form id="serviceForm"><div class="field"><label>Service name</label><input name="name" value="${html(service.name||'')}" required></div><div class="form-grid"><div class="field"><label>Price (₹)</label><input name="price" type="number" min="0" step="0.01" value="${service.price??''}" required></div><div class="field"><label>Duration (minutes) <small>(optional)</small></label><input name="durationMinutes" type="number" min="5" step="5" value="${service.durationMinutes||''}" placeholder="Example: 30"></div></div><div class="field"><label>Prepayment at booking (%)</label><input name="prepaymentPercent" type="number" min="1" max="100" step="1" value="${service.prepaymentPercent||100}" required><small class="muted">100% means the customer pays the full amount when booking. Anything less leaves a balance to pay after the service is done.</small></div><div class="field"><label>Description <small>(optional)</small></label><textarea name="description">${html(service.description||'')}</textarea></div><button class="btn full" type="submit" style="margin-top:14px">${serviceId?'Save Service':'Add Service'}</button></form>`,()=>{
+  modal(serviceId?'Edit Service':'Add Service',`<form id="serviceForm"><div class="field"><label>Service name</label><input name="name" value="${html(service.name||'')}" required></div><div class="form-grid"><div class="field"><label>Price (₹)</label><input name="price" type="number" min="0" step="0.01" value="${service.price??''}" required></div><div class="field"><label>Duration (minutes) <small>(optional)</small></label><input name="durationMinutes" type="number" min="5" step="5" value="${service.durationMinutes||''}" placeholder="Example: 30"></div></div><div class="field"><label>Prepayment at booking (%)</label><input name="prepaymentPercent" type="number" min="1" max="100" step="1" value="${service.prepaymentPercent||100}" required><small class="muted">100% means the customer pays the full amount when booking. Anything less leaves a balance to pay after the service is done.</small></div><div class="field"><label>Advance booking period <small>(optional)</small></label><div class="form-grid"><input name="bookingFromDate" type="date" value="${html(service.bookingFromDate||'')}"><input name="bookingUntilDate" type="date" value="${html(service.bookingUntilDate||'')}"></div><small class="muted">Leave blank to use your store's general Availability window instead. If set, customers can only book this service between these two dates.</small></div><div class="field"><label>Description <small>(optional)</small></label><textarea name="description">${html(service.description||'')}</textarea></div><button class="btn full" type="submit" style="margin-top:14px">${serviceId?'Save Service':'Add Service'}</button></form>`,()=>{
     $('#serviceForm').onsubmit=async event=>{
       event.preventDefault();
       const values=Object.fromEntries(new FormData(event.target)),name=values.name.trim(),price=Number(values.price),prepaymentPercent=Math.min(100,Math.max(1,Math.round(Number(values.prepaymentPercent)||100))),durationMinutes=Math.max(0,Number(values.durationMinutes)||0),button=event.submitter;
       if(!name)return toast('Enter the service name');
       if(!Number.isFinite(price)||price<0)return toast('Enter a valid price');
+      const bookingFromDate=(values.bookingFromDate||'').trim(),bookingUntilDate=(values.bookingUntilDate||'').trim();
+      if((bookingFromDate&&!bookingUntilDate)||(!bookingFromDate&&bookingUntilDate))return toast('Set both the from and until dates, or leave both blank');
+      if(bookingFromDate&&bookingUntilDate&&bookingFromDate>bookingUntilDate)return toast('The "until" date must be after the "from" date');
       button.disabled=true;
-      const changes={name,price,durationMinutes,prepaymentPercent,description:(values.description||'').trim()};
+      const changes={name,price,durationMinutes,prepaymentPercent,bookingFromDate,bookingUntilDate,description:(values.description||'').trim()};
       try{
         if(serviceId){
           await api.update(serviceKind(store.ownerId),serviceId,changes);

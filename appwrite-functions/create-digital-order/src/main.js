@@ -866,19 +866,24 @@ async function createDigit58Booking(call, input, userId) {
   const slotStartTime = text(store.slotStartTime, 5) || '00:00', slotEndTime = text(store.slotEndTime, 5) || '23:59';
   const preBookingWindowDays = Math.max(1, finite(store.preBookingWindowDays, 30));
 
-  const slotStartMs = new Date(`${date}T${startTime}:00+05:30`).getTime();
-  if (!Number.isFinite(slotStartMs)) throw new Error('Choose a valid booking date and time.');
-  const nowMs = Date.now();
-  if (slotStartMs < nowMs + 5 * 60000) throw new Error('Choose a time at least 5 minutes from now.');
-  if (slotStartMs > nowMs + preBookingWindowDays * 86400000) throw new Error(`Bookings can only be made up to ${preBookingWindowDays} days ahead.`);
-  const weekday = new Date(slotStartMs + 330 * 60000).getUTCDay();
-  if (availableDays.length && !availableDays.includes(weekday)) throw new Error('This store is closed on the selected day.');
-  if (startTime < slotStartTime || startTime >= slotEndTime) throw new Error("Choose a time within the store's open hours.");
-
   const serviceRow = await call(`/tablesdb/${DATABASE_ID}/tables/${TABLE_ID}/rows/${encodeURIComponent(serviceId)}`).catch(() => null);
   if (!serviceRow || serviceRow.kind !== digit58ServiceKind(ownerId)) throw new Error('This service could not be found.');
   const service = cleanRow(serviceRow);
   if (service.storeId !== storeId) throw new Error('This service does not belong to the selected store.');
+
+  const slotStartMs = new Date(`${date}T${startTime}:00+05:30`).getTime();
+  if (!Number.isFinite(slotStartMs)) throw new Error('Choose a valid booking date and time.');
+  const nowMs = Date.now();
+  if (slotStartMs < nowMs + 5 * 60000) throw new Error('Choose a time at least 5 minutes from now.');
+  const bookingFromDate = text(service.bookingFromDate, 10), bookingUntilDate = text(service.bookingUntilDate, 10);
+  if (bookingFromDate && bookingUntilDate) {
+    if (date < bookingFromDate || date > bookingUntilDate) throw new Error(`This service can only be booked between ${bookingFromDate} and ${bookingUntilDate}.`);
+  } else if (slotStartMs > nowMs + preBookingWindowDays * 86400000) {
+    throw new Error(`Bookings can only be made up to ${preBookingWindowDays} days ahead.`);
+  }
+  const weekday = new Date(slotStartMs + 330 * 60000).getUTCDay();
+  if (availableDays.length && !availableDays.includes(weekday)) throw new Error('This store is closed on the selected day.');
+  if (startTime < slotStartTime || startTime >= slotEndTime) throw new Error("Choose a time within the store's open hours.");
 
   let expertName = '';
   if (expertId) {
