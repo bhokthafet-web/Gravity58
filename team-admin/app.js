@@ -245,17 +245,18 @@ function drawDiners(){
     toast(`Exported ${summaries.length} customer(s) to CSV`);
   };
 }
-function digit58PricingConfig(){const row=data.digit58Pricing.find(item=>(item.id||item.$id)==='default')||data.digit58Pricing[0]||{};return {paymentLink:row.paymentLink||''}}
+function digit58PricingConfig(){const row=data.digit58Pricing.find(item=>(item.id||item.$id)==='default')||data.digit58Pricing[0]||{};return {paymentLink:row.paymentLink||'',monthly:Number(row.monthly)||399,periods:row.periods||[{id:'3m',label:'3 Months',months:3,discount:0},{id:'6m',label:'6 Months',months:6,discount:0},{id:'1y',label:'1 Year',months:12,discount:5},{id:'3y',label:'3 Years',months:36,discount:10}]}}
+function digit58PlanAmount(monthly,period){return Math.round(Number(monthly)*Number(period.months)*(1-Number(period.discount)/100))}
 function editDigit58Pricing(){
   const pricing=digit58PricingConfig();
-  modal('Set Default Refills Payment Link',`<form id="digit58PricingForm"><p class="muted">This link is pre-filled whenever you send a payment link for a Refills activation or additional-store request (${money(399)}/month). You can still override it per request.</p><div class="field"><label>Default payment link</label><input name="paymentLink" type="url" value="${esc(pricing.paymentLink)}" placeholder="https://rzp.io/..." required></div><button class="btn full">Save Default Link</button></form>`,()=>{
+  modal('Edit Refills Pricing',`<form id="digit58PricingForm"><div class="form-grid"><div class="field"><label>Monthly price (₹)</label><input name="monthly" type="number" min="1" value="${pricing.monthly}" required></div></div><p class="notice">Refills Plans: 3 Months and 6 Months at no discount, 1 Year at 5% discount, 3 Years at 10% discount.</p><div class="field"><label>Default payment link</label><input name="paymentLink" type="url" value="${esc(pricing.paymentLink)}" placeholder="https://rzp.io/..." required></div><p class="muted">This link is pre-filled whenever you send a payment link for a Refills activation or additional-store request. You can still override it per request.</p><button class="btn full">Save Pricing</button></form>`,()=>{
     $('#digit58PricingForm').onsubmit=async event=>{
       event.preventDefault();
-      const values=Object.fromEntries(new FormData(event.target)),payload={paymentLink:values.paymentLink.trim(),updatedAt:now()},existing=data.digit58Pricing.find(row=>(row.id||row.$id)==='default');
+      const values=Object.fromEntries(new FormData(event.target)),payload={monthly:Number(values.monthly),paymentLink:values.paymentLink.trim(),updatedAt:now()},existing=data.digit58Pricing.find(row=>(row.id||row.$id)==='default');
       try{
         existing?await api.update('digit58_pricing',existing.id,payload):await api.create('digit58_pricing',payload,'default',api.permissionSet('digit58_pricing',user.$id,true));
-        closeModal();await refresh();toast('Default Refills payment link saved');
-      }catch(error){toast(error.message||'Could not save payment link')}
+        closeModal();await refresh();toast('Refills pricing saved');
+      }catch(error){toast(error.message||'Could not save pricing')}
     };
   });
 }
@@ -267,7 +268,9 @@ function digit58(){
   const cardPurchases=[...data.digit58CardPurchases].sort((a,b)=>new Date(b.declaredPaidAt||b.createdAt||0)-new Date(a.declaredPaidAt||a.createdAt||0));
   const brandRequests=[...data.digit58BrandRequests].sort((a,b)=>new Date(b.createdAt||0)-new Date(a.createdAt||0));
   const pricing=digit58PricingConfig();
-  $('#page').innerHTML=`<div class="section-head"><div><h1>Refills</h1><p class="muted">Store subscriptions, activation requests, stores and customers across every Refills owner.</p></div><button class="btn secondary" id="editDigit58Pricing">${pricing.paymentLink?'Edit':'Set'} Default Payment Link</button></div><div class="grid stats">${metric('Stores',stores.length)}${metric('Store Owners',owners)}${metric('Pending Requests',requests.length)}${metric('Active Subscriptions',entitlements.filter(row=>row.active&&!row.paused).length)}${metric('Card & Brand Revenue',money(digit58CardBrandRevenue()))}</div>
+  $('#page').innerHTML=`<div class="section-head"><div><h1>Refills</h1><p class="muted">Store subscriptions, activation requests, stores and customers across every Refills owner.</p></div><button class="btn secondary" id="editDigit58Pricing">Edit Pricing</button></div><div class="grid stats">${metric('Stores',stores.length)}${metric('Store Owners',owners)}${metric('Pending Requests',requests.length)}${metric('Active Subscriptions',entitlements.filter(row=>row.active&&!row.paused).length)}${metric('Card & Brand Revenue',money(digit58CardBrandRevenue()))}</div>
+  <div class="section-head"><h2>Refills Plans — pricing preview</h2></div>
+  <div class="grid restaurant-grid admin-pricing-preview">${pricing.periods.map(period=>`<article class="card"><span class="eyebrow">${esc(period.label)}</span><h3>${money(digit58PlanAmount(pricing.monthly,period))}</h3><small>${period.discount?`${period.discount}% discount`:'No discount'}</small></article>`).join('')}</div>
   <div class="section-head"><h2>Store owner requests</h2></div>
   <div class="card table-wrap"><table><thead><tr><th>Owner</th><th>Amount</th><th>Status</th><th>Actions</th></tr></thead><tbody>${requests.map(digit58RequestRow).join('')||'<tr><td colspan="4">No pending Refills requests.</td></tr>'}</tbody></table></div>
   <div class="section-head"><h2>Store owner subscriptions</h2></div>
