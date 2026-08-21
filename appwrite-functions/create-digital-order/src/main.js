@@ -851,6 +851,20 @@ async function createDigit58Card(call, input, userId) {
   return cleanRow(created);
 }
 
+function hhmmToMinutes(value) {
+  const [h, m] = text(value, 5).split(':').map(Number);
+  return (Number.isFinite(h) ? h : 0) * 60 + (Number.isFinite(m) ? m : 0);
+}
+function rangesOverlap(startA, endA, startB, endB) { return startA < endB && endA > startB; }
+function digit58ServiceDurationMinutes(store, service) {
+  return Math.max(5, finite(service?.durationMinutes) || finite(store?.slotDurationMinutes) || 30);
+}
+function digit58LunchBreakRange(store) {
+  if (!store?.lunchBreakEnabled) return null;
+  const start = hhmmToMinutes(store.lunchBreakStart || '13:00');
+  return { start, end: start + 60 };
+}
+
 async function createDigit58Booking(call, input, userId) {
   const ownerId = text(input.ownerId, 64), storeId = text(input.storeId, 40), serviceId = text(input.serviceId, 40), expertId = text(input.expertId, 40);
   if (!ownerId || !storeId || !serviceId) throw new Error('Booking details are missing.');
@@ -861,6 +875,7 @@ async function createDigit58Booking(call, input, userId) {
   if (!storeRow || storeRow.kind !== digit58StoreKind(ownerId)) throw new Error('This store could not be found.');
   const store = cleanRow(storeRow);
   if (store.businessType !== 'services') throw new Error('This store does not accept bookings.');
+  if (store.emergencyMode) throw new Error('This store is not accepting new bookings right now. Please check back shortly.');
 
   const availableDays = Array.isArray(store.availableDays) ? store.availableDays.map(Number) : [];
   const slotStartTime = text(store.slotStartTime, 5) || '00:00', slotEndTime = text(store.slotEndTime, 5) || '23:59';
@@ -883,7 +898,12 @@ async function createDigit58Booking(call, input, userId) {
   }
   const weekday = new Date(slotStartMs + 330 * 60000).getUTCDay();
   if (availableDays.length && !availableDays.includes(weekday)) throw new Error('This store is closed on the selected day.');
-  if (startTime < slotStartTime || startTime >= slotEndTime) throw new Error("Choose a time within the store's open hours.");
+
+  const durationMinutes = digit58ServiceDurationMinutes(store, service);
+  const startMinutes = hhmmToMinutes(startTime), endMinutes = startMinutes + durationMinutes;
+  if (startMinutes < hhmmToMinutes(slotStartTime) || endMinutes > hhmmToMinutes(slotEndTime)) throw new Error("Choose a time within the store's open hours that fits the service duration.");
+  const lunch = digit58LunchBreakRange(store);
+  if (lunch && rangesOverlap(startMinutes, endMinutes, lunch.start, lunch.end)) throw new Error('This time falls in the store\'s lunch break. Choose another slot.');
 
   let expertName = '';
   if (expertId) {
@@ -894,15 +914,21 @@ async function createDigit58Booking(call, input, userId) {
     expertName = expert.name || '';
   }
 
-  const existingBookings = await listRowsByKind(call, digit58BookingKind(ownerId));
-  const conflict = existingBookings.map(cleanRow).find(row => row.storeId === storeId && row.date === date && row.startTime === startTime
-    && row.status !== 'Cancelled' && (expertId ? row.expertId === expertId : !row.expertId));
+  const existingBookings = (await listRowsByKind(call, digit58BookingKind(ownerId))).map(cleanRow);
+  const conflict = existingBookings.find(row => {
+    if (row.storeId !== storeId || row.date !== date || row.status === 'Cancelled') return false;
+    if ((row.expertId || '') !== (expertId || '')) return false;
+    const rowStart = hhmmToMinutes(row.startTime), rowEnd = rowStart + Math.max(5, finite(row.durationMinutes, 30));
+    return rangesOverlap(startMinutes, endMinutes, rowStart, rowEnd);
+  });
   if (conflict) throw new Error('This slot has just been booked by someone else. Choose another time.');
 
   const price = Math.max(0, finite(service.price));
   const prepaymentPercent = Math.min(100, Math.max(0, Math.round(finite(service.prepaymentPercent, 100))));
   const prepaymentAmount = Math.round(price * prepaymentPercent) / 100;
-  const balanceAmount = Math.round((price * 100 - prepaymentAmount * 100)) / 100;
+  const cancellationChargeAmount = service.cancellationChargeEnabled ? Math.max(0, finite(service.cancellationChargeAmount)) : 0;
+  const upfrontAmount = Math.round((prepaymentAmount + cancellationChargeAmount) * 100) / 100;
+  const balanceAmount = Math.round((price * 100 - prepaymentAmount * 100 - cancellationChargeAmount * 100)) / 100;
   const bookingId = digit58Id('booking');
   const upiId = text(store.upiId, 120);
   const createdAt = new Date().toISOString();
@@ -910,13 +936,23 @@ async function createDigit58Booking(call, input, userId) {
     id: bookingId, ownerId, storeId, serviceId, serviceName: service.name, expertId, expertName,
     customerAccountId: userId, customerName: text(input.customerName, 120), customerEmail: text(input.customerEmail, 250),
     phone: normalisePhone(input.phone).slice(0, 15),
-    date, startTime, price, prepaymentPercent, prepaymentAmount, balanceAmount,
-    upiId: prepaymentAmount > 0 ? upiId : '', upiUri: prepaymentAmount > 0 ? buildDigit58UpiUri(upiId, store.name, prepaymentAmount, bookingId) : '',
-    status: prepaymentAmount > 0 ? 'Pending Payment' : 'Requested', paymentMarkedAt: '', balancePaid: false, balancePaidAt: '',
+    date, startTime, durationMinutes, price, prepaymentPercent, prepaymentAmount, cancellationChargeAmount, upfrontAmount, balanceAmount,
+    upiId: upfrontAmount > 0 ? upiId : '', upiUri: upfrontAmount > 0 ? buildDigit58UpiUri(upiId, store.name, upfrontAmount, bookingId) : '',
+    status: upfrontAmount > 0 ? 'Pending Payment' : 'Requested', paymentMarkedAt: '', balancePaid: false, balancePaidAt: '',
     createdAt, updatedAt: createdAt,
   };
   const created = await createRow(call, bookingId, digit58BookingKind(ownerId), record, rowPermissionsFor([ownerId, userId]));
   return cleanRow(created);
+}
+
+async function getDigit58SlotStatus(call, input) {
+  const ownerId = text(input.ownerId, 64), storeId = text(input.storeId, 40), date = text(input.date, 10);
+  if (!ownerId || !storeId || !/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error('Availability details are missing.');
+  const bookings = (await listRowsByKind(call, digit58BookingKind(ownerId))).map(cleanRow);
+  const occupied = bookings
+    .filter(row => row.storeId === storeId && row.date === date && row.status !== 'Cancelled')
+    .map(row => ({ startTime: row.startTime, durationMinutes: Math.max(5, finite(row.durationMinutes, 30)), expertId: row.expertId || '' }));
+  return { occupied };
 }
 
 async function requestDigit58BuyAgain(call, input, userId) {
@@ -1309,6 +1345,10 @@ export default async ({ req, res, error }) => {
     if (requestBody?.action === 'digit58-create-booking') {
       const call = appwriteClient(req);
       return res.json({ ok: true, booking: await createDigit58Booking(call, requestBody, userId) }, 201);
+    }
+    if (requestBody?.action === 'digit58-get-slot-status') {
+      const call = appwriteClient(req);
+      return res.json({ ok: true, ...(await getDigit58SlotStatus(call, requestBody)) });
     }
     if (requestBody?.action === 'digit58-create-refill-order') {
       const call = appwriteClient(req);
