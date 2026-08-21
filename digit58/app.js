@@ -1824,7 +1824,7 @@ async function advanceOrder(orderId,next){
   const changes={status:next,updatedAt:now()};
   if(next==='Accepted')changes.acceptedAt=now();
   if(next==='Accepted'&&order.paymentMarkedAt)changes.paymentStatus='Verified';
-  if(next==='Delivered')changes.deliveredAt=now();
+  if(next==='Delivered'){changes.deliveredAt=now();changes.messages=[]}
   try{
     await api.update(orderKind(order.ownerId),orderId,changes);
     Object.assign(order,changes);
@@ -2992,7 +2992,7 @@ async function completeBooking(bookingId){
     const hasBalance=Number(booking.balanceAmount)>0;
     const service=(state.services||[]).find(row=>row.id===booking.serviceId);
     const reminderDays=Math.max(0,Number(service?.reminderDays)||0);
-    const changes={status:'Completed',completedAt:now(),balancePaid:true,balancePaidAt:hasBalance?now():booking.balancePaidAt||'',nextReminderAt:reminderDays?new Date(Date.now()+reminderDays*86400000).toISOString():'',updatedAt:now()};
+    const changes={status:'Completed',completedAt:now(),balancePaid:true,balancePaidAt:hasBalance?now():booking.balancePaidAt||'',nextReminderAt:reminderDays?new Date(Date.now()+reminderDays*86400000).toISOString():'',updatedAt:now(),messages:[]};
     await api.update(bookingKind(booking.ownerId),bookingId,changes);
     Object.assign(booking,changes);refreshView();toast('Booking marked completed');
   }catch(error){toast(error.message||'Could not update booking')}
