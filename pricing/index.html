@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+  <link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32.png?v=5" />
+  <link rel="apple-touch-icon" sizes="180x180" href="/assets/apple-touch-icon.png?v=5" />
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Pricing | GRAVITY58</title>
+<meta name="description" content="Simple pricing for Refills and Digital Menu — see plan discounts and what's included in Free, Standard and Premium.">
+<meta name="robots" content="index, follow, max-image-preview:large">
+<link rel="canonical" href="https://g58.in/pricing/">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="GRAVITY58">
+<meta property="og:title" content="Pricing | GRAVITY58">
+<meta property="og:description" content="Simple pricing for Refills and Digital Menu — see plan discounts and what's included in Free, Standard and Premium.">
+<meta property="og:url" content="https://g58.in/pricing/">
+<meta property="og:image" content="https://g58.in/assets/og-gravity58.svg">
+<style>
+:root{--ink:#12181F;--ink-muted:#5B6472;--accent:#1D4ED8;--bg:#F5F4EF;--surface:#FFFFFF;--orange:#F97316;--border:rgba(18,24,31,.10)}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font-family:Inter,Arial,sans-serif}
+main{width:min(1100px,calc(100% - 32px));margin:auto;padding:42px 0 70px}
+a{color:var(--accent)}.brand{display:inline-flex;align-items:center;gap:9px;font-size:24px;font-weight:900;text-decoration:none;color:var(--ink);margin-bottom:0}.brand span{color:var(--orange)}.brand-icon{width:28px;height:28px;flex-shrink:0}
+.hero{border:1px solid var(--border);border-radius:22px;background:var(--surface);padding:28px}
+.hero h1{font-size:clamp(30px,5.5vw,54px);line-height:1.08;margin:0 0 14px;font-family:Manrope,sans-serif;letter-spacing:-.02em}
+.hero p{color:var(--ink-muted);line-height:1.7}
+.footer{margin-top:30px;color:var(--ink-muted);font-size:13px}
+.chip{display:inline-block;font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--accent);margin-bottom:8px}
+
+/* Nav bar */
+.guide-header{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:14px;margin-bottom:26px}
+.guide-nav{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.guide-nav a{display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border-radius:999px;border:1px solid var(--border);background:var(--surface);color:var(--ink);text-decoration:none;font-size:12.5px;font-weight:700;transition:.15s ease}
+.guide-nav a:hover{border-color:var(--accent);color:var(--accent)}
+.guide-nav svg{width:16px;height:16px;flex-shrink:0}
+@media(max-width:480px){.guide-header{flex-direction:column;align-items:flex-start}}
+
+/* Refills plans + Digital Menu tiers */
+.g58-plans-section,.g58-tiers-section{margin-top:34px}
+.g58-plans-head,.g58-tiers-head{max-width:640px;margin:0 auto 20px;text-align:center}
+.g58-plans-head h2,.g58-tiers-head h2{margin:0 0 8px;font-family:Manrope,sans-serif;font-size:clamp(22px,3vw,30px);color:var(--ink);letter-spacing:-.02em}
+.g58-plans-head p,.g58-tiers-head p{color:var(--ink-muted);font-size:14.5px;margin:0}
+.g58-plan-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}
+.g58-tier-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+.g58-plan-card,.g58-tier-card{display:flex;flex-direction:column;background:var(--surface);border:1px solid var(--border);border-radius:18px;padding:22px}
+.g58-plan-card.trial{border-color:#0f8f7c;background:linear-gradient(160deg,rgba(15,143,124,.08),var(--surface))}
+.g58-tier-card.premium{border-color:var(--orange);background:linear-gradient(160deg,rgba(249,115,22,.07),var(--surface))}
+.g58-plan-badge,.g58-tier-badge{align-self:flex-start;font-size:10px;font-weight:900;letter-spacing:.08em;text-transform:uppercase;color:var(--orange);margin-bottom:8px}
+.g58-plan-card.trial .g58-plan-badge{color:#0f8f7c}
+.g58-tier-badge{color:var(--accent)}
+.g58-plan-card h3,.g58-tier-card h3{margin:0 0 6px;font-size:15px;color:var(--ink);font-family:Manrope,sans-serif}
+.g58-plan-price{font-size:22px;font-weight:900;color:var(--ink);margin-bottom:8px}
+.g58-plan-price small{font-size:11.5px;font-weight:600;color:var(--ink-muted)}
+.g58-plan-note,.g58-tier-desc{color:var(--ink-muted);font-size:12px;line-height:1.55;margin:0 0 14px;flex:1}
+.g58-tier-list{list-style:none;margin:0 0 16px;padding:0;display:grid;gap:7px}
+.g58-tier-list li{position:relative;padding-left:20px;color:var(--ink);font-size:12px;line-height:1.5}
+.g58-tier-list li:before{content:"✓";position:absolute;left:0;color:#22C55E;font-weight:800}
+.g58-plan-cta,.g58-tier-cta{display:block;width:100%;text-align:center;padding:10px 14px;border-radius:12px;background:var(--orange);color:#fff;text-decoration:none;font-weight:800;font-size:13px}
+.g58-plan-card.trial .g58-plan-cta{background:linear-gradient(135deg,#0f8f7c,#0c7565)}
+.g58-tier-cta{background:var(--accent)}
+.g58-tier-card.premium .g58-tier-cta{background:var(--orange)}
+.g58-pricing-footnote{text-align:center;color:var(--ink-muted);font-size:13px;margin-top:18px}
+.g58-pricing-footnote a{color:var(--accent);font-weight:700;text-decoration:none}
+@media(max-width:900px){.g58-plan-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.g58-tier-grid{grid-template-columns:1fr}}
+@media(max-width:520px){.g58-plan-grid{grid-template-columns:1fr}}
+</style>
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "WebPage", "name": "Pricing", "url": "https://g58.in/pricing/"}</script>
+</head>
+<body>
+<main>
+<header class="guide-header">
+  <a class="brand" href="/"><svg class="brand-icon" viewBox="0 0 120 120" fill="none" stroke="#F97316" stroke-width="8" aria-hidden="true"><circle cx="60" cy="26" r="15"/><circle cx="28" cy="82" r="15"/><circle cx="92" cy="82" r="15"/></svg>GRAVITY<span>58</span></a>
+  <nav class="guide-nav" aria-label="Quick links">
+    <a href="/" aria-label="Home"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10v9a1 1 0 0 0 1 1h11a1 1 0 0 0 1-1v-9"/><path d="M9.5 20v-6h5v6"/></svg><span>Home</span></a>
+    <a href="/contact/" aria-label="Contact"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg><span>Contact</span></a>
+  </nav>
+</header>
+
+<section class="hero">
+<span class="chip">Pricing</span>
+<h1>Simple pricing for every store.</h1>
+<p>Start free with Refills, then pick a plan that renews automatically — or explore Digital Menu's Free, Standard and Premium tiers.</p>
+</section>
+
+<section class="g58-plans-section" aria-label="Refills pricing plans">
+  <div class="g58-plans-head">
+    <h2>Refills Plans</h2>
+    <p>Your first month is free. After that, choose a plan below — it renews automatically until you cancel.</p>
+  </div>
+  <div class="g58-plan-grid">
+    <article class="g58-plan-card trial">
+      <span class="g58-plan-badge">Free Trial</span>
+      <h3>1 Month Free</h3>
+      <div class="g58-plan-price">₹0<small> for 30 days</small></div>
+      <p class="g58-plan-note">Full store access for 30 days, no payment required.</p>
+      <a class="g58-plan-cta" href="/digit58/">Start Free Trial</a>
+    </article>
+    <article class="g58-plan-card">
+      <span class="g58-plan-badge">REFILLS PLAN</span>
+      <h3>6 Months</h3>
+      <div class="g58-plan-price">₹2,394<small> / 6 months</small></div>
+      <p class="g58-plan-note">Renews automatically every 6 months by auto-debit. Cancel anytime — the current paid period is non-refundable.</p>
+      <a class="g58-plan-cta" href="/digit58/">Choose Plan</a>
+    </article>
+    <article class="g58-plan-card">
+      <span class="g58-plan-badge">5% OFF</span>
+      <h3>1 Year</h3>
+      <div class="g58-plan-price">₹4,549<small> / year</small></div>
+      <p class="g58-plan-note">Renews automatically every year by auto-debit. Cancel anytime — the current paid period is non-refundable.</p>
+      <a class="g58-plan-cta" href="/digit58/">Choose Plan</a>
+    </article>
+    <article class="g58-plan-card">
+      <span class="g58-plan-badge">10% OFF</span>
+      <h3>3 Years</h3>
+      <div class="g58-plan-price">₹12,928<small> / 3 years</small></div>
+      <p class="g58-plan-note">Renews automatically every 3 years by auto-debit. Cancel anytime — the current paid period is non-refundable.</p>
+      <a class="g58-plan-cta" href="/digit58/">Choose Plan</a>
+    </article>
+  </div>
+  <p class="g58-pricing-footnote">Sign in to your Refills store to pick a plan and complete secure checkout. <a href="/refills-guide/">See how Refills works →</a></p>
+</section>
+
+<section class="g58-tiers-section" aria-label="Digital Menu pricing tiers">
+  <div class="g58-tiers-head">
+    <h2>Digital Menu</h2>
+    <p>Every restaurant starts free — upgrade any time for more restaurants or Premium features.</p>
+  </div>
+  <div class="g58-tier-grid">
+    <article class="g58-tier-card">
+      <span class="g58-tier-badge">FREE</span>
+      <h3>Free</h3>
+      <p class="g58-tier-desc">Get started with one restaurant and live table ordering.</p>
+      <ul class="g58-tier-list">
+        <li>1 restaurant</li>
+        <li>Live QR table ordering</li>
+        <li>Daily order history reset</li>
+      </ul>
+      <a class="g58-tier-cta" href="/digital-menu/">Get Started</a>
+    </article>
+    <article class="g58-tier-card">
+      <span class="g58-tier-badge">STANDARD</span>
+      <h3>Standard</h3>
+      <p class="g58-tier-desc">For owners running more than one restaurant.</p>
+      <ul class="g58-tier-list">
+        <li>Everything in Free</li>
+        <li>Adds a pack of up to 5 restaurants</li>
+        <li>Daily order history reset</li>
+      </ul>
+      <a class="g58-tier-cta" href="/digital-menu/">Upgrade to Standard</a>
+    </article>
+    <article class="g58-tier-card premium">
+      <span class="g58-tier-badge">PREMIUM</span>
+      <h3>Premium</h3>
+      <p class="g58-tier-desc">The full restaurant suite — orders, POS and reports.</p>
+      <ul class="g58-tier-list">
+        <li>Everything in Standard</li>
+        <li>Permanent order history</li>
+        <li>Premium POS included</li>
+        <li>Reports, messaging &amp; meal subscriptions</li>
+      </ul>
+      <a class="g58-tier-cta" href="/digital-menu/">Upgrade to Premium</a>
+    </article>
+  </div>
+  <p class="g58-pricing-footnote">See the full <a href="/digital-menu-guide/">Digital Menu pricing breakdown →</a></p>
+</section>
+
+<div class="footer">© 2026 GRAVITY58 · <a href="/privacy-policy/">Privacy</a> · <a href="/terms/">Terms</a> · <a href="/contact/">Contact</a></div>
+</main>
+  <script src="/js/server-status.js?v=1"></script>
+</body>
+</html>

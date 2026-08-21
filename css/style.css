@@ -1619,32 +1619,6 @@ body{background:
 .tool-cta{display:inline-flex;align-items:center;gap:5px;border:0;background:none;color:var(--accent);font-weight:700;font-size:13.5px;cursor:pointer;padding:0;text-decoration:none}
 @media(max-width:760px){.tools-grid{grid-template-columns:1fr}}
 
-/* Pricing section */
-.g58-pricing-section{padding:20px 0 10px}
-.g58-pricing-block{margin-top:40px}
-.g58-pricing-block-head{max-width:640px;margin:0 auto 20px;text-align:center}
-.g58-pricing-block-head h3{font-family:Manrope,sans-serif;font-weight:800;font-size:23px;color:var(--ink);margin:0 0 6px}
-.g58-pricing-block-head p{color:var(--ink-muted);font-size:14px;margin:0}
-.g58-plan-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px}
-.g58-tier-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
-.g58-plan-card,.g58-tier-card{display:flex;flex-direction:column;background:var(--hero-surface);border:1px solid var(--hero-border);border-radius:18px;padding:24px}
-.g58-plan-card.trial{border-color:var(--orange);background:linear-gradient(160deg,rgba(249,115,22,.07),var(--hero-surface))}
-.g58-tier-card.premium{border-color:var(--accent);background:linear-gradient(160deg,rgba(29,78,216,.07),var(--hero-surface))}
-.g58-plan-badge{align-self:flex-start;font-size:10px;font-weight:900;letter-spacing:.08em;text-transform:uppercase;color:var(--orange);margin-bottom:8px}
-.g58-tier-card .g58-plan-badge{color:var(--accent)}
-.g58-plan-card h4,.g58-tier-card h4{margin:0 0 6px;font-size:16px;color:var(--ink);font-family:Manrope,sans-serif;font-weight:700}
-.g58-plan-price{font-size:23px;font-weight:900;color:var(--ink);margin-bottom:8px}
-.g58-plan-price small{font-size:12px;font-weight:600;color:var(--ink-muted)}
-.g58-plan-note,.g58-tier-desc{color:var(--ink-muted);font-size:12.5px;line-height:1.55;margin:0 0 14px;flex:1}
-.g58-tier-list{list-style:none;margin:0 0 16px;padding:0;display:grid;gap:7px}
-.g58-tier-list li{position:relative;padding-left:20px;color:var(--ink);font-size:12.5px;line-height:1.5}
-.g58-tier-list li:before{content:"✓";position:absolute;left:0;color:var(--green);font-weight:800}
-.g58-plan-cta{width:100%;text-align:center;justify-content:center}
-.g58-pricing-footnote{text-align:center;color:var(--ink-muted);font-size:13px;margin-top:18px}
-.g58-pricing-footnote a{color:var(--accent);font-weight:700;text-decoration:none}
-@media(max-width:900px){.g58-plan-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.g58-tier-grid{grid-template-columns:1fr}}
-@media(max-width:520px){.g58-plan-grid{grid-template-columns:1fr}}
-
 /* Dual CTA sections */
 .business-cta-dark{background:#101114;padding:80px 0;text-align:center;position:relative;overflow:hidden}
 .business-cta-dark:before{content:'';position:absolute;inset:0;background:radial-gradient(circle at 20% 20%,rgba(29,78,216,.22),transparent 45%),radial-gradient(circle at 80% 80%,rgba(249,115,22,.14),transparent 40%)}

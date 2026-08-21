@@ -2536,27 +2536,6 @@ async function loadPremiumShowcase() {
 }
 document.addEventListener("DOMContentLoaded", loadPremiumShowcase);
 
-async function loadG58PricingPreview() {
-  const api = window.Gravity58Ads;
-  if (!api?.configured) return;
-  try {
-    const digit58Pricing = await api.list("digit58_pricing").catch(() => []);
-    const row = digit58Pricing.find((item) => (item.id || item.$id) === "default") || {};
-    const monthly = Number(row.monthly) || 399;
-    const periods = [
-      { id: "6m", months: 6, discount: 0 },
-      { id: "1y", months: 12, discount: 5 },
-      { id: "3y", months: 36, discount: 10 },
-    ];
-    periods.forEach((period) => {
-      const amount = Math.round(monthly * period.months * (1 - period.discount / 100));
-      const el = document.querySelector(`[data-refills-plan-price="${period.id}"]`);
-      if (el) el.textContent = `₹${amount.toLocaleString("en-IN")}`;
-    });
-  } catch {}
-}
-document.addEventListener("DOMContentLoaded", loadG58PricingPreview);
-
 function scheduleHeroFlowDots() {
   const heading = document.getElementById("heroHeading");
   if (!heading || window.matchMedia("(prefers-reduced-motion: reduce)").matches)
