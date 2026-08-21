@@ -95,6 +95,12 @@ const orderKind=(ownerId)=>safeId('digit58_order_',ownerId,40);
 const promotionKind=(ownerId)=>safeId('digit58_promo_',ownerId,40);
 const courseKind=(ownerId)=>safeId('digit58_course_',ownerId,39);
 const catalogKind=(ownerId)=>safeId('digit58_catalog_',ownerId,38);
+const serviceKind=(ownerId)=>safeId('digit58_service_',ownerId,38);
+const expertKind=(ownerId)=>safeId('digit58_expert_',ownerId,38);
+const bookingKind=(ownerId)=>safeId('digit58_booking_',ownerId,38);
+const isServiceStore=(store)=>store?.businessType==='services';
+const WEEKDAYS=[{id:1,label:'Monday',short:'Mon'},{id:2,label:'Tuesday',short:'Tue'},{id:3,label:'Wednesday',short:'Wed'},{id:4,label:'Thursday',short:'Thu'},{id:5,label:'Friday',short:'Fri'},{id:6,label:'Saturday',short:'Sat'},{id:0,label:'Sunday',short:'Sun'}];
+const normaliseAvailableDays=(value)=>[...new Set((Array.isArray(value)?value:[]).map(Number).filter(day=>Number.isInteger(day)&&day>=0&&day<=6))];
 const REQUEST_KIND='digit58_requests',ENTITLEMENT_KIND='digit58_entitlements',SUBSCRIPTION_AMOUNT=399;
 const CARD_PURCHASE_KIND='digit58_card_purchases',FREE_PROMOTION_CARDS=3;
 const PROMOTION_CARD_PRICING={'30d':{label:'30 Days',amount:150,days:30},'6mo':{label:'6 Months',amount:750,days:182},'1yr':{label:'1 Year',amount:1200,days:365}};
@@ -774,7 +780,7 @@ function renderOwnerAuth(){
 
 async function loadOwnerData(){
   const ownerId=cloudOwnerId();if(!ownerId)return;
-  const [stores,customers,cards,orders,promotions,cardPurchases,incomingBrandRequests,catalog]=await Promise.all([
+  const [stores,customers,cards,orders,promotions,cardPurchases,incomingBrandRequests,catalog,services,experts,bookings]=await Promise.all([
     api.list(storeKind(ownerId)).catch(()=>[]),
     api.list(customerKind(ownerId)).catch(()=>[]),
     api.list(cardKind(ownerId)).catch(()=>[]),
@@ -783,9 +789,12 @@ async function loadOwnerData(){
     api.list(CARD_PURCHASE_KIND).catch(()=>[]),
     api.list(BRAND_REQUEST_KIND).catch(()=>[]),
     api.list(catalogKind(ownerId)).catch(()=>[]),
+    api.list(serviceKind(ownerId)).catch(()=>[]),
+    api.list(expertKind(ownerId)).catch(()=>[]),
+    api.list(bookingKind(ownerId)).catch(()=>[]),
   ]);
   state.stores=stores;state.customers=customers;state.cards=cards;state.orders=orders;state.promotions=await cleanupExpiredOwnerPromotions(ownerId,promotions);
-  state.catalog=catalog;
+  state.catalog=catalog;state.services=services;state.experts=experts;state.bookings=bookings;
   state.cardPurchases=cardPurchases.filter(row=>row.ownerId===ownerId);
   state.brandRequests=incomingBrandRequests.filter(row=>row.ownerId===ownerId);
   if(!state.activeStoreId||!stores.some(row=>row.id===state.activeStoreId))state.activeStoreId=stores[0]?.id||'';
@@ -825,7 +834,7 @@ function siteFooter(forCustomer){
 }
 function renderShell(){
   const store=activeStore();
-  app.innerHTML=`<div class="shell"><aside class="sidebar"><a class="brand" href="../"><svg class="brand-mark" viewBox="0 0 120 120" fill="none" stroke="#7fffd4" stroke-width="8" aria-hidden="true"><circle cx="60" cy="26" r="15"/><circle cx="28" cy="82" r="15"/><circle cx="92" cy="82" r="15"/></svg><div><strong>Refills</strong><small class="muted">Store workspace</small></div></a><nav class="nav">${navButton('dashboard','◉','Dashboard')}${navButton('stores','◫','My Stores')}${navButton('promotions','✦','Promotions')}${navButton('brands','♟','Brand Orders')}${navButton('wall','☰','Customer Wall')}${navButton('orders','🧾','Orders')}${navButton('orderHistory','🕘','Order History')}${navButton('catalog','▦','Catalog')}${navButton('subscription','♢','Subscription')}${navButton('referrals','🎁','Refer & Earn')}${navButton('settings','⚙','Settings')}${hasActiveEntitlement()?`<a class="btn small" style="text-align:center;text-decoration:none" href="../pos/?source=digit58" target="_blank" rel="noopener">▣ Open POS</a>`:''}<button id="logout">⇥ Logout</button></nav></aside><main class="main"><header class="topbar"><div>${state.stores.length?`<select id="storeSwitch">${state.stores.map(row=>`<option value="${html(row.id)}" ${row.id===state.activeStoreId?'selected':''}>${html(row.name)}</option>`).join('')}</select>`:'<strong>No store yet</strong>'}</div><nav class="g58-topbar-home" aria-label="Quick links"><a href="https://www.g58.in/" aria-label="Home"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10v9a1 1 0 0 0 1 1h11a1 1 0 0 0 1-1v-9"/><path d="M9.5 20v-6h5v6"/></svg><span>Home</span></a><a href="/digit58/" aria-label="Refills"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11A8 8 0 0 0 6.3 6.3L4 8.6"/><path d="M4 4v4.6h4.6"/><path d="M4 13a8 8 0 0 0 13.7 4.7L20 15.4"/><path d="M20 20v-4.6h-4.6"/></svg><span>Refills</span></a><a href="/digital-menu/" aria-label="Digital Menu"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 3v6a2 2 0 0 0 2 2h0"/><path d="M9 3v18"/><path d="M7 3v5"/><path d="M15 3c-1.2 1.4-1.2 6.6 0 8 .5.6 1 .8 1 1.5V21"/></svg><span>Digital Menu</span></a></nav><span class="status-pill"><span class="dot"></span>${html(session?.email||'')}</span></header><section class="content" id="page"></section></main></div>${siteFooter()}${floatingSupportButton('digit58')}`;
+  app.innerHTML=`<div class="shell"><aside class="sidebar"><a class="brand" href="../"><svg class="brand-mark" viewBox="0 0 120 120" fill="none" stroke="#7fffd4" stroke-width="8" aria-hidden="true"><circle cx="60" cy="26" r="15"/><circle cx="28" cy="82" r="15"/><circle cx="92" cy="82" r="15"/></svg><div><strong>Refills</strong><small class="muted">Store workspace</small></div></a><nav class="nav">${navButton('dashboard','◉','Dashboard')}${navButton('stores','◫','My Stores')}${navButton('promotions','✦','Promotions')}${navButton('brands','♟','Brand Orders')}${navButton('wall','☰','Customer Wall')}${isServiceStore(store)?`${navButton('services','🛎','Services')}${navButton('experts','🧑‍💼','Experts')}${navButton('availability','🗓','Availability')}${navButton('bookings','📅','Bookings')}`:`${navButton('orders','🧾','Orders')}${navButton('orderHistory','🕘','Order History')}${navButton('catalog','▦','Catalog')}`}${navButton('subscription','♢','Subscription')}${navButton('referrals','🎁','Refer & Earn')}${navButton('settings','⚙','Settings')}${hasActiveEntitlement()?`<a class="btn small" style="text-align:center;text-decoration:none" href="../pos/?source=digit58" target="_blank" rel="noopener">▣ Open POS</a>`:''}<button id="logout">⇥ Logout</button></nav></aside><main class="main"><header class="topbar"><div>${state.stores.length?`<select id="storeSwitch">${state.stores.map(row=>`<option value="${html(row.id)}" ${row.id===state.activeStoreId?'selected':''}>${html(row.name)}</option>`).join('')}</select>`:'<strong>No store yet</strong>'}</div><nav class="g58-topbar-home" aria-label="Quick links"><a href="https://www.g58.in/" aria-label="Home"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10v9a1 1 0 0 0 1 1h11a1 1 0 0 0 1-1v-9"/><path d="M9.5 20v-6h5v6"/></svg><span>Home</span></a><a href="/digit58/" aria-label="Refills"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11A8 8 0 0 0 6.3 6.3L4 8.6"/><path d="M4 4v4.6h4.6"/><path d="M4 13a8 8 0 0 0 13.7 4.7L20 15.4"/><path d="M20 20v-4.6h-4.6"/></svg><span>Refills</span></a><a href="/digital-menu/" aria-label="Digital Menu"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 3v6a2 2 0 0 0 2 2h0"/><path d="M9 3v18"/><path d="M7 3v5"/><path d="M15 3c-1.2 1.4-1.2 6.6 0 8 .5.6 1 .8 1 1.5V21"/></svg><span>Digital Menu</span></a></nav><span class="status-pill"><span class="dot"></span>${html(session?.email||'')}</span></header><section class="content" id="page"></section></main></div>${siteFooter()}${floatingSupportButton('digit58')}`;
   $$('[data-view]').forEach(button=>button.onclick=()=>{view=button.dataset.view;renderShell()});
   $('#logout').onclick=async()=>{stopOwnerRealtime();await api.logout();session=null;renderOwnerAuth()};
   $('#storeSwitch')?.addEventListener('change',event=>{state.activeStoreId=event.target.value;save();renderShell()});
@@ -833,7 +842,7 @@ function renderShell(){
   renderView();
 }
 function navButton(key,icon,label){return `<button data-view="${key}" class="${view===key?'active':''}"><span>${icon}</span>${label}</button>`}
-function renderView(){if(!activeStore()&&view!=='stores'&&view!=='settings'&&view!=='subscription'&&view!=='referrals'){view='stores';return renderShell()}({dashboard:dashboardView,stores:storesView,promotions:promotionsView,brands:brandPartnersView,wall:customerWallView,orders:ordersView,orderHistory:orderHistoryView,catalog:catalogView,subscription:subscriptionView,referrals:referEarnView,settings:settingsView}[view]||dashboardView)()}
+function renderView(){if(!activeStore()&&view!=='stores'&&view!=='settings'&&view!=='subscription'&&view!=='referrals'){view='stores';return renderShell()}({dashboard:dashboardView,stores:storesView,promotions:promotionsView,brands:brandPartnersView,wall:customerWallView,orders:ordersView,orderHistory:orderHistoryView,catalog:catalogView,services:servicesView,experts:expertsView,availability:availabilityView,bookings:bookingsView,subscription:subscriptionView,referrals:referEarnView,settings:settingsView}[view]||dashboardView)()}
 function ordersView(){
   refreshView=ordersView;
   const orders=activeOrders(state.orders).sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
@@ -1230,7 +1239,7 @@ async function declareBrandPayment(requestId){
 function openStoreForm(storeId=''){
   const store=state.stores.find(row=>row.id===storeId)||{};
   const minimumEnabled=store.minimumOrderEnabled===true||(store.minimumOrderEnabled!==false&&configuredStoreMinimum(store)>0);
-  modal(storeId?'Edit Store':'Create Store',`<form id="storeForm"><div class="field"><label>Store name</label><input name="name" value="${html(store.name||'')}" required></div><label class="option-toggle"><input id="minimumOrderEnabled" name="minimumOrderEnabled" type="checkbox" ${minimumEnabled?'checked':''}><span><strong>Enable minimum new order criteria</strong><small>Switch this off anytime. Refills and history Reorders never use this limit.</small></span></label><div class="field ${minimumEnabled?'':'hidden'}" id="minimumOrderValueField"><label>Minimum new order value (₹)</label><input name="minimumOrderValue" type="number" min="1" step="1" value="${configuredStoreMinimum(store)||''}" placeholder="Example: 500"><small class="muted">A customer below this value can request a one-order approval from you.</small></div><div class="form-grid"><div class="field"><label>Category</label><input name="category" value="${html(store.category||'')}" placeholder="Example: Pharmacy"></div><div class="field"><label>City</label><input name="city" value="${html(store.city||'')}"></div></div><div class="field"><label>Customer highlight text <small>(optional)</small></label><input name="highlightText" maxlength="40" value="${html(store.highlightText||'')}" placeholder="Example: 20% Off"><small class="muted">Shown as bold orange text on this store's customer page.</small></div><div class="field"><label>Phone</label><input name="phone" value="${html(store.phone||'')}"></div><div class="field"><label>UPI ID <small>(for order payment QR codes)</small></label><input name="upiId" value="${html(store.upiId||'')}" placeholder="yourstore@upi"></div><label class="option-toggle"><input id="razorpayEnabled" name="razorpayEnabled" type="checkbox" ${store.razorpayEnabled?'checked':''}><span><strong>Enable Razorpay payment link</strong><small>Optional — customers can open your Razorpay page after you set the order amount.</small></span></label><div class="field ${store.razorpayEnabled?'':'hidden'}" id="razorpayLinkField"><label>Razorpay payment link</label><input name="razorpayLink" type="text" inputmode="url" value="${html(store.razorpayLink||'')}" placeholder="razorpay.me/@yourstore"><small class="muted">Only razorpay.me or rzp.io secure links are accepted. https:// is added automatically.</small><div class="razorpay-link-note"><strong>How reusable Razorpay.me links work</strong><small>Razorpay.me has no return-URL setting. After paying, the customer returns to the G58 tab and taps Payment completed. Always verify the payment in Razorpay before accepting the order.</small></div></div><div class="field"><label>Description</label><textarea name="description">${html(store.description||'')}</textarea></div><button class="btn full">${storeId?'Save Store':'Create Store'}</button></form>`,()=>{
+  modal(storeId?'Edit Store':'Create Store',`<form id="storeForm"><div class="field"><label>Store name</label><input name="name" value="${html(store.name||'')}" required></div><div class="field"><label>Business type</label><div class="business-type-toggle"><label class="option-toggle"><input type="radio" name="businessType" value="products" ${(!store.businessType||store.businessType==='products')?'checked':''}><span><strong>Store</strong><small>Sell products — customers place orders you price and fulfil.</small></span></label><label class="option-toggle"><input type="radio" name="businessType" value="services" ${store.businessType==='services'?'checked':''}><span><strong>Service</strong><small>Offer bookable services — customers book a slot and pay a prepayment.</small></span></label></div></div><label class="option-toggle"><input id="minimumOrderEnabled" name="minimumOrderEnabled" type="checkbox" ${minimumEnabled?'checked':''}><span><strong>Enable minimum new order criteria</strong><small>Switch this off anytime. Refills and history Reorders never use this limit.</small></span></label><div class="field ${minimumEnabled?'':'hidden'}" id="minimumOrderValueField"><label>Minimum new order value (₹)</label><input name="minimumOrderValue" type="number" min="1" step="1" value="${configuredStoreMinimum(store)||''}" placeholder="Example: 500"><small class="muted">A customer below this value can request a one-order approval from you.</small></div><div class="form-grid"><div class="field"><label>Category</label><input name="category" value="${html(store.category||'')}" placeholder="Example: Pharmacy"></div><div class="field"><label>City</label><input name="city" value="${html(store.city||'')}"></div></div><div class="field"><label>Customer highlight text <small>(optional)</small></label><input name="highlightText" maxlength="40" value="${html(store.highlightText||'')}" placeholder="Example: 20% Off"><small class="muted">Shown as bold orange text on this store's customer page.</small></div><div class="field"><label>Phone</label><input name="phone" value="${html(store.phone||'')}"></div><div class="field"><label>UPI ID <small>(for order payment QR codes)</small></label><input name="upiId" value="${html(store.upiId||'')}" placeholder="yourstore@upi"></div><label class="option-toggle"><input id="razorpayEnabled" name="razorpayEnabled" type="checkbox" ${store.razorpayEnabled?'checked':''}><span><strong>Enable Razorpay payment link</strong><small>Optional — customers can open your Razorpay page after you set the order amount.</small></span></label><div class="field ${store.razorpayEnabled?'':'hidden'}" id="razorpayLinkField"><label>Razorpay payment link</label><input name="razorpayLink" type="text" inputmode="url" value="${html(store.razorpayLink||'')}" placeholder="razorpay.me/@yourstore"><small class="muted">Only razorpay.me or rzp.io secure links are accepted. https:// is added automatically.</small><div class="razorpay-link-note"><strong>How reusable Razorpay.me links work</strong><small>Razorpay.me has no return-URL setting. After paying, the customer returns to the G58 tab and taps Payment completed. Always verify the payment in Razorpay before accepting the order.</small></div></div><div class="field"><label>Description</label><textarea name="description">${html(store.description||'')}</textarea></div><button class="btn full">${storeId?'Save Store':'Create Store'}</button></form>`,()=>{
     const minimumToggle=$('#minimumOrderEnabled'),minimumField=$('#minimumOrderValueField'),razorpayToggle=$('#razorpayEnabled'),razorpayField=$('#razorpayLinkField');
     minimumToggle.onchange=()=>minimumField.classList.toggle('hidden',!minimumToggle.checked);
     razorpayToggle.onchange=()=>razorpayField.classList.toggle('hidden',!razorpayToggle.checked);
@@ -1241,7 +1250,8 @@ function openStoreForm(storeId=''){
       if(razorpayEnabled&&!validRazorpayLink(razorpayLink))return toast('Enter a valid razorpay.me or rzp.io payment link');
       const minimumOrderEnabled=minimumToggle.checked,minimumOrderValue=Math.max(0,Number(raw.minimumOrderValue)||0);
       if(minimumOrderEnabled&&!minimumOrderValue)return toast('Enter the minimum new order value or switch the criteria off');
-      const values={name:raw.name.trim(),minimumOrderEnabled,minimumOrderValue,category:raw.category.trim()||'General store',city:raw.city.trim(),highlightText:raw.highlightText.trim(),phone:raw.phone.trim(),upiId:raw.upiId.trim(),razorpayEnabled,razorpayLink:razorpayEnabled?razorpayLink:'',description:raw.description.trim()};
+      const businessType=raw.businessType==='services'?'services':'products';
+      const values={name:raw.name.trim(),businessType,minimumOrderEnabled,minimumOrderValue,category:raw.category.trim()||'General store',city:raw.city.trim(),highlightText:raw.highlightText.trim(),phone:raw.phone.trim(),upiId:raw.upiId.trim(),razorpayEnabled,razorpayLink:razorpayEnabled?razorpayLink:'',description:raw.description.trim()};
       button.disabled=true;
       try{
         if(storeId){
@@ -1945,23 +1955,30 @@ function brandRequestAsPromotion(row){
 }
 async function loadAndRenderCustomerView(store,customer){
   activeCustomerContext={store,customer};
-  const [cards,orders,promotions,courses,brandRequestsForStore]=await Promise.all([
+  const serviceStore=isServiceStore(store);
+  const [cards,orders,promotions,courses,brandRequestsForStore,services,experts,bookings]=await Promise.all([
     api.list(cardKind(store.ownerId)).catch(()=>[]),
     api.list(orderKind(store.ownerId)).catch(()=>[]),
     api.list(promotionKind(store.ownerId)).catch(()=>[]),
     isMedicalStore(store)?api.list(courseKind(store.ownerId)).catch(()=>[]):Promise.resolve([]),
     api.list(BRAND_REQUEST_KIND).catch(()=>[]),
+    serviceStore?api.list(serviceKind(store.ownerId)).catch(()=>[]):Promise.resolve([]),
+    serviceStore?api.list(expertKind(store.ownerId)).catch(()=>[]):Promise.resolve([]),
+    serviceStore?api.list(bookingKind(store.ownerId)).catch(()=>[]):Promise.resolve([]),
   ]);
   const myCards=cards.filter(row=>row.storeId===store.id&&row.customerAccountId===customer.customerAccountId);
   const myOrders=orders.filter(row=>row.storeId===store.id&&row.customerAccountId===customer.customerAccountId);
   const liveBrandCards=brandRequestsForStore.filter(row=>row.storeId===store.id&&row.status==='Live'&&(!row.expiresAt||new Date(row.expiresAt).getTime()>Date.now())).map(brandRequestAsPromotion);
   const myPromotions=[...promotions.filter(row=>row.storeId===store.id&&row.active!==false&&!promotionIsExpired(row)),...liveBrandCards];
   const myCourses=courses.filter(row=>row.storeId===store.id&&row.customerAccountId===customer.customerAccountId);
+  const myServices=services.filter(row=>row.storeId===store.id&&row.active!==false);
+  const myExperts=experts.filter(row=>row.storeId===store.id&&row.active!==false);
+  const myBookings=bookings.filter(row=>row.storeId===store.id&&row.customerAccountId===customer.customerAccountId);
   if($('.modal-backdrop')){customerRenderPending=true;return}
   customerRenderPending=false;
-  renderCustomerCards(store,customer,myCards,myOrders,myPromotions,myCourses);
+  renderCustomerCards(store,customer,myCards,myOrders,myPromotions,myCourses,myServices,myExperts,myBookings);
 }
-let customerOrdersUnsubscribe=null,customerCardsUnsubscribe=null,customerPromotionsUnsubscribe=null,customerCoursesUnsubscribe=null;
+let customerOrdersUnsubscribe=null,customerCardsUnsubscribe=null,customerPromotionsUnsubscribe=null,customerCoursesUnsubscribe=null,customerBookingsUnsubscribe=null;
 function startCustomerRealtime(store,customer){
   activeCustomerContext={store,customer};
   startMedicineAlarmTimer(store,customer);
@@ -1974,8 +1991,10 @@ function startCustomerRealtime(store,customer){
   customerPromotionsUnsubscribe=api.subscribeKind(promotionKind(store.ownerId),()=>loadAndRenderCustomerView(store,customer));
   customerCoursesUnsubscribe?.();
   if(isMedicalStore(store))customerCoursesUnsubscribe=api.subscribeKind(courseKind(store.ownerId),()=>loadAndRenderCustomerView(store,customer));
+  customerBookingsUnsubscribe?.();
+  if(isServiceStore(store))customerBookingsUnsubscribe=api.subscribeKind(bookingKind(store.ownerId),()=>loadAndRenderCustomerView(store,customer));
 }
-function stopCustomerRealtime(){customerOrdersUnsubscribe?.();customerCardsUnsubscribe?.();customerPromotionsUnsubscribe?.();customerCoursesUnsubscribe?.();customerOrdersUnsubscribe=customerCardsUnsubscribe=customerPromotionsUnsubscribe=customerCoursesUnsubscribe=null;stopPromotionAutoScroll();clearTimeout(promotionAutoScrollResumeTimer);stopMedicineAlarmTimer();dueReminderRung.clear();pendingDueBeep=false;pendingOwnerOrderRung.clear();medicineAlarmRung.clear();activeCustomerContext=null;customerRenderPending=false;stopIncomingCallRing()}
+function stopCustomerRealtime(){customerOrdersUnsubscribe?.();customerCardsUnsubscribe?.();customerPromotionsUnsubscribe?.();customerCoursesUnsubscribe?.();customerBookingsUnsubscribe?.();customerOrdersUnsubscribe=customerCardsUnsubscribe=customerPromotionsUnsubscribe=customerCoursesUnsubscribe=customerBookingsUnsubscribe=null;stopPromotionAutoScroll();clearTimeout(promotionAutoScrollResumeTimer);stopMedicineAlarmTimer();dueReminderRung.clear();pendingDueBeep=false;pendingOwnerOrderRung.clear();medicineAlarmRung.clear();activeCustomerContext=null;customerRenderPending=false;stopIncomingCallRing()}
 const VAPID_PUBLIC_KEY='BBWHhjt1keQag3HnZIooxS1pJvelQ8CuQ6eWBxFp9AStQLDpTzZqwKHmwj_gomaCpNBykqJRo6AsmfbC0roZoEY';
 function urlBase64ToUint8Array(base64String){
   const padding='='.repeat((4-base64String.length%4)%4);
@@ -2201,7 +2220,7 @@ function bindCustomerPromotionActions(promotions){
   $$('[data-promotion-minus]').forEach(button=>button.onclick=()=>adjustPromotionQuantity(promotions,button.dataset.promotionMinus,-1));
   refreshPromotionCartBar(promotions);
 }
-function renderCustomerCards(store,customer,cards,orders=[],promotions=[],courses=[]){
+function renderCustomerCards(store,customer,cards,orders=[],promotions=[],courses=[],services=[],experts=[],bookings=[]){
   if(activePromotionStoreId!==store.id){activePromotionStoreId=store.id;customerPromotionQuantities.clear()}
   ringDueReminders(cards);
   ringPendingOwnerOrders(store,customer,orders);
@@ -2218,10 +2237,13 @@ function renderCustomerCards(store,customer,cards,orders=[],promotions=[],course
     ?filterCoursesByIndiaDate(completedCourseList,courseHistoryFrom,courseHistoryTo).sort((a,b)=>new Date(courseCompletionDate(b))-new Date(courseCompletionDate(a)))
     :latestCoursePerPatient(completedCourseList).sort((a,b)=>new Date(courseCompletionDate(b))-new Date(courseCompletionDate(a)));
   const marqueePromotions=promotions.length?Array.from({length:Math.max(1,Math.ceil(6/promotions.length))},()=>promotions).flat():[];
+  const serviceStoreFlag=isServiceStore(store);
+  const activeBookings=bookings.filter(row=>row.status!=='Cancelled').sort((a,b)=>new Date(`${a.date}T${a.startTime}`)-new Date(`${b.date}T${b.startTime}`));
   app.innerHTML=`<main class="public-store">${customerBrandStrip()}${customerStoreHub(store)}<div id="pushNotifyPrompt"></div><section class="store-hero"><span class="chip">${html(store.category||'Store')}</span>${store.highlightText?`<strong class="store-highlight-text">${html(store.highlightText)}</strong>`:''}<h1>${html(store.name)}</h1>${customer.phone?`<p class="customer-phone-line">Your contact number: ${html(customer.phone)}</p>`:''}${storeMinimum(store)?`<p class="store-minimum-order">Minimum new order ${money(storeMinimum(store))}</p>`:''}<p class="muted">${html(store.description||'')}${store.city?' · '+html(store.city):''}</p></section>
   ${promotions.length?`<section class="promotion-strip"><div class="promotion-strip-head"><span>Store Offers</span></div><div class="promotion-rail" id="promotionRail"><div class="promotion-track"><div class="promotion-sequence">${marqueePromotions.map((promotion,index)=>customerPromotionTicket(promotion,index>=promotions.length)).join('')}</div><div class="promotion-sequence" aria-hidden="true">${marqueePromotions.map(promotion=>customerPromotionTicket(promotion,true)).join('')}</div></div></div></section>`:''}
-  <div class="section-head"><div><h2>Your orders</h2>${storeMinimum(store)?`<p class="muted">New orders must be at least ${money(storeMinimum(store))}. Refill and reorder requests are exempt.</p>`:''}</div><button class="btn small" id="placeOrderBtn">+ Place New Order</button></div>
-  <div class="grid card-grid">${active.map(order=>customerOrderMarkup(order,store)).join('')||'<div class="empty">No active orders. Place a new order to get started.</div>'}</div>
+  ${serviceStoreFlag?`<div class="section-head"><div><h2>Book a Service</h2><p class="muted">Pick a service, choose a slot and pay the prepayment to confirm.</p></div><button class="btn small" id="bookServiceBtn">+ Book a Service</button></div><div class="grid card-grid">${activeBookings.map(customerBookingMarkup).join('')||'<div class="empty">No bookings yet. Book a service to get started.</div>'}</div>`:''}
+  ${serviceStoreFlag?'':`<div class="section-head"><div><h2>Your orders</h2>${storeMinimum(store)?`<p class="muted">New orders must be at least ${money(storeMinimum(store))}. Refill and reorder requests are exempt.</p>`:''}</div><button class="btn small" id="placeOrderBtn">+ Place New Order</button></div>
+  <div class="grid card-grid">${active.map(order=>customerOrderMarkup(order,store)).join('')||'<div class="empty">No active orders. Place a new order to get started.</div>'}</div>`}
   <div class="section-head reminder-section-head"><div><h2>Your reminder cards</h2>${cards.length>1?'<p class="muted">Swipe to see the next card or switch to list view.</p>':''}</div>${cards.length>1?`<div class="reminder-view-toggle" role="group" aria-label="Reminder card view"><button type="button" class="${customerReminderView==='swipe'?'active':''}" data-reminder-view="swipe" aria-pressed="${customerReminderView==='swipe'}">Swipe</button><button type="button" class="${customerReminderView==='list'?'active':''}" data-reminder-view="list" aria-pressed="${customerReminderView==='list'}">List</button></div>`:''}</div>
   <div class="customer-reminder-view reminder-view-${customerReminderView}" id="customerCardGrid">${cards.map(customerCardCardMarkup).join('')||'<div class="empty">Your store will add reminder cards here after your first purchase.</div>'}</div>
   ${medical?`<div class="section-head"><div><h2>Medicine Courses</h2><p class="muted">Add the patient, medicine, time, and days from your prescription — you'll receive a daily alarm.</p></div><button class="btn small" id="newCourseBtn">+ New Course</button></div><div class="grid card-grid">${activeCourseList.map(courseMarkup).join('')||'<div class="empty">No active medicine courses yet.</div>'}</div>${completedCourseList.length?`<section class="order-history-section" id="courseHistorySection"><div class="section-head"><div><h2>Course History</h2><p class="muted">The latest course per patient is shown by default. Choose a date range to see more.</p></div></div><div class="date-filter-bar"><label>From<input id="courseHistoryFrom" type="date" value="${html(courseHistoryFrom)}"></label><label>To<input id="courseHistoryTo" type="date" value="${html(courseHistoryTo)}"></label><button class="btn small secondary" id="courseHistoryClear" type="button">Show Latest</button></div><div class="card table-wrap"><table><thead><tr><th>Patient</th><th>Medicines</th><th>Completed</th></tr></thead><tbody>${courseHistoryFiltered.map(courseHistoryRow).join('')||'<tr><td colspan="3">No courses in this period.</td></tr>'}</tbody></table></div></section>`:''}`:''}
@@ -2231,12 +2253,17 @@ function renderCustomerCards(store,customer,cards,orders=[],promotions=[],course
     const target=document.getElementById(`qr-${order.id}`);
     if(target&&window.QRCode)new QRCode(target,{text:order.upiUri,width:180,height:180});
   });
+  activeBookings.filter(booking=>booking.status==='Pending Payment'&&booking.upiUri).forEach(booking=>{
+    const target=document.getElementById(`booking-qr-${booking.id}`);
+    if(target&&window.QRCode)new QRCode(target,{text:booking.upiUri,width:180,height:180});
+  });
   bindCustomerPromotionActions(promotions);
   bindCustomerStoreHub(store);
   startPromotionAutoScroll();
   bindRazorpayPaymentActions(active,store,customer);
   $('#viewAgreementBtn').onclick=()=>openCustomerAgreementModal(store,customer);
-  $('#placeOrderBtn').onclick=()=>openPlaceOrderModal(store,customer,promotions);
+  $('#placeOrderBtn')?.addEventListener('click',()=>openPlaceOrderModal(store,customer,promotions));
+  $('#bookServiceBtn')?.addEventListener('click',()=>openBookingModal(store,customer,services,experts));
   $('#promotionCartCheckout').onclick=()=>openPlaceOrderModal(store,customer,promotions);
   $('#promotionCartSummary').onclick=event=>{if(event.target.closest('#promotionCartCheckout'))return;$('#promotionCartBar').classList.toggle('is-expanded')};
   $$('[data-accept-owner-order]').forEach(button=>button.onclick=()=>acceptOwnerOrder(store,customer,button.dataset.acceptOwnerOrder));
@@ -2256,18 +2283,18 @@ function renderCustomerCards(store,customer,cards,orders=[],promotions=[],course
     const order=filteredHistory.find(row=>row.id===button.dataset.reorderOrder);
     if(order)openReorderOrderModal(order,store,customer);
   });
-  $('#customerHistoryFrom')?.addEventListener('change',()=>renderCustomerCards(store,customer,cards,orders,promotions,courses));
-  $('#customerHistoryTo')?.addEventListener('change',()=>renderCustomerCards(store,customer,cards,orders,promotions,courses));
-  $('#customerHistoryToday')?.addEventListener('click',()=>{$('#customerHistoryFrom').value=today;$('#customerHistoryTo').value=today;renderCustomerCards(store,customer,cards,orders,promotions,courses)});
+  $('#customerHistoryFrom')?.addEventListener('change',()=>renderCustomerCards(store,customer,cards,orders,promotions,courses,services,experts,bookings));
+  $('#customerHistoryTo')?.addEventListener('change',()=>renderCustomerCards(store,customer,cards,orders,promotions,courses,services,experts,bookings));
+  $('#customerHistoryToday')?.addEventListener('click',()=>{$('#customerHistoryFrom').value=today;$('#customerHistoryTo').value=today;renderCustomerCards(store,customer,cards,orders,promotions,courses,services,experts,bookings)});
   $('#exportCustomerHistory')?.addEventListener('click',()=>downloadOrderHistoryCsv(filteredHistory,{filePrefix:`${store.name||'store'}-my-orders`.toLowerCase().replace(/[^a-z0-9]+/g,'-'),storeName:store.name||'Store'}));
   $('#newCourseBtn')?.addEventListener('click',()=>openCreateCourseModal(store,customer));
   $$('[data-add-medicine]').forEach(button=>button.onclick=()=>{
     const course=courses.find(row=>row.id===button.dataset.addMedicine);
     if(course)openAddMedicineModal(store,customer,course);
   });
-  $('#courseHistoryFrom')?.addEventListener('change',()=>renderCustomerCards(store,customer,cards,orders,promotions,courses));
-  $('#courseHistoryTo')?.addEventListener('change',()=>renderCustomerCards(store,customer,cards,orders,promotions,courses));
-  $('#courseHistoryClear')?.addEventListener('click',()=>{$('#courseHistoryFrom').value='';$('#courseHistoryTo').value='';renderCustomerCards(store,customer,cards,orders,promotions,courses)});
+  $('#courseHistoryFrom')?.addEventListener('change',()=>renderCustomerCards(store,customer,cards,orders,promotions,courses,services,experts,bookings));
+  $('#courseHistoryTo')?.addEventListener('change',()=>renderCustomerCards(store,customer,cards,orders,promotions,courses,services,experts,bookings));
+  $('#courseHistoryClear')?.addEventListener('click',()=>{$('#courseHistoryFrom').value='';$('#courseHistoryTo').value='';renderCustomerCards(store,customer,cards,orders,promotions,courses,services,experts,bookings)});
   bindOrderChatForms(active,'customer',()=>loadAndRenderCustomerView(store,customer));
   bindCardChatForms(cards,'customer',()=>loadAndRenderCustomerView(store,customer));
   initShakeDetection();
@@ -2321,6 +2348,48 @@ function customerOrderMarkup(order,store){
     :order.amount?`<h3 style="margin:10px 0">${money(order.amount)}</h3>`:'<p class="muted">Waiting for the store to review and set the amount.</p>';
   const visibleStatus=order.paymentMarkedAt&&order.status==='Priced'?'Payment Verification':order.status;
   return `<article class="card order-item-card premium-card"><div class="section-head"><h3>Order #${html(order.id.slice(-6).toUpperCase())}</h3><span class="chip">${html(visibleStatus)}</span></div>${bigStatusMarkup(visibleStatus)}${orderStepperMarkup(order.status)}<div class="order-items-list">${order.items.map(item=>`<div class="order-line-item"><span>${item.qty} ×</span><span>${html(item.name)}</span></div>`).join('')}</div>${Number(order.customerOrderValue)>0?`<div class="customer-order-value"><span>Your estimated order value</span><strong>${money(order.customerOrderValue)}</strong></div>`:''}${order.prescriptionUrl?`<a class="link-btn" href="${html(order.prescriptionUrl)}" target="_blank" rel="noopener">📄 View your prescription</a>`:''}${paymentBlock}${orderChatMarkup(order,'customer')}</article>`;
+}
+function customerBookingMarkup(booking){
+  const status=booking.status||'Pending Payment';
+  const balanceNote=Number(booking.balanceAmount)>0?`<p class="muted">Balance ${money(booking.balanceAmount)} due after service</p>`:'';
+  const paymentBlock=status==='Pending Payment'
+    ?`<div class="qr-wrap" id="booking-qr-${html(booking.id)}"></div><h3 style="margin:10px 0;text-align:center">${money(booking.prepaymentAmount)}</h3><p class="muted" style="text-align:center">Scan to pay your booking prepayment via UPI. The store will confirm your slot once payment is received.</p>`
+    :'';
+  return `<article class="card order-item-card premium-card"><div class="section-head"><h3>${html(booking.serviceName)}</h3><span class="chip">${html(status)}</span></div><p class="muted">${html(booking.date)} · ${html(booking.startTime)}${booking.expertName?` · with ${html(booking.expertName)}`:''}</p><p class="muted">Price ${money(booking.price)} · Prepaid ${money(booking.prepaymentAmount)}</p>${balanceNote}${paymentBlock}</article>`;
+}
+function generateSlotOptions(store){
+  const start=store.slotStartTime||'10:00',end=store.slotEndTime||'18:00',duration=Math.max(5,Number(store.slotDurationMinutes)||30);
+  const [startH,startM]=start.split(':').map(Number),[endH,endM]=end.split(':').map(Number);
+  let mins=startH*60+startM;const endMins=endH*60+endM;const slots=[];
+  while(mins<endMins){slots.push(`${String(Math.floor(mins/60)).padStart(2,'0')}:${String(mins%60).padStart(2,'0')}`);mins+=duration}
+  return slots;
+}
+function openBookingModal(store,customer,services,experts){
+  if(!services.length)return toast('This store has not added any services yet');
+  const windowDays=Math.max(1,Number(store.preBookingWindowDays)||30);
+  const minDate=new Date(Date.now()+5*60000),maxDate=new Date(Date.now()+windowDays*86400000);
+  const minDateValue=new Date(minDate.getTime()-minDate.getTimezoneOffset()*60000).toISOString().slice(0,10);
+  const maxDateValue=new Date(maxDate.getTime()-maxDate.getTimezoneOffset()*60000).toISOString().slice(0,10);
+  const slotOptions=generateSlotOptions(store);
+  modal('Book a Service',`<form id="bookingForm"><div class="field"><label>Service</label><select name="serviceId" id="bookingServiceSelect" required>${services.map(service=>`<option value="${html(service.id)}">${html(service.name)} — ${money(service.price)}</option>`).join('')}</select></div>${experts.length?`<div class="field"><label>Expert <small>(optional)</small></label><select name="expertId"><option value="">No preference</option>${experts.map(expert=>`<option value="${html(expert.id)}">${html(expert.name)}</option>`).join('')}</select></div>`:''}<div class="form-grid"><div class="field"><label>Date</label><input name="date" type="date" min="${minDateValue}" max="${maxDateValue}" required></div><div class="field"><label>Time</label><select name="startTime" required>${slotOptions.map(slot=>`<option value="${slot}">${slot}</option>`).join('')}</select></div></div><div class="field"><label>Phone</label><input name="phone" value="${html(customer.phone||'')}" required></div><p class="muted" id="bookingPriceNote"></p><button class="btn full" type="submit" style="margin-top:14px">Book &amp; Pay Prepayment</button></form>`,()=>{
+    const updateNote=()=>{
+      const service=services.find(row=>row.id===$('#bookingServiceSelect').value);if(!service)return;
+      const prepay=Math.round(service.price*(service.prepaymentPercent||100))/100;
+      const balance=Math.round((service.price*100-prepay*100))/100;
+      $('#bookingPriceNote').textContent=balance>0?`Pay ${money(prepay)} now, ${money(balance)} balance after service.`:`Pay ${money(prepay)} now (full payment).`;
+    };
+    $('#bookingServiceSelect').onchange=updateNote;updateNote();
+    $('#bookingForm').onsubmit=async event=>{
+      event.preventDefault();
+      const values=Object.fromEntries(new FormData(event.target)),button=event.submitter;
+      button.disabled=true;
+      try{
+        await api.executeFunction(api.config.digitalOrderFunctionId,{action:'digit58-create-booking',ownerId:store.ownerId,storeId:store.id,serviceId:values.serviceId,expertId:values.expertId||'',date:values.date,startTime:values.startTime,customerName:customer.customerName,customerEmail:customer.customerEmail,phone:values.phone});
+        closeModal();toast('Slot booked — pay the prepayment to confirm');
+        await loadAndRenderCustomerView(store,customer);
+      }catch(error){button.disabled=false;toast(error.message||'Could not book this slot')}
+    };
+  });
 }
 function razorpayPaymentKey(orderId){return `g58-razorpay-open-${orderId}`}
 function razorpayPendingKey(ownerId,storeId){return `g58-razorpay-pending-${ownerId}-${storeId}`}
@@ -2470,6 +2539,171 @@ async function removeCatalogItem(itemId){
     state.catalog=(state.catalog||[]).filter(row=>row.id!==itemId);save();
     catalogView();toast('Item removed');
   }catch(error){toast(error.message||'Could not remove item')}
+}
+function servicesView(){
+  refreshView=servicesView;
+  const store=activeStore();
+  const items=(state.services||[]).filter(row=>row.storeId===store?.id);
+  $('#page').innerHTML=`<div class="section-head"><div><h1>Services</h1><p class="muted">Services customers can browse and book on your store page.</p></div><button class="btn" id="addService">+ Add Service</button></div><div class="grid catalog-grid">${items.map(serviceItemMarkup).join('')||'<div class="empty">No services yet. Add your first bookable service.</div>'}</div>`;
+  $('#addService').onclick=()=>openServiceForm(store);
+  $$('[data-edit-service]').forEach(button=>button.onclick=()=>openServiceForm(store,button.dataset.editService));
+  $$('[data-remove-service]').forEach(button=>button.onclick=()=>removeService(button.dataset.removeService));
+}
+function serviceItemMarkup(item){
+  const prepay=Number(item.prepaymentPercent)||100;
+  return `<article class="card catalog-item-card"><h3>${html(item.name)}</h3><p class="muted">${money(item.price)}${item.durationMinutes?` · ${item.durationMinutes} min`:''}</p><p class="muted">${prepay>=100?'Full payment at booking':`${prepay}% prepayment, balance after service`}</p>${item.description?`<p class="muted">${html(item.description)}</p>`:''}<div class="actions"><button class="btn small" data-edit-service="${html(item.id)}">Edit</button><button class="btn small red" data-remove-service="${html(item.id)}">Remove</button></div></article>`;
+}
+function openServiceForm(store,serviceId=''){
+  const service=(state.services||[]).find(row=>row.id===serviceId)||{};
+  modal(serviceId?'Edit Service':'Add Service',`<form id="serviceForm"><div class="field"><label>Service name</label><input name="name" value="${html(service.name||'')}" required></div><div class="form-grid"><div class="field"><label>Price (₹)</label><input name="price" type="number" min="0" step="0.01" value="${service.price??''}" required></div><div class="field"><label>Duration (minutes) <small>(optional)</small></label><input name="durationMinutes" type="number" min="5" step="5" value="${service.durationMinutes||''}" placeholder="Example: 30"></div></div><div class="field"><label>Prepayment at booking (%)</label><input name="prepaymentPercent" type="number" min="1" max="100" step="1" value="${service.prepaymentPercent||100}" required><small class="muted">100% means the customer pays the full amount when booking. Anything less leaves a balance to pay after the service is done.</small></div><div class="field"><label>Description <small>(optional)</small></label><textarea name="description">${html(service.description||'')}</textarea></div><button class="btn full" type="submit" style="margin-top:14px">${serviceId?'Save Service':'Add Service'}</button></form>`,()=>{
+    $('#serviceForm').onsubmit=async event=>{
+      event.preventDefault();
+      const values=Object.fromEntries(new FormData(event.target)),name=values.name.trim(),price=Number(values.price),prepaymentPercent=Math.min(100,Math.max(1,Math.round(Number(values.prepaymentPercent)||100))),durationMinutes=Math.max(0,Number(values.durationMinutes)||0),button=event.submitter;
+      if(!name)return toast('Enter the service name');
+      if(!Number.isFinite(price)||price<0)return toast('Enter a valid price');
+      button.disabled=true;
+      const changes={name,price,durationMinutes,prepaymentPercent,description:(values.description||'').trim()};
+      try{
+        if(serviceId){
+          await api.update(serviceKind(store.ownerId),serviceId,changes);
+          Object.assign(service,changes);
+        }else{
+          const record={id:id('service'),ownerId:store.ownerId,storeId:store.id,...changes,active:true,createdAt:now()};
+          await api.create(serviceKind(store.ownerId),record,record.id,api.permissionSet?.(serviceKind(store.ownerId),store.ownerId,true));
+          state.services=[...(state.services||[]),record];
+        }
+        save();closeModal();servicesView();toast(serviceId?'Service updated':'Service added');
+      }catch(error){button.disabled=false;toast(error.message||'Could not save service')}
+    };
+  });
+}
+async function removeService(serviceId){
+  if(!confirm('Remove this service? Customers will no longer be able to book it.'))return;
+  try{
+    await api.remove(serviceKind(cloudOwnerId()),serviceId);
+    state.services=(state.services||[]).filter(row=>row.id!==serviceId);save();
+    servicesView();toast('Service removed');
+  }catch(error){toast(error.message||'Could not remove service')}
+}
+function availabilityView(){
+  refreshView=availabilityView;
+  const store=activeStore();if(!store)return;
+  const selectedDays=normaliseAvailableDays(store.availableDays);
+  $('#page').innerHTML=`<div class="section-head"><div><h1>Availability</h1><p class="muted">Set the days and hours customers can book, and how far ahead they're allowed to book.</p></div></div>
+    <div class="card" style="max-width:560px">
+      <form id="availabilityForm">
+        <fieldset class="delivery-days-field"><legend>Open days</legend><div class="delivery-day-grid">${WEEKDAYS.map(day=>`<label><input type="checkbox" name="availableDays" value="${day.id}" ${selectedDays.includes(day.id)?'checked':''}><span>${day.short}</span></label>`).join('')}</div></fieldset>
+        <div class="form-grid"><div class="field"><label>Opening time</label><input name="slotStartTime" type="time" value="${html(store.slotStartTime||'10:00')}" required></div><div class="field"><label>Closing time</label><input name="slotEndTime" type="time" value="${html(store.slotEndTime||'18:00')}" required></div></div>
+        <div class="field"><label>Slot length (minutes)</label><input name="slotDurationMinutes" type="number" min="5" step="5" value="${store.slotDurationMinutes||30}" required></div>
+        <div class="field"><label>How far ahead can customers book? (days)</label><input name="preBookingWindowDays" type="number" min="1" max="365" value="${store.preBookingWindowDays||30}" required><small class="muted">Example: 30 = about a month ahead, 90 = about 3 months ahead.</small></div>
+        <button class="btn full" type="submit" style="margin-top:14px">Save Availability</button>
+      </form>
+    </div>`;
+  $('#availabilityForm').onsubmit=async event=>{
+    event.preventDefault();
+    const availableDays=normaliseAvailableDays($$('input[name="availableDays"]:checked').map(input=>input.value));
+    const values=Object.fromEntries(new FormData(event.target)),button=event.submitter;
+    if(!availableDays.length)return toast('Select at least one open day');
+    if(values.slotStartTime>=values.slotEndTime)return toast('Closing time must be after opening time');
+    button.disabled=true;
+    const changes={availableDays,slotStartTime:values.slotStartTime,slotEndTime:values.slotEndTime,slotDurationMinutes:Math.max(5,Number(values.slotDurationMinutes)||30),preBookingWindowDays:Math.max(1,Number(values.preBookingWindowDays)||30)};
+    try{
+      await api.update(storeKind(store.ownerId),store.id,changes);
+      Object.assign(store,changes);save();
+      toast('Availability saved');
+    }catch(error){button.disabled=false;toast(error.message||'Could not save availability')}
+  };
+}
+function expertsView(){
+  refreshView=expertsView;
+  const store=activeStore();
+  const items=(state.experts||[]).filter(row=>row.storeId===store?.id);
+  $('#page').innerHTML=`<div class="section-head"><div><h1>Experts</h1><p class="muted">Optional — add named staff so customers can choose who they book with. Leave empty if bookings don't need a specific expert.</p></div><button class="btn" id="addExpert">+ Add Expert</button></div><div class="grid catalog-grid">${items.map(expertItemMarkup).join('')||'<div class="empty">No experts added. Customers will book without choosing a specific expert.</div>'}</div>`;
+  $('#addExpert').onclick=()=>openExpertForm(store);
+  $$('[data-edit-expert]').forEach(button=>button.onclick=()=>openExpertForm(store,button.dataset.editExpert));
+  $$('[data-remove-expert]').forEach(button=>button.onclick=()=>removeExpert(button.dataset.removeExpert));
+}
+function expertItemMarkup(item){
+  return `<article class="card catalog-item-card"><h3>${html(item.name)}</h3><p class="muted">${item.active===false?'Inactive':'Active'}</p><div class="actions"><button class="btn small" data-edit-expert="${html(item.id)}">Edit</button><button class="btn small red" data-remove-expert="${html(item.id)}">Remove</button></div></article>`;
+}
+function openExpertForm(store,expertId=''){
+  const expert=(state.experts||[]).find(row=>row.id===expertId)||{};
+  modal(expertId?'Edit Expert':'Add Expert',`<form id="expertForm"><div class="field"><label>Expert name</label><input name="name" value="${html(expert.name||'')}" required></div><label class="option-toggle"><input name="active" type="checkbox" ${expert.active===false?'':'checked'}><span><strong>Active</strong><small>Customers can only book experts marked active.</small></span></label><button class="btn full" type="submit" style="margin-top:14px">${expertId?'Save Expert':'Add Expert'}</button></form>`,()=>{
+    $('#expertForm').onsubmit=async event=>{
+      event.preventDefault();
+      const values=Object.fromEntries(new FormData(event.target)),name=(values.name||'').trim(),active=values.active==='on',button=event.submitter;
+      if(!name)return toast('Enter the expert name');
+      button.disabled=true;
+      const changes={name,active};
+      try{
+        if(expertId){
+          await api.update(expertKind(store.ownerId),expertId,changes);
+          Object.assign(expert,changes);
+        }else{
+          const record={id:id('expert'),ownerId:store.ownerId,storeId:store.id,...changes,createdAt:now()};
+          await api.create(expertKind(store.ownerId),record,record.id,api.permissionSet?.(expertKind(store.ownerId),store.ownerId,true));
+          state.experts=[...(state.experts||[]),record];
+        }
+        save();closeModal();expertsView();toast(expertId?'Expert updated':'Expert added');
+      }catch(error){button.disabled=false;toast(error.message||'Could not save expert')}
+    };
+  });
+}
+async function removeExpert(expertId){
+  if(!confirm('Remove this expert?'))return;
+  try{
+    await api.remove(expertKind(cloudOwnerId()),expertId);
+    state.experts=(state.experts||[]).filter(row=>row.id!==expertId);save();
+    expertsView();toast('Expert removed');
+  }catch(error){toast(error.message||'Could not remove expert')}
+}
+function bookingsView(){
+  refreshView=bookingsView;
+  const store=activeStore();if(!store)return;
+  const bookings=(state.bookings||[]).filter(row=>row.storeId===store.id).sort((a,b)=>new Date(`${a.date}T${a.startTime}`)-new Date(`${b.date}T${b.startTime}`));
+  const active=bookings.filter(row=>!['Completed','Cancelled'].includes(row.status));
+  const past=bookings.filter(row=>['Completed','Cancelled'].includes(row.status));
+  $('#page').innerHTML=`<div class="section-head"><div><h1>Bookings</h1><p class="muted">Manage upcoming bookings for ${html(store.name||'this store')}.</p></div></div>
+    <div class="grid card-grid">${active.map(ownerBookingMarkup).join('')||'<div class="empty">No upcoming bookings.</div>'}</div>
+    ${past.length?`<div class="section-head"><h2>Past bookings</h2></div><div class="grid card-grid">${past.map(ownerBookingMarkup).join('')}</div>`:''}`;
+  $$('[data-confirm-booking]').forEach(button=>button.onclick=()=>confirmBookingPayment(button.dataset.confirmBooking));
+  $$('[data-complete-booking]').forEach(button=>button.onclick=()=>completeBooking(button.dataset.completeBooking));
+  $$('[data-cancel-booking]').forEach(button=>button.onclick=()=>cancelBooking(button.dataset.cancelBooking));
+}
+function ownerBookingMarkup(booking){
+  const status=booking.status||'Pending Payment';
+  let actions='';
+  if(status==='Pending Payment')actions=`<button class="btn small green" data-confirm-booking="${html(booking.id)}">Prepayment Received — Confirm</button><button class="btn small red" data-cancel-booking="${html(booking.id)}">Cancel</button>`;
+  else if(status==='Confirmed')actions=`<button class="btn small green" data-complete-booking="${html(booking.id)}">Mark Completed</button><button class="btn small red" data-cancel-booking="${html(booking.id)}">Cancel</button>`;
+  const balanceNote=Number(booking.balanceAmount)>0?`<p class="muted">Balance ${money(booking.balanceAmount)}${booking.balancePaid?' · Paid':' due after service'}</p>`:'';
+  return `<article class="card order-item-card"><div class="section-head"><h3>${html(booking.serviceName)}</h3><span class="chip">${html(status)}</span></div><p class="muted">${html(booking.date)} · ${html(booking.startTime)}${booking.expertName?` · with ${html(booking.expertName)}`:''}</p><p class="muted">${html(booking.customerName||'Customer')}${booking.phone?` · ${html(booking.phone)}`:''}</p><p class="muted">Price ${money(booking.price)} · Prepaid ${money(booking.prepaymentAmount)}</p>${balanceNote}${actions?`<div class="actions">${actions}</div>`:''}</article>`;
+}
+async function confirmBookingPayment(bookingId){
+  const booking=(state.bookings||[]).find(row=>row.id===bookingId);if(!booking)return;
+  try{
+    const changes={status:'Confirmed',confirmedAt:now(),updatedAt:now()};
+    await api.update(bookingKind(booking.ownerId),bookingId,changes);
+    Object.assign(booking,changes);refreshView();toast('Booking confirmed');
+  }catch(error){toast(error.message||'Could not confirm booking')}
+}
+async function completeBooking(bookingId){
+  const booking=(state.bookings||[]).find(row=>row.id===bookingId);if(!booking)return;
+  const hasBalance=Number(booking.balanceAmount)>0;
+  if(!confirm(hasBalance?`Mark this booking completed? Confirm the remaining balance of ${money(booking.balanceAmount)} has been collected.`:'Mark this booking as completed?'))return;
+  try{
+    const changes={status:'Completed',completedAt:now(),balancePaid:true,balancePaidAt:hasBalance?now():booking.balancePaidAt||'',updatedAt:now()};
+    await api.update(bookingKind(booking.ownerId),bookingId,changes);
+    Object.assign(booking,changes);refreshView();toast('Booking marked completed');
+  }catch(error){toast(error.message||'Could not update booking')}
+}
+async function cancelBooking(bookingId){
+  const booking=(state.bookings||[]).find(row=>row.id===bookingId);if(!booking)return;
+  if(!confirm('Cancel this booking?'))return;
+  try{
+    const changes={status:'Cancelled',cancelledAt:now(),updatedAt:now()};
+    await api.update(bookingKind(booking.ownerId),bookingId,changes);
+    Object.assign(booking,changes);refreshView();toast('Booking cancelled');
+  }catch(error){toast(error.message||'Could not cancel booking')}
 }
 async function importCatalogCsvFile(store,file){
   if(!file)return;

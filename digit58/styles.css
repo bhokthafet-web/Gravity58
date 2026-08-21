@@ -143,6 +143,14 @@ th,td{text-align:left;padding:12px;border-bottom:1px solid var(--line);white-spa
 .option-toggle span{display:grid;gap:3px}.option-toggle strong{font-size:13px}.option-toggle small{color:var(--muted);line-height:1.4}
 .empty{padding:36px;text-align:center;color:var(--muted);border:1px dashed var(--line);border-radius:18px}
 .card-purchase-tiers .option-toggle{margin:8px 0}
+.business-type-toggle{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.business-type-toggle .option-toggle{margin:0}
+@media(max-width:560px){.business-type-toggle{grid-template-columns:1fr}}
+.delivery-days-field{border:1px solid var(--line);border-radius:15px;padding:12px 14px;margin:16px 0}
+.delivery-days-field legend{padding:0 6px;font-size:12px;color:var(--muted)}
+.delivery-day-grid{display:flex;flex-wrap:wrap;gap:8px}
+.delivery-day-grid label{display:flex;align-items:center;gap:6px;padding:7px 12px;border:1px solid var(--line);border-radius:999px;cursor:pointer;font-size:12.5px}
+.delivery-day-grid input{width:15px;height:15px;accent-color:var(--violet)}
 .brand-request-card h3{margin:0 0 4px}
 .brand-dashboard{max-width:640px;margin:0 auto;padding:24px 16px}
 .toast{position:fixed;right:18px;top:18px;z-index:200;padding:12px 16px;border-radius:13px;background:#241f38;border:1px solid var(--line);opacity:0;pointer-events:none;transform:translateY(-10px);transition:.25s}
