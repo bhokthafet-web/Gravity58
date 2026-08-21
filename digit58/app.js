@@ -379,7 +379,6 @@ function updateOrderAlertSound(){
       ||(state.bookings||[]).some(row=>row.id===id&&['Requested','Pending Payment'].includes(row.status));
     if(!stillRinging)ringingIds.delete(id);
   });
-  updateNavBadges();
   if(!ringingIds.size){if(orderAlertTimer)clearInterval(orderAlertTimer);orderAlertTimer=null;return}
   if(!orderAlertTimer){
     playOwnerNotificationChime();pendingAlertReplay=playOwnerNotificationChime;
@@ -868,16 +867,9 @@ function renderShell(){
   $('#logout').onclick=async()=>{stopOwnerRealtime();await api.logout();session=null;renderOwnerAuth()};
   $('#storeSwitch')?.addEventListener('change',event=>{state.activeStoreId=event.target.value;save();renderShell()});
   bindFloatingSupportButton();
-  updateNavBadges();
   renderView();
 }
-function navButton(key,icon,label){return `<button data-view="${key}" class="${view===key?'active':''}"><span>${icon}</span>${label}<span class="nav-badge" id="navBadge-${key}" hidden></span></button>`}
-function updateNavBadges(){
-  const store=activeStore();
-  const setBadge=(key,count)=>{const el=$(`#navBadge-${key}`);if(!el)return;if(count>0){el.hidden=false;el.textContent=count>9?'9+':String(count)}else{el.hidden=true}};
-  setBadge('orders',store?state.orders.filter(row=>row.storeId===store.id&&ringingIds.has(row.id)).length:0);
-  setBadge('bookings',store?(state.bookings||[]).filter(row=>row.storeId===store.id&&ringingIds.has(row.id)).length:0);
-}
+function navButton(key,icon,label){return `<button data-view="${key}" class="${view===key?'active':''}"><span>${icon}</span>${label}</button>`}
 function renderView(){if(!activeStore()&&view!=='stores'&&view!=='settings'&&view!=='subscription'&&view!=='referrals'){view='stores';return renderShell()}({dashboard:dashboardView,stores:storesView,promotions:promotionsView,brands:brandPartnersView,wall:customerWallView,orders:ordersView,orderHistory:orderHistoryView,catalog:catalogView,services:servicesView,experts:expertsView,availability:availabilityView,bookings:bookingsView,bookingHistory:bookingHistoryView,subscription:subscriptionView,referrals:referEarnView,settings:settingsView}[view]||dashboardView)()}
 function ordersView(){
   refreshView=ordersView;
