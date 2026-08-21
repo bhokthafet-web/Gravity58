@@ -318,14 +318,25 @@ let orderAlertTimer=null,orderAlertContext=null;
 // occurred on the page — without this, the very first alert of a
 // session can fail silently if an order/booking arrives before the
 // owner has clicked anything. Unlock it proactively on first interaction.
+// iOS Safari is stricter than desktop/Android: resume() alone can leave
+// the context reporting "running" while still producing no sound, and it
+// re-suspends whenever the tab is backgrounded — so we also play a
+// silent buffer inline with the gesture (the standard WebKit unlock
+// trick) and re-resume on every return to the tab.
 function unlockOrderAlertAudio(){
   try{
     orderAlertContext||=new (window.AudioContext||window.webkitAudioContext)();
     if(orderAlertContext.state==='suspended')orderAlertContext.resume();
+    const buffer=orderAlertContext.createBuffer(1,1,22050);
+    const source=orderAlertContext.createBufferSource();
+    source.buffer=buffer;
+    source.connect(orderAlertContext.destination);
+    source.start(0);
   }catch{}
 }
-document.addEventListener('pointerdown',unlockOrderAlertAudio,{passive:true,once:true});
-document.addEventListener('keydown',unlockOrderAlertAudio,{once:true});
+['pointerdown','touchstart','touchend','click','keydown'].forEach(type=>document.addEventListener(type,unlockOrderAlertAudio,{passive:true,once:true}));
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')unlockOrderAlertAudio()});
+window.addEventListener('pageshow',unlockOrderAlertAudio);
 const ringingIds=new Set();
 let knownOrderIds=new Set(),knownBuyRequestIds=new Set(),knownBookingIds=new Set();
 let ownerOrdersUnsubscribe=null,ownerCardsUnsubscribe=null,ownerPromotionsUnsubscribe=null,ownerBookingsUnsubscribe=null;
