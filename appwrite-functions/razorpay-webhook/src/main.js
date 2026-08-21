@@ -3,6 +3,10 @@ import { createHmac, timingSafeEqual } from 'crypto';
 const DATABASE_ID = 'gravity58';
 const TABLE_ID = 'g58_records';
 const DIGIT58_ENTITLEMENT_KIND = 'digit58_entitlements';
+const DIGIT58_REFERRAL_CODE_KIND = 'digit58_referral_codes';
+const DIGIT58_REFERRAL_KIND = 'digit58_referrals';
+const DIGIT58_REFERRAL_REWARD = 399;
+const ADMIN_TEAM_ID = '6a776960001ca2fb66bf';
 
 const finite = (value, fallback = 0) => (Number.isFinite(Number(value)) ? Number(value) : fallback);
 const cleanRow = row => {
@@ -54,6 +58,37 @@ async function updateRow(call, rowId, payload) {
   return call(`/tablesdb/${DATABASE_ID}/tables/${TABLE_ID}/rows/${encodeURIComponent(rowId)}`, {
     method: 'PATCH', body: JSON.stringify({ data: { payload: JSON.stringify(clean) } }),
   });
+}
+
+async function createRow(call, rowId, kind, payload, permissions) {
+  return call(`/tablesdb/${DATABASE_ID}/tables/${TABLE_ID}/rows`, {
+    method: 'POST', body: JSON.stringify({ rowId, data: { kind, payload: JSON.stringify(payload) }, permissions }),
+  });
+}
+
+// Records a referral reward once the referred owner's subscription has
+// successfully charged at least once — any paid plan qualifies, since every
+// Refills plan (6mo/1yr/3yr) already covers 6+ months. Idempotent: guarded by
+// entitlement.referralRecorded and a deterministic row id.
+async function recordDigit58ReferralIfNeeded(call, entitlement) {
+  if (!entitlement.referredByCode || entitlement.referralRecorded) return false;
+  const codeRow = await call(`/tablesdb/${DATABASE_ID}/tables/${TABLE_ID}/rows/${encodeURIComponent(`ref-${entitlement.referredByCode}`)}`).catch(() => null);
+  if (!codeRow || codeRow.kind !== DIGIT58_REFERRAL_CODE_KIND) return true;
+  const codeData = cleanRow(codeRow);
+  if (!codeData.ownerId || codeData.ownerId === entitlement.ownerId) return true;
+  const referralId = `refr-${String(entitlement.ownerId).slice(0, 30)}`;
+  await createRow(call, referralId, DIGIT58_REFERRAL_KIND, {
+    referrerOwnerId: codeData.ownerId,
+    referredOwnerId: entitlement.ownerId,
+    referredEmail: entitlement.ownerEmail || '',
+    plan: entitlement.pendingPlan || entitlement.plan || '',
+    rewardAmount: DIGIT58_REFERRAL_REWARD,
+    status: 'Eligible',
+    createdAt: new Date().toISOString(),
+  }, [`read("user:${codeData.ownerId}")`, `read("team:${ADMIN_TEAM_ID}")`, `update("team:${ADMIN_TEAM_ID}")`]).catch(caughtError => {
+    if (caughtError?.code !== 409) throw caughtError;
+  });
+  return true;
 }
 
 function verifySignature(rawBody, signature, secret) {
@@ -111,19 +146,23 @@ export default async ({ req, res, error }) => {
 
     let changes = null;
     if (event === 'subscription.activated') {
+      const referralRecorded = await recordDigit58ReferralIfNeeded(call, entitlement);
       changes = {
         active: true, subscriptionStatus: 'active', lifetime: false,
         plan: entitlement.pendingPlan || entitlement.plan || '',
         expiresAt: currentEndMs ? new Date(currentEndMs).toISOString() : entitlement.expiresAt,
         freeTrial: false,
+        ...(referralRecorded ? { referralRecorded: true } : {}),
         billingEvents: appendBillingEvent(entitlement, event, 'Subscription authorized'),
       };
     } else if (event === 'subscription.charged') {
+      const referralRecorded = await recordDigit58ReferralIfNeeded(call, entitlement);
       changes = {
         active: true, subscriptionStatus: 'active', lifetime: false,
         plan: entitlement.pendingPlan || entitlement.plan || '',
         expiresAt: currentEndMs ? new Date(currentEndMs).toISOString() : entitlement.expiresAt,
         freeTrial: false,
+        ...(referralRecorded ? { referralRecorded: true } : {}),
         billingEvents: appendBillingEvent(entitlement, event, paymentEntity ? `Charged ₹${(finite(paymentEntity.amount) / 100).toFixed(0)}` : 'Charged'),
       };
     } else if (event === 'subscription.cancelled' || event === 'subscription.completed') {

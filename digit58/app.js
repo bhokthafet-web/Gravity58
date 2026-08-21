@@ -1,3 +1,9 @@
+(function captureDigit58ReferralCode(){
+  try{
+    const ref=new URLSearchParams(location.search).get('ref');
+    if(ref&&/^[A-Za-z0-9]{4,12}$/.test(ref))localStorage.setItem('g58ReferredByCode',ref.toUpperCase());
+  }catch{}
+})();
 const $=(selector,root=document)=>root.querySelector(selector),$$=(selector,root=document)=>[...root.querySelectorAll(selector)];
 const app=$('#app'),api=window.Gravity58Ads;
 const now=()=>new Date().toISOString();
@@ -613,6 +619,10 @@ async function startDigit58FreeTrial(){
   try{
     const expiresAt=new Date(Date.now()+FREE_TRIAL_DAYS*86400000).toISOString();
     const payload={ownerId,ownerEmail:session?.email||'',active:true,paused:false,lifetime:false,storeSlots:1,freeTrial:true,trialUsed:true,activatedAt:now(),expiresAt,updatedAt:now()};
+    if(!entitlement){
+      const referredByCode=localStorage.getItem('g58ReferredByCode');
+      if(referredByCode)payload.referredByCode=referredByCode;
+    }
     entitlement=entitlement
       ?await api.update(ENTITLEMENT_KIND,entitlement.id,payload)
       :await api.create(ENTITLEMENT_KIND,payload,`d58-${String(ownerId).slice(0,30)}`,api.managedPermissionSet?.()||api.collaborativePermissionSet(ownerId));
@@ -623,7 +633,8 @@ async function startDigit58Subscription(periodId){
   const period=DIGIT58_PLAN_PERIODS.find(row=>row.id===periodId);if(!period)return;
   const button=document.querySelector(`[data-subscribe-plan="${periodId}"]`);if(button)button.disabled=true;
   try{
-    const result=await api.executeFunction(api.config.digitalOrderFunctionId,{action:'digit58-create-subscription-checkout',ownerId:cloudOwnerId(),periodId,ownerEmail:session?.email||'',ownerName:session?.name||''});
+    const referredByCode=entitlement?'':(localStorage.getItem('g58ReferredByCode')||'');
+    const result=await api.executeFunction(api.config.digitalOrderFunctionId,{action:'digit58-create-subscription-checkout',ownerId:cloudOwnerId(),periodId,ownerEmail:session?.email||'',ownerName:session?.name||'',referredByCode});
     if(!window.Razorpay)throw new Error('Payment could not start. Reload the page and try again.');
     const checkout=new window.Razorpay({
       key:result.razorpayKeyId,subscription_id:result.subscriptionId,
@@ -814,7 +825,7 @@ function siteFooter(forCustomer){
 }
 function renderShell(){
   const store=activeStore();
-  app.innerHTML=`<div class="shell"><aside class="sidebar"><a class="brand" href="../"><svg class="brand-mark" viewBox="0 0 120 120" fill="none" stroke="#7fffd4" stroke-width="8" aria-hidden="true"><circle cx="60" cy="26" r="15"/><circle cx="28" cy="82" r="15"/><circle cx="92" cy="82" r="15"/></svg><div><strong>Refills</strong><small class="muted">Store workspace</small></div></a><nav class="nav">${navButton('dashboard','◉','Dashboard')}${navButton('stores','◫','My Stores')}${navButton('promotions','✦','Promotions')}${navButton('brands','♟','Brand Orders')}${navButton('wall','☰','Customer Wall')}${navButton('orders','🧾','Orders')}${navButton('orderHistory','🕘','Order History')}${navButton('catalog','▦','Catalog')}${navButton('subscription','♢','Subscription')}${navButton('settings','⚙','Settings')}${hasActiveEntitlement()?`<a class="btn small" style="text-align:center;text-decoration:none" href="../pos/?source=digit58" target="_blank" rel="noopener">▣ Open POS</a>`:''}<button id="logout">⇥ Logout</button></nav></aside><main class="main"><header class="topbar"><div>${state.stores.length?`<select id="storeSwitch">${state.stores.map(row=>`<option value="${html(row.id)}" ${row.id===state.activeStoreId?'selected':''}>${html(row.name)}</option>`).join('')}</select>`:'<strong>No store yet</strong>'}</div><nav class="g58-topbar-home" aria-label="Quick links"><a href="https://www.g58.in/" aria-label="Home"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10v9a1 1 0 0 0 1 1h11a1 1 0 0 0 1-1v-9"/><path d="M9.5 20v-6h5v6"/></svg><span>Home</span></a><a href="/digit58/" aria-label="Refills"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11A8 8 0 0 0 6.3 6.3L4 8.6"/><path d="M4 4v4.6h4.6"/><path d="M4 13a8 8 0 0 0 13.7 4.7L20 15.4"/><path d="M20 20v-4.6h-4.6"/></svg><span>Refills</span></a><a href="/digital-menu/" aria-label="Digital Menu"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 3v6a2 2 0 0 0 2 2h0"/><path d="M9 3v18"/><path d="M7 3v5"/><path d="M15 3c-1.2 1.4-1.2 6.6 0 8 .5.6 1 .8 1 1.5V21"/></svg><span>Digital Menu</span></a></nav><span class="status-pill"><span class="dot"></span>${html(session?.email||'')}</span></header><section class="content" id="page"></section></main></div>${siteFooter()}${floatingSupportButton('digit58')}`;
+  app.innerHTML=`<div class="shell"><aside class="sidebar"><a class="brand" href="../"><svg class="brand-mark" viewBox="0 0 120 120" fill="none" stroke="#7fffd4" stroke-width="8" aria-hidden="true"><circle cx="60" cy="26" r="15"/><circle cx="28" cy="82" r="15"/><circle cx="92" cy="82" r="15"/></svg><div><strong>Refills</strong><small class="muted">Store workspace</small></div></a><nav class="nav">${navButton('dashboard','◉','Dashboard')}${navButton('stores','◫','My Stores')}${navButton('promotions','✦','Promotions')}${navButton('brands','♟','Brand Orders')}${navButton('wall','☰','Customer Wall')}${navButton('orders','🧾','Orders')}${navButton('orderHistory','🕘','Order History')}${navButton('catalog','▦','Catalog')}${navButton('subscription','♢','Subscription')}${navButton('referrals','🎁','Refer & Earn')}${navButton('settings','⚙','Settings')}${hasActiveEntitlement()?`<a class="btn small" style="text-align:center;text-decoration:none" href="../pos/?source=digit58" target="_blank" rel="noopener">▣ Open POS</a>`:''}<button id="logout">⇥ Logout</button></nav></aside><main class="main"><header class="topbar"><div>${state.stores.length?`<select id="storeSwitch">${state.stores.map(row=>`<option value="${html(row.id)}" ${row.id===state.activeStoreId?'selected':''}>${html(row.name)}</option>`).join('')}</select>`:'<strong>No store yet</strong>'}</div><nav class="g58-topbar-home" aria-label="Quick links"><a href="https://www.g58.in/" aria-label="Home"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10v9a1 1 0 0 0 1 1h11a1 1 0 0 0 1-1v-9"/><path d="M9.5 20v-6h5v6"/></svg><span>Home</span></a><a href="/digit58/" aria-label="Refills"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11A8 8 0 0 0 6.3 6.3L4 8.6"/><path d="M4 4v4.6h4.6"/><path d="M4 13a8 8 0 0 0 13.7 4.7L20 15.4"/><path d="M20 20v-4.6h-4.6"/></svg><span>Refills</span></a><a href="/digital-menu/" aria-label="Digital Menu"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 3v6a2 2 0 0 0 2 2h0"/><path d="M9 3v18"/><path d="M7 3v5"/><path d="M15 3c-1.2 1.4-1.2 6.6 0 8 .5.6 1 .8 1 1.5V21"/></svg><span>Digital Menu</span></a></nav><span class="status-pill"><span class="dot"></span>${html(session?.email||'')}</span></header><section class="content" id="page"></section></main></div>${siteFooter()}${floatingSupportButton('digit58')}`;
   $$('[data-view]').forEach(button=>button.onclick=()=>{view=button.dataset.view;renderShell()});
   $('#logout').onclick=async()=>{stopOwnerRealtime();await api.logout();session=null;renderOwnerAuth()};
   $('#storeSwitch')?.addEventListener('change',event=>{state.activeStoreId=event.target.value;save();renderShell()});
@@ -822,7 +833,7 @@ function renderShell(){
   renderView();
 }
 function navButton(key,icon,label){return `<button data-view="${key}" class="${view===key?'active':''}"><span>${icon}</span>${label}</button>`}
-function renderView(){if(!activeStore()&&view!=='stores'&&view!=='settings'&&view!=='subscription'){view='stores';return renderShell()}({dashboard:dashboardView,stores:storesView,promotions:promotionsView,brands:brandPartnersView,wall:customerWallView,orders:ordersView,orderHistory:orderHistoryView,catalog:catalogView,subscription:subscriptionView,settings:settingsView}[view]||dashboardView)()}
+function renderView(){if(!activeStore()&&view!=='stores'&&view!=='settings'&&view!=='subscription'&&view!=='referrals'){view='stores';return renderShell()}({dashboard:dashboardView,stores:storesView,promotions:promotionsView,brands:brandPartnersView,wall:customerWallView,orders:ordersView,orderHistory:orderHistoryView,catalog:catalogView,subscription:subscriptionView,referrals:referEarnView,settings:settingsView}[view]||dashboardView)()}
 function ordersView(){
   refreshView=ordersView;
   const orders=activeOrders(state.orders).sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
@@ -886,6 +897,47 @@ async function cancelDigit58SubscriptionFlow(){
   }catch(error){if(button)button.disabled=false;toast(error.message||'Could not cancel your subscription')}
 }
 
+function referEarnView(){
+  refreshView=referEarnView;
+  $('#page').innerHTML=`<div class="section-head"><div><h1>Refer &amp; Earn</h1><p class="muted">Invite another store owner to Refills and earn ₹399 once they complete a paid subscription.</p></div></div>
+    <div class="card" id="referLinkCard" style="max-width:560px"><span class="chip">Loading your referral link…</span></div>
+    <div class="section-head"><h2>My Referrals</h2></div>
+    <div class="card table-wrap" id="referralsTableWrap"><table><thead><tr><th>Referred Store Owner</th><th>Plan</th><th>Status</th><th>Date</th></tr></thead><tbody><tr><td colspan="4">Loading…</td></tr></tbody></table></div>`;
+  loadDigit58ReferralLink();
+  loadDigit58MyReferrals();
+}
+async function loadDigit58ReferralLink(){
+  const card=$('#referLinkCard');if(!card)return;
+  try{
+    const ownerId=cloudOwnerId();
+    let code=entitlement?.referralCode;
+    if(!code){
+      const result=await api.executeFunction(api.config.digitalOrderFunctionId,{action:'digit58-get-referral-code',ownerId});
+      code=result.code;
+      entitlement={...entitlement,referralCode:code};
+    }
+    const link=`${location.origin}/digit58/?ref=${code}`;
+    card.innerHTML=`<span class="chip">Your referral link</span>
+      <div class="refer-link-row"><input readonly value="${html(link)}" id="referLinkInput"><button class="btn small" id="copyReferLinkBtn" type="button">Copy</button></div>
+      <p class="muted" style="margin-top:12px">Share this link with another business owner. When they sign up and complete a paid Refills plan (6 months, 1 year or 3 years), you earn <strong>₹399</strong>. A free trial alone doesn't qualify — the reward is credited once G58 confirms their successful paid subscription.</p>`;
+    $('#copyReferLinkBtn').onclick=async()=>{
+      try{await navigator.clipboard.writeText(link);toast('Referral link copied')}
+      catch{$('#referLinkInput').select();document.execCommand('copy');toast('Referral link copied')}
+    };
+  }catch(error){
+    card.innerHTML=`<span class="chip">Refer &amp; Earn</span><p class="muted" style="margin-top:10px">${html(error.message||'Could not load your referral link')}</p>`;
+  }
+}
+async function loadDigit58MyReferrals(){
+  const wrap=$('#referralsTableWrap');if(!wrap)return;
+  try{
+    const ownerId=cloudOwnerId();
+    const rows=(await api.list('digit58_referrals').catch(()=>[])).filter(row=>row.referrerOwnerId===ownerId).sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
+    wrap.innerHTML=`<table><thead><tr><th>Referred Store Owner</th><th>Plan</th><th>Status</th><th>Date</th></tr></thead><tbody>${rows.map(row=>`<tr><td>${html(row.referredEmail||'Store owner')}</td><td>${html(DIGIT58_PLAN_PERIODS.find(period=>period.id===row.plan)?.label||row.plan||'—')}</td><td><span class="chip ${row.status==='Paid'?'delivered':'due'}">${html(row.status||'Eligible')}</span></td><td>${row.createdAt?new Date(row.createdAt).toLocaleDateString('en-IN',{dateStyle:'medium'}):''}</td></tr>`).join('')||'<tr><td colspan="4">No referrals yet.</td></tr>'}</tbody></table>`;
+  }catch{
+    wrap.innerHTML='<table><thead><tr><th>Referred Store Owner</th><th>Plan</th><th>Status</th><th>Date</th></tr></thead><tbody><tr><td colspan="4">Could not load referrals.</td></tr></tbody></table>';
+  }
+}
 function metric(title,value){return `<article class="card metric"><span>${html(title)}</span><strong>${value}</strong></article>`}
 function periodBounds(){
   const n=new Date();

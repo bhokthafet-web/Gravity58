@@ -2446,103 +2446,17 @@ document.addEventListener("DOMContentLoaded", () => {
   if (window.G58SiteUser) refreshPosNavVisibility();
 });
 
-function premiumShowcaseSafeId(prefix, ownerId, max) {
-  return `${prefix}${String(ownerId || "public").replace(/[^a-zA-Z0-9._-]/g, "-").slice(0, max)}`;
-}
-async function loadPremiumShowcase() {
-  const track = document.getElementById("premiumShowcaseTrack");
-  const section = document.getElementById("premiumShowcase");
-  if (!track || !section) return;
-  const api = window.Gravity58Ads;
-  if (!api?.configured) return section.classList.add("hidden");
-  try {
-    await api.ensureUser();
-    const now = Date.now();
-    const notExpired = (row) =>
-      row.lifetime || !row.expiresAt || new Date(row.expiresAt).getTime() > now;
-    const [digit58Entitlements, menuEntitlements] = await Promise.all([
-      api.list("digit58_entitlements").catch(() => []),
-      api.list("digital_menu_entitlements").catch(() => []),
-    ]);
-    const refillsOwnerIds = [
-      ...new Set(
-        digit58Entitlements
-          .filter((row) => row.active && !row.paused && notExpired(row))
-          .map((row) => row.ownerId),
-      ),
-    ].slice(0, 8);
-    const menuOwnerIds = [
-      ...new Set(
-        menuEntitlements
-          .filter((row) => row.plan === "premium" && notExpired(row))
-          .map((row) => row.ownerId),
-      ),
-    ].slice(0, 8);
-    const [storeLists, menuLists] = await Promise.all([
-      Promise.all(
-        refillsOwnerIds.map((ownerId) =>
-          api
-            .list(premiumShowcaseSafeId("digit58_store_", ownerId, 40))
-            .catch(() => []),
-        ),
-      ),
-      Promise.all(
-        menuOwnerIds.map((ownerId) =>
-          api
-            .list(premiumShowcaseSafeId("digital_menu_", ownerId, 48))
-            .catch(() => []),
-        ),
-      ),
-    ]);
-    const cards = [];
-    storeLists.forEach((stores) => {
-      const store = stores.find((row) => !row.suspended && row.name);
-      if (!store) return;
-      cards.push({
-        kind: "refills",
-        label: "Refills",
-        name: store.name,
-        meta: [store.category, store.city].filter(Boolean).join(" · "),
-        href: `/digit58/#store&owner=${encodeURIComponent(store.ownerId)}&store=${encodeURIComponent(store.id)}`,
-      });
-    });
-    menuLists.forEach((records) => {
-      const record = records.find((row) => row.restaurant?.name);
-      if (!record) return;
-      const restaurant = record.restaurant;
-      const recordId = record.$id || record.id || restaurant.id;
-      cards.push({
-        kind: "menu",
-        label: "Digital Menu",
-        name: restaurant.name,
-        meta: [restaurant.type, restaurant.city].filter(Boolean).join(" · "),
-        href: `/digital-menu/#menu&cloud=${encodeURIComponent(recordId)}&owner=${encodeURIComponent(record.ownerId)}`,
-      });
-    });
-    if (!cards.length) return section.classList.add("hidden");
-    track.innerHTML = cards
-      .slice(0, 12)
-      .map(
-        (card) => `<a class="g58-premium-card" href="${card.href}">
-          <span class="g58-premium-card-badge">${card.label}</span>
-          <strong class="g58-premium-card-name">${escapeHtml(card.name)}</strong>
-          ${card.meta ? `<span class="g58-premium-card-meta">${escapeHtml(card.meta)}</span>` : ""}
-        </a>`,
-      )
-      .join("");
-  } catch {
-    section.classList.add("hidden");
-  }
-}
-document.addEventListener("DOMContentLoaded", loadPremiumShowcase);
-
 function scheduleHeroFlowDots() {
   const heading = document.getElementById("heroHeading");
   if (!heading || window.matchMedia("(prefers-reduced-motion: reduce)").matches)
     return;
+  const states = ["dots-active", "refer-active"];
+  let index = 0;
   const run = () => {
-    heading.classList.add("dots-active");
-    setTimeout(() => heading.classList.remove("dots-active"), 5000);
+    const activeClass = states[index % states.length];
+    heading.classList.add(activeClass);
+    setTimeout(() => heading.classList.remove(activeClass), 5000);
+    index += 1;
     setTimeout(run, 6000 + Math.random() * 6000);
   };
   setTimeout(run, 1200 + Math.random() * 2000);

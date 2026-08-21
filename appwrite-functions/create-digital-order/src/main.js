@@ -727,7 +727,8 @@ async function createDigit58SubscriptionCheckout(call, input, userId) {
   };
   if (entitlement) await updateRow(call, rowId, { ...entitlement, ...changes });
   else await createRow(call, rowId, DIGIT58_ENTITLEMENT_KIND, {
-    ownerId, active: false, paused: false, lifetime: false, storeSlots: 1, freeTrial: false, activatedAt: '', expiresAt: '', ...changes,
+    ownerId, active: false, paused: false, lifetime: false, storeSlots: 1, freeTrial: false, activatedAt: '', expiresAt: '',
+    referredByCode: text(input.referredByCode, 12), ...changes,
   }, rowPermissions(userId, ownerId));
   return { subscriptionId: subscription.id, razorpayKeyId: process.env.RAZORPAY_KEY_ID, amount, periodId };
 }
@@ -743,6 +744,36 @@ async function cancelDigit58Subscription(call, input, userId) {
   if (entitlement.cancelAtPeriodEnd) throw new Error('This subscription is already set to cancel at the end of the paid period.');
   await razorpayApi(`/subscriptions/${encodeURIComponent(entitlement.razorpaySubscriptionId)}/cancel`, { method: 'POST', body: JSON.stringify({ cancel_at_cycle_end: 1 }) });
   return updateRow(call, rowId, { ...entitlement, cancelAtPeriodEnd: true, subscriptionStatus: 'cancel_scheduled', updatedAt: new Date().toISOString() });
+}
+
+const DIGIT58_REFERRAL_CODE_KIND = 'digit58_referral_codes';
+const REFERRAL_CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+function generateReferralCode() {
+  let code = '';
+  for (let i = 0; i < 6; i += 1) code += REFERRAL_CODE_CHARS[Math.floor(Math.random() * REFERRAL_CODE_CHARS.length)];
+  return code;
+}
+async function getOrCreateDigit58ReferralCode(call, ownerId) {
+  const rowId = digit58EntitlementRowId(ownerId);
+  const row = await call(`/tablesdb/${DATABASE_ID}/tables/${TABLE_ID}/rows/${encodeURIComponent(rowId)}`).catch(() => null);
+  if (!row) throw new Error('No Refills account found for this owner.');
+  const entitlement = cleanRow(row);
+  if (entitlement.referralCode) return entitlement.referralCode;
+  let code = '';
+  for (let attempt = 0; attempt < 8 && !code; attempt += 1) {
+    const candidate = generateReferralCode();
+    const existing = await call(`/tablesdb/${DATABASE_ID}/tables/${TABLE_ID}/rows/${encodeURIComponent(`ref-${candidate}`)}`).catch(() => null);
+    if (!existing) code = candidate;
+  }
+  if (!code) throw new Error('Could not generate a referral code. Try again.');
+  await createRow(call, `ref-${code}`, DIGIT58_REFERRAL_CODE_KIND, { code, ownerId }, rowPermissions(ownerId, ownerId));
+  await updateRow(call, rowId, { ...entitlement, referralCode: code });
+  return code;
+}
+async function getDigit58ReferralCode(call, input, userId) {
+  const ownerId = text(input.ownerId, 64);
+  if (!ownerId || ownerId !== userId) { const denied = new Error('Only the store owner can view this referral link.'); denied.code = 403; throw denied; }
+  return { code: await getOrCreateDigit58ReferralCode(call, ownerId) };
 }
 
 async function deleteDigit58Entitlement(call, input, userId) {
@@ -1241,6 +1272,10 @@ export default async ({ req, res, error }) => {
     if (requestBody?.action === 'digit58-cancel-subscription') {
       const call = appwriteClient(req);
       return res.json({ ok: true, entitlement: await cancelDigit58Subscription(call, requestBody, userId) });
+    }
+    if (requestBody?.action === 'digit58-get-referral-code') {
+      const call = appwriteClient(req);
+      return res.json({ ok: true, ...(await getDigit58ReferralCode(call, requestBody, userId)) });
     }
     if (requestBody?.action === 'digit58-admin-delete-entitlement') {
       const call = appwriteClient(req);
