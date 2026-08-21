@@ -875,6 +875,7 @@ function whatsappLink(phone,message){
   if(!digits)return '';
   return `https://wa.me/${digits}?text=${encodeURIComponent(message)}`;
 }
+const WHATSAPP_ICON_SVG='<svg class="whatsapp-icon" viewBox="0 0 32 32" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M16.001 3C9.383 3 4 8.383 4 15c0 2.386.703 4.61 1.912 6.478L4 29l7.72-1.877A11.94 11.94 0 0 0 16.001 27C22.617 27 28 21.617 28 15S22.617 3 16.001 3zm6.51 16.984c-.276.777-1.366 1.42-2.24 1.605-.596.126-1.373.226-3.992-.855-3.35-1.386-5.505-4.775-5.673-4.996-.161-.221-1.359-1.809-1.359-3.451 0-1.642.86-2.449 1.166-2.785.276-.303.6-.379.8-.379.2 0 .4.002.575.01.184.008.432-.07.676.516.276.665.936 2.307.02 2.474.108.166.181.36.036.582-.145.221-.217.359-.435.552-.221.194-.463.433-.662.581-.221.166-.451.346-.194.786.257.44 1.144 1.888 2.457 3.058 1.688 1.505 3.11 1.973 3.552 2.196.442.221.7.19.958-.114.257-.303 1.103-1.287 1.397-1.729.294-.442.588-.368.99-.221.404.147 2.564 1.21 3.005 1.431.44.221.735.331.842.516.108.184.108 1.06-.168 1.837z"/></svg>';
 function floatingStoreWhatsappButton(store){
   const phone=String(store?.phone||'').replace(/[^\d+]/g,'').replace(/^\+/,'');
   if(!phone)return '';
@@ -1650,10 +1651,15 @@ function customerDetailView(customerId){
   if(isServiceStore(store)){
     const services=(state.services||[]).filter(row=>row.storeId===store.id);
     const experts=(state.experts||[]).filter(row=>row.storeId===store.id&&row.active!==false);
-    const bookings=(state.bookings||[]).filter(row=>row.storeId===store.id&&row.customerAccountId===customer.customerAccountId&&!['Completed','Cancelled'].includes(row.status)).sort((a,b)=>new Date(`${a.date}T${a.startTime}`)-new Date(`${b.date}T${b.startTime}`));
+    const nowMs=Date.now();
+    const bookingEndMs=row=>new Date(`${row.date}T${row.startTime}:00+05:30`).getTime()+Math.max(5,Number(row.durationMinutes)||30)*60000;
+    const allBookings=(state.bookings||[]).filter(row=>row.storeId===store.id&&row.customerAccountId===customer.customerAccountId);
+    const bookings=allBookings.filter(row=>!['Completed','Cancelled'].includes(row.status)&&bookingEndMs(row)>nowMs).sort((a,b)=>new Date(`${a.date}T${a.startTime}`)-new Date(`${b.date}T${b.startTime}`));
+    const historyBookings=allBookings.filter(row=>['Completed','Cancelled'].includes(row.status)||bookingEndMs(row)<=nowMs).sort((a,b)=>bookingEndMs(b)-bookingEndMs(a));
     $('#page').innerHTML=`<div class="section-head"><div><h1>${html(customer.customerName||'Customer')}</h1><p class="muted">${html(customer.customerEmail||'')}</p></div><div class="actions"><button class="btn secondary" id="backToWall">← Back</button><button class="btn" id="addOwnerBooking" ${services.length?'':'disabled'}>+ Book Service</button></div></div>
     <div class="section-head"><h2>Bookings</h2></div>
-    <div class="grid card-grid">${bookings.map(ownerBookingMarkup).join('')||'<div class="empty">No active bookings from this customer.</div>'}</div>`;
+    <div class="grid card-grid">${bookings.map(ownerBookingMarkup).join('')||'<div class="empty">No active bookings from this customer.</div>'}</div>
+    ${historyBookings.length?`<div class="section-head"><h2>Booking History</h2></div><div class="card table-wrap"><table><thead><tr><th>Service</th><th>Expert</th><th>Amount</th><th>Status</th><th>Date &amp; Time</th></tr></thead><tbody>${historyBookings.map(customerWallBookingHistoryRow).join('')}</tbody></table></div>`:''}`;
     $('#backToWall').onclick=()=>{view='wall';renderShell()};
     $('#addOwnerBooking').onclick=()=>openBookingModal(store,customer,services,experts,'',customer);
     $$('[data-confirm-booking]').forEach(button=>button.onclick=()=>confirmBookingPayment(button.dataset.confirmBooking));
@@ -2483,8 +2489,8 @@ function customerBookingMarkup(booking,store){
     ?`<div class="pending-acceptance-note"><p class="muted">The store started this booking on your behalf. Accept it to continue to slot confirmation.</p><button type="button" class="btn full green" data-accept-owner-booking="${html(booking.id)}">Accept Booking</button><button type="button" class="btn full secondary" data-reject-owner-booking="${html(booking.id)}">Reject</button></div>`
     :'';
   const canCancel=['Requested','Pending Payment','Confirmed'].includes(status);
-  const expertWaHref=whatsappLink(booking.expertPhone,`Hi ${booking.expertName||'there'}, this is regarding my ${booking.serviceName} booking on ${booking.date} at ${booking.startTime}.`);
-  const bookingActions=[expertWaHref?`<a class="btn small whatsapp-btn" href="${expertWaHref}" target="_blank" rel="noopener noreferrer">💬 WhatsApp ${html(booking.expertName||'Expert')}</a>`:'',canCancel?`<button class="btn small red" data-cancel-my-booking="${html(booking.id)}">Cancel Booking</button>`:''].filter(Boolean).join('');
+  const expertWaHref=store?.customerWhatsappEnabled!==false?whatsappLink(booking.expertPhone,`Hi ${booking.expertName||'there'}, this is regarding my ${booking.serviceName} booking on ${booking.date} at ${booking.startTime}.`):'';
+  const bookingActions=[expertWaHref?`<a class="btn small whatsapp-btn" href="${expertWaHref}" target="_blank" rel="noopener noreferrer">${WHATSAPP_ICON_SVG} WhatsApp ${html(booking.expertName||'Expert')}</a>`:'',canCancel?`<button class="btn small red" data-cancel-my-booking="${html(booking.id)}">Cancel Booking</button>`:''].filter(Boolean).join('');
   return `<article class="card order-item-card premium-card"><div class="section-head"><h3>${html(booking.serviceName)}</h3><span class="chip">${html(status)}</span></div><p class="muted">${html(booking.date)} · ${html(booking.startTime)}${booking.expertName?` · with ${html(booking.expertName)}`:''}</p><p class="muted">Price ${money(booking.price)}${upfrontAmount>0?` · Prepaid ${money(upfrontAmount)}`:''}</p>${balanceNote}${pendingAcceptanceBlock}${paymentBlock}${bookingActions?`<div class="actions">${bookingActions}</div>`:''}${bookingChatMarkup(booking,'customer')}</article>`;
 }
 async function cancelCustomerBooking(booking,store,customer){
@@ -2858,6 +2864,7 @@ function availabilityView(){
         <label class="option-toggle"><input id="lunchBreakEnabled" name="lunchBreakEnabled" type="checkbox" ${store.lunchBreakEnabled?'checked':''}><span><strong>Block a 1-hour lunch break</strong><small>No slots will be offered during this hour.</small></span></label>
         <div class="field ${store.lunchBreakEnabled?'':'hidden'}" id="lunchBreakStartField"><label>Lunch break starts at</label><input name="lunchBreakStart" type="time" value="${html(store.lunchBreakStart||'13:00')}"></div>
         <div class="field"><label>How far ahead can customers book? (days)</label><input name="preBookingWindowDays" type="number" min="1" max="365" value="${store.preBookingWindowDays||30}" required><small class="muted">Example: 30 = about a month ahead, 90 = about 3 months ahead.</small></div>
+        <label class="option-toggle"><input id="customerWhatsappEnabled" name="customerWhatsappEnabled" type="checkbox" ${store.customerWhatsappEnabled!==false?'checked':''}><span><strong>Let customers WhatsApp the expert</strong><small>Shows a "WhatsApp Expert" button on a customer's booking once an expert with a number is assigned. Turn off to hide it from customers.</small></span></label>
         <button class="btn full" type="submit" style="margin-top:14px">Save Availability</button>
       </form>
     </div>`;
@@ -2869,8 +2876,9 @@ function availabilityView(){
     if(!availableDays.length)return toast('Select at least one open day');
     if(values.slotStartTime>=values.slotEndTime)return toast('Closing time must be after opening time');
     const lunchBreakEnabled=values.lunchBreakEnabled==='on',lunchBreakStart=lunchBreakEnabled?(values.lunchBreakStart||'13:00'):'';
+    const customerWhatsappEnabled=values.customerWhatsappEnabled==='on';
     button.disabled=true;
-    const changes={availableDays,slotStartTime:values.slotStartTime,slotEndTime:values.slotEndTime,slotDurationMinutes:Math.max(5,Number(values.slotDurationMinutes)||30),preBookingWindowDays:Math.max(1,Number(values.preBookingWindowDays)||30),lunchBreakEnabled,lunchBreakStart};
+    const changes={availableDays,slotStartTime:values.slotStartTime,slotEndTime:values.slotEndTime,slotDurationMinutes:Math.max(5,Number(values.slotDurationMinutes)||30),preBookingWindowDays:Math.max(1,Number(values.preBookingWindowDays)||30),lunchBreakEnabled,lunchBreakStart,customerWhatsappEnabled};
     try{
       await api.update(storeKind(store.ownerId),store.id,changes);
       Object.assign(store,changes);save();
@@ -2947,7 +2955,7 @@ function confirmedBookingCompactMarkup(booking){
   const ringing=ringingIds.has(booking.id);
   const balance=Number(booking.balanceAmount)||0;
   const waHref=whatsappLink(booking.phone,`Hi ${booking.customerName||'there'}, this is regarding your ${booking.serviceName} booking on ${booking.date} at ${booking.startTime}.`);
-  return `<div class="booking-compact-card ${ringing?'incoming-order':''}">${ringing?'<span class="incoming-order-beacon" aria-label="New booking" title="New booking"></span>':''}<div class="booking-compact-info"><strong>${html(booking.serviceName)}</strong><span class="muted">${html(booking.date)} · ${html(booking.startTime)}${booking.expertName?` · ${html(booking.expertName)}`:''} · ${html(booking.customerName||'Customer')}</span>${balance>0?`<span class="chip due">Balance ${money(balance)}</span>`:''}</div><div class="actions">${waHref?`<a class="btn small whatsapp-btn" href="${waHref}" target="_blank" rel="noopener noreferrer" title="Chat with ${html(booking.customerName||'customer')} on WhatsApp">💬</a>`:''}<button class="btn small green" data-complete-booking="${html(booking.id)}">Complete</button><button class="btn small red" data-cancel-booking="${html(booking.id)}">Cancel</button></div></div>`;
+  return `<div class="booking-compact-card ${ringing?'incoming-order':''}">${ringing?'<span class="incoming-order-beacon" aria-label="New booking" title="New booking"></span>':''}<div class="booking-compact-info"><strong>${html(booking.serviceName)}</strong><span class="muted">${html(booking.date)} · ${html(booking.startTime)}${booking.expertName?` · ${html(booking.expertName)}`:''} · ${html(booking.customerName||'Customer')}</span>${balance>0?`<span class="chip due">Balance ${money(balance)}</span>`:''}</div><div class="actions">${waHref?`<a class="btn small whatsapp-btn" href="${waHref}" target="_blank" rel="noopener noreferrer" title="Chat with ${html(booking.customerName||'customer')} on WhatsApp">${WHATSAPP_ICON_SVG}</a>`:''}<button class="btn small green" data-complete-booking="${html(booking.id)}">Complete</button><button class="btn small red" data-cancel-booking="${html(booking.id)}">Cancel</button></div></div>`;
 }
 function bookingsView(){
   refreshView=bookingsView;
@@ -3012,6 +3020,9 @@ function bookingHistoryView(){
 }
 function bookingHistoryRow(booking){
   return `<tr><td>${html(booking.customerName||'Customer')}</td><td>${html(booking.serviceName)}</td><td>${html(booking.expertName||'—')}</td><td>${money(booking.price)}</td><td>${html(booking.status)}</td><td>${new Date(bookingHistoryTimestamp(booking)).toLocaleString('en-IN',{timeZone:'Asia/Kolkata',dateStyle:'medium',timeStyle:'short'})}</td><td>${booking.status==='Cancelled'?`<button class="btn small secondary" data-restore-booking="${html(booking.id)}">Restore</button>`:''}</td></tr>`;
+}
+function customerWallBookingHistoryRow(booking){
+  return `<tr><td>${html(booking.serviceName)}</td><td>${html(booking.expertName||'—')}</td><td>${money(booking.price)}</td><td>${html(booking.status)}</td><td>${html(booking.date)} · ${html(booking.startTime)}</td></tr>`;
 }
 async function reopenBookingPayment(bookingId){
   const booking=(state.bookings||[]).find(row=>row.id===bookingId);if(!booking)return;
