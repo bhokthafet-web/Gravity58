@@ -11,7 +11,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/css/style.css?v=48">
+  <link rel="stylesheet" href="/css/style.css?v=49">
   <link rel="stylesheet" href="/css/mobile.css">
   <link rel="canonical" href="https://g58.in/" />
   <meta name="robots" content="index, follow, max-image-preview:large" />
@@ -53,6 +53,7 @@
     </nav>
 
     <div class="header-account-controls" aria-label="Account controls">
+      <button class="header-account-btn" id="sitePricingButton" type="button" onclick="showLanding();document.querySelector('#g58PricingSection')?.scrollIntoView({behavior:'smooth'})">Pricing</button>
       <button class="header-account-btn login" id="siteLoginButton" type="button" onclick="window.G58AccountAction?.()">Login</button>
       <span class="header-user-name hidden" id="siteUserName"></span>
       <button class="header-account-btn hidden" id="myPostsButton" type="button" onclick="openMyBusinessCard()">Business Card</button>
@@ -77,6 +78,7 @@
 <div class="mobile-nav-overlay" id="mobileNavOverlay" onclick="closeMobileNav()"></div>
 <nav class="mobile-nav-panel" id="mobileNavPanel" aria-label="Mobile">
   <button type="button" class="mobile-nav-link" onclick="closeMobileNav();document.querySelector('.product-workflow-section')?.scrollIntoView({behavior:'smooth'})">How It Works</button>
+  <button type="button" class="mobile-nav-link" onclick="closeMobileNav();showLanding();document.querySelector('#g58PricingSection')?.scrollIntoView({behavior:'smooth'})">Pricing</button>
   <a class="mobile-nav-link" href="/digit58/" onclick="closeMobileNav()">Refills</a>
   <a class="mobile-nav-link mobile-nav-sublink" href="/refills-guide/" onclick="closeMobileNav()">How Refills Works</a>
   <a class="mobile-nav-link" href="/digital-menu/" onclick="closeMobileNav()">Digital Menu</a>
@@ -197,6 +199,96 @@
           <a class="tool-cta" href="/pos/">Open Free POS <span class="cta-arrow">→</span></a>
         </article>
       </div>
+    </div>
+  </section>
+
+  <section class="g58-pricing-section shell reveal" id="g58PricingSection" aria-label="Pricing">
+    <div class="section-heading reveal">
+      <span class="tool-kicker" style="display:block">Pricing</span>
+      <h2>Simple pricing for every store.</h2>
+      <p class="section-sub">Start free with Refills, then pick a plan that renews automatically — or explore Digital Menu's Free, Standard and Premium tiers.</p>
+    </div>
+
+    <div class="g58-pricing-block">
+      <div class="g58-pricing-block-head">
+        <h3>Refills Plans</h3>
+        <p>Your first month is free. After that, choose a plan below — it renews automatically until you cancel.</p>
+      </div>
+      <div class="g58-plan-grid">
+        <article class="g58-plan-card trial">
+          <span class="g58-plan-badge">Free Trial</span>
+          <h4>1 Month Free</h4>
+          <div class="g58-plan-price">₹0<small> for 30 days</small></div>
+          <p class="g58-plan-note">Full store access for 30 days, no payment required.</p>
+          <a class="btn primary g58-plan-cta" href="/digit58/">Start Free Trial</a>
+        </article>
+        <article class="g58-plan-card">
+          <span class="g58-plan-badge">REFILLS PLAN</span>
+          <h4>6 Months</h4>
+          <div class="g58-plan-price"><span data-refills-plan-price="6m">₹2,394</span><small> / 6 months</small></div>
+          <p class="g58-plan-note">Renews automatically every 6 months by auto-debit. Cancel anytime — the current paid period is non-refundable.</p>
+          <a class="btn g58-plan-cta" href="/digit58/">Choose Plan</a>
+        </article>
+        <article class="g58-plan-card">
+          <span class="g58-plan-badge">5% OFF</span>
+          <h4>1 Year</h4>
+          <div class="g58-plan-price"><span data-refills-plan-price="1y">₹4,549</span><small> / year</small></div>
+          <p class="g58-plan-note">Renews automatically every year by auto-debit. Cancel anytime — the current paid period is non-refundable.</p>
+          <a class="btn g58-plan-cta" href="/digit58/">Choose Plan</a>
+        </article>
+        <article class="g58-plan-card">
+          <span class="g58-plan-badge">10% OFF</span>
+          <h4>3 Years</h4>
+          <div class="g58-plan-price"><span data-refills-plan-price="3y">₹12,928</span><small> / 3 years</small></div>
+          <p class="g58-plan-note">Renews automatically every 3 years by auto-debit. Cancel anytime — the current paid period is non-refundable.</p>
+          <a class="btn g58-plan-cta" href="/digit58/">Choose Plan</a>
+        </article>
+      </div>
+      <p class="g58-pricing-footnote">Sign in to your Refills store to pick a plan and complete secure checkout. <a href="/refills-guide/">See how Refills works →</a></p>
+    </div>
+
+    <div class="g58-pricing-block">
+      <div class="g58-pricing-block-head">
+        <h3>Digital Menu</h3>
+        <p>Every restaurant starts free — upgrade any time for more restaurants or Premium features.</p>
+      </div>
+      <div class="g58-tier-grid">
+        <article class="g58-tier-card">
+          <span class="g58-plan-badge">FREE</span>
+          <h4>Free</h4>
+          <p class="g58-tier-desc">Get started with one restaurant and live table ordering.</p>
+          <ul class="g58-tier-list">
+            <li>1 restaurant</li>
+            <li>Live QR table ordering</li>
+            <li>Daily order history reset</li>
+          </ul>
+          <a class="btn g58-plan-cta" href="/digital-menu/">Get Started</a>
+        </article>
+        <article class="g58-tier-card">
+          <span class="g58-plan-badge">STANDARD</span>
+          <h4>Standard</h4>
+          <p class="g58-tier-desc">For owners running more than one restaurant.</p>
+          <ul class="g58-tier-list">
+            <li>Everything in Free</li>
+            <li>Adds a pack of up to 5 restaurants</li>
+            <li>Daily order history reset</li>
+          </ul>
+          <a class="btn g58-plan-cta" href="/digital-menu/">Upgrade to Standard</a>
+        </article>
+        <article class="g58-tier-card premium">
+          <span class="g58-plan-badge">PREMIUM</span>
+          <h4>Premium</h4>
+          <p class="g58-tier-desc">The full restaurant suite — orders, POS and reports.</p>
+          <ul class="g58-tier-list">
+            <li>Everything in Standard</li>
+            <li>Permanent order history</li>
+            <li>Premium POS included</li>
+            <li>Reports, messaging &amp; meal subscriptions</li>
+          </ul>
+          <a class="btn primary g58-plan-cta" href="/digital-menu/">Upgrade to Premium</a>
+        </article>
+      </div>
+      <p class="g58-pricing-footnote">See the full <a href="/digital-menu-guide/">Digital Menu pricing breakdown →</a></p>
     </div>
   </section>
 
@@ -726,7 +818,7 @@
 <script src="/js/config.js"></script>
 <script src="/js/appwrite-ads.js?v=19"></script>
 <script src="/js/database.js"></script>
-<script src="/js/app.js?v=36"></script>
+<script src="/js/app.js?v=37"></script>
 <script src="/js/site-auth.js?v=3"></script>
 <script>
 (function(){

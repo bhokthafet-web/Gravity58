@@ -49,6 +49,12 @@ const digit58CourseKind = ownerId => safeKindId(DIGIT58_COURSE_KIND_PREFIX, owne
 const digit58PushKind = ownerId => safeKindId(DIGIT58_PUSH_KIND_PREFIX, ownerId, 40);
 const digit58FcmKind = ownerId => safeKindId(DIGIT58_FCM_KIND_PREFIX, ownerId, 40);
 const digit58EntitlementRowId = ownerId => `d58-${String(ownerId).slice(0, 30)}`;
+const DIGIT58_PLAN_MONTHS = { '6m': 6, '1y': 12, '3y': 36 };
+const DIGIT58_PLAN_DISCOUNT = { '6m': 0, '1y': 5, '3y': 10 };
+const DIGIT58_PLAN_LABELS = { '6m': '6 Months', '1y': '1 Year', '3y': '3 Years' };
+// Razorpay subscriptions require a finite total_count; these approximate
+// "renews until cancelled" with a very long cycle horizon (10–20 renewals).
+const DIGIT58_PLAN_TOTAL_COUNT = { '6m': 20, '1y': 10, '3y': 10 };
 async function isDigit58Admin(call, userId) {
   try {
     const query = encodeURIComponent(JSON.stringify({ method: 'equal', attribute: 'userId', values: [userId] }));
@@ -647,6 +653,113 @@ async function acceptDigit58Policy(call, input, userId) {
   return updateRow(call, rowId, { ...entitlement, policyAcceptedAt: new Date().toISOString() });
 }
 
+async function razorpayApi(path, options = {}) {
+  const keyId = process.env.RAZORPAY_KEY_ID, keySecret = process.env.RAZORPAY_KEY_SECRET;
+  if (!keyId || !keySecret) throw new Error('Razorpay is not configured on the server yet.');
+  const auth = Buffer.from(`${keyId}:${keySecret}`).toString('base64');
+  const response = await fetch(`https://api.razorpay.com/v1${path}`, {
+    ...options,
+    headers: { 'content-type': 'application/json', authorization: `Basic ${auth}`, ...(options.headers || {}) },
+  });
+  const body = await response.text();
+  let data = {};
+  try { data = body ? JSON.parse(body) : {}; } catch { data = { error: { description: body } }; }
+  if (!response.ok) throw new Error(data?.error?.description || `Razorpay request failed (${response.status})`);
+  return data;
+}
+
+function digit58PlanAmount(monthly, periodId) {
+  const months = DIGIT58_PLAN_MONTHS[periodId], discount = DIGIT58_PLAN_DISCOUNT[periodId];
+  return Math.round(Number(monthly) * months * (1 - discount / 100));
+}
+
+async function digit58PricingDoc(call) {
+  const row = await call(`/tablesdb/${DATABASE_ID}/tables/${TABLE_ID}/rows/default`).catch(() => null);
+  const pricing = row && row.kind === 'digit58_pricing' ? cleanRow(row) : {};
+  return { rowExists: !!row, monthly: Math.max(1, finite(pricing.monthly, 399)), razorpayPlanIds: pricing.razorpayPlanIds || {}, raw: pricing };
+}
+
+async function ensureDigit58RazorpayPlan(call, periodId, amount) {
+  const { rowExists, razorpayPlanIds, raw } = await digit58PricingDoc(call);
+  const cached = razorpayPlanIds[periodId];
+  if (cached && cached.amount === amount && cached.planId) return cached.planId;
+  const created = await razorpayApi('/plans', {
+    method: 'POST',
+    body: JSON.stringify({
+      period: periodId === '6m' ? 'monthly' : 'yearly',
+      interval: periodId === '6m' ? 6 : periodId === '1y' ? 1 : 3,
+      item: { name: `Refills Store Access — ${DIGIT58_PLAN_LABELS[periodId]}`, amount: amount * 100, currency: 'INR' },
+    }),
+  });
+  const nextPlanIds = { ...razorpayPlanIds, [periodId]: { planId: created.id, amount } };
+  if (rowExists) await updateRow(call, 'default', { ...raw, razorpayPlanIds: nextPlanIds });
+  else await createRow(call, 'default', 'digit58_pricing', { monthly: 399, paymentLink: '', razorpayPlanIds: nextPlanIds }, [`read("team:${ADMIN_TEAM_ID}")`, `update("team:${ADMIN_TEAM_ID}")`]);
+  return created.id;
+}
+
+async function createDigit58SubscriptionCheckout(call, input, userId) {
+  const ownerId = text(input.ownerId, 64), periodId = text(input.periodId, 10);
+  if (!ownerId || ownerId !== userId) { const denied = new Error('Only the store owner can start a subscription.'); denied.code = 403; throw denied; }
+  if (!DIGIT58_PLAN_MONTHS[periodId]) throw new Error('Choose a valid Refills plan.');
+  let verifiedUser = null;
+  try { verifiedUser = await call(`/users/${encodeURIComponent(userId)}`); } catch {}
+  const email = text(verifiedUser?.email || input.ownerEmail, 250);
+  const name = text(verifiedUser?.name || input.ownerName, 120) || (email ? email.split('@')[0] : 'Refills Store Owner');
+  if (!email) throw new Error('Add an email to your account before subscribing.');
+  const { monthly } = await digit58PricingDoc(call);
+  const amount = digit58PlanAmount(monthly, periodId);
+  const planId = await ensureDigit58RazorpayPlan(call, periodId, amount);
+  const rowId = digit58EntitlementRowId(ownerId);
+  const existingRow = await call(`/tablesdb/${DATABASE_ID}/tables/${TABLE_ID}/rows/${encodeURIComponent(rowId)}`).catch(() => null);
+  const entitlement = existingRow ? cleanRow(existingRow) : null;
+  let customerId = entitlement?.razorpayCustomerId;
+  if (!customerId) {
+    const customer = await razorpayApi('/customers', { method: 'POST', body: JSON.stringify({ name, email, fail_existing: 0 }) });
+    customerId = customer.id;
+  }
+  const subscription = await razorpayApi('/subscriptions', {
+    method: 'POST',
+    body: JSON.stringify({ plan_id: planId, customer_id: customerId, customer_notify: 1, total_count: DIGIT58_PLAN_TOTAL_COUNT[periodId] }),
+  });
+  const changes = {
+    ownerId, ownerEmail: email, razorpayCustomerId: customerId, razorpaySubscriptionId: subscription.id,
+    pendingPlan: periodId, subscriptionStatus: 'created', cancelAtPeriodEnd: false, updatedAt: new Date().toISOString(),
+  };
+  if (entitlement) await updateRow(call, rowId, { ...entitlement, ...changes });
+  else await createRow(call, rowId, DIGIT58_ENTITLEMENT_KIND, {
+    ownerId, active: false, paused: false, lifetime: false, storeSlots: 1, freeTrial: false, activatedAt: '', expiresAt: '', ...changes,
+  }, rowPermissions(userId, ownerId));
+  return { subscriptionId: subscription.id, razorpayKeyId: process.env.RAZORPAY_KEY_ID, amount, periodId };
+}
+
+async function cancelDigit58Subscription(call, input, userId) {
+  const ownerId = text(input.ownerId, 64);
+  if (!ownerId || ownerId !== userId) { const denied = new Error('Only the store owner can cancel this subscription.'); denied.code = 403; throw denied; }
+  const rowId = digit58EntitlementRowId(ownerId);
+  const row = await call(`/tablesdb/${DATABASE_ID}/tables/${TABLE_ID}/rows/${encodeURIComponent(rowId)}`).catch(() => null);
+  if (!row) throw new Error('No Refills subscription found for this account.');
+  const entitlement = cleanRow(row);
+  if (!entitlement.razorpaySubscriptionId) throw new Error('There is no active paid subscription to cancel.');
+  if (entitlement.cancelAtPeriodEnd) throw new Error('This subscription is already set to cancel at the end of the paid period.');
+  await razorpayApi(`/subscriptions/${encodeURIComponent(entitlement.razorpaySubscriptionId)}/cancel`, { method: 'POST', body: JSON.stringify({ cancel_at_cycle_end: 1 }) });
+  return updateRow(call, rowId, { ...entitlement, cancelAtPeriodEnd: true, subscriptionStatus: 'cancel_scheduled', updatedAt: new Date().toISOString() });
+}
+
+async function deleteDigit58Entitlement(call, input, userId) {
+  if (!(await isDigit58Admin(call, userId))) { const denied = new Error('Only G58 administrators can delete a Refills subscription.'); denied.code = 403; throw denied; }
+  const ownerId = text(input.ownerId, 64);
+  if (!ownerId) throw new Error('Owner details are missing.');
+  const rowId = digit58EntitlementRowId(ownerId);
+  const row = await call(`/tablesdb/${DATABASE_ID}/tables/${TABLE_ID}/rows/${encodeURIComponent(rowId)}`).catch(() => null);
+  if (!row) throw new Error('No Refills subscription found for this owner.');
+  const entitlement = cleanRow(row);
+  if (entitlement.razorpaySubscriptionId) {
+    await razorpayApi(`/subscriptions/${encodeURIComponent(entitlement.razorpaySubscriptionId)}/cancel`, { method: 'POST', body: JSON.stringify({ cancel_at_cycle_end: 0 }) }).catch(() => {});
+  }
+  await removeRow(call, rowId);
+  return { ok: true };
+}
+
 async function setDigit58StoreSuspended(call, input, userId) {
   if (!(await isDigit58Admin(call, userId))) { const denied = new Error('Only G58 administrators can manage store status.'); denied.code = 403; throw denied; }
   const ownerId = text(input.ownerId, 64), storeId = text(input.storeId, 40);
@@ -1119,6 +1232,19 @@ export default async ({ req, res, error }) => {
     if (requestBody?.action === 'digit58-accept-policy') {
       const call = appwriteClient(req);
       return res.json({ ok: true, entitlement: await acceptDigit58Policy(call, requestBody, userId) });
+    }
+    if (requestBody?.action === 'digit58-create-subscription-checkout') {
+      const call = appwriteClient(req);
+      const checkout = await createDigit58SubscriptionCheckout(call, requestBody, userId);
+      return res.json({ ok: true, ...checkout }, 201);
+    }
+    if (requestBody?.action === 'digit58-cancel-subscription') {
+      const call = appwriteClient(req);
+      return res.json({ ok: true, entitlement: await cancelDigit58Subscription(call, requestBody, userId) });
+    }
+    if (requestBody?.action === 'digit58-admin-delete-entitlement') {
+      const call = appwriteClient(req);
+      return res.json({ ok: true, ...(await deleteDigit58Entitlement(call, requestBody, userId)) });
     }
     if (requestBody?.action === 'digit58-set-store-suspended') {
       const call = appwriteClient(req);

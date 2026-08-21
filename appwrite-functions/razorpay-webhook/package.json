@@ -1,0 +1,7 @@
+{
+  "name": "gravity58-razorpay-webhook",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {}
+}

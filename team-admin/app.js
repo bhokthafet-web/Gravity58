@@ -274,7 +274,7 @@ function digit58(){
   <div class="section-head"><h2>Store owner requests</h2></div>
   <div class="card table-wrap"><table><thead><tr><th>Owner</th><th>Amount</th><th>Status</th><th>Actions</th></tr></thead><tbody>${requests.map(digit58RequestRow).join('')||'<tr><td colspan="4">No pending Refills requests.</td></tr>'}</tbody></table></div>
   <div class="section-head"><h2>Store owner subscriptions</h2></div>
-  <div class="card table-wrap"><table><thead><tr><th>Owner</th><th>Status</th><th>Expiry</th><th>Store Slots</th><th>Policy</th><th>Actions</th></tr></thead><tbody>${entitlements.map(digit58EntitlementRow).join('')||'<tr><td colspan="6">No activated Refills subscriptions.</td></tr>'}</tbody></table></div>
+  <div class="card table-wrap"><table><thead><tr><th>Owner</th><th>Status</th><th>Plan</th><th>Expiry</th><th>Store Slots</th><th>Policy</th><th>Actions</th></tr></thead><tbody>${entitlements.map(digit58EntitlementRow).join('')||'<tr><td colspan="7">No activated Refills subscriptions.</td></tr>'}</tbody></table></div>
   <div class="section-head"><div><h2>Promotion card purchases</h2><p class="muted">Self-declared payments for extra promotion cards beyond the 3 free ones. Pause a purchase if payment was not actually received — this immediately revokes that card slot.</p></div></div>
   <div class="card table-wrap"><table><thead><tr><th>Store</th><th>Owner</th><th>Duration</th><th>Amount</th><th>Declared Paid</th><th>Status</th><th>Actions</th></tr></thead><tbody>${cardPurchases.map(digit58CardPurchaseRow).join('')||'<tr><td colspan="7">No promotion card purchases yet.</td></tr>'}</tbody></table></div>
   <div class="section-head"><div><h2>Brand card requests</h2><p class="muted">Brand partners requesting a card on a store, plus each side's self-declared payment status. Pause if either payment looks fraudulent.</p></div></div>
@@ -293,6 +293,7 @@ function digit58(){
   $$('[data-edit-digit58-entitlement]').forEach(button=>button.onclick=()=>editDigit58Entitlement(button.dataset.editDigit58Entitlement));
   $$('[data-extend-digit58]').forEach(button=>button.onclick=()=>extendDigit58Entitlement(button.dataset.extendDigit58));
   $$('[data-pause-digit58]').forEach(button=>button.onclick=()=>toggleDigit58Pause(button.dataset.pauseDigit58));
+  $$('[data-delete-digit58-entitlement]').forEach(button=>button.onclick=()=>deleteDigit58Entitlement(button.dataset.deleteDigit58Entitlement,button.dataset.ownerId));
   $$('[data-pause-digit58-card]').forEach(button=>button.onclick=()=>toggleDigit58CardPurchasePause(button.dataset.pauseDigit58Card));
   $$('[data-pause-digit58-brand]').forEach(button=>button.onclick=()=>toggleDigit58BrandRequestPause(button.dataset.pauseDigit58Brand));
   bindStoreActions();
@@ -319,10 +320,22 @@ function digit58RequestRow(row){
     :`<button class="btn small green" data-activate-digit58="${esc(row.id)}">Activate</button>`;
   return `<tr><td><strong>${esc(row.ownerName||'Store Owner')}</strong><br><small>${esc(row.ownerEmail||row.ownerId)}</small>${isAdditional?' <span class="chip due">+1 Store</span>':''}</td><td>${money(row.amount||399)}</td><td>${esc(row.status||'Requested')}</td><td><div class="actions">${actions}</div></td></tr>`;
 }
+const DIGIT58_PLAN_LABELS={'6m':'6 Months','1y':'1 Year','3y':'3 Years'};
 function digit58EntitlementRow(row){
   const policy=row.policyAcceptedAt?new Date(row.policyAcceptedAt).toLocaleDateString('en-IN',{dateStyle:'medium'}):'Not accepted yet';
   const stores=data.digit58Stores.filter(store=>store.ownerId===row.ownerId),storeButtons=stores.map(store=>`<button class="entitlement-store-btn ${store.suspended?'paused':''}" data-manage-digit58-store="${esc(store.storeId||store.id)}" data-owner-id="${esc(store.ownerId)}" type="button"><strong>${esc(store.storeName||store.name||'Store')}</strong><small>${store.suspended?'Paused':'Active'} · Manage</small></button>`).join('');
-  return `<tr><td>${esc(row.ownerEmail||row.ownerId)}</td><td>${row.paused?'Paused':row.active?'Active':'Inactive'}</td><td>${timeLeft(row.expiresAt,row.lifetime)}</td><td><strong>${Math.max(1,Number(row.storeSlots)||1)} paid slot(s)</strong><div class="entitlement-store-list">${storeButtons||'<small class="muted">No live stores found</small>'}</div></td><td>${esc(policy)}</td><td><div class="actions"><button class="btn small" data-edit-digit58-entitlement="${esc(row.id)}">Edit</button><button class="btn small green" data-extend-digit58="${esc(row.id)}">+30 days</button><button class="btn small ${row.paused?'green':'secondary'}" data-pause-digit58="${esc(row.id)}">${row.paused?'Resume':'Pause'}</button></div></td></tr>`;
+  const planLabel=row.freeTrial?'Free Trial':DIGIT58_PLAN_LABELS[row.plan]||(row.razorpaySubscriptionId?'Refills Plan':'Legacy');
+  const billing=row.razorpaySubscriptionId
+    ?(row.cancelAtPeriodEnd?'Cancelling — no auto-renew':row.subscriptionStatus==='halted'?'Auto-debit failed':'Auto-renews')
+    :(row.freeTrial?'No billing yet':'Manual');
+  return `<tr><td>${esc(row.ownerEmail||row.ownerId)}</td><td>${row.paused?'Paused':row.active?'Active':'Inactive'}</td><td>${esc(planLabel)}<br><small class="muted">${esc(billing)}</small></td><td>${timeLeft(row.expiresAt,row.lifetime)}</td><td><strong>${Math.max(1,Number(row.storeSlots)||1)} paid slot(s)</strong><div class="entitlement-store-list">${storeButtons||'<small class="muted">No live stores found</small>'}</div></td><td>${esc(policy)}</td><td><div class="actions"><button class="btn small" data-edit-digit58-entitlement="${esc(row.id)}">Edit</button><button class="btn small green" data-extend-digit58="${esc(row.id)}">+30 days</button><button class="btn small ${row.paused?'green':'secondary'}" data-pause-digit58="${esc(row.id)}">${row.paused?'Resume':'Pause'}</button><button class="btn small red" data-delete-digit58-entitlement="${esc(row.id)}" data-owner-id="${esc(row.ownerId)}">Delete</button></div></td></tr>`;
+}
+async function deleteDigit58Entitlement(id,ownerId){
+  if(!confirm('Delete this Refills subscription? This revokes store portal access immediately and cancels any live auto-billing subscription. This cannot be undone.'))return;
+  try{
+    await api.executeFunction(api.config.digitalOrderFunctionId,{action:'digit58-admin-delete-entitlement',ownerId});
+    await refresh();toast('Refills subscription deleted');
+  }catch(error){toast(error.message||'Could not delete this subscription')}
 }
 const DIGIT58_CARD_DURATION_LABELS={'30d':'30 Days','6mo':'6 Months','1yr':'1 Year'};
 const DIGIT58_CARD_APPROVAL_PRICING={'30d':150,'6mo':750,'1yr':1200};

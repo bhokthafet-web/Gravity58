@@ -292,7 +292,9 @@ function bindDeliveryShareButtons(records){
 
 let session=null,view='dashboard';
 let refreshView=()=>renderShell();
-let entitlement=null,myRequest=null,myStoreRequest=null;
+let entitlement=null,myRequest=null,myStoreRequest=null,digit58Pricing={monthly:399};
+const DIGIT58_PLAN_PERIODS=[{id:'6m',label:'6 Months',months:6,discount:0},{id:'1y',label:'1 Year',months:12,discount:5},{id:'3y',label:'3 Years',months:36,discount:10}];
+function digit58PlanAmount(monthly,period){return Math.round(Number(monthly)*Number(period.months)*(1-Number(period.discount)/100))}
 function storeSlotsAllowed(){return Math.max(1,Number(entitlement?.storeSlots)||1)}
 let state={activeStoreId:'',stores:[],customers:[],cards:[],orders:[],promotions:[],cardPurchases:[],brandRequests:[]};
 function save(){try{localStorage.setItem('gravity58Digit58',JSON.stringify(state))}catch{}}
@@ -601,20 +603,44 @@ async function boot(){
   session=await api.currentUser().catch(()=>null);
   if(!session)return renderOwnerAuth();
   await loadEntitlement();
-  if(!hasActiveEntitlement())return grantFreeTrialOrGate();
+  if(!hasActiveEntitlement())return renderPlanGate();
   await proceedAfterEntitlement();
 }
 const FREE_TRIAL_DAYS=30;
-async function grantFreeTrialOrGate(){
-  if(entitlement)return renderAccessGate();
+async function startDigit58FreeTrial(){
+  const button=$('#startTrialBtn');if(button)button.disabled=true;
   const ownerId=cloudOwnerId();
   try{
     const expiresAt=new Date(Date.now()+FREE_TRIAL_DAYS*86400000).toISOString();
-    entitlement=await api.create(ENTITLEMENT_KIND,{ownerId,ownerEmail:session?.email||'',active:true,paused:false,lifetime:false,storeSlots:1,freeTrial:true,activatedAt:now(),expiresAt,updatedAt:now()},`d58-${String(ownerId).slice(0,30)}`,api.managedPermissionSet?.()||api.collaborativePermissionSet(ownerId));
-  }catch{
-    return renderAccessGate();
-  }
-  await proceedAfterEntitlement();
+    const payload={ownerId,ownerEmail:session?.email||'',active:true,paused:false,lifetime:false,storeSlots:1,freeTrial:true,trialUsed:true,activatedAt:now(),expiresAt,updatedAt:now()};
+    entitlement=entitlement
+      ?await api.update(ENTITLEMENT_KIND,entitlement.id,payload)
+      :await api.create(ENTITLEMENT_KIND,payload,`d58-${String(ownerId).slice(0,30)}`,api.managedPermissionSet?.()||api.collaborativePermissionSet(ownerId));
+    await proceedAfterEntitlement();
+  }catch(error){if(button)button.disabled=false;toast(error.message||'Could not start your free trial')}
+}
+async function startDigit58Subscription(periodId){
+  const period=DIGIT58_PLAN_PERIODS.find(row=>row.id===periodId);if(!period)return;
+  const button=document.querySelector(`[data-subscribe-plan="${periodId}"]`);if(button)button.disabled=true;
+  try{
+    const result=await api.executeFunction(api.config.digitalOrderFunctionId,{action:'digit58-create-subscription-checkout',ownerId:cloudOwnerId(),periodId,ownerEmail:session?.email||'',ownerName:session?.name||''});
+    if(!window.Razorpay)throw new Error('Payment could not start. Reload the page and try again.');
+    const checkout=new window.Razorpay({
+      key:result.razorpayKeyId,subscription_id:result.subscriptionId,
+      name:'Refills by G58',description:`Refills Store Access — ${period.label}`,
+      theme:{color:'#2dd4a8'},prefill:{email:session?.email||'',name:session?.name||''},
+      handler:async()=>{toast('Payment authorized — confirming your subscription...');await pollDigit58SubscriptionActivation()},
+      modal:{ondismiss:()=>{if(button)button.disabled=false}},
+    });
+    checkout.open();
+  }catch(error){if(button)button.disabled=false;toast(error.message||'Could not start checkout')}
+}
+async function pollDigit58SubscriptionActivation(attempt=0){
+  await loadEntitlement();
+  if(hasActiveEntitlement())return proceedAfterEntitlement();
+  if(attempt>=10){toast('Still confirming with Razorpay — reload this page in a minute.');return renderPlanGate()}
+  await new Promise(resolve=>setTimeout(resolve,2000));
+  return pollDigit58SubscriptionActivation(attempt+1);
 }
 const DIGIT58_POLICY_TEXT='Refills generates a payment QR code from the UPI ID you provide, to help you collect payment from your customers. G58 only facilitates this QR generation — we are not a party to any payment and are not responsible for any fraud, dispute or disagreement between you and your customer. Please verify payments independently before fulfilling any order.';
 const DIGIT58_CUSTOMER_AGREEMENT_TEXT='By continuing, you agree that this store — not G58 — is responsible for its products, pricing, offers, stock, and order fulfillment. Any payment you make (by UPI QR code or payment link shown on your order) goes directly to the store; G58 only provides this ordering platform and does not process, hold, or verify these payments. Before you pay, always confirm the amount matches your order and that the QR code or payment link genuinely belongs to this store. G58 is not responsible for any payment error, fraud, delay, or dispute between you and the store. For any issue with your order or payment, contact the store directly using the Support button in this portal.';
@@ -641,53 +667,53 @@ function renderPolicyGate(){
 }
 async function loadEntitlement(){
   const ownerId=cloudOwnerId();if(!ownerId)return;
-  const [entitlements,requests]=await Promise.all([
+  const [entitlements,requests,pricingRows]=await Promise.all([
     api.list(ENTITLEMENT_KIND).catch(()=>[]),
     api.list(REQUEST_KIND).catch(()=>[]),
+    api.list('digit58_pricing').catch(()=>[]),
   ]);
   entitlement=entitlements.find(row=>row.ownerId===ownerId)||null;
   const ownerRequests=requests.filter(row=>row.ownerId===ownerId).sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
   myRequest=ownerRequests.find(row=>row.type!=='additional-store')||null;
   myStoreRequest=ownerRequests.find(row=>row.type==='additional-store')||null;
+  const pricingRow=pricingRows.find(row=>(row.id||row.$id)==='default')||{};
+  digit58Pricing={monthly:Number(pricingRow.monthly)||SUBSCRIPTION_AMOUNT};
 }
 function hasActiveEntitlement(){
   if(!entitlement||!entitlement.active||entitlement.paused)return false;
   if(entitlement.expiresAt&&new Date(entitlement.expiresAt).getTime()<Date.now())return false;
   return true;
 }
-function renderAccessGate(){
-  const status=myRequest?.status||'';
-  let body='';
-  if(entitlement?.paused){
-    body=`<div class="card"><p class="muted">Your store subscription is currently paused by the G58 team. Contact G58 support to resume access.</p></div>`;
-  }else if(entitlement&&entitlement.expiresAt&&new Date(entitlement.expiresAt).getTime()<Date.now()){
-    body=`<div class="card"><p class="muted">Your store subscription has expired. Request a new activation below to continue.</p></div>${accessRequestBlock(status)}`;
-  }else if(status==='Requested'){
-    body=`<div class="card"><p class="muted">Your activation request has been sent to the G58 team. You'll see a payment link here once they review it.</p></div>`;
-  }else if(status==='Payment Link Sent'){
-    body=`<div class="card"><p class="muted">Pay ${money(myRequest.amount||SUBSCRIPTION_AMOUNT)} using the secure link below, then wait for G58 to confirm and activate your store portal.</p><a class="btn full" href="${html(myRequest.paymentLink)}" target="_blank" rel="noopener" style="margin-top:12px;display:block;text-align:center;text-decoration:none">Pay ${money(myRequest.amount||SUBSCRIPTION_AMOUNT)}</a></div>`;
-  }else if(status==='Rejected'){
-    body=`<div class="card"><p class="muted">Your last activation request was not approved. You can send a new request below.</p></div>${accessRequestBlock(status)}`;
-  }else{
-    body=accessRequestBlock(status);
-  }
-  app.innerHTML=`<main class="screen"><section class="auth-card"><a class="brand" href="../"><svg class="brand-mark" viewBox="0 0 120 120" fill="none" stroke="#7fffd4" stroke-width="8" aria-hidden="true"><circle cx="60" cy="26" r="15"/><circle cx="28" cy="82" r="15"/><circle cx="92" cy="82" r="15"/></svg><div><h2>Refills</h2><p class="tagline">Store portal access is ${money(SUBSCRIPTION_AMOUNT)}/month.</p></div></a>${body}<div class="actions" style="margin-top:16px"><button class="btn secondary full" id="gateLogout">Sign out</button></div></section></main>${siteFooter()}`;
+function renderPlanGate(){
+  const trialEligible=!entitlement?.trialUsed;
+  const expired=!!(entitlement&&entitlement.expiresAt&&new Date(entitlement.expiresAt).getTime()<Date.now());
+  const paused=!!entitlement?.paused;
+  const monthly=digit58Pricing.monthly;
+  let statusNote='';
+  if(paused)statusNote=`<div class="card"><p class="muted">Your store subscription is currently paused by the G58 team. Contact G58 support to resume access.</p></div>`;
+  else if(expired)statusNote=`<div class="card"><p class="muted">Your ${entitlement?.freeTrial?'free trial has':'subscription has'} ended. Choose a plan below to continue.</p></div>`;
+  const trialCard=trialEligible?`<article class="plan-card trial">
+      <span class="plan-badge">Free Trial</span>
+      <h3>1 Month Free</h3>
+      <div class="plan-price">₹0<small> for 30 days</small></div>
+      <p class="plan-note">Full store access for 30 days, no payment required. Add your store details right after you start — G58 can pause or remove your store at any time during this period.</p>
+      <button class="btn full" id="startTrialBtn" type="button">Start Free Trial</button>
+    </article>`:'';
+  const planCards=DIGIT58_PLAN_PERIODS.map(period=>{
+    const amount=digit58PlanAmount(monthly,period);
+    return `<article class="plan-card">
+      <span class="plan-badge">${period.discount?`${period.discount}% OFF`:'REFILLS PLAN'}</span>
+      <h3>${html(period.label)}</h3>
+      <div class="plan-price">${money(amount)}<small> / ${period.label.toLowerCase()}</small></div>
+      <p class="plan-note">Renews automatically every ${period.label.toLowerCase()} — the amount is auto-debited from your chosen payment method via Razorpay. Cancel anytime; the current paid period is non-refundable.</p>
+      <button class="btn full" data-subscribe-plan="${period.id}" type="button">Subscribe</button>
+    </article>`;
+  }).join('');
+  app.innerHTML=`<main class="screen"><section class="auth-card" style="width:min(760px,100%)"><a class="brand" href="../"><svg class="brand-mark" viewBox="0 0 120 120" fill="none" stroke="#7fffd4" stroke-width="8" aria-hidden="true"><circle cx="60" cy="26" r="15"/><circle cx="28" cy="82" r="15"/><circle cx="92" cy="82" r="15"/></svg><div><h2>Choose your Refills plan</h2><p class="tagline">Start free, or subscribe to keep your store live.</p></div></a>${statusNote}<div class="plan-grid">${trialCard}${planCards}</div><div class="actions" style="margin-top:16px"><button class="btn secondary full" id="gateLogout">Sign out</button></div></section></main>${siteFooter()}`;
   (typeof bindAndroidAppFooter==='function'&&bindAndroidAppFooter());
-  $('#requestAccessBtn')?.addEventListener('click',requestStoreAccess);
+  $('#startTrialBtn')?.addEventListener('click',startDigit58FreeTrial);
+  $$('[data-subscribe-plan]').forEach(button=>button.addEventListener('click',()=>startDigit58Subscription(button.dataset.subscribePlan)));
   $('#gateLogout').onclick=async()=>{stopOwnerRealtime();await api.logout();session=null;renderOwnerAuth()};
-}
-function accessRequestBlock(status){
-  return `<div class="card"><p class="muted">Request store access for ${money(SUBSCRIPTION_AMOUNT)}/month. The G58 team will review your request and send a secure payment link.</p><button class="btn full" id="requestAccessBtn" style="margin-top:12px">${status==='Rejected'?'Send New Request':'Request Store Access'}</button></div>`;
-}
-async function requestStoreAccess(){
-  const button=$('#requestAccessBtn');button.disabled=true;
-  try{
-    const record={id:id('req'),ownerId:cloudOwnerId(),ownerEmail:session.email,ownerName:session.name||session.email.split('@')[0],amount:SUBSCRIPTION_AMOUNT,status:'Requested',type:'initial',paymentLink:'',createdAt:now()};
-    const created=await api.create(REQUEST_KIND,record,record.id,api.collaborativePermissionSet?.(record.ownerId));
-    myRequest=created;
-    renderAccessGate();
-    toast('Activation request sent to the G58 team');
-  }catch(error){button.disabled=false;toast(error.message||'Could not send activation request')}
 }
 async function requestAdditionalStore(){
   const button=$('#requestStoreSlot');if(button)button.disabled=true;
@@ -729,7 +755,7 @@ function renderOwnerAuth(){
       else await api.login(values.email.trim(),values.password);
       session=await api.currentUser();
       await loadEntitlement();
-      if(!hasActiveEntitlement())return grantFreeTrialOrGate();
+      if(!hasActiveEntitlement())return renderPlanGate();
       await proceedAfterEntitlement();
     }catch(error){button.disabled=false;toast(error.message||'Could not sign in')}
   };
@@ -809,10 +835,55 @@ function ordersView(){
 }
 function subscriptionView(){
   refreshView=subscriptionView;
+  const active=hasActiveEntitlement();
+  const status=entitlement?.paused?'Paused':active?'Active':'Inactive';
+  const onFreeTrial=!!entitlement?.freeTrial&&active;
+  const plan=DIGIT58_PLAN_PERIODS.find(period=>period.id===entitlement?.plan);
+  const planLabel=onFreeTrial?'Free Trial':plan?plan.label:'Refills Store Access';
+  const price=onFreeTrial?'Free':plan?money(digit58PlanAmount(digit58Pricing.monthly,plan)):money(SUBSCRIPTION_AMOUNT);
+  const priceSuffix=onFreeTrial?' for your first month':plan?` / ${plan.label.toLowerCase()}`:'/month';
   const expiry=entitlement?.lifetime?'Lifetime access':entitlement?.expiresAt?new Date(entitlement.expiresAt).toLocaleDateString('en-IN',{dateStyle:'medium'}):'—';
-  const status=entitlement?.paused?'Paused':hasActiveEntitlement()?'Active':'Inactive';
-  const onFreeTrial=entitlement?.freeTrial&&status==='Active';
-  $('#page').innerHTML=`<div class="section-head"><div><h1>Subscription</h1><p class="muted">Your Refills store portal access.</p></div></div><div class="card" style="max-width:420px"><span class="chip">${onFreeTrial?'Free Trial':'Refills Store Access'}</span><h2 style="margin:10px 0">${onFreeTrial?'Free':money(SUBSCRIPTION_AMOUNT)}<small class="muted" style="font-size:14px"> ${onFreeTrial?'for your first month':'/month'}</small></h2><div class="chips"><span class="chip ${status==='Active'?'delivered':status==='Paused'?'due':''}">${status}</span></div><p class="muted" style="margin-top:12px">${entitlement?.lifetime?'Your subscription never expires.':`${onFreeTrial?'Free trial ends':'Renews / expires'}: ${expiry}`}</p>${onFreeTrial?`<p class="muted">After your free trial, continuing store access is ${money(SUBSCRIPTION_AMOUNT)}/month.</p>`:''}${status==='Paused'?'<p class="muted">Contact the G58 team to resume access.</p>':''}</div>`;
+  const cancelScheduled=!!entitlement?.cancelAtPeriodEnd;
+  const canCancel=!!entitlement?.razorpaySubscriptionId&&!cancelScheduled&&['created','active'].includes(entitlement?.subscriptionStatus||'');
+  const autoRenewNote=cancelScheduled
+    ?'Auto-renewal is off. Your access continues until the date above, then it will not renew.'
+    :entitlement?.razorpaySubscriptionId
+      ?`Renews automatically on ${expiry} by auto-debit. Cancel anytime — the current paid period is non-refundable.`
+      :'';
+  const showPlans=!active||onFreeTrial||!entitlement?.razorpaySubscriptionId;
+  $('#page').innerHTML=`<div class="section-head"><div><h1>Subscription</h1><p class="muted">Your Refills store portal access.</p></div></div>
+    <div class="card" style="max-width:460px">
+      <span class="chip">${html(planLabel)}</span>
+      <h2 style="margin:10px 0">${price}<small class="muted" style="font-size:14px">${priceSuffix}</small></h2>
+      <div class="chips"><span class="chip ${status==='Active'?'delivered':status==='Paused'?'due':''}">${status}</span>${cancelScheduled?'<span class="chip due">Cancelling</span>':''}</div>
+      <p class="muted" style="margin-top:12px">${entitlement?.lifetime?'Your subscription never expires.':`${onFreeTrial?'Free trial ends':'Renews / expires'}: ${expiry}`}</p>
+      ${onFreeTrial?`<p class="muted">After your free trial, keep your store live by subscribing to a plan below.</p>`:''}
+      ${autoRenewNote?`<p class="muted">${autoRenewNote}</p>`:''}
+      ${status==='Paused'?'<p class="muted">Contact the G58 team to resume access.</p>':''}
+      ${canCancel?'<button class="btn secondary full" id="cancelSubBtn" style="margin-top:12px">Cancel Subscription</button>':''}
+    </div>
+    ${showPlans?`<div class="section-head"><h2>${onFreeTrial?'Upgrade to a paid plan':'Refills Plans'}</h2></div><div class="plan-grid">${DIGIT58_PLAN_PERIODS.map(period=>{
+      const amount=digit58PlanAmount(digit58Pricing.monthly,period);
+      return `<article class="plan-card">
+        <span class="plan-badge">${period.discount?`${period.discount}% OFF`:'REFILLS PLAN'}</span>
+        <h3>${html(period.label)}</h3>
+        <div class="plan-price">${money(amount)}<small> / ${period.label.toLowerCase()}</small></div>
+        <p class="plan-note">Renews automatically every ${period.label.toLowerCase()} by auto-debit. Cancel anytime — the current paid period is non-refundable.</p>
+        <button class="btn full" data-subscribe-plan="${period.id}" type="button">Subscribe</button>
+      </article>`;
+    }).join('')}</div>`:''}`;
+  $('#cancelSubBtn')?.addEventListener('click',cancelDigit58SubscriptionFlow);
+  $$('[data-subscribe-plan]').forEach(button=>button.addEventListener('click',()=>startDigit58Subscription(button.dataset.subscribePlan)));
+}
+async function cancelDigit58SubscriptionFlow(){
+  if(!confirm('Cancel your Refills subscription? Auto-renewal will stop, but your access continues until the current paid period ends — no refund is given for that period.'))return;
+  const button=$('#cancelSubBtn');if(button)button.disabled=true;
+  try{
+    const result=await api.executeFunction(api.config.digitalOrderFunctionId,{action:'digit58-cancel-subscription',ownerId:cloudOwnerId()});
+    entitlement=result.entitlement||{...entitlement,cancelAtPeriodEnd:true};
+    subscriptionView();
+    toast('Auto-renewal has been turned off. Your access continues until it expires.');
+  }catch(error){if(button)button.disabled=false;toast(error.message||'Could not cancel your subscription')}
 }
 
 function metric(title,value){return `<article class="card metric"><span>${html(title)}</span><strong>${value}</strong></article>`}
