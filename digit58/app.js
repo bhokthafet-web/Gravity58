@@ -2359,6 +2359,10 @@ function renderCustomerCards(store,customer,cards,orders=[],promotions=[],course
   bindOrderChatForms(active,'customer',()=>loadAndRenderCustomerView(store,customer));
   bindCardChatForms(cards,'customer',()=>loadAndRenderCustomerView(store,customer));
   bindBookingChatForms(activeBookings,'customer',()=>loadAndRenderCustomerView(store,customer));
+  $$('[data-cancel-my-booking]').forEach(button=>button.onclick=()=>{
+    const booking=activeBookings.find(row=>row.id===button.dataset.cancelMyBooking);
+    if(booking)cancelCustomerBooking(booking,store,customer);
+  });
   initShakeDetection();
   initPushNotifications(store,customer);
   (typeof bindAndroidAppFooter==='function'&&bindAndroidAppFooter());
@@ -2428,7 +2432,16 @@ function customerBookingMarkup(booking,store){
     :status==='Requested'
     ?`<p class="muted" style="text-align:center">No payment needed yet — waiting for the store to accept your booking. You'll pay ${money(booking.price)} after the service is done.</p>`
     :'';
-  return `<article class="card order-item-card premium-card"><div class="section-head"><h3>${html(booking.serviceName)}</h3><span class="chip">${html(status)}</span></div><p class="muted">${html(booking.date)} · ${html(booking.startTime)}${booking.expertName?` · with ${html(booking.expertName)}`:''}</p><p class="muted">Price ${money(booking.price)}${upfrontAmount>0?` · Prepaid ${money(upfrontAmount)}`:''}</p>${balanceNote}${paymentBlock}${bookingChatMarkup(booking,'customer')}</article>`;
+  const canCancel=['Requested','Pending Payment','Confirmed'].includes(status);
+  return `<article class="card order-item-card premium-card"><div class="section-head"><h3>${html(booking.serviceName)}</h3><span class="chip">${html(status)}</span></div><p class="muted">${html(booking.date)} · ${html(booking.startTime)}${booking.expertName?` · with ${html(booking.expertName)}`:''}</p><p class="muted">Price ${money(booking.price)}${upfrontAmount>0?` · Prepaid ${money(upfrontAmount)}`:''}</p>${balanceNote}${paymentBlock}${canCancel?`<div class="actions"><button class="btn small red" data-cancel-my-booking="${html(booking.id)}">Cancel Booking</button></div>`:''}${bookingChatMarkup(booking,'customer')}</article>`;
+}
+async function cancelCustomerBooking(booking,store,customer){
+  try{
+    const changes={status:'Cancelled',cancelledAt:now(),updatedAt:now()};
+    await api.update(bookingKind(booking.ownerId),booking.id,changes);
+    toast('Booking cancelled');
+    await loadAndRenderCustomerView(store,customer);
+  }catch(error){toast(error.message||'Could not cancel booking')}
 }
 async function submitBookingRazorpayPaymentForVerification(booking,store,customer,button=null,returned=false){
   if(!booking||booking.paymentMarkedAt)return;
@@ -2866,24 +2879,39 @@ async function applyEmergencyDelay(store,minutes){
     save();bookingsView();toast(`Delayed ${affected.length} booking${affected.length===1?'':'s'} by ${minutes} minutes`);
   }catch(error){toast(error.message||'Could not delay bookings')}
 }
+function confirmedBookingCompactMarkup(booking){
+  const ringing=ringingIds.has(booking.id);
+  const balance=Number(booking.balanceAmount)||0;
+  return `<div class="booking-compact-card ${ringing?'incoming-order':''}">${ringing?'<span class="incoming-order-beacon" aria-label="New booking" title="New booking"></span>':''}<div class="booking-compact-info"><strong>${html(booking.serviceName)}</strong><span class="muted">${html(booking.date)} · ${html(booking.startTime)}${booking.expertName?` · ${html(booking.expertName)}`:''} · ${html(booking.customerName||'Customer')}</span>${balance>0?`<span class="chip due">Balance ${money(balance)}</span>`:''}</div><div class="actions"><button class="btn small green" data-complete-booking="${html(booking.id)}">Complete</button><button class="btn small red" data-cancel-booking="${html(booking.id)}">Cancel</button></div></div>`;
+}
 function bookingsView(){
   refreshView=bookingsView;
   const store=activeStore();if(!store)return;
-  const active=(state.bookings||[]).filter(row=>row.storeId===store.id&&!['Completed','Cancelled'].includes(row.status)).sort((a,b)=>new Date(`${a.date}T${a.startTime}`)-new Date(`${b.date}T${b.startTime}`));
+  const today=indiaDateValue();
+  const dateFilter=$('#bookingsDateFilter')?.value??today;
+  const all=(state.bookings||[]).filter(row=>row.storeId===store.id&&!['Completed','Cancelled'].includes(row.status));
+  const filtered=(dateFilter?all.filter(row=>row.date===dateFilter):all).sort((a,b)=>new Date(`${a.date}T${a.startTime}`)-new Date(`${b.date}T${b.startTime}`));
+  const pending=filtered.filter(row=>['Requested','Pending Payment'].includes(row.status));
+  const confirmed=filtered.filter(row=>row.status==='Confirmed');
   $('#page').innerHTML=`<div class="section-head"><div><h1>Bookings</h1><p class="muted">Manage upcoming bookings for ${html(store.name||'this store')}.</p></div></div>
     <div class="card emergency-mode-card"><label class="option-toggle"><input id="emergencyModeToggle" type="checkbox" ${store.emergencyMode?'checked':''}><span><strong>Emergency Mode</strong><small>Pauses new bookings so you can catch up. Existing bookings stay — use the delay below to push them back.</small></span></label>${store.emergencyMode?`<div class="emergency-delay-row"><input id="emergencyDelayMinutes" type="number" min="5" step="5" value="30" placeholder="Minutes"><button class="btn small" id="applyEmergencyDelay" type="button">Apply delay to today's bookings</button></div>`:''}</div>
-    <div class="grid card-grid">${active.map(ownerBookingMarkup).join('')||'<div class="empty">No upcoming bookings.</div>'}</div>`;
+    <div class="date-filter-bar"><label>Date<input id="bookingsDateFilter" type="date" value="${html(dateFilter)}"></label><button class="btn small secondary" id="bookingsDateToday" type="button">Today</button><button class="btn small secondary" id="bookingsDateAll" type="button">All upcoming</button></div>
+    <div class="grid card-grid">${pending.map(ownerBookingMarkup).join('')||'<div class="empty">No bookings awaiting response.</div>'}</div>
+    ${confirmed.length?`<div class="section-head"><h2>Confirmed</h2></div><div class="booking-compact-list">${confirmed.map(confirmedBookingCompactMarkup).join('')}</div>`:''}`;
   $('#emergencyModeToggle').onchange=event=>toggleEmergencyMode(store,event.target.checked);
   $('#applyEmergencyDelay')?.addEventListener('click',()=>{
     const minutes=Math.max(5,Number($('#emergencyDelayMinutes').value)||0);
     if(!minutes)return toast('Enter how many minutes to delay by');
     applyEmergencyDelay(store,minutes);
   });
+  $('#bookingsDateFilter').onchange=refreshView;
+  $('#bookingsDateToday').onclick=()=>{$('#bookingsDateFilter').value=today;bookingsView()};
+  $('#bookingsDateAll').onclick=()=>{$('#bookingsDateFilter').value='';bookingsView()};
   $$('[data-confirm-booking]').forEach(button=>button.onclick=()=>confirmBookingPayment(button.dataset.confirmBooking));
   $$('[data-complete-booking]').forEach(button=>button.onclick=()=>completeBooking(button.dataset.completeBooking));
   $$('[data-cancel-booking]').forEach(button=>button.onclick=()=>cancelBooking(button.dataset.cancelBooking));
   $$('[data-reopen-booking-payment]').forEach(button=>button.onclick=()=>reopenBookingPayment(button.dataset.reopenBookingPayment));
-  bindBookingChatForms(active,'owner',refreshView);
+  bindBookingChatForms(pending,'owner',refreshView);
 }
 function bookingHistoryTimestamp(booking){return booking.completedAt||booking.cancelledAt||booking.updatedAt||booking.createdAt}
 function filterBookingsByIndiaDate(bookings,fromDate,toDate){
@@ -2911,13 +2939,14 @@ function bookingHistoryView(){
   const today=indiaDateValue(),fromInput=$('#bookingHistoryFrom')?.value||today,toInput=$('#bookingHistoryTo')?.value||today;
   const all=(state.bookings||[]).filter(row=>row.storeId===store?.id&&['Completed','Cancelled'].includes(row.status));
   const filtered=filterBookingsByIndiaDate(all,fromInput,toInput).sort((a,b)=>new Date(bookingHistoryTimestamp(b))-new Date(bookingHistoryTimestamp(a)));
-  $('#page').innerHTML=`<div class="section-head"><div><h1>Booking History</h1><p class="muted">Today's completed and cancelled bookings are shown by default. Select a From and To date for another period.</p></div><button class="btn small secondary" id="exportBookingHistory" ${filtered.length?'':'disabled'}>Export CSV</button></div><div class="date-filter-bar"><label>From<input id="bookingHistoryFrom" type="date" value="${html(fromInput)}" max="${html(toInput)}"></label><label>To<input id="bookingHistoryTo" type="date" value="${html(toInput)}" min="${html(fromInput)}"></label><button class="btn small secondary" id="bookingHistoryToday" type="button">Today</button></div><div class="grid stats">${metric('Bookings',filtered.length)}${metric('Revenue',money(filtered.filter(b=>b.status==='Completed').reduce((sum,b)=>sum+Number(b.price||0),0)))}</div><div class="card table-wrap"><table><thead><tr><th>Customer</th><th>Service</th><th>Expert</th><th>Amount</th><th>Status</th><th>Date</th></tr></thead><tbody>${filtered.map(bookingHistoryRow).join('')||'<tr><td colspan="6">No bookings in this period.</td></tr>'}</tbody></table></div>`;
+  $('#page').innerHTML=`<div class="section-head"><div><h1>Booking History</h1><p class="muted">Today's completed and cancelled bookings are shown by default. Select a From and To date for another period.</p></div><button class="btn small secondary" id="exportBookingHistory" ${filtered.length?'':'disabled'}>Export CSV</button></div><div class="date-filter-bar"><label>From<input id="bookingHistoryFrom" type="date" value="${html(fromInput)}" max="${html(toInput)}"></label><label>To<input id="bookingHistoryTo" type="date" value="${html(toInput)}" min="${html(fromInput)}"></label><button class="btn small secondary" id="bookingHistoryToday" type="button">Today</button></div><div class="grid stats">${metric('Bookings',filtered.length)}${metric('Revenue',money(filtered.filter(b=>b.status==='Completed').reduce((sum,b)=>sum+Number(b.price||0),0)))}</div><div class="card table-wrap"><table><thead><tr><th>Customer</th><th>Service</th><th>Expert</th><th>Amount</th><th>Status</th><th>Date</th><th>Actions</th></tr></thead><tbody>${filtered.map(bookingHistoryRow).join('')||'<tr><td colspan="7">No bookings in this period.</td></tr>'}</tbody></table></div>`;
   $('#bookingHistoryFrom').onchange=bookingHistoryView;$('#bookingHistoryTo').onchange=bookingHistoryView;
   $('#bookingHistoryToday').onclick=()=>{$('#bookingHistoryFrom').value=today;$('#bookingHistoryTo').value=today;bookingHistoryView()};
   $('#exportBookingHistory').onclick=()=>downloadBookingHistoryCsv(filtered,{filePrefix:`${store?.name||'store'}-bookings`.toLowerCase().replace(/[^a-z0-9]+/g,'-'),includeCustomer:true});
+  $$('[data-restore-booking]').forEach(button=>button.onclick=()=>restoreBooking(button.dataset.restoreBooking));
 }
 function bookingHistoryRow(booking){
-  return `<tr><td>${html(booking.customerName||'Customer')}</td><td>${html(booking.serviceName)}</td><td>${html(booking.expertName||'—')}</td><td>${money(booking.price)}</td><td>${html(booking.status)}</td><td>${new Date(bookingHistoryTimestamp(booking)).toLocaleString('en-IN',{timeZone:'Asia/Kolkata',dateStyle:'medium',timeStyle:'short'})}</td></tr>`;
+  return `<tr><td>${html(booking.customerName||'Customer')}</td><td>${html(booking.serviceName)}</td><td>${html(booking.expertName||'—')}</td><td>${money(booking.price)}</td><td>${html(booking.status)}</td><td>${new Date(bookingHistoryTimestamp(booking)).toLocaleString('en-IN',{timeZone:'Asia/Kolkata',dateStyle:'medium',timeStyle:'short'})}</td><td>${booking.status==='Cancelled'?`<button class="btn small secondary" data-restore-booking="${html(booking.id)}">Restore</button>`:''}</td></tr>`;
 }
 async function reopenBookingPayment(bookingId){
   const booking=(state.bookings||[]).find(row=>row.id===bookingId);if(!booking)return;
@@ -2951,9 +2980,8 @@ async function confirmBookingPayment(bookingId){
 }
 async function completeBooking(bookingId){
   const booking=(state.bookings||[]).find(row=>row.id===bookingId);if(!booking)return;
-  const hasBalance=Number(booking.balanceAmount)>0;
-  if(!confirm(hasBalance?`Mark this booking completed? Confirm the remaining balance of ${money(booking.balanceAmount)} has been collected.`:'Mark this booking as completed?'))return;
   try{
+    const hasBalance=Number(booking.balanceAmount)>0;
     const service=(state.services||[]).find(row=>row.id===booking.serviceId);
     const reminderDays=Math.max(0,Number(service?.reminderDays)||0);
     const changes={status:'Completed',completedAt:now(),balancePaid:true,balancePaidAt:hasBalance?now():booking.balancePaidAt||'',nextReminderAt:reminderDays?new Date(Date.now()+reminderDays*86400000).toISOString():'',updatedAt:now()};
@@ -2963,12 +2991,19 @@ async function completeBooking(bookingId){
 }
 async function cancelBooking(bookingId){
   const booking=(state.bookings||[]).find(row=>row.id===bookingId);if(!booking)return;
-  if(!confirm('Cancel this booking?'))return;
   try{
     const changes={status:'Cancelled',cancelledAt:now(),updatedAt:now()};
     await api.update(bookingKind(booking.ownerId),bookingId,changes);
     Object.assign(booking,changes);refreshView();toast('Booking cancelled');
   }catch(error){toast(error.message||'Could not cancel booking')}
+}
+async function restoreBooking(bookingId){
+  const booking=(state.bookings||[]).find(row=>row.id===bookingId);if(!booking)return;
+  try{
+    const changes={status:'Confirmed',cancelledAt:'',confirmedAt:now(),updatedAt:now()};
+    await api.update(bookingKind(booking.ownerId),bookingId,changes);
+    Object.assign(booking,changes);refreshView();toast('Booking restored');
+  }catch(error){toast(error.message||'Could not restore booking')}
 }
 async function importCatalogCsvFile(store,file){
   if(!file)return;
