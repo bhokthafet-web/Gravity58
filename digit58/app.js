@@ -315,8 +315,8 @@ state=load();
 
 let orderAlertTimer=null,orderAlertContext=null;
 const ringingIds=new Set();
-let knownOrderIds=new Set(),knownBuyRequestIds=new Set();
-let ownerOrdersUnsubscribe=null,ownerCardsUnsubscribe=null,ownerPromotionsUnsubscribe=null;
+let knownOrderIds=new Set(),knownBuyRequestIds=new Set(),knownBookingIds=new Set();
+let ownerOrdersUnsubscribe=null,ownerCardsUnsubscribe=null,ownerPromotionsUnsubscribe=null,ownerBookingsUnsubscribe=null;
 function orderAlertBeep(duration=.18,frequency=880){
   try{
     orderAlertContext||=new (window.AudioContext||window.webkitAudioContext)();
@@ -362,12 +362,14 @@ function playOwnerNotificationChime(){
 function ownerPortalIsActive(){return document.visibilityState==='visible'&&document.hasFocus()}
 function updateOrderAlertSound(){
   [...ringingIds].forEach(id=>{
-    const stillRinging=state.orders.some(row=>row.id===id&&['Requested','Minimum Approval Requested'].includes(row.status))||state.cards.some(row=>row.id===id&&row.status==='Buy Requested');
+    const stillRinging=state.orders.some(row=>row.id===id&&['Requested','Minimum Approval Requested'].includes(row.status))
+      ||state.cards.some(row=>row.id===id&&row.status==='Buy Requested')
+      ||(state.bookings||[]).some(row=>row.id===id&&['Requested','Pending Payment'].includes(row.status));
     if(!stillRinging)ringingIds.delete(id);
   });
   if(!ringingIds.size){if(orderAlertTimer)clearInterval(orderAlertTimer);orderAlertTimer=null;return}
   if(!orderAlertTimer){
-    if(!ownerPortalIsActive()){playOwnerNotificationChime();pendingAlertReplay=playOwnerNotificationChime}
+    playOwnerNotificationChime();pendingAlertReplay=playOwnerNotificationChime;
     orderAlertTimer=setInterval(()=>{if(ringingIds.size&&!ownerPortalIsActive()){playOwnerNotificationChime();pendingAlertReplay=playOwnerNotificationChime}},3500);
   }
 }
@@ -526,14 +528,17 @@ function startOwnerRealtime(){
   const ownerId=cloudOwnerId();if(!ownerId||!api?.subscribeKind)return;
   knownOrderIds=new Set(state.orders.map(row=>row.id));
   knownBuyRequestIds=new Set(state.cards.filter(row=>row.status==='Buy Requested').map(row=>row.id));
+  knownBookingIds=new Set((state.bookings||[]).map(row=>row.id));
   ownerOrdersUnsubscribe?.();
   ownerOrdersUnsubscribe=api.subscribeKind(orderKind(ownerId),()=>refreshOwnerOrdersRealtime());
   ownerCardsUnsubscribe?.();
   ownerCardsUnsubscribe=api.subscribeKind(cardKind(ownerId),()=>refreshOwnerCardsRealtime());
   ownerPromotionsUnsubscribe?.();
   ownerPromotionsUnsubscribe=api.subscribeKind(promotionKind(ownerId),()=>refreshOwnerPromotionsRealtime());
+  ownerBookingsUnsubscribe?.();
+  ownerBookingsUnsubscribe=api.subscribeKind(bookingKind(ownerId),()=>refreshOwnerBookingsRealtime());
 }
-function stopOwnerRealtime(){ownerOrdersUnsubscribe?.();ownerCardsUnsubscribe?.();ownerPromotionsUnsubscribe?.();ownerOrdersUnsubscribe=ownerCardsUnsubscribe=ownerPromotionsUnsubscribe=null;ringingIds.clear();knownOrderIds.clear();knownBuyRequestIds.clear();updateOrderAlertSound()}
+function stopOwnerRealtime(){ownerOrdersUnsubscribe?.();ownerCardsUnsubscribe?.();ownerPromotionsUnsubscribe?.();ownerBookingsUnsubscribe?.();ownerOrdersUnsubscribe=ownerCardsUnsubscribe=ownerPromotionsUnsubscribe=ownerBookingsUnsubscribe=null;ringingIds.clear();knownOrderIds.clear();knownBuyRequestIds.clear();knownBookingIds.clear();updateOrderAlertSound()}
 async function refreshOwnerOrdersRealtime(){
   const ownerId=cloudOwnerId();if(!ownerId)return;
   const orders=await api.list(orderKind(ownerId)).catch(()=>null);
@@ -543,6 +548,17 @@ async function refreshOwnerOrdersRealtime(){
   state.orders=orders;save();
   updateOrderAlertSound();
   if(isNew)toast('🔔 New order or minimum approval request received');
+  if(!$('.modal-backdrop'))refreshView();
+}
+async function refreshOwnerBookingsRealtime(){
+  const ownerId=cloudOwnerId();if(!ownerId)return;
+  const bookings=await api.list(bookingKind(ownerId)).catch(()=>null);
+  if(!bookings)return;
+  let isNew=false;
+  bookings.forEach(booking=>{if(['Requested','Pending Payment'].includes(booking.status)&&!knownBookingIds.has(booking.id)){ringingIds.add(booking.id);isNew=true}knownBookingIds.add(booking.id)});
+  state.bookings=bookings;save();
+  updateOrderAlertSound();
+  if(isNew)toast('🔔 New booking received');
   if(!$('.modal-backdrop'))refreshView();
 }
 async function refreshOwnerCardsRealtime(){
@@ -2417,7 +2433,7 @@ function openBookingModal(store,customer,services,experts,preselectServiceId='')
   const initialService=services.find(row=>row.id===preselectServiceId)||services[0];
   const initialWindow=bookingWindowForService(store,initialService);
   const slotOptions=generateSlotOptions(store);
-  modal('Book a Service',`<form id="bookingForm"><div class="field"><label>Service</label><select name="serviceId" id="bookingServiceSelect" required>${services.map(service=>`<option value="${html(service.id)}" ${service.id===initialService.id?'selected':''}>${html(service.name)} — ${money(service.price)}</option>`).join('')}</select></div>${experts.length?`<div class="field"><label>Expert <small>(optional)</small></label><select name="expertId"><option value="">No preference</option>${experts.map(expert=>`<option value="${html(expert.id)}">${html(expert.name)}</option>`).join('')}</select></div>`:''}<div class="form-grid"><div class="field"><label>Date</label><input name="date" type="date" id="bookingDateInput" min="${initialWindow.min}" max="${initialWindow.max}" required></div><div class="field"><label>Time</label><select name="startTime" required>${slotOptions.map(slot=>`<option value="${slot}">${slot}</option>`).join('')}</select></div></div><div class="field"><label>Phone</label><input name="phone" value="${html(customer.phone||'')}" required></div><p class="muted" id="bookingPriceNote"></p><button class="btn full" type="submit" id="bookingSubmitBtn" style="margin-top:14px">Book &amp; Pay Prepayment</button></form>`,()=>{
+  modal('Book a Service',`<form id="bookingForm"><div class="field"><label>Service</label><select name="serviceId" id="bookingServiceSelect" required>${services.map(service=>`<option value="${html(service.id)}" ${service.id===initialService.id?'selected':''}>${html(service.name)} — ${money(service.price)}</option>`).join('')}</select></div>${experts.length?`<div class="field"><label>Expert <small>(optional)</small></label><select name="expertId"><option value="">No preference</option>${experts.map(expert=>`<option value="${html(expert.id)}">${html(expert.name)}</option>`).join('')}</select></div>`:''}<div class="form-grid"><div class="field"><label>Date</label><input name="date" type="date" id="bookingDateInput" min="${initialWindow.min}" max="${initialWindow.max}" required></div><div class="field"><label>Time</label><select name="startTime" required>${slotOptions.map(slot=>`<option value="${slot}">${slot}</option>`).join('')}</select></div></div>${customer.phone?`<input type="hidden" name="phone" value="${html(customer.phone)}">`:`<div class="field"><label>Phone</label><input name="phone" required></div>`}<p class="muted" id="bookingPriceNote"></p><button class="btn full" type="submit" id="bookingSubmitBtn" style="margin-top:14px">Book &amp; Pay Prepayment</button></form>`,()=>{
     const updateNote=()=>{
       const service=services.find(row=>row.id===$('#bookingServiceSelect').value);if(!service)return;
       const prepayPercent=service.prepaymentPercent??100;
