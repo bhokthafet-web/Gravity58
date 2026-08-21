@@ -35,7 +35,7 @@
   function permissionSet(kind, userId, includeAdminTeam = false) {
     if (!configured || !Appwrite.Permission || !Appwrite.Role) return undefined;
     const permissions = [];
-    const readAny = ["advertisements", "slots", "posts", "digital_menus", "digital_menu_pricing"].includes(kind) || String(kind).startsWith("digital_menu_") && !["digital_menu_entitlements", "digital_menu_requests"].includes(kind) || String(kind).startsWith("digit58_store_") || String(kind).startsWith("digit58_promo_");
+    const readAny = ["advertisements", "slots", "posts", "digital_menus", "digital_menu_pricing"].includes(kind) || String(kind).startsWith("digital_menu_") && !["digital_menu_entitlements", "digital_menu_requests"].includes(kind) || String(kind).startsWith("digit58_store_") || String(kind).startsWith("digit58_promo_") || String(kind).startsWith("digit58_service_") || String(kind).startsWith("digit58_expert_");
     if (readAny) permissions.push(Appwrite.Permission.read(Appwrite.Role.any()));
     if (userId) {
       const role = Appwrite.Role.user(userId);
