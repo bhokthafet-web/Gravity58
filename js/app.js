@@ -2450,7 +2450,7 @@ function scheduleHeroFlowDots() {
   const heading = document.getElementById("heroHeading");
   if (!heading || window.matchMedia("(prefers-reduced-motion: reduce)").matches)
     return;
-  const states = ["dots-active", "refer-active"];
+  const states = ["dots-active", "eco-active"];
   let index = 0;
   const run = () => {
     const activeClass = states[index % states.length];
