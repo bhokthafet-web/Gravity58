@@ -451,6 +451,13 @@ function ringPendingOwnerOrders(store,customer,orders){
   pending.forEach(row=>pendingOwnerOrderRung.add(row.id));
   if(unrung.length)showIncomingOrderCall(store,customer,'New order from the store — review and accept it below',{title:'Incoming order!',hint:'Slide to view order'});
 }
+const pendingOwnerBookingRung=new Set();
+function ringPendingOwnerBookings(store,customer,bookings){
+  const pending=(bookings||[]).filter(row=>row.status==='Pending Customer Acceptance');
+  const unrung=pending.filter(row=>!pendingOwnerBookingRung.has(row.id));
+  pending.forEach(row=>pendingOwnerBookingRung.add(row.id));
+  if(unrung.length)showIncomingOrderCall(store,customer,'New booking from the store — review and accept it below',{title:'Incoming booking!',hint:'Slide to view booking'});
+}
 async function acceptOwnerOrder(store,customer,orderId){
   try{
     await api.executeFunction(api.config.digitalOrderFunctionId,{action:'digit58-accept-owner-order',ownerId:store.ownerId,orderId});
@@ -466,6 +473,21 @@ async function rejectOwnerOrder(store,customer,orderId){
     toast('Order rejected');
     await loadAndRenderCustomerView(store,customer);
   }catch(error){toast(error.message||'Could not reject the order')}
+}
+async function acceptOwnerBooking(store,customer,bookingId){
+  try{
+    await api.executeFunction(api.config.digitalOrderFunctionId,{action:'digit58-accept-owner-booking',ownerId:store.ownerId,bookingId});
+    toast('Booking accepted — continue to confirm your slot');
+    await loadAndRenderCustomerView(store,customer);
+  }catch(error){toast(error.message||'Could not accept the booking')}
+}
+async function rejectOwnerBooking(store,customer,bookingId){
+  if(!confirm('Reject this booking from the store?'))return;
+  try{
+    await api.executeFunction(api.config.digitalOrderFunctionId,{action:'digit58-reject-owner-booking',ownerId:store.ownerId,bookingId});
+    toast('Booking rejected');
+    await loadAndRenderCustomerView(store,customer);
+  }catch(error){toast(error.message||'Could not reject the booking')}
 }
 let medicineAlarmTimer=null,customerCoursesCache=[];
 const medicineAlarmRung=new Set();
@@ -1624,6 +1646,23 @@ async function removeCustomer(customerId){
 function customerDetailView(customerId){
   refreshView=()=>customerDetailView(customerId);
   const customer=state.customers.find(row=>row.id===customerId);if(!customer)return;
+  const store=state.stores.find(row=>row.id===customer.storeId);
+  if(isServiceStore(store)){
+    const services=(state.services||[]).filter(row=>row.storeId===store.id);
+    const experts=(state.experts||[]).filter(row=>row.storeId===store.id&&row.active!==false);
+    const bookings=(state.bookings||[]).filter(row=>row.storeId===store.id&&row.customerAccountId===customer.customerAccountId&&!['Completed','Cancelled'].includes(row.status)).sort((a,b)=>new Date(`${a.date}T${a.startTime}`)-new Date(`${b.date}T${b.startTime}`));
+    $('#page').innerHTML=`<div class="section-head"><div><h1>${html(customer.customerName||'Customer')}</h1><p class="muted">${html(customer.customerEmail||'')}</p></div><div class="actions"><button class="btn secondary" id="backToWall">← Back</button><button class="btn" id="addOwnerBooking" ${services.length?'':'disabled'}>+ Book Service</button></div></div>
+    <div class="section-head"><h2>Bookings</h2></div>
+    <div class="grid card-grid">${bookings.map(ownerBookingMarkup).join('')||'<div class="empty">No active bookings from this customer.</div>'}</div>`;
+    $('#backToWall').onclick=()=>{view='wall';renderShell()};
+    $('#addOwnerBooking').onclick=()=>openBookingModal(store,customer,services,experts,'',customer);
+    $$('[data-confirm-booking]').forEach(button=>button.onclick=()=>confirmBookingPayment(button.dataset.confirmBooking));
+    $$('[data-complete-booking]').forEach(button=>button.onclick=()=>completeBooking(button.dataset.completeBooking));
+    $$('[data-cancel-booking]').forEach(button=>button.onclick=()=>cancelBooking(button.dataset.cancelBooking));
+    $$('[data-reopen-booking-payment]').forEach(button=>button.onclick=()=>reopenBookingPayment(button.dataset.reopenBookingPayment));
+    bindBookingChatForms(bookings,'owner',refreshView);
+    return;
+  }
   const cards=customerCards(customer.customerAccountId,customer.storeId);
   const orders=activeOrders(customerOrders(customer.customerAccountId,customer.storeId)).sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
   $('#page').innerHTML=`<div class="section-head"><div><h1>${html(customer.customerName||'Customer')}</h1><p class="muted">${html(customer.customerEmail||'')}</p></div><div class="actions"><button class="btn secondary" id="backToWall">← Back</button><button class="btn secondary" id="addOwnerOrder">+ Create Order</button><button class="btn" id="addCard">+ Add Reminder Card</button></div></div>
@@ -2281,6 +2320,7 @@ function renderCustomerCards(store,customer,cards,orders=[],promotions=[],course
   if(activePromotionStoreId!==store.id){activePromotionStoreId=store.id;customerPromotionQuantities.clear()}
   ringDueReminders(cards);
   ringPendingOwnerOrders(store,customer,orders);
+  ringPendingOwnerBookings(store,customer,bookings);
   customerCoursesCache=courses;
   const active=activeOrders(orders).sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
   const history=orderHistoryOrders(orders).sort((a,b)=>new Date(b.updatedAt||b.createdAt)-new Date(a.updatedAt||a.createdAt));
@@ -2368,6 +2408,8 @@ function renderCustomerCards(store,customer,cards,orders=[],promotions=[],course
     const booking=activeBookings.find(row=>row.id===button.dataset.cancelMyBooking);
     if(booking)cancelCustomerBooking(booking,store,customer);
   });
+  $$('[data-accept-owner-booking]').forEach(button=>button.onclick=()=>acceptOwnerBooking(store,customer,button.dataset.acceptOwnerBooking));
+  $$('[data-reject-owner-booking]').forEach(button=>button.onclick=()=>rejectOwnerBooking(store,customer,button.dataset.rejectOwnerBooking));
   initShakeDetection();
   initPushNotifications(store,customer);
   (typeof bindAndroidAppFooter==='function'&&bindAndroidAppFooter());
@@ -2437,10 +2479,13 @@ function customerBookingMarkup(booking,store){
     :status==='Requested'
     ?`<p class="muted" style="text-align:center">No payment needed yet — waiting for the store to accept your booking. You'll pay ${money(booking.price)} after the service is done.</p>`
     :'';
+  const pendingAcceptanceBlock=status==='Pending Customer Acceptance'
+    ?`<div class="pending-acceptance-note"><p class="muted">The store started this booking on your behalf. Accept it to continue to slot confirmation.</p><button type="button" class="btn full green" data-accept-owner-booking="${html(booking.id)}">Accept Booking</button><button type="button" class="btn full secondary" data-reject-owner-booking="${html(booking.id)}">Reject</button></div>`
+    :'';
   const canCancel=['Requested','Pending Payment','Confirmed'].includes(status);
   const expertWaHref=whatsappLink(booking.expertPhone,`Hi ${booking.expertName||'there'}, this is regarding my ${booking.serviceName} booking on ${booking.date} at ${booking.startTime}.`);
   const bookingActions=[expertWaHref?`<a class="btn small whatsapp-btn" href="${expertWaHref}" target="_blank" rel="noopener noreferrer">💬 WhatsApp ${html(booking.expertName||'Expert')}</a>`:'',canCancel?`<button class="btn small red" data-cancel-my-booking="${html(booking.id)}">Cancel Booking</button>`:''].filter(Boolean).join('');
-  return `<article class="card order-item-card premium-card"><div class="section-head"><h3>${html(booking.serviceName)}</h3><span class="chip">${html(status)}</span></div><p class="muted">${html(booking.date)} · ${html(booking.startTime)}${booking.expertName?` · with ${html(booking.expertName)}`:''}</p><p class="muted">Price ${money(booking.price)}${upfrontAmount>0?` · Prepaid ${money(upfrontAmount)}`:''}</p>${balanceNote}${paymentBlock}${bookingActions?`<div class="actions">${bookingActions}</div>`:''}${bookingChatMarkup(booking,'customer')}</article>`;
+  return `<article class="card order-item-card premium-card"><div class="section-head"><h3>${html(booking.serviceName)}</h3><span class="chip">${html(status)}</span></div><p class="muted">${html(booking.date)} · ${html(booking.startTime)}${booking.expertName?` · with ${html(booking.expertName)}`:''}</p><p class="muted">Price ${money(booking.price)}${upfrontAmount>0?` · Prepaid ${money(upfrontAmount)}`:''}</p>${balanceNote}${pendingAcceptanceBlock}${paymentBlock}${bookingActions?`<div class="actions">${bookingActions}</div>`:''}${bookingChatMarkup(booking,'customer')}</article>`;
 }
 async function cancelCustomerBooking(booking,store,customer){
   try{
@@ -2515,12 +2560,15 @@ async function fetchBookingAvailability(store,date){
 function slotButtonMarkup(startTime,booked,selected){
   return `<button type="button" class="slot-btn ${booked?'booked':'available'} ${selected?'selected':''}" data-slot="${html(startTime)}" ${booked?'disabled':''}>${html(startTime)}</button>`;
 }
-function openBookingModal(store,customer,services,experts,preselectServiceId=''){
+function openBookingModal(store,customer,services,experts,preselectServiceId='',ownerBookingFor=null){
   if(!services.length)return toast('This store has not added any services yet');
   const initialService=services.find(row=>row.id===preselectServiceId)||services[0];
   const initialWindow=bookingWindowForService(store,initialService);
   let slotFetchToken=0;
-  modal('Book a Service',`<form id="bookingForm"><div class="field"><label>Service</label><select name="serviceId" id="bookingServiceSelect" required>${services.map(service=>`<option value="${html(service.id)}" ${service.id===initialService.id?'selected':''}>${html(service.name)} — ${money(service.price)}</option>`).join('')}</select></div>${experts.length?`<div class="field"><label>Expert <small>(optional)</small></label><select name="expertId" id="bookingExpertSelect"><option value="">No preference</option>${experts.map(expert=>`<option value="${html(expert.id)}">${html(expert.name)}</option>`).join('')}</select></div>`:''}<div class="field"><label>Date</label><input name="date" type="date" id="bookingDateInput" min="${initialWindow.min}" max="${initialWindow.max}" value="${initialWindow.min}" required></div><div class="field"><label>Time</label><div class="slot-grid" id="bookingSlotGrid"><p class="muted">Loading slots…</p></div><input type="hidden" name="startTime" id="bookingStartTimeInput" required><p class="slot-legend"><span class="slot-legend-dot available"></span>Available<span class="slot-legend-dot booked"></span>Booked</p></div><p class="muted" id="bookingPriceNote"></p><button class="btn full" type="submit" id="bookingSubmitBtn" style="margin-top:14px" disabled>Book &amp; Pay Prepayment</button></form>`,()=>{
+  const title=ownerBookingFor?'Book Service for Customer':'Book a Service';
+  const intro=ownerBookingFor?`<p class="muted">Creates a booking for ${html(ownerBookingFor.customerName||'this customer')}. They'll get a call-style alert and must accept it before it's confirmed.</p>`:'';
+  const submitLabel=ownerBookingFor?'Send to Customer':'Book & Pay Prepayment';
+  modal(title,`<form id="bookingForm">${intro}<div class="field"><label>Service</label><select name="serviceId" id="bookingServiceSelect" required>${services.map(service=>`<option value="${html(service.id)}" ${service.id===initialService.id?'selected':''}>${html(service.name)} — ${money(service.price)}</option>`).join('')}</select></div>${experts.length?`<div class="field"><label>Expert <small>(optional)</small></label><select name="expertId" id="bookingExpertSelect"><option value="">No preference</option>${experts.map(expert=>`<option value="${html(expert.id)}">${html(expert.name)}</option>`).join('')}</select></div>`:''}<div class="field"><label>Date</label><input name="date" type="date" id="bookingDateInput" min="${initialWindow.min}" max="${initialWindow.max}" value="${initialWindow.min}" required></div><div class="field"><label>Time</label><div class="slot-grid" id="bookingSlotGrid"><p class="muted">Loading slots…</p></div><input type="hidden" name="startTime" id="bookingStartTimeInput" required><p class="slot-legend"><span class="slot-legend-dot available"></span>Available<span class="slot-legend-dot booked"></span>Booked</p></div><p class="muted" id="bookingPriceNote"></p><button class="btn full" type="submit" id="bookingSubmitBtn" style="margin-top:14px" disabled>${submitLabel}</button></form>`,()=>{
     const currentService=()=>services.find(row=>row.id===$('#bookingServiceSelect').value);
     const updateSubmitState=()=>{$('#bookingSubmitBtn').disabled=!$('#bookingStartTimeInput').value};
     const renderSlotGrid=async()=>{
@@ -2557,9 +2605,11 @@ function openBookingModal(store,customer,services,experts,preselectServiceId='')
       const cancellationCharge=service.cancellationChargeEnabled?Math.max(0,Number(service.cancellationChargeAmount)||0):0;
       const upfront=Math.round((prepay+cancellationCharge)*100)/100;
       const balance=Math.round((service.price*100-prepay*100-cancellationCharge*100))/100;
-      const cancelNote=cancellationCharge>0?` (includes ${money(cancellationCharge)} cancellation guarantee, applied to your bill)`:'';
-      $('#bookingPriceNote').textContent=upfront<=0?`No payment needed to book — pay ${money(service.price)} after the service is done.`:balance>0?`Pay ${money(upfront)} now${cancelNote}, ${money(balance)} balance after service.`:`Pay ${money(upfront)} now${cancelNote}.`;
-      $('#bookingSubmitBtn').textContent=upfront<=0?'Request Booking':'Book & Pay Prepayment';
+      const cancelNote=cancellationCharge>0?` (includes ${money(cancellationCharge)} cancellation guarantee, applied to their bill)`:'';
+      $('#bookingPriceNote').textContent=ownerBookingFor
+        ?(upfront<=0?`No prepayment required — the customer will pay ${money(service.price)} after the service is done.`:`The customer will be asked to pay ${money(upfront)}${cancelNote} to confirm this booking.`)
+        :(upfront<=0?`No payment needed to book — pay ${money(service.price)} after the service is done.`:balance>0?`Pay ${money(upfront)} now${cancelNote}, ${money(balance)} balance after service.`:`Pay ${money(upfront)} now${cancelNote}.`);
+      if(!ownerBookingFor)$('#bookingSubmitBtn').textContent=upfront<=0?'Request Booking':'Book & Pay Prepayment';
       const window=bookingWindowForService(store,service),dateInput=$('#bookingDateInput');
       dateInput.min=window.min;dateInput.max=window.max;
       if(dateInput.value&&(dateInput.value<window.min||dateInput.value>window.max))dateInput.value=window.min;
@@ -2575,9 +2625,16 @@ function openBookingModal(store,customer,services,experts,preselectServiceId='')
       if(!values.startTime)return toast('Choose a time slot');
       button.disabled=true;
       try{
-        const result=await api.executeFunction(api.config.digitalOrderFunctionId,{action:'digit58-create-booking',ownerId:store.ownerId,storeId:store.id,serviceId:values.serviceId,expertId:values.expertId||'',date:values.date,startTime:values.startTime,customerName:customer.customerName,customerEmail:customer.customerEmail,phone:customer.phone||''});
-        closeModal();toast(result?.booking?.status==='Requested'?'Booking requested — the store will confirm it soon':'Slot booked — pay the prepayment to confirm');
-        await loadAndRenderCustomerView(store,customer);
+        if(ownerBookingFor){
+          const result=await api.executeFunction(api.config.digitalOrderFunctionId,{action:'digit58-owner-create-booking',ownerId:store.ownerId,storeId:store.id,customerAccountId:ownerBookingFor.customerAccountId,serviceId:values.serviceId,expertId:values.expertId||'',date:values.date,startTime:values.startTime});
+          closeModal();toast('Booking sent — waiting for the customer to accept it');
+          if(result?.booking){state.bookings=[...(state.bookings||[]),result.booking];save()}
+          customerDetailView(ownerBookingFor.id);
+        }else{
+          const result=await api.executeFunction(api.config.digitalOrderFunctionId,{action:'digit58-create-booking',ownerId:store.ownerId,storeId:store.id,serviceId:values.serviceId,expertId:values.expertId||'',date:values.date,startTime:values.startTime,customerName:customer.customerName,customerEmail:customer.customerEmail,phone:customer.phone||''});
+          closeModal();toast(result?.booking?.status==='Requested'?'Booking requested — the store will confirm it soon':'Slot booked — pay the prepayment to confirm');
+          await loadAndRenderCustomerView(store,customer);
+        }
       }catch(error){button.disabled=false;updateSubmitState();toast(error.message||'Could not book this slot')}
     };
   });

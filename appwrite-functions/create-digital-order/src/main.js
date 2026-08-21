@@ -865,7 +865,7 @@ function digit58LunchBreakRange(store) {
   return { start, end: start + 60 };
 }
 
-async function createDigit58Booking(call, input, userId) {
+async function createDigit58Booking(call, input, userId, options = {}) {
   const ownerId = text(input.ownerId, 64), storeId = text(input.storeId, 40), serviceId = text(input.serviceId, 40), expertId = text(input.expertId, 40);
   if (!ownerId || !storeId || !serviceId) throw new Error('Booking details are missing.');
   const date = text(input.date, 10), startTime = text(input.startTime, 5);
@@ -939,7 +939,7 @@ async function createDigit58Booking(call, input, userId) {
     phone: normalisePhone(input.phone).slice(0, 15),
     date, startTime, durationMinutes, price, prepaymentPercent, prepaymentAmount, cancellationChargeAmount, upfrontAmount, balanceAmount,
     upiId: upfrontAmount > 0 ? upiId : '', upiUri: upfrontAmount > 0 ? buildDigit58UpiUri(upiId, store.name, upfrontAmount, bookingId) : '',
-    status: upfrontAmount > 0 ? 'Pending Payment' : 'Requested', paymentMarkedAt: '', balancePaid: false, balancePaidAt: '',
+    status: options.initialStatus || (upfrontAmount > 0 ? 'Pending Payment' : 'Requested'), paymentMarkedAt: '', balancePaid: false, balancePaidAt: '',
     createdAt, updatedAt: createdAt,
   };
   const created = await createRow(call, bookingId, digit58BookingKind(ownerId), record, rowPermissionsFor([ownerId, userId]));
@@ -954,6 +954,45 @@ async function getDigit58SlotStatus(call, input) {
     .filter(row => row.storeId === storeId && row.date === date && row.status !== 'Cancelled')
     .map(row => ({ startTime: row.startTime, durationMinutes: Math.max(5, finite(row.durationMinutes, 30)), expertId: row.expertId || '' }));
   return { occupied };
+}
+
+async function createDigit58OwnerBooking(call, input, userId) {
+  const ownerId = text(input.ownerId, 64), storeId = text(input.storeId, 40), customerAccountId = text(input.customerAccountId, 64);
+  if (userId !== ownerId) { const denied = new Error('Only the store owner can create this booking.'); denied.code = 403; throw denied; }
+  if (!storeId || !customerAccountId) throw new Error('Customer details are missing.');
+  const customerRows = await listRowsByKind(call, digit58CustomerKind(ownerId));
+  const customer = customerRows.map(cleanRow).find(row => row.storeId === storeId && row.customerAccountId === customerAccountId);
+  if (!customer) throw new Error('This customer is not linked to the selected store.');
+  return createDigit58Booking(call, {
+    ownerId, storeId, serviceId: input.serviceId, expertId: input.expertId, date: input.date, startTime: input.startTime,
+    customerName: customer.customerName, customerEmail: customer.customerEmail, phone: customer.phone,
+  }, customerAccountId, { initialStatus: 'Pending Customer Acceptance' });
+}
+
+async function acceptDigit58OwnerBooking(call, input, userId) {
+  const ownerId = text(input.ownerId, 64), bookingId = text(input.bookingId, 40);
+  if (!ownerId || !bookingId) throw new Error('Booking details are missing.');
+  const row = await call(`/tablesdb/${DATABASE_ID}/tables/${TABLE_ID}/rows/${encodeURIComponent(bookingId)}`);
+  if (row.kind !== digit58BookingKind(ownerId)) throw new Error('This is not a booking.');
+  const booking = cleanRow(row);
+  if (booking.customerAccountId !== userId) { const denied = new Error("Only this booking's customer can accept it."); denied.code = 403; throw denied; }
+  if (booking.status !== 'Pending Customer Acceptance') throw new Error('This booking has already been handled.');
+  const updatedAt = new Date().toISOString();
+  const changes = { status: Number(booking.upfrontAmount) > 0 ? 'Pending Payment' : 'Requested', acceptedByCustomerAt: updatedAt, updatedAt };
+  return updateRow(call, bookingId, { ...booking, ...changes });
+}
+
+async function rejectDigit58OwnerBooking(call, input, userId) {
+  const ownerId = text(input.ownerId, 64), bookingId = text(input.bookingId, 40);
+  if (!ownerId || !bookingId) throw new Error('Booking details are missing.');
+  const row = await call(`/tablesdb/${DATABASE_ID}/tables/${TABLE_ID}/rows/${encodeURIComponent(bookingId)}`);
+  if (row.kind !== digit58BookingKind(ownerId)) throw new Error('This is not a booking.');
+  const booking = cleanRow(row);
+  if (booking.customerAccountId !== userId) { const denied = new Error("Only this booking's customer can reject it."); denied.code = 403; throw denied; }
+  if (booking.status !== 'Pending Customer Acceptance') throw new Error('This booking has already been handled.');
+  const updatedAt = new Date().toISOString();
+  const changes = { status: 'Cancelled', cancelledAt: updatedAt, updatedAt };
+  return updateRow(call, bookingId, { ...booking, ...changes });
 }
 
 async function requestDigit58BuyAgain(call, input, userId) {
@@ -1350,6 +1389,18 @@ export default async ({ req, res, error }) => {
     if (requestBody?.action === 'digit58-get-slot-status') {
       const call = appwriteClient(req);
       return res.json({ ok: true, ...(await getDigit58SlotStatus(call, requestBody)) });
+    }
+    if (requestBody?.action === 'digit58-owner-create-booking') {
+      const call = appwriteClient(req);
+      return res.json({ ok: true, booking: await createDigit58OwnerBooking(call, requestBody, userId) }, 201);
+    }
+    if (requestBody?.action === 'digit58-accept-owner-booking') {
+      const call = appwriteClient(req);
+      return res.json({ ok: true, booking: await acceptDigit58OwnerBooking(call, requestBody, userId) });
+    }
+    if (requestBody?.action === 'digit58-reject-owner-booking') {
+      const call = appwriteClient(req);
+      return res.json({ ok: true, booking: await rejectDigit58OwnerBooking(call, requestBody, userId) });
     }
     if (requestBody?.action === 'digit58-create-refill-order') {
       const call = appwriteClient(req);
