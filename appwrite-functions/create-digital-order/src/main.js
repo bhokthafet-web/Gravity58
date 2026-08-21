@@ -900,7 +900,7 @@ async function createDigit58Booking(call, input, userId) {
   if (conflict) throw new Error('This slot has just been booked by someone else. Choose another time.');
 
   const price = Math.max(0, finite(service.price));
-  const prepaymentPercent = Math.min(100, Math.max(1, Math.round(finite(service.prepaymentPercent, 100))));
+  const prepaymentPercent = Math.min(100, Math.max(0, Math.round(finite(service.prepaymentPercent, 100))));
   const prepaymentAmount = Math.round(price * prepaymentPercent) / 100;
   const balanceAmount = Math.round((price * 100 - prepaymentAmount * 100)) / 100;
   const bookingId = digit58Id('booking');
@@ -911,8 +911,8 @@ async function createDigit58Booking(call, input, userId) {
     customerAccountId: userId, customerName: text(input.customerName, 120), customerEmail: text(input.customerEmail, 250),
     phone: normalisePhone(input.phone).slice(0, 15),
     date, startTime, price, prepaymentPercent, prepaymentAmount, balanceAmount,
-    upiId, upiUri: buildDigit58UpiUri(upiId, store.name, prepaymentAmount, bookingId),
-    status: 'Pending Payment', paymentMarkedAt: '', balancePaid: false, balancePaidAt: '',
+    upiId: prepaymentAmount > 0 ? upiId : '', upiUri: prepaymentAmount > 0 ? buildDigit58UpiUri(upiId, store.name, prepaymentAmount, bookingId) : '',
+    status: prepaymentAmount > 0 ? 'Pending Payment' : 'Requested', paymentMarkedAt: '', balancePaid: false, balancePaidAt: '',
     createdAt, updatedAt: createdAt,
   };
   const created = await createRow(call, bookingId, digit58BookingKind(ownerId), record, rowPermissionsFor([ownerId, userId]));
