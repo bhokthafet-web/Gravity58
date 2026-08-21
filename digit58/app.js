@@ -314,6 +314,18 @@ function load(){try{return {...state,...JSON.parse(localStorage.getItem('gravity
 state=load();
 
 let orderAlertTimer=null,orderAlertContext=null;
+// Browsers block AudioContext playback until a real user gesture has
+// occurred on the page — without this, the very first alert of a
+// session can fail silently if an order/booking arrives before the
+// owner has clicked anything. Unlock it proactively on first interaction.
+function unlockOrderAlertAudio(){
+  try{
+    orderAlertContext||=new (window.AudioContext||window.webkitAudioContext)();
+    if(orderAlertContext.state==='suspended')orderAlertContext.resume();
+  }catch{}
+}
+document.addEventListener('pointerdown',unlockOrderAlertAudio,{passive:true,once:true});
+document.addEventListener('keydown',unlockOrderAlertAudio,{once:true});
 const ringingIds=new Set();
 let knownOrderIds=new Set(),knownBuyRequestIds=new Set(),knownBookingIds=new Set();
 let ownerOrdersUnsubscribe=null,ownerCardsUnsubscribe=null,ownerPromotionsUnsubscribe=null,ownerBookingsUnsubscribe=null;
@@ -850,7 +862,7 @@ function siteFooter(forCustomer){
 }
 function renderShell(){
   const store=activeStore();
-  app.innerHTML=`<div class="shell"><aside class="sidebar"><a class="brand" href="../"><svg class="brand-mark" viewBox="0 0 120 120" fill="none" stroke="#7fffd4" stroke-width="8" aria-hidden="true"><circle cx="60" cy="26" r="15"/><circle cx="28" cy="82" r="15"/><circle cx="92" cy="82" r="15"/></svg><div><strong>Refills</strong><small class="muted">Store workspace</small></div></a><nav class="nav">${navButton('dashboard','◉','Dashboard')}${navButton('stores','◫','My Stores')}${navButton('promotions','✦','Promotions')}${navButton('brands','♟','Brand Orders')}${navButton('wall','☰','Customer Wall')}${isServiceStore(store)?`${navButton('services','🛎','Services')}${navButton('experts','🧑‍💼','Experts')}${navButton('availability','🗓','Availability')}${navButton('bookings','📅','Bookings')}`:`${navButton('orders','🧾','Orders')}${navButton('orderHistory','🕘','Order History')}${navButton('catalog','▦','Catalog')}`}${navButton('subscription','♢','Subscription')}${navButton('referrals','🎁','Refer & Earn')}${navButton('settings','⚙','Settings')}${hasActiveEntitlement()?`<a class="btn small" style="text-align:center;text-decoration:none" href="../pos/?source=digit58" target="_blank" rel="noopener">▣ Open POS</a>`:''}<button id="logout">⇥ Logout</button></nav></aside><main class="main"><header class="topbar"><div>${state.stores.length?`<select id="storeSwitch">${state.stores.map(row=>`<option value="${html(row.id)}" ${row.id===state.activeStoreId?'selected':''}>${html(row.name)}</option>`).join('')}</select>`:'<strong>No store yet</strong>'}</div><nav class="g58-topbar-home" aria-label="Quick links"><a href="https://www.g58.in/" aria-label="Home"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10v9a1 1 0 0 0 1 1h11a1 1 0 0 0 1-1v-9"/><path d="M9.5 20v-6h5v6"/></svg><span>Home</span></a><a href="/digit58/" aria-label="Refills"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11A8 8 0 0 0 6.3 6.3L4 8.6"/><path d="M4 4v4.6h4.6"/><path d="M4 13a8 8 0 0 0 13.7 4.7L20 15.4"/><path d="M20 20v-4.6h-4.6"/></svg><span>Refills</span></a><a href="/digital-menu/" aria-label="Digital Menu"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 3v6a2 2 0 0 0 2 2h0"/><path d="M9 3v18"/><path d="M7 3v5"/><path d="M15 3c-1.2 1.4-1.2 6.6 0 8 .5.6 1 .8 1 1.5V21"/></svg><span>Digital Menu</span></a></nav><span class="status-pill"><span class="dot"></span>${html(session?.email||'')}</span></header><section class="content" id="page"></section></main></div>${siteFooter()}${floatingSupportButton('digit58')}`;
+  app.innerHTML=`<div class="shell"><aside class="sidebar"><a class="brand" href="../"><svg class="brand-mark" viewBox="0 0 120 120" fill="none" stroke="#7fffd4" stroke-width="8" aria-hidden="true"><circle cx="60" cy="26" r="15"/><circle cx="28" cy="82" r="15"/><circle cx="92" cy="82" r="15"/></svg><div><strong>Refills</strong><small class="muted">Store workspace</small></div></a><nav class="nav">${navButton('dashboard','◉','Dashboard')}${navButton('stores','◫','My Stores')}${navButton('promotions','✦','Promotions')}${navButton('brands','♟','Brand Orders')}${navButton('wall','☰','Customer Wall')}${isServiceStore(store)?`${navButton('services','🛎','Services')}${navButton('experts','🧑‍💼','Experts')}${navButton('availability','🗓','Availability')}${navButton('bookings','📅','Bookings')}${navButton('bookingHistory','🕘','Booking History')}`:`${navButton('orders','🧾','Orders')}${navButton('orderHistory','🕘','Order History')}${navButton('catalog','▦','Catalog')}`}${navButton('subscription','♢','Subscription')}${navButton('referrals','🎁','Refer & Earn')}${navButton('settings','⚙','Settings')}${hasActiveEntitlement()?`<a class="btn small" style="text-align:center;text-decoration:none" href="../pos/?source=digit58" target="_blank" rel="noopener">▣ Open POS</a>`:''}<button id="logout">⇥ Logout</button></nav></aside><main class="main"><header class="topbar"><div>${state.stores.length?`<select id="storeSwitch">${state.stores.map(row=>`<option value="${html(row.id)}" ${row.id===state.activeStoreId?'selected':''}>${html(row.name)}</option>`).join('')}</select>`:'<strong>No store yet</strong>'}</div><nav class="g58-topbar-home" aria-label="Quick links"><a href="https://www.g58.in/" aria-label="Home"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10v9a1 1 0 0 0 1 1h11a1 1 0 0 0 1-1v-9"/><path d="M9.5 20v-6h5v6"/></svg><span>Home</span></a><a href="/digit58/" aria-label="Refills"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11A8 8 0 0 0 6.3 6.3L4 8.6"/><path d="M4 4v4.6h4.6"/><path d="M4 13a8 8 0 0 0 13.7 4.7L20 15.4"/><path d="M20 20v-4.6h-4.6"/></svg><span>Refills</span></a><a href="/digital-menu/" aria-label="Digital Menu"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 3v6a2 2 0 0 0 2 2h0"/><path d="M9 3v18"/><path d="M7 3v5"/><path d="M15 3c-1.2 1.4-1.2 6.6 0 8 .5.6 1 .8 1 1.5V21"/></svg><span>Digital Menu</span></a></nav><span class="status-pill"><span class="dot"></span>${html(session?.email||'')}</span></header><section class="content" id="page"></section></main></div>${siteFooter()}${floatingSupportButton('digit58')}`;
   $$('[data-view]').forEach(button=>button.onclick=()=>{view=button.dataset.view;renderShell()});
   $('#logout').onclick=async()=>{stopOwnerRealtime();await api.logout();session=null;renderOwnerAuth()};
   $('#storeSwitch')?.addEventListener('change',event=>{state.activeStoreId=event.target.value;save();renderShell()});
@@ -858,7 +870,7 @@ function renderShell(){
   renderView();
 }
 function navButton(key,icon,label){return `<button data-view="${key}" class="${view===key?'active':''}"><span>${icon}</span>${label}</button>`}
-function renderView(){if(!activeStore()&&view!=='stores'&&view!=='settings'&&view!=='subscription'&&view!=='referrals'){view='stores';return renderShell()}({dashboard:dashboardView,stores:storesView,promotions:promotionsView,brands:brandPartnersView,wall:customerWallView,orders:ordersView,orderHistory:orderHistoryView,catalog:catalogView,services:servicesView,experts:expertsView,availability:availabilityView,bookings:bookingsView,subscription:subscriptionView,referrals:referEarnView,settings:settingsView}[view]||dashboardView)()}
+function renderView(){if(!activeStore()&&view!=='stores'&&view!=='settings'&&view!=='subscription'&&view!=='referrals'){view='stores';return renderShell()}({dashboard:dashboardView,stores:storesView,promotions:promotionsView,brands:brandPartnersView,wall:customerWallView,orders:ordersView,orderHistory:orderHistoryView,catalog:catalogView,services:servicesView,experts:expertsView,availability:availabilityView,bookings:bookingsView,bookingHistory:bookingHistoryView,subscription:subscriptionView,referrals:referEarnView,settings:settingsView}[view]||dashboardView)()}
 function ordersView(){
   refreshView=ordersView;
   const orders=activeOrders(state.orders).sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
@@ -2255,11 +2267,13 @@ function renderCustomerCards(store,customer,cards,orders=[],promotions=[],course
   const marqueePromotions=promotions.length?Array.from({length:Math.max(1,Math.ceil(6/promotions.length))},()=>promotions).flat():[];
   const serviceStoreFlag=isServiceStore(store);
   const activeBookings=bookings.filter(row=>!['Completed','Cancelled'].includes(row.status)).sort((a,b)=>new Date(`${a.date}T${a.startTime}`)-new Date(`${b.date}T${b.startTime}`));
-  const pastBookings=bookings.filter(row=>['Completed','Cancelled'].includes(row.status)).sort((a,b)=>new Date(`${b.date}T${b.startTime}`)-new Date(`${a.date}T${a.startTime}`));
+  const bookingHistoryAll=bookings.filter(row=>['Completed','Cancelled'].includes(row.status));
+  const bookingHistoryFrom=$('#customerBookingHistoryFrom')?.value||today,bookingHistoryTo=$('#customerBookingHistoryTo')?.value||today;
+  const filteredBookingHistory=filterBookingsByIndiaDate(bookingHistoryAll,bookingHistoryFrom,bookingHistoryTo).sort((a,b)=>new Date(bookingHistoryTimestamp(b))-new Date(bookingHistoryTimestamp(a)));
   const dueServiceReminders=bookings.filter(row=>row.status==='Completed'&&row.nextReminderAt&&new Date(row.nextReminderAt).getTime()<=Date.now());
   app.innerHTML=`<main class="public-store">${customerBrandStrip()}${customerStoreHub(store)}<div id="pushNotifyPrompt"></div><section class="store-hero"><span class="chip">${html(store.category||'Store')}</span>${store.highlightText?`<strong class="store-highlight-text">${html(store.highlightText)}</strong>`:''}<h1>${html(store.name)}</h1>${customer.phone?`<p class="customer-phone-line">Your contact number: ${html(customer.phone)}</p>`:''}${storeMinimum(store)?`<p class="store-minimum-order">Minimum new order ${money(storeMinimum(store))}</p>`:''}<p class="muted">${html(store.description||'')}${store.city?' · '+html(store.city):''}</p></section>
   ${promotions.length?`<section class="promotion-strip"><div class="promotion-strip-head"><span>Store Offers</span></div><div class="promotion-rail" id="promotionRail"><div class="promotion-track"><div class="promotion-sequence">${marqueePromotions.map((promotion,index)=>customerPromotionTicket(promotion,index>=promotions.length)).join('')}</div><div class="promotion-sequence" aria-hidden="true">${marqueePromotions.map(promotion=>customerPromotionTicket(promotion,true)).join('')}</div></div></div></section>`:''}
-  ${serviceStoreFlag?`${dueServiceReminders.length?`<div class="section-head"><h2>Time to Book Again?</h2></div><div class="grid card-grid">${dueServiceReminders.map(serviceReminderMarkup).join('')}</div>`:''}<div class="section-head"><div><h2>Book a Service</h2><p class="muted">Pick a service, choose a slot and pay the prepayment to confirm.</p></div><button class="btn small" id="bookServiceBtn">+ Book a Service</button></div><div class="grid card-grid">${activeBookings.map(booking=>customerBookingMarkup(booking,store)).join('')||'<div class="empty">No bookings yet. Book a service to get started.</div>'}</div>${pastBookings.length?`<div class="section-head"><h2>Booking History</h2></div><div class="grid card-grid">${pastBookings.map(booking=>customerBookingMarkup(booking,store)).join('')}</div>`:''}`:''}
+  ${serviceStoreFlag?`${dueServiceReminders.length?`<div class="section-head"><h2>Time to Book Again?</h2></div><div class="grid card-grid">${dueServiceReminders.map(serviceReminderMarkup).join('')}</div>`:''}<div class="section-head"><div><h2>Book a Service</h2><p class="muted">Pick a service, choose a slot and pay the prepayment to confirm.</p></div><button class="btn small" id="bookServiceBtn">+ Book a Service</button></div><div class="grid card-grid">${activeBookings.map(booking=>customerBookingMarkup(booking,store)).join('')||'<div class="empty">No bookings yet. Book a service to get started.</div>'}</div>${bookingHistoryAll.length?`<section class="order-history-section" id="customerBookingHistory"><div class="section-head"><div><h2>Booking History</h2><p class="muted">Today's completed and cancelled bookings are shown by default. Select a different date range if needed.</p></div></div><div class="date-filter-bar"><label>From<input id="customerBookingHistoryFrom" type="date" value="${html(bookingHistoryFrom)}" max="${html(bookingHistoryTo)}"></label><label>To<input id="customerBookingHistoryTo" type="date" value="${html(bookingHistoryTo)}" min="${html(bookingHistoryFrom)}"></label><button class="btn small secondary" id="customerBookingHistoryToday" type="button">Today</button></div><div class="card table-wrap"><table><thead><tr><th>Service</th><th>Expert</th><th>Amount</th><th>Status</th><th>Date</th></tr></thead><tbody>${filteredBookingHistory.map(customerBookingHistoryRow).join('')||'<tr><td colspan="5">No bookings in this period.</td></tr>'}</tbody></table></div></section>`:''}`:''}
   ${serviceStoreFlag?'':`<div class="section-head"><div><h2>Your orders</h2>${storeMinimum(store)?`<p class="muted">New orders must be at least ${money(storeMinimum(store))}. Refill and reorder requests are exempt.</p>`:''}</div><button class="btn small" id="placeOrderBtn">+ Place New Order</button></div>
   <div class="grid card-grid">${active.map(order=>customerOrderMarkup(order,store)).join('')||'<div class="empty">No active orders. Place a new order to get started.</div>'}</div>`}
   <div class="section-head reminder-section-head"><div><h2>Your reminder cards</h2>${cards.length>1?'<p class="muted">Swipe to see the next card or switch to list view.</p>':''}</div>${cards.length>1?`<div class="reminder-view-toggle" role="group" aria-label="Reminder card view"><button type="button" class="${customerReminderView==='swipe'?'active':''}" data-reminder-view="swipe" aria-pressed="${customerReminderView==='swipe'}">Swipe</button><button type="button" class="${customerReminderView==='list'?'active':''}" data-reminder-view="list" aria-pressed="${customerReminderView==='list'}">List</button></div>`:''}</div>
@@ -2306,6 +2320,9 @@ function renderCustomerCards(store,customer,cards,orders=[],promotions=[],course
   $('#customerHistoryFrom')?.addEventListener('change',()=>renderCustomerCards(store,customer,cards,orders,promotions,courses,services,experts,bookings));
   $('#customerHistoryTo')?.addEventListener('change',()=>renderCustomerCards(store,customer,cards,orders,promotions,courses,services,experts,bookings));
   $('#customerHistoryToday')?.addEventListener('click',()=>{$('#customerHistoryFrom').value=today;$('#customerHistoryTo').value=today;renderCustomerCards(store,customer,cards,orders,promotions,courses,services,experts,bookings)});
+  $('#customerBookingHistoryFrom')?.addEventListener('change',()=>renderCustomerCards(store,customer,cards,orders,promotions,courses,services,experts,bookings));
+  $('#customerBookingHistoryTo')?.addEventListener('change',()=>renderCustomerCards(store,customer,cards,orders,promotions,courses,services,experts,bookings));
+  $('#customerBookingHistoryToday')?.addEventListener('click',()=>{$('#customerBookingHistoryFrom').value=today;$('#customerBookingHistoryTo').value=today;renderCustomerCards(store,customer,cards,orders,promotions,courses,services,experts,bookings)});
   $('#exportCustomerHistory')?.addEventListener('click',()=>downloadOrderHistoryCsv(filteredHistory,{filePrefix:`${store.name||'store'}-my-orders`.toLowerCase().replace(/[^a-z0-9]+/g,'-'),storeName:store.name||'Store'}));
   $('#newCourseBtn')?.addEventListener('click',()=>openCreateCourseModal(store,customer));
   $$('[data-add-medicine]').forEach(button=>button.onclick=()=>{
@@ -2508,6 +2525,9 @@ function bindRazorpayPaymentActions(orders,store,customer){
 }
 function customerOrderHistoryRow(order){
   return `<tr><td>${order.items.map(item=>`${item.qty}×${html(item.name)}`).join(', ')}</td><td><button type="button" class="btn small reorder-btn" data-reorder-order="${html(order.id)}">Reorder</button></td><td>${money(order.amount)}</td><td>${html(order.status)}${order.status==='Rejected'&&order.rejectionReason?`<small class="rejection-history-reason">${html(order.rejectionReason)}</small>`:''}</td><td>${new Date(orderHistoryTimestamp(order)).toLocaleString('en-IN',{timeZone:'Asia/Kolkata',dateStyle:'medium',timeStyle:'short'})}</td></tr>`;
+}
+function customerBookingHistoryRow(booking){
+  return `<tr><td>${html(booking.serviceName)}</td><td>${html(booking.expertName||'—')}</td><td>${money(booking.price)}</td><td>${html(booking.status)}</td><td>${new Date(bookingHistoryTimestamp(booking)).toLocaleString('en-IN',{timeZone:'Asia/Kolkata',dateStyle:'medium',timeStyle:'short'})}</td></tr>`;
 }
 function openReorderOrderModal(order,store,customer){
   let capturedLocation=null;
@@ -2732,16 +2752,47 @@ async function removeExpert(expertId){
 function bookingsView(){
   refreshView=bookingsView;
   const store=activeStore();if(!store)return;
-  const bookings=(state.bookings||[]).filter(row=>row.storeId===store.id).sort((a,b)=>new Date(`${a.date}T${a.startTime}`)-new Date(`${b.date}T${b.startTime}`));
-  const active=bookings.filter(row=>!['Completed','Cancelled'].includes(row.status));
-  const past=bookings.filter(row=>['Completed','Cancelled'].includes(row.status));
+  const active=(state.bookings||[]).filter(row=>row.storeId===store.id&&!['Completed','Cancelled'].includes(row.status)).sort((a,b)=>new Date(`${a.date}T${a.startTime}`)-new Date(`${b.date}T${b.startTime}`));
   $('#page').innerHTML=`<div class="section-head"><div><h1>Bookings</h1><p class="muted">Manage upcoming bookings for ${html(store.name||'this store')}.</p></div></div>
-    <div class="grid card-grid">${active.map(ownerBookingMarkup).join('')||'<div class="empty">No upcoming bookings.</div>'}</div>
-    ${past.length?`<div class="section-head"><h2>Past bookings</h2></div><div class="grid card-grid">${past.map(ownerBookingMarkup).join('')}</div>`:''}`;
+    <div class="grid card-grid">${active.map(ownerBookingMarkup).join('')||'<div class="empty">No upcoming bookings.</div>'}</div>`;
   $$('[data-confirm-booking]').forEach(button=>button.onclick=()=>confirmBookingPayment(button.dataset.confirmBooking));
   $$('[data-complete-booking]').forEach(button=>button.onclick=()=>completeBooking(button.dataset.completeBooking));
   $$('[data-cancel-booking]').forEach(button=>button.onclick=()=>cancelBooking(button.dataset.cancelBooking));
   $$('[data-reopen-booking-payment]').forEach(button=>button.onclick=()=>reopenBookingPayment(button.dataset.reopenBookingPayment));
+}
+function bookingHistoryTimestamp(booking){return booking.completedAt||booking.cancelledAt||booking.updatedAt||booking.createdAt}
+function filterBookingsByIndiaDate(bookings,fromDate,toDate){
+  return bookings.filter(booking=>{
+    const day=indiaDateValue(bookingHistoryTimestamp(booking));
+    return (!fromDate||day>=fromDate)&&(!toDate||day<=toDate);
+  });
+}
+function downloadBookingHistoryCsv(bookings,{filePrefix='booking-history',includeCustomer=false,storeName=''}={}){
+  const headers=['Booking ID',...(includeCustomer?['Customer','Phone']:['Store']),'Service','Expert','Date','Time','Amount (INR)','Status','Completed/Cancelled'];
+  const rows=bookings.map(booking=>[
+    booking.id,
+    ...(includeCustomer?[booking.customerName||'Customer',booking.phone||'']:[storeName||'']),
+    booking.serviceName||'',booking.expertName||'',booking.date||'',booking.startTime||'',
+    Number(booking.price)||0,booking.status||'',
+    new Date(bookingHistoryTimestamp(booking)).toLocaleString('en-IN',{timeZone:'Asia/Kolkata',dateStyle:'medium',timeStyle:'short'}),
+  ]);
+  const csv='﻿'+[headers,...rows].map(row=>row.map(csvCell).join(',')).join('\r\n');
+  const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'})),link=document.createElement('a');
+  link.href=url;link.download=`${filePrefix}-${indiaDateValue()}.csv`;document.body.appendChild(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
+function bookingHistoryView(){
+  refreshView=bookingHistoryView;
+  const store=activeStore();
+  const today=indiaDateValue(),fromInput=$('#bookingHistoryFrom')?.value||today,toInput=$('#bookingHistoryTo')?.value||today;
+  const all=(state.bookings||[]).filter(row=>row.storeId===store?.id&&['Completed','Cancelled'].includes(row.status));
+  const filtered=filterBookingsByIndiaDate(all,fromInput,toInput).sort((a,b)=>new Date(bookingHistoryTimestamp(b))-new Date(bookingHistoryTimestamp(a)));
+  $('#page').innerHTML=`<div class="section-head"><div><h1>Booking History</h1><p class="muted">Today's completed and cancelled bookings are shown by default. Select a From and To date for another period.</p></div><button class="btn small secondary" id="exportBookingHistory" ${filtered.length?'':'disabled'}>Export CSV</button></div><div class="date-filter-bar"><label>From<input id="bookingHistoryFrom" type="date" value="${html(fromInput)}" max="${html(toInput)}"></label><label>To<input id="bookingHistoryTo" type="date" value="${html(toInput)}" min="${html(fromInput)}"></label><button class="btn small secondary" id="bookingHistoryToday" type="button">Today</button></div><div class="grid stats">${metric('Bookings',filtered.length)}${metric('Revenue',money(filtered.filter(b=>b.status==='Completed').reduce((sum,b)=>sum+Number(b.price||0),0)))}</div><div class="card table-wrap"><table><thead><tr><th>Customer</th><th>Service</th><th>Expert</th><th>Amount</th><th>Status</th><th>Date</th></tr></thead><tbody>${filtered.map(bookingHistoryRow).join('')||'<tr><td colspan="6">No bookings in this period.</td></tr>'}</tbody></table></div>`;
+  $('#bookingHistoryFrom').onchange=bookingHistoryView;$('#bookingHistoryTo').onchange=bookingHistoryView;
+  $('#bookingHistoryToday').onclick=()=>{$('#bookingHistoryFrom').value=today;$('#bookingHistoryTo').value=today;bookingHistoryView()};
+  $('#exportBookingHistory').onclick=()=>downloadBookingHistoryCsv(filtered,{filePrefix:`${store?.name||'store'}-bookings`.toLowerCase().replace(/[^a-z0-9]+/g,'-'),includeCustomer:true});
+}
+function bookingHistoryRow(booking){
+  return `<tr><td>${html(booking.customerName||'Customer')}</td><td>${html(booking.serviceName)}</td><td>${html(booking.expertName||'—')}</td><td>${money(booking.price)}</td><td>${html(booking.status)}</td><td>${new Date(bookingHistoryTimestamp(booking)).toLocaleString('en-IN',{timeZone:'Asia/Kolkata',dateStyle:'medium',timeStyle:'short'})}</td></tr>`;
 }
 async function reopenBookingPayment(bookingId){
   const booking=(state.bookings||[]).find(row=>row.id===bookingId);if(!booking)return;

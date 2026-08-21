@@ -2450,13 +2450,9 @@ function scheduleHeroFlowDots() {
   const heading = document.getElementById("heroHeading");
   if (!heading || window.matchMedia("(prefers-reduced-motion: reduce)").matches)
     return;
-  const states = ["dots-active", "eco-active"];
-  let index = 0;
   const run = () => {
-    const activeClass = states[index % states.length];
-    heading.classList.add(activeClass);
-    setTimeout(() => heading.classList.remove(activeClass), 5000);
-    index += 1;
+    heading.classList.add("dots-active");
+    setTimeout(() => heading.classList.remove("dots-active"), 5000);
     setTimeout(run, 6000 + Math.random() * 6000);
   };
   setTimeout(run, 1200 + Math.random() * 2000);
