@@ -757,7 +757,7 @@ async function updateOrder(id,action){
       if(o.paymentReceiptFileId)await Gravity58Ads?.removeAdMedia?.(o.paymentReceiptFileId);
       Object.assign(changes,{paymentStatus:'Confirmed',paymentReceiptUrl:'',paymentReceiptFileId:'',paymentReceiptName:'',paymentReceiptType:'',paymentReceiptDeletedAt:now()});
     }
-    if(action==='Reject Payment'){changes.paymentStatus='Rejected';changes.paymentRejectedAt=now()}if(action==='Reject')changes.rejectedAt=now();if(action==='Accept')changes.acceptedAt=now();if(action==='Start Scheduled Order')changes.scheduledStartedAt=now();if(action==='Mark Ready')changes.readyAt=now();if(action==='Complete')changes.completedAt=now();
+    if(action==='Reject Payment'){changes.paymentStatus='Rejected';changes.paymentRejectedAt=now()}if(action==='Reject')changes.rejectedAt=now();if(action==='Accept')changes.acceptedAt=now();if(action==='Start Scheduled Order')changes.scheduledStartedAt=now();if(action==='Mark Ready')changes.readyAt=now();if(action==='Complete'){changes.completedAt=now();changes.messages=[]}
     await patchCloudOrder(o,changes);
     if(action==='Start Scheduled Order'||!['Pending','Payment Verification'].includes(next))ringingOrderIds.delete(id);updateOrderAlertSound();
     toast(action==='Mark Ready'?`Token ${formatToken(o.tokenNumber)} is ready`:`Order ${o.id}: ${next}`);view==='orders'?ordersView():view==='schedule'?scheduleView():dashboardView();
