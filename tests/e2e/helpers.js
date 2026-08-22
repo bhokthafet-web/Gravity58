@@ -89,6 +89,18 @@ export function mockApiScript({ initialUser = null, admin = false, seed = {} } =
           const createdAt=new Date().toISOString(),row=clean({id:'refill-order-'+(++serial),ownerId:payload.ownerId,storeId:card.storeId,customerAccountId:user?.\$id,customerName:payload.customerName,customerEmail:payload.customerEmail,phone:String(payload.phone||card.phone||'').replace(/\D/g,''),items:[{name:card.productName,qty:1}],amount:0,previousAmount:Number(card.price)||0,refillCardId:card.id,upiUri:'',status:'Requested',messages:[],createdAt,updatedAt:createdAt});
           (store[orderKind]||=[]).unshift(row);Object.assign(card,{status:'Refill Requested',refillRequestedAt:createdAt,activeOrderId:row.id,phone:row.phone,updatedAt:createdAt});notify(orderKind,row);notify(cardKind,card);return {ok:true,order:clone(row)};
         }
+        if(action==='digit58-get-slot-status')return {ok:true,occupied:[]};
+        if(action==='digit58-create-booking'){
+          const safeOwner=String(payload.ownerId||'').replace(/[^a-zA-Z0-9._-]/g,'-').slice(0,40);
+          const storeKind='digit58_store_'+safeOwner,serviceKind='digit58_service_'+safeOwner,expertKind='digit58_expert_'+safeOwner,bookingKind='digit58_booking_'+safeOwner;
+          const selectedStore=(store[storeKind]||[]).find(row=>(row.id||row.\$id)===payload.storeId),service=(store[serviceKind]||[]).find(row=>(row.id||row.\$id)===payload.serviceId),expert=(store[expertKind]||[]).find(row=>(row.id||row.\$id)===payload.expertId);
+          if(!selectedStore||!service)throw new Error('Booking details are missing.');
+          const lat=Number(payload.locationLat),lng=Number(payload.locationLng),hasLocation=Number.isFinite(lat)&&Number.isFinite(lng);
+          if(service.doorstepServiceEnabled&&!hasLocation)throw new Error('Share the service location before booking this doorstep service.');
+          const price=Number(service.price)||0,prepaymentPercent=Number(service.prepaymentPercent??100),upfrontAmount=Math.round(price*prepaymentPercent)/100,createdAt=new Date().toISOString();
+          const row=clean({id:'booking-'+(++serial),ownerId:payload.ownerId,storeId:payload.storeId,serviceId:service.id,serviceName:service.name,expertId:expert?.id||'',expertName:expert?.name||'',expertPhone:expert?.phone||'',customerAccountId:user?.\$id,customerName:payload.customerName,customerEmail:payload.customerEmail,phone:String(payload.phone||'').replace(/\D/g,''),doorstepServiceEnabled:Boolean(service.doorstepServiceEnabled),locationLat:hasLocation?lat:'',locationLng:hasLocation?lng:'',locationUrl:hasLocation?'https://www.google.com/maps?q='+lat+','+lng:'',date:payload.date,startTime:payload.startTime,durationMinutes:Number(service.durationMinutes)||30,price,prepaymentPercent,prepaymentAmount:upfrontAmount,upfrontAmount,balanceAmount:price-upfrontAmount,status:upfrontAmount>0?'Pending Payment':'Requested',messages:[],createdAt,updatedAt:createdAt});
+          (store[bookingKind]||=[]).unshift(row);notify(bookingKind,row);return {ok:true,booking:clone(row)};
+        }
         if(action==='digit58-set-store-suspended'){
           if(!${admin ? "true" : "false"})throw new Error('Only G58 administrators can manage store status.');
           const kind='digit58_store_'+String(payload.ownerId||'').replace(/[^a-zA-Z0-9._-]/g,'-').slice(0,40);

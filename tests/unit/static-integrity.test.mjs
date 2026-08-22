@@ -104,7 +104,7 @@ test("GitHub Pages deployment and custom-domain files exist", () => {
 });
 
 test("Android download buttons point to the published signed installer", () => {
-  const apkRelative = "downloads/GRAVITY58-Android-v1.4.apk";
+  const apkRelative = "downloads/GRAVITY58-Android-v1.5.apk";
   const apkPath = join(root, apkRelative);
   const refillsApkPath = join(root, "downloads/Refills_Customer.apk");
   assert.ok(existsSync(apkPath), "Published Android installer is missing");
@@ -113,7 +113,7 @@ test("Android download buttons point to the published signed installer", () => {
   assert.ok(statSync(refillsApkPath).size > 1_000_000, "Published Refills Android installer is unexpectedly small");
   for (const relative of ["index.html", "digit58/app.js", "digital-menu/app-v11.js"]) {
     const source = readFileSync(join(root, relative), "utf8");
-    assert.match(source, /href=["']\/downloads\/GRAVITY58-Android-v1\.4\.apk["']/);
+    assert.match(source, /href=["']\/downloads\/GRAVITY58-Android-v1\.5\.apk["']/);
     assert.match(source, /\bdownload\b/);
     assert.doesNotMatch(source, /Android app coming soon/i);
   }

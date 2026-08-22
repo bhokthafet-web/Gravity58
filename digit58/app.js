@@ -301,6 +301,30 @@ function bindDeliveryShareButtons(records){
     if(entity)shareWithDeliveryBoy(entity);
   });
 }
+function doorstepBookingOwnerMarkup(booking){
+  if(!booking.doorstepServiceEnabled)return'';
+  const location=booking.locationUrl?`<a href="${html(booking.locationUrl)}" target="_blank" rel="noopener">📍 View doorstep location</a>`:'<span class="muted">Waiting for customer location</span>';
+  const shareLabel=booking.expertPhone?`Send to ${html(booking.expertName||'Expert')}`:'Share with Expert';
+  return `<div class="delivery-block doorstep-booking-block"><div class="delivery-info"><strong>🏠 Doorstep Service</strong>${location}${booking.phone?`<span>📞 ${html(booking.phone)}</span>`:''}</div>${booking.locationUrl?`<button type="button" class="btn small whatsapp-btn" data-share-booking-expert="${html(booking.id)}">${WHATSAPP_ICON_SVG} ${shareLabel}</button>`:''}</div>`;
+}
+function shareBookingWithExpert(booking){
+  if(!booking?.locationUrl)return toast('The customer has not shared a service location yet');
+  const message=[
+    `Doorstep service: ${booking.serviceName||'Service'}`,
+    `Customer: ${customerNameFor(booking)}`,
+    booking.phone?`Contact: ${booking.phone}`:'',
+    booking.date&&booking.startTime?`Schedule: ${booking.date} at ${booking.startTime}`:'',
+    `Location: ${booking.locationUrl}`,
+  ].filter(Boolean).join('\n');
+  const direct=whatsappLink(booking.expertPhone,message);
+  window.open(direct||`https://wa.me/?text=${encodeURIComponent(message)}`,'_blank','noopener');
+}
+function bindBookingExpertShareButtons(bookings){
+  $$('[data-share-booking-expert]').forEach(button=>button.onclick=()=>{
+    const booking=bookings.find(row=>row.id===button.dataset.shareBookingExpert);
+    if(booking)shareBookingWithExpert(booking);
+  });
+}
 
 let session=null,view='dashboard';
 let refreshView=()=>renderShell();
@@ -971,7 +995,7 @@ function floatingStoreWhatsappButton(store){
 function siteFooter(forCustomer){
   const badge=forCustomer
     ? `<a class="g58-app-badge" href="/downloads/Refills_Customer.apk" download aria-label="Download the G58 Refills Android app"><span class="g58-app-badge-icon">▶</span><span class="g58-app-badge-text"><small>Never miss a refill</small><strong>Get the G58 Refills App</strong></span></a>`
-    : `<a class="g58-app-badge" href="/downloads/GRAVITY58-Android-v1.4.apk" download aria-label="Download the Gravity58 Android app"><span class="g58-app-badge-icon">▶</span><span class="g58-app-badge-text"><small>Download Android</small><strong>Get G58 App</strong></span></a>`;
+    : `<a class="g58-app-badge" href="/downloads/GRAVITY58-Android-v1.5.apk" download aria-label="Download the Gravity58 Android app"><span class="g58-app-badge-icon">▶</span><span class="g58-app-badge-text"><small>Download Android</small><strong>Get G58 App</strong></span></a>`;
   return `<footer class="g58-site-footer"><div class="g58-site-footer-badge">${badge}</div><p class="g58-site-footer-note">© ${new Date().getFullYear()} Gravity58 · Refills</p></footer>`;
 }
 function renderShell(){
@@ -1753,6 +1777,7 @@ function customerDetailView(customerId){
     $$('[data-complete-booking]').forEach(button=>button.onclick=()=>completeBooking(button.dataset.completeBooking));
     $$('[data-cancel-booking]').forEach(button=>button.onclick=()=>cancelBooking(button.dataset.cancelBooking));
     $$('[data-reopen-booking-payment]').forEach(button=>button.onclick=()=>reopenBookingPayment(button.dataset.reopenBookingPayment));
+    bindBookingExpertShareButtons(bookings);
     bindBookingChatForms(bookings,'owner',refreshView);
     return;
   }
@@ -2588,7 +2613,8 @@ function customerBookingMarkup(booking,store){
   const canCancel=['Requested','Pending Payment','Confirmed'].includes(status);
   const expertWaHref=store?.customerWhatsappEnabled!==false?whatsappLink(booking.expertPhone,`Hi ${booking.expertName||'there'}, this is regarding my ${booking.serviceName} booking on ${booking.date} at ${booking.startTime}.`):'';
   const bookingActions=[expertWaHref?`<a class="btn small whatsapp-btn" href="${expertWaHref}" target="_blank" rel="noopener noreferrer">${WHATSAPP_ICON_SVG} WhatsApp ${html(booking.expertName||'Expert')}</a>`:'',canCancel?`<button class="btn small red" data-cancel-my-booking="${html(booking.id)}">Cancel Booking</button>`:''].filter(Boolean).join('');
-  return `<article class="card order-item-card premium-card"><div class="section-head"><h3>${html(booking.serviceName)}</h3><span class="chip">${html(status)}</span></div><p class="muted">${html(booking.date)} · ${html(booking.startTime)}${booking.expertName?` · with ${html(booking.expertName)}`:''}</p><p class="muted">Price ${money(booking.price)}${upfrontAmount>0?` · Prepaid ${money(upfrontAmount)}`:''}</p>${balanceNote}${pendingAcceptanceBlock}${paymentBlock}${bookingActions?`<div class="actions">${bookingActions}</div>`:''}${bookingChatMarkup(booking,'customer')}</article>`;
+  const doorstepNote=booking.doorstepServiceEnabled?`<div class="delivery-block"><div class="delivery-info"><strong>🏠 Doorstep Service</strong>${booking.locationUrl?`<a href="${html(booking.locationUrl)}" target="_blank" rel="noopener">📍 Your shared service location</a>`:'<span class="muted">Location will be requested before confirmation.</span>'}</div></div>`:'';
+  return `<article class="card order-item-card premium-card"><div class="section-head"><h3>${html(booking.serviceName)}</h3><span class="chip">${html(status)}</span></div><p class="muted">${html(booking.date)} · ${html(booking.startTime)}${booking.expertName?` · with ${html(booking.expertName)}`:''}</p><p class="muted">Price ${money(booking.price)}${upfrontAmount>0?` · Prepaid ${money(upfrontAmount)}`:''}</p>${doorstepNote}${balanceNote}${pendingAcceptanceBlock}${paymentBlock}${bookingActions?`<div class="actions">${bookingActions}</div>`:''}${bookingChatMarkup(booking,'customer')}</article>`;
 }
 async function cancelCustomerBooking(booking,store,customer){
   try{
@@ -2667,15 +2693,18 @@ function openBookingModal(store,customer,services,experts,preselectServiceId='',
   if(!services.length)return toast('This store has not added any services yet');
   const initialService=services.find(row=>row.id===preselectServiceId)||services[0];
   const initialWindow=bookingWindowForService(store,initialService);
-  let slotFetchToken=0;
+  let slotFetchToken=0,capturedLocation=null;
   const title=ownerBookingFor?'Book Service for Customer':'Book a Service';
   const intro=ownerBookingFor?`<p class="muted">Creates a booking for ${html(ownerBookingFor.customerName||'this customer')}. They'll get a call-style alert and must accept it before it's confirmed.</p>`:'';
   const submitLabel=ownerBookingFor?'Send to Customer':'Book & Pay Prepayment';
   const askPhone=!ownerBookingFor&&!customer.phone;
   const phoneField=askPhone?'<div class="field"><label>Your phone number</label><input name="phone" type="tel" placeholder="10-digit mobile number" required><small class="muted">Saved to your account so the store and expert can reach you — you won\'t be asked again.</small></div>':'';
-  modal(title,`<form id="bookingForm">${intro}${phoneField}<div class="field"><label>Service</label><select name="serviceId" id="bookingServiceSelect" required>${services.map(service=>`<option value="${html(service.id)}" ${service.id===initialService.id?'selected':''}>${html(service.name)} — ${money(service.price)}</option>`).join('')}</select></div>${experts.length?`<div class="field"><label>Expert <small>(optional)</small></label><select name="expertId" id="bookingExpertSelect"><option value="">No preference</option>${experts.map(expert=>`<option value="${html(expert.id)}">${html(expert.name)}</option>`).join('')}</select></div>`:''}<div class="field"><label>Date</label><input name="date" type="date" id="bookingDateInput" min="${initialWindow.min}" max="${initialWindow.max}" value="${initialWindow.min}" required></div><div class="field"><label>Time</label><div class="slot-grid" id="bookingSlotGrid"><p class="muted">Loading slots…</p></div><input type="hidden" name="startTime" id="bookingStartTimeInput" required><p class="slot-legend"><span class="slot-legend-dot available"></span>Available<span class="slot-legend-dot booked"></span>Booked</p></div><p class="muted" id="bookingPriceNote"></p><button class="btn full" type="submit" id="bookingSubmitBtn" style="margin-top:14px" disabled>${submitLabel}</button></form>`,()=>{
+  const doorstepField=ownerBookingFor?'':`<div class="field ${initialService.doorstepServiceEnabled?'':'hidden'}" id="doorstepLocationField"><label>Doorstep service location</label><button type="button" class="btn secondary" id="bookingShareLocationBtn">📍 Share Service Location</button><p class="muted" id="bookingLocationStatus" style="margin-top:6px">Required — the service owner can forward this Maps location to the selected expert.</p></div>`;
+  modal(title,`<form id="bookingForm">${intro}${phoneField}<div class="field"><label>Service</label><select name="serviceId" id="bookingServiceSelect" required>${services.map(service=>`<option value="${html(service.id)}" ${service.id===initialService.id?'selected':''}>${html(service.name)} — ${money(service.price)}${service.doorstepServiceEnabled?' · Doorstep':''}</option>`).join('')}</select></div>${experts.length?`<div class="field"><label>Expert <small>(optional)</small></label><select name="expertId" id="bookingExpertSelect"><option value="">No preference</option>${experts.map(expert=>`<option value="${html(expert.id)}">${html(expert.name)}</option>`).join('')}</select></div>`:''}${doorstepField}<div class="field"><label>Date</label><input name="date" type="date" id="bookingDateInput" min="${initialWindow.min}" max="${initialWindow.max}" value="${initialWindow.min}" required></div><div class="field"><label>Time</label><div class="slot-grid" id="bookingSlotGrid"><p class="muted">Loading slots…</p></div><input type="hidden" name="startTime" id="bookingStartTimeInput" required><p class="slot-legend"><span class="slot-legend-dot available"></span>Available<span class="slot-legend-dot booked"></span>Booked</p></div><p class="muted" id="bookingPriceNote"></p><button class="btn full" type="submit" id="bookingSubmitBtn" style="margin-top:14px" disabled>${submitLabel}</button></form>`,()=>{
     const currentService=()=>services.find(row=>row.id===$('#bookingServiceSelect').value);
-    const updateSubmitState=()=>{$('#bookingSubmitBtn').disabled=!$('#bookingStartTimeInput').value};
+    const doorstepRequired=()=>!ownerBookingFor&&currentService()?.doorstepServiceEnabled===true;
+    const updateSubmitState=()=>{$('#bookingSubmitBtn').disabled=!$('#bookingStartTimeInput').value||(doorstepRequired()&&!capturedLocation)};
+    if($('#bookingShareLocationBtn'))bindShareLocationButton($('#bookingShareLocationBtn'),$('#bookingLocationStatus'),point=>{capturedLocation=point;updateSubmitState()});
     const renderSlotGrid=async()=>{
       const service=currentService();if(!service)return;
       const date=$('#bookingDateInput').value,expertId=$('#bookingExpertSelect')?.value||'';
@@ -2705,6 +2734,7 @@ function openBookingModal(store,customer,services,experts,preselectServiceId='',
     };
     const updateNote=()=>{
       const service=currentService();if(!service)return;
+      $('#doorstepLocationField')?.classList.toggle('hidden',!service.doorstepServiceEnabled);
       const prepayPercent=service.prepaymentPercent??100;
       const prepay=Math.round(service.price*prepayPercent)/100;
       const cancellationCharge=service.cancellationChargeEnabled?Math.max(0,Number(service.cancellationChargeAmount)||0):0;
@@ -2728,6 +2758,7 @@ function openBookingModal(store,customer,services,experts,preselectServiceId='',
       event.preventDefault();
       const values=Object.fromEntries(new FormData(event.target)),button=event.submitter;
       if(!values.startTime)return toast('Choose a time slot');
+      if(!ownerBookingFor&&currentService()?.doorstepServiceEnabled&&!capturedLocation)return toast('Share the service location for this doorstep booking');
       button.disabled=true;
       try{
         if(ownerBookingFor){
@@ -2737,7 +2768,7 @@ function openBookingModal(store,customer,services,experts,preselectServiceId='',
           customerDetailView(ownerBookingFor.id);
         }else{
           const phone=(values.phone||customer.phone||'').trim();
-          const result=await api.executeFunction(api.config.digitalOrderFunctionId,{action:'digit58-create-booking',ownerId:store.ownerId,storeId:store.id,serviceId:values.serviceId,expertId:values.expertId||'',date:values.date,startTime:values.startTime,customerName:customer.customerName,customerEmail:customer.customerEmail,phone});
+          const result=await api.executeFunction(api.config.digitalOrderFunctionId,{action:'digit58-create-booking',ownerId:store.ownerId,storeId:store.id,serviceId:values.serviceId,expertId:values.expertId||'',date:values.date,startTime:values.startTime,customerName:customer.customerName,customerEmail:customer.customerEmail,phone,locationLat:capturedLocation?.lat,locationLng:capturedLocation?.lng});
           if(askPhone&&phone){
             try{
               await api.update(customerKind(store.ownerId),customer.id,{phone});
@@ -2918,11 +2949,12 @@ function serviceItemMarkup(item){
   const prepay=item.prepaymentPercent??100;
   const prepayNote=prepay<=0?'No prepayment — pay in full after service':prepay>=100?'Full payment at booking':`${prepay}% prepayment, balance after service`;
   const cancelNote=item.cancellationChargeEnabled&&Number(item.cancellationChargeAmount)>0?`<p class="muted">Cancellation guarantee ${money(item.cancellationChargeAmount)}</p>`:'';
-  return `<article class="card catalog-item-card"><h3>${html(item.name)}</h3><p class="muted">${money(item.price)}${item.durationMinutes?` · ${item.durationMinutes} min`:''}</p><p class="muted">${prepayNote}</p>${cancelNote}${item.bookingFromDate&&item.bookingUntilDate?`<p class="muted">Bookable ${html(item.bookingFromDate)} → ${html(item.bookingUntilDate)}</p>`:''}${item.description?`<p class="muted">${html(item.description)}</p>`:''}<div class="actions"><button class="btn small" data-edit-service="${html(item.id)}">Edit</button><button class="btn small red" data-remove-service="${html(item.id)}">Remove</button></div></article>`;
+  const doorstepNote=item.doorstepServiceEnabled?'<p class="chip doorstep-chip">🏠 Doorstep Service enabled</p>':'';
+  return `<article class="card catalog-item-card"><h3>${html(item.name)}</h3><p class="muted">${money(item.price)}${item.durationMinutes?` · ${item.durationMinutes} min`:''}</p><p class="muted">${prepayNote}</p>${doorstepNote}${cancelNote}${item.bookingFromDate&&item.bookingUntilDate?`<p class="muted">Bookable ${html(item.bookingFromDate)} → ${html(item.bookingUntilDate)}</p>`:''}${item.description?`<p class="muted">${html(item.description)}</p>`:''}<div class="actions"><button class="btn small" data-edit-service="${html(item.id)}">Edit</button><button class="btn small red" data-remove-service="${html(item.id)}">Remove</button></div></article>`;
 }
 function openServiceForm(store,serviceId=''){
   const service=(state.services||[]).find(row=>row.id===serviceId)||{};
-  modal(serviceId?'Edit Service':'Add Service',`<form id="serviceForm"><div class="field"><label>Service name</label><input name="name" value="${html(service.name||'')}" required></div><div class="form-grid"><div class="field"><label>Price (₹)</label><input name="price" type="number" min="0" step="0.01" value="${service.price??''}" required></div><div class="field"><label>Duration (minutes) <small>(optional)</small></label><input name="durationMinutes" type="number" min="5" step="5" value="${service.durationMinutes||''}" placeholder="Example: 30"></div></div><div class="field"><label>Prepayment at booking (%)</label><input name="prepaymentPercent" type="number" min="0" max="100" step="1" value="${service.prepaymentPercent??100}" required><small class="muted">100% means the customer pays the full amount when booking. Anything less leaves a balance to pay after the service is done. Set to 0 for no prepayment at all — the store accepts the booking directly and the customer pays in full after the service.</small></div><label class="option-toggle"><input id="cancellationChargeEnabled" name="cancellationChargeEnabled" type="checkbox" ${service.cancellationChargeEnabled?'checked':''}><span><strong>Require a cancellation guarantee</strong><small>Customer pays this upfront before you accept the booking. If they cancel you keep it; if the service completes it's applied toward the bill.</small></span></label><div class="field ${service.cancellationChargeEnabled?'':'hidden'}" id="cancellationChargeAmountField"><label>Cancellation guarantee amount (₹)</label><input name="cancellationChargeAmount" type="number" min="0" step="0.01" value="${service.cancellationChargeAmount??''}"></div><div class="field"><label>Advance booking period <small>(optional)</small></label><div class="form-grid"><input name="bookingFromDate" type="date" value="${html(service.bookingFromDate||'')}"><input name="bookingUntilDate" type="date" value="${html(service.bookingUntilDate||'')}"></div><small class="muted">Leave blank to use your store's general Availability window instead. If set, customers can only book this service between these two dates.</small></div><div class="field"><label>Schedule Service — remind to rebook every <small>(optional, days)</small></label><input name="reminderDays" type="number" min="1" step="1" value="${service.reminderDays||''}" placeholder="Example: 30"><small class="muted">Like Refills reminders — once a booking for this service is marked completed, the customer sees a "Book Again" prompt after this many days.</small></div><div class="field"><label>Description <small>(optional)</small></label><textarea name="description">${html(service.description||'')}</textarea></div><button class="btn full" type="submit" style="margin-top:14px">${serviceId?'Save Service':'Add Service'}</button></form>`,()=>{
+  modal(serviceId?'Edit Service':'Add Service',`<form id="serviceForm"><div class="field"><label>Service name</label><input name="name" value="${html(service.name||'')}" required></div><div class="form-grid"><div class="field"><label>Price (₹)</label><input name="price" type="number" min="0" step="0.01" value="${service.price??''}" required></div><div class="field"><label>Duration (minutes) <small>(optional)</small></label><input name="durationMinutes" type="number" min="5" step="5" value="${service.durationMinutes||''}" placeholder="Example: 30"></div></div><div class="field"><label>Prepayment at booking (%)</label><input name="prepaymentPercent" type="number" min="0" max="100" step="1" value="${service.prepaymentPercent??100}" required><small class="muted">100% means the customer pays the full amount when booking. Anything less leaves a balance to pay after the service is done. Set to 0 for no prepayment at all — the store accepts the booking directly and the customer pays in full after the service.</small></div><label class="option-toggle"><input id="doorstepServiceEnabled" name="doorstepServiceEnabled" type="checkbox" ${service.doorstepServiceEnabled?'checked':''}><span><strong>Enable Doorstep Service</strong><small>Customers must share the service location while booking. You can forward the booking and Maps location directly to the selected expert's mobile number.</small></span></label><label class="option-toggle"><input id="cancellationChargeEnabled" name="cancellationChargeEnabled" type="checkbox" ${service.cancellationChargeEnabled?'checked':''}><span><strong>Require a cancellation guarantee</strong><small>Customer pays this upfront before you accept the booking. If they cancel you keep it; if the service completes it's applied toward the bill.</small></span></label><div class="field ${service.cancellationChargeEnabled?'':'hidden'}" id="cancellationChargeAmountField"><label>Cancellation guarantee amount (₹)</label><input name="cancellationChargeAmount" type="number" min="0" step="0.01" value="${service.cancellationChargeAmount??''}"></div><div class="field"><label>Advance booking period <small>(optional)</small></label><div class="form-grid"><input name="bookingFromDate" type="date" value="${html(service.bookingFromDate||'')}"><input name="bookingUntilDate" type="date" value="${html(service.bookingUntilDate||'')}"></div><small class="muted">Leave blank to use your store's general Availability window instead. If set, customers can only book this service between these two dates.</small></div><div class="field"><label>Schedule Service — remind to rebook every <small>(optional, days)</small></label><input name="reminderDays" type="number" min="1" step="1" value="${service.reminderDays||''}" placeholder="Example: 30"><small class="muted">Like Refills reminders — once a booking for this service is marked completed, the customer sees a "Book Again" prompt after this many days.</small></div><div class="field"><label>Description <small>(optional)</small></label><textarea name="description">${html(service.description||'')}</textarea></div><button class="btn full" type="submit" style="margin-top:14px">${serviceId?'Save Service':'Add Service'}</button></form>`,()=>{
     $('#cancellationChargeEnabled').onchange=event=>$('#cancellationChargeAmountField').classList.toggle('hidden',!event.target.checked);
     $('#serviceForm').onsubmit=async event=>{
       event.preventDefault();
@@ -2936,7 +2968,8 @@ function openServiceForm(store,serviceId=''){
       if(cancellationChargeEnabled&&cancellationChargeAmount<=0)return toast('Enter a cancellation guarantee amount');
       button.disabled=true;
       const reminderDays=Math.max(0,Number(values.reminderDays)||0);
-      const changes={name,price,durationMinutes,prepaymentPercent,cancellationChargeEnabled,cancellationChargeAmount,bookingFromDate,bookingUntilDate,reminderDays,description:(values.description||'').trim()};
+      const doorstepServiceEnabled=values.doorstepServiceEnabled==='on';
+      const changes={name,price,durationMinutes,prepaymentPercent,doorstepServiceEnabled,cancellationChargeEnabled,cancellationChargeAmount,bookingFromDate,bookingUntilDate,reminderDays,description:(values.description||'').trim()};
       try{
         if(serviceId){
           await api.update(serviceKind(store.ownerId),serviceId,changes);
@@ -3064,7 +3097,7 @@ function confirmedBookingCompactMarkup(booking){
   const balance=Number(booking.balanceAmount)||0;
   const phone=booking.phone||(state.customers||[]).find(row=>row.storeId===booking.storeId&&row.customerAccountId===booking.customerAccountId)?.phone||'';
   const waHref=whatsappLink(phone,`Hi ${booking.customerName||'there'}, this is regarding your ${booking.serviceName} booking on ${booking.date} at ${booking.startTime}.`);
-  return `<div class="booking-compact-card ${ringing?'incoming-order':''}">${ringing?'<span class="incoming-order-beacon" aria-label="New booking" title="New booking"></span>':''}<div class="booking-compact-info"><strong>${html(booking.serviceName)}</strong><span class="muted">${html(booking.date)} · ${html(booking.startTime)}${booking.expertName?` · ${html(booking.expertName)}`:''} · ${html(booking.customerName||'Customer')}</span>${balance>0?`<span class="chip due">Balance ${money(balance)}</span>`:''}</div><div class="actions">${waHref?`<a class="btn small whatsapp-btn" href="${waHref}" target="_blank" rel="noopener noreferrer" title="Chat with ${html(booking.customerName||'customer')} on WhatsApp">${WHATSAPP_ICON_SVG}</a>`:''}<button type="button" class="btn small secondary" data-pos-print="${html(posPrintLink(booking,booking.price,`${booking.serviceName} — ${booking.customerName||'Customer'}`))}" title="Print POS bill">${PRINT_ICON_SVG}</button><button class="btn small green" data-complete-booking="${html(booking.id)}">Complete</button><button class="btn small red" data-cancel-booking="${html(booking.id)}">Cancel</button></div>${bookingChatMarkup(booking,'owner')}</div>`;
+  return `<div class="booking-compact-card ${ringing?'incoming-order':''}">${ringing?'<span class="incoming-order-beacon" aria-label="New booking" title="New booking"></span>':''}<div class="booking-compact-info"><strong>${html(booking.serviceName)}</strong><span class="muted">${html(booking.date)} · ${html(booking.startTime)}${booking.expertName?` · ${html(booking.expertName)}`:''} · ${html(booking.customerName||'Customer')}</span>${balance>0?`<span class="chip due">Balance ${money(balance)}</span>`:''}</div>${doorstepBookingOwnerMarkup(booking)}<div class="actions">${waHref?`<a class="btn small whatsapp-btn" href="${waHref}" target="_blank" rel="noopener noreferrer" title="Chat with ${html(booking.customerName||'customer')} on WhatsApp">${WHATSAPP_ICON_SVG}</a>`:''}<button type="button" class="btn small secondary" data-pos-print="${html(posPrintLink(booking,booking.price,`${booking.serviceName} — ${booking.customerName||'Customer'}`))}" title="Print POS bill">${PRINT_ICON_SVG}</button><button class="btn small green" data-complete-booking="${html(booking.id)}">Complete</button><button class="btn small red" data-cancel-booking="${html(booking.id)}">Cancel</button></div>${bookingChatMarkup(booking,'owner')}</div>`;
 }
 function bookingsView(){
   refreshView=bookingsView;
@@ -3093,6 +3126,7 @@ function bookingsView(){
   $$('[data-complete-booking]').forEach(button=>button.onclick=()=>completeBooking(button.dataset.completeBooking));
   $$('[data-cancel-booking]').forEach(button=>button.onclick=()=>cancelBooking(button.dataset.cancelBooking));
   $$('[data-reopen-booking-payment]').forEach(button=>button.onclick=()=>reopenBookingPayment(button.dataset.reopenBookingPayment));
+  bindBookingExpertShareButtons(filtered);
   bindBookingChatForms(filtered,'owner',refreshView);
   bindPosPrintButtons();
 }
@@ -3158,7 +3192,7 @@ function ownerBookingMarkup(booking){
   const upfrontAmount=Number(booking.upfrontAmount)||Number(booking.prepaymentAmount)||0;
   const cancellationNote=Number(booking.cancellationChargeAmount)>0?`<p class="muted">Includes ${money(booking.cancellationChargeAmount)} cancellation guarantee</p>`:'';
   const balanceNote=Number(booking.balanceAmount)>0?`<p class="muted">Balance ${money(booking.balanceAmount)}${booking.balancePaid?' · Paid':' due after service'}</p>`:'';
-  return `<article class="card order-item-card ${ringing?'incoming-order':''}">${ringing?'<span class="incoming-order-beacon" aria-label="New booking" title="New booking"></span>':''}<div class="section-head"><h3>${html(booking.serviceName)}</h3><span class="chip">${html(status)}</span></div><p class="muted">${html(booking.date)} · ${html(booking.startTime)}${booking.expertName?` · with ${html(booking.expertName)}`:''}</p><p class="muted">${html(booking.customerName||'Customer')}${booking.phone?` · ${html(booking.phone)}`:''}</p><p class="muted">Price ${money(booking.price)}${upfrontAmount>0?` · Prepaid ${money(upfrontAmount)}`:''}</p>${cancellationNote}${balanceNote}${actions?`<div class="actions">${actions}</div>`:''}${bookingChatMarkup(booking,'owner')}</article>`;
+  return `<article class="card order-item-card ${ringing?'incoming-order':''}">${ringing?'<span class="incoming-order-beacon" aria-label="New booking" title="New booking"></span>':''}<div class="section-head"><h3>${html(booking.serviceName)}</h3><span class="chip">${html(status)}</span></div><p class="muted">${html(booking.date)} · ${html(booking.startTime)}${booking.expertName?` · with ${html(booking.expertName)}`:''}</p><p class="muted">${html(booking.customerName||'Customer')}${booking.phone?` · ${html(booking.phone)}`:''}</p><p class="muted">Price ${money(booking.price)}${upfrontAmount>0?` · Prepaid ${money(upfrontAmount)}`:''}</p>${doorstepBookingOwnerMarkup(booking)}${cancellationNote}${balanceNote}${actions?`<div class="actions">${actions}</div>`:''}${bookingChatMarkup(booking,'owner')}</article>`;
 }
 async function confirmBookingPayment(bookingId){
   const booking=(state.bookings||[]).find(row=>row.id===bookingId);if(!booking)return;

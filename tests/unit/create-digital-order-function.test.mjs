@@ -115,6 +115,42 @@ test('owner history deletion rejects an incorrect password without deleting hist
   } finally { globalThis.fetch = previousFetch; }
 });
 
+test('doorstep service bookings require and securely store the customer location', async () => {
+  const previousFetch = globalThis.fetch;
+  const requests = [];
+  const storeId = 'service_store', serviceId = 'doorstep_service';
+  const store = { id: storeId, ownerId, businessType: 'services', name: 'Home Care', availableDays: [], slotStartTime: '00:00', slotEndTime: '23:59', preBookingWindowDays: 30 };
+  const service = { id: serviceId, ownerId, storeId, name: 'Home AC Repair', price: 500, prepaymentPercent: 0, durationMinutes: 30, doorstepServiceEnabled: true };
+  globalThis.fetch = async (url, options = {}) => {
+    const target = String(url), method = options.method || 'GET', body = options.body ? JSON.parse(options.body) : null;
+    requests.push({ target, method, body });
+    if (method === 'GET' && target.endsWith(`/rows/${storeId}`)) return new Response(JSON.stringify({ $id: storeId, kind: `digit58_store_${ownerId}`, payload: JSON.stringify(store) }), { status: 200 });
+    if (method === 'GET' && target.endsWith(`/rows/${serviceId}`)) return new Response(JSON.stringify({ $id: serviceId, kind: `digit58_service_${ownerId}`, payload: JSON.stringify(service) }), { status: 200 });
+    if (method === 'GET' && target.includes('/rows?')) return new Response(JSON.stringify({ rows: [] }), { status: 200 });
+    if (method === 'POST' && body?.data?.kind?.startsWith('digit58_booking_')) return new Response(JSON.stringify({ $id: body.rowId, ...body.data }), { status: 201 });
+    throw new Error(`Unexpected request ${target}`);
+  };
+  process.env.APPWRITE_FUNCTION_PROJECT_ID = 'project_1';
+  const bookingDate = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(Date.now() + 2 * 86400000));
+  const request = (extra = {}) => createDigitalOrder({
+    req: { method: 'POST', headers: { 'x-appwrite-key': 'dynamic-key', 'x-appwrite-user-id': customerId }, bodyJson: { action: 'digit58-create-booking', ownerId, storeId, serviceId, date: bookingDate, startTime: '12:00', customerName: 'Doorstep Customer', customerEmail: 'doorstep@example.test', phone: '9999999999', ...extra } },
+    res: { json: (body, status = 200) => ({ body, status }) }, error: () => {},
+  });
+  try {
+    const missing = await request();
+    assert.equal(missing.status, 400);
+    assert.match(missing.body.error, /share the service location/i);
+    assert.equal(requests.filter(item => item.method === 'POST').length, 0);
+
+    const response = await request({ locationLat: 17.4065, locationLng: 78.4772 });
+    assert.equal(response.status, 201);
+    assert.equal(response.body.booking.doorstepServiceEnabled, true);
+    assert.equal(response.body.booking.locationLat, 17.4065);
+    assert.equal(response.body.booking.locationLng, 78.4772);
+    assert.equal(response.body.booking.locationUrl, 'https://www.google.com/maps?q=17.4065,78.4772');
+  } finally { globalThis.fetch = previousFetch; }
+});
+
 test('receipt image alone is sufficient and is verified against the customer session', async () => {
   const previousFetch = globalThis.fetch;
   globalThis.fetch = async (url, options = {}) => {

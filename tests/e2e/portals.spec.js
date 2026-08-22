@@ -435,6 +435,63 @@ test("Refills owner header links to G58 and stores a customer highlight message"
   await assertNoErrors();
 });
 
+test("Service owner enables doorstep booking and forwards the customer location to the selected expert", async ({ page, context }) => {
+  const ownerId = "doorstep_owner", customerId = "doorstep_customer", storeId = "doorstep_store", expertId = "doorstep_expert";
+  await context.grantPermissions(["geolocation"], { origin: "http://127.0.0.1:4173" });
+  await context.setGeolocation({ latitude: 17.4065, longitude: 78.4772 });
+  await prepareMockApi(page, {
+    state: null,
+    initialUser: { $id: ownerId, email: "service-owner@example.com", name: "Service Owner" },
+    seed: {
+      digit58_entitlements: [{ id: "doorstep_entitlement", ownerId, active: true, paused: false, lifetime: true, policyAcceptedAt: new Date().toISOString() }],
+      [`digit58_store_${ownerId}`]: [{ id: storeId, ownerId, name: "G58 Home Services", businessType: "services", category: "Home services", city: "Hyderabad", slotStartTime: "00:00", slotEndTime: "23:59", slotDurationMinutes: 30, preBookingWindowDays: 30 }],
+      [`digit58_expert_${ownerId}`]: [{ id: expertId, ownerId, storeId, name: "Ravi Expert", phone: "919876543210", active: true }],
+    },
+  });
+  const assertNoErrors = monitorPageErrors(page);
+  await page.goto("/digit58/");
+  await page.getByRole("button", { name: /Services/ }).click();
+  await page.getByRole("button", { name: "+ Add Service" }).click();
+  await page.locator('#serviceForm input[name="name"]').fill("Doorstep AC Repair");
+  await page.locator('#serviceForm input[name="price"]').fill("500");
+  await page.locator('#serviceForm input[name="durationMinutes"]').fill("30");
+  await page.locator('#serviceForm input[name="prepaymentPercent"]').fill("0");
+  await page.getByRole("checkbox", { name: /Enable Doorstep Service/ }).check();
+  await page.getByRole("button", { name: "Add Service", exact: true }).click();
+  await expect(page.locator(".catalog-item-card", { hasText: "Doorstep AC Repair" })).toContainText("Doorstep Service enabled");
+
+  const serviceId = await page.evaluate((kind) => window.__g58Mock.store[kind][0].id, `digit58_service_${ownerId}`);
+  await page.evaluate(({ customerId, ownerId, storeId }) => {
+    window.stopOwnerRealtime?.();
+    window.__g58Mock.setUser({ $id: customerId, email: "doorstep-customer@example.com", name: "Doorstep Customer" });
+    window.__g58Mock.store[`digit58_customer_${ownerId}`] = [{ id: "doorstep_link", ownerId, storeId, customerAccountId: customerId, customerName: "Doorstep Customer", customerEmail: "doorstep-customer@example.com", phone: "9876500000", agreementAcceptedAt: new Date().toISOString() }];
+  }, { customerId, ownerId, storeId });
+  await page.goto(`/digit58/#store&owner=${ownerId}&store=${storeId}`);
+  await page.getByRole("button", { name: "+ Book a Service" }).click();
+  await expect(page.locator("#doorstepLocationField")).toBeVisible();
+  await page.locator("#bookingExpertSelect").selectOption(expertId);
+  await page.getByRole("button", { name: /Share Service Location/ }).click();
+  await expect(page.locator("#bookingLocationStatus")).toContainText("Location captured");
+  await page.locator(".slot-btn.available").first().click();
+  await page.getByRole("button", { name: "Request Booking" }).click();
+  await expect(page.locator(".order-item-card", { hasText: "Doorstep AC Repair" })).toContainText("Doorstep Service");
+  const booking = await page.evaluate((kind) => window.__g58Mock.store[kind][0], `digit58_booking_${ownerId}`);
+  expect(booking).toMatchObject({ serviceId, expertId, expertPhone: "919876543210", doorstepServiceEnabled: true, locationLat: 17.4065, locationLng: 78.4772 });
+
+  await page.evaluate((ownerId) => { window.stopCustomerRealtime?.(); window.__g58Mock.setUser({ $id: ownerId, email: "service-owner@example.com", name: "Service Owner" }); location.hash = ""; }, ownerId);
+  await expect(page.getByRole("button", { name: /Bookings/ })).toBeVisible();
+  await page.getByRole("button", { name: /Bookings/ }).click();
+  await page.getByRole("button", { name: "All upcoming" }).click();
+  const ownerCard = page.locator(".order-item-card", { hasText: "Doorstep AC Repair" });
+  await expect(ownerCard).toContainText("View doorstep location");
+  await page.evaluate(() => { window.__openedDoorstepShare = ""; window.open = (url) => { window.__openedDoorstepShare = String(url); return null; }; });
+  await ownerCard.getByRole("button", { name: /Send to Ravi Expert/ }).click();
+  const shareUrl = await page.evaluate(() => window.__openedDoorstepShare);
+  expect(shareUrl).toContain("wa.me/919876543210");
+  expect(decodeURIComponent(shareUrl)).toContain("https://www.google.com/maps?q=17.4065,78.4772");
+  await assertNoErrors();
+});
+
 test("one Refills customer portal switches between every linked store and keeps chat Send visible", async ({ page }) => {
   const customerId = "shared_customer", firstOwner = "owner_a", secondOwner = "owner_b", firstStore = "amruth", secondStore = "test2";
   await page.setViewportSize({ width: 390, height: 844 });

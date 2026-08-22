@@ -1037,6 +1037,13 @@ async function createDigit58Booking(call, input, userId, options = {}) {
   if (!serviceRow || serviceRow.kind !== digit58ServiceKind(ownerId)) throw new Error('This service could not be found.');
   const service = cleanRow(serviceRow);
   if (service.storeId !== storeId) throw new Error('This service does not belong to the selected store.');
+  const doorstepServiceEnabled = service.doorstepServiceEnabled === true;
+  const locationLat = Number(input.locationLat), locationLng = Number(input.locationLng);
+  const hasLocation = Number.isFinite(locationLat) && Number.isFinite(locationLng) &&
+    locationLat >= -90 && locationLat <= 90 && locationLng >= -180 && locationLng <= 180;
+  if (doorstepServiceEnabled && !hasLocation && !options.allowMissingDoorstepLocation) {
+    throw new Error('Share the service location before booking this doorstep service.');
+  }
 
   const slotStartMs = new Date(`${date}T${startTime}:00+05:30`).getTime();
   if (!Number.isFinite(slotStartMs)) throw new Error('Choose a valid booking date and time.');
@@ -1089,6 +1096,9 @@ async function createDigit58Booking(call, input, userId, options = {}) {
     id: bookingId, ownerId, storeId, serviceId, serviceName: service.name, expertId, expertName, expertPhone,
     customerAccountId: userId, customerName: text(input.customerName, 120), customerEmail: text(input.customerEmail, 250),
     phone: normalisePhone(input.phone).slice(0, 15),
+    doorstepServiceEnabled,
+    locationLat: hasLocation ? locationLat : '', locationLng: hasLocation ? locationLng : '',
+    locationUrl: hasLocation ? `https://www.google.com/maps?q=${locationLat},${locationLng}` : '',
     date, startTime, durationMinutes, price, prepaymentPercent, prepaymentAmount, cancellationChargeAmount, upfrontAmount, balanceAmount,
     upiId: upfrontAmount > 0 ? upiId : '', upiUri: upfrontAmount > 0 ? buildDigit58UpiUri(upiId, store.name, upfrontAmount, bookingId) : '',
     status: options.initialStatus || (upfrontAmount > 0 ? 'Pending Payment' : 'Requested'), paymentMarkedAt: '', balancePaid: false, balancePaidAt: '',
@@ -1118,7 +1128,7 @@ async function createDigit58OwnerBooking(call, input, userId) {
   return createDigit58Booking(call, {
     ownerId, storeId, serviceId: input.serviceId, expertId: input.expertId, date: input.date, startTime: input.startTime,
     customerName: customer.customerName, customerEmail: customer.customerEmail, phone: customer.phone,
-  }, customerAccountId, { initialStatus: 'Pending Customer Acceptance' });
+  }, customerAccountId, { initialStatus: 'Pending Customer Acceptance', allowMissingDoorstepLocation: true });
 }
 
 async function acceptDigit58OwnerBooking(call, input, userId) {

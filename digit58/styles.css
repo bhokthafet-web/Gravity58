@@ -317,6 +317,9 @@ body.modal-open .promotion-cart-bar{display:none}
 .delivery-info{display:flex;flex-direction:column;gap:3px;font-size:13px}
 .delivery-info a{color:var(--violet)}
 #locationStatus.location-captured{color:var(--violet)}
+.doorstep-chip{width:max-content;background:rgba(249,115,22,.16);border-color:rgba(249,115,22,.5);color:#ffb16d}
+.doorstep-booking-block{background:linear-gradient(135deg,rgba(249,115,22,.12),rgba(127,255,212,.07));border-color:rgba(249,115,22,.38)}
+#bookingLocationStatus.location-captured{color:var(--violet);font-weight:700}
 .floating-support-btn{position:fixed;right:20px;bottom:20px;z-index:60;display:flex;align-items:center;gap:8px;padding:13px 18px;border:0;border-radius:999px;background:linear-gradient(135deg,var(--violet),var(--violet2));color:#04231a;font-weight:800;text-decoration:none;box-shadow:0 16px 34px rgba(127,255,212,.35);transition:.2s transform;cursor:pointer}
 .floating-support-btn:hover{transform:translateY(-2px) scale(1.03)}
 .floating-support-btn span{font-size:13px}
