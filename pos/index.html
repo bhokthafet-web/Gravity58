@@ -377,6 +377,13 @@
     .pos-guide-check input{width:17px;height:17px;min-height:0;accent-color:var(--orange)}
     @media(max-width:620px){.pos-guide-grid{grid-template-columns:1fr}}
 
+    body.pos-embedded{padding:0;background:#fff}
+    body.pos-embedded .app{width:100%}
+    body.pos-embedded .topbar,body.pos-embedded .daily-report,body.pos-embedded .history,body.pos-embedded .premium-shell,body.pos-embedded #posGuideModal{display:none!important}
+    body.pos-embedded .card{box-shadow:none}
+    body.pos-embedded .builder-layout{grid-template-columns:1fr}
+    body.pos-embedded .summary-card{position:static}
+
     :root{--receipt-page-width:80mm;--receipt-content-width:72mm;--receipt-font-size:11px;--receipt-qr-size:120px}
     @media print{
       @page{size:var(--receipt-page-width) auto;margin:4mm}
@@ -826,6 +833,13 @@
       const prefillNote=billHandoffParams.get("note")||"";
       const prefillUpi=billHandoffParams.get("upi")||"";
       const prefillBrand=billHandoffParams.get("brand")||"";
+      const isEmbedded=billHandoffParams.get("embedded")==="1"&&window.parent!==window;
+      if(isEmbedded)document.body.classList.add("pos-embedded");
+      function notifyEmbedParent(){
+        if(!isEmbedded)return;
+        try{window.parent.postMessage({type:"g58-pos-bill-done"},window.location.origin)}catch{}
+      }
+      window.addEventListener("afterprint",notifyEmbedParent);
       function seedExternalPrefillIntoSetup(){
         if(!Number.isFinite(prefillAmount)||prefillAmount<=0)return;
         if(localStorage.getItem("g58Settings"))return;
@@ -1199,6 +1213,7 @@
             showToast("Bill cancelled and saved in Cancelled Bills");
           }
           resetBill(false);
+          setTimeout(notifyEmbedParent,1400);
         }catch(error){
           console.error("Bill settlement failed",error);
           showToast("Could not save bill. Please try again.");

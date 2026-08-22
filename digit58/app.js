@@ -948,9 +948,17 @@ const PRINT_ICON_SVG='<svg class="print-icon" viewBox="0 0 24 24" width="16" hei
 function storeForRow(row){return state.stores.find(s=>s.id===row.storeId)||activeStore()}
 function posPrintLink(row,amount,note){
   const store=storeForRow(row);
-  const params=new URLSearchParams({source:'digit58',amount:String(Math.round(amount*100)/100),note:note.slice(0,80),upi:store?.upiId||'',brand:store?.name||''});
+  const params=new URLSearchParams({source:'digit58',embedded:'1',amount:String(Math.round(amount*100)/100),note:note.slice(0,80),upi:store?.upiId||'',brand:store?.name||''});
   return `../pos/?${params.toString()}`;
 }
+function openPosPrintModal(url){
+  modal('Print POS Bill',`<iframe class="pos-print-frame" src="${html(url)}" title="POS bill"></iframe>`);
+}
+function bindPosPrintButtons(){$$('[data-pos-print]').forEach(button=>button.onclick=()=>openPosPrintModal(button.dataset.posPrint))}
+window.addEventListener('message',event=>{
+  if(event.origin!==location.origin)return;
+  if(event.data?.type==='g58-pos-bill-done')closeModal();
+});
 function floatingStoreWhatsappButton(store){
   const phone=String(store?.phone||'').replace(/[^\d+]/g,'').replace(/^\+/,'');
   if(!phone)return '';
@@ -1866,7 +1874,7 @@ function ownerOrderMarkup(order,showCustomer,showStore){
   const store=showStore?state.stores.find(s=>s.id===order.storeId):null;
   const paymentReview=order.paymentMarkedAt?`<div class="razorpay-owner-review"><span>Razorpay payment submitted</span><strong>Verify payment before accepting</strong><small>Customer marked this payment completed ${new Date(order.paymentMarkedAt).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'})}.</small></div>`:'';
   const visibleStatus=order.paymentMarkedAt&&order.status==='Priced'?'Payment Verification':order.status;
-  return `<article class="card order-item-card ${ringing?'incoming-order':''} ${order.paymentMarkedAt?'payment-awaiting':''}">${ringing?'<span class="incoming-order-beacon" aria-label="New order" title="New order"></span>':''}<div class="section-head"><h3>Order #${html(order.id.slice(-6).toUpperCase())}</h3><span class="chip ${['Requested','Priced','Minimum Approval Requested'].includes(order.status)?'due':''}">${html(visibleStatus)}</span></div>${showStore?`<p class="muted" style="margin:-8px 0 0"><strong>${html(store?.name||'Store')}</strong></p>`:''}${showCustomer?`<p class="muted" style="margin:-4px 0 4px">${html(customer?.customerName||order.customerName||'Customer')}</p>`:''}${order.refillCardId?'<span class="chip delivered">Refill order</span>':''}${order.status==='Minimum Approval Requested'?`<div class="minimum-approval-owner"><strong>Below-minimum approval requested</strong><span>Customer estimate ${money(order.customerOrderValue)} · Store minimum ${money(order.minimumOrderValueAtOrder)}</span></div>`:''}${orderStepperMarkup(order.status)}<div class="order-items-list">${order.items.map(item=>`<div class="order-line-item"><span>${item.qty} ×</span><span>${html(item.name)}</span></div>`).join('')}</div>${Number(order.customerOrderValue)>0?`<div class="customer-order-value"><span>Customer estimated order value</span><strong>${money(order.customerOrderValue)}</strong></div>`:''}${(order.reorderedFrom||order.refillCardId)&&Number(order.previousAmount)>0?`<div class="previous-price-note"><span>${order.refillCardId?'Previous refill price':'Previous order amount'}</span><strong>${money(order.previousAmount)}</strong></div>`:''}${order.prescriptionUrl?`<a class="link-btn" href="${html(order.prescriptionUrl)}" target="_blank" rel="noopener">📄 View prescription</a>`:''}${order.amount?`<h3 style="margin:10px 0">${money(order.amount)}</h3>`:'<p class="muted">Amount not set yet.</p>'}${paymentReview}${deliveryContactMarkup(order)}<div class="actions">${orderOwnerActions(order)}${order.amount>0?`<a class="btn small secondary" href="${posPrintLink(order,order.amount,`Order #${order.id.slice(-6).toUpperCase()} — ${customer?.customerName||order.customerName||'Customer'}`)}" target="_blank" rel="noopener noreferrer" title="Print POS bill">${PRINT_ICON_SVG} Print</a>`:''}</div>${orderChatMarkup(order,'owner')}</article>`;
+  return `<article class="card order-item-card ${ringing?'incoming-order':''} ${order.paymentMarkedAt?'payment-awaiting':''}">${ringing?'<span class="incoming-order-beacon" aria-label="New order" title="New order"></span>':''}<div class="section-head"><h3>Order #${html(order.id.slice(-6).toUpperCase())}</h3><span class="chip ${['Requested','Priced','Minimum Approval Requested'].includes(order.status)?'due':''}">${html(visibleStatus)}</span></div>${showStore?`<p class="muted" style="margin:-8px 0 0"><strong>${html(store?.name||'Store')}</strong></p>`:''}${showCustomer?`<p class="muted" style="margin:-4px 0 4px">${html(customer?.customerName||order.customerName||'Customer')}</p>`:''}${order.refillCardId?'<span class="chip delivered">Refill order</span>':''}${order.status==='Minimum Approval Requested'?`<div class="minimum-approval-owner"><strong>Below-minimum approval requested</strong><span>Customer estimate ${money(order.customerOrderValue)} · Store minimum ${money(order.minimumOrderValueAtOrder)}</span></div>`:''}${orderStepperMarkup(order.status)}<div class="order-items-list">${order.items.map(item=>`<div class="order-line-item"><span>${item.qty} ×</span><span>${html(item.name)}</span></div>`).join('')}</div>${Number(order.customerOrderValue)>0?`<div class="customer-order-value"><span>Customer estimated order value</span><strong>${money(order.customerOrderValue)}</strong></div>`:''}${(order.reorderedFrom||order.refillCardId)&&Number(order.previousAmount)>0?`<div class="previous-price-note"><span>${order.refillCardId?'Previous refill price':'Previous order amount'}</span><strong>${money(order.previousAmount)}</strong></div>`:''}${order.prescriptionUrl?`<a class="link-btn" href="${html(order.prescriptionUrl)}" target="_blank" rel="noopener">📄 View prescription</a>`:''}${order.amount?`<h3 style="margin:10px 0">${money(order.amount)}</h3>`:'<p class="muted">Amount not set yet.</p>'}${paymentReview}${deliveryContactMarkup(order)}<div class="actions">${orderOwnerActions(order)}${order.amount>0?`<button type="button" class="btn small secondary" data-pos-print="${html(posPrintLink(order,order.amount,`Order #${order.id.slice(-6).toUpperCase()} — ${customer?.customerName||order.customerName||'Customer'}`))}" title="Print POS bill">${PRINT_ICON_SVG} Print</button>`:''}</div>${orderChatMarkup(order,'owner')}</article>`;
 }
 function orderOwnerActions(order){
   const map={
@@ -1886,6 +1894,7 @@ function bindOwnerOrderActions(){
   $$('[data-advance-order]').forEach(button=>button.onclick=()=>advanceOrder(button.dataset.advanceOrder,button.dataset.next));
   $$('[data-reject-order]').forEach(button=>button.onclick=()=>rejectOrder(button.dataset.rejectOrder));
   $$('[data-reopen-payment]').forEach(button=>button.onclick=()=>reopenRazorpayPayment(button.dataset.reopenPayment));
+  bindPosPrintButtons();
 }
 async function approveMinimumOrder(orderId){
   const order=state.orders.find(row=>row.id===orderId);if(!order||order.status!=='Minimum Approval Requested')return;
@@ -3051,7 +3060,7 @@ function confirmedBookingCompactMarkup(booking){
   const balance=Number(booking.balanceAmount)||0;
   const phone=booking.phone||(state.customers||[]).find(row=>row.storeId===booking.storeId&&row.customerAccountId===booking.customerAccountId)?.phone||'';
   const waHref=whatsappLink(phone,`Hi ${booking.customerName||'there'}, this is regarding your ${booking.serviceName} booking on ${booking.date} at ${booking.startTime}.`);
-  return `<div class="booking-compact-card ${ringing?'incoming-order':''}">${ringing?'<span class="incoming-order-beacon" aria-label="New booking" title="New booking"></span>':''}<div class="booking-compact-info"><strong>${html(booking.serviceName)}</strong><span class="muted">${html(booking.date)} · ${html(booking.startTime)}${booking.expertName?` · ${html(booking.expertName)}`:''} · ${html(booking.customerName||'Customer')}</span>${balance>0?`<span class="chip due">Balance ${money(balance)}</span>`:''}</div><div class="actions">${waHref?`<a class="btn small whatsapp-btn" href="${waHref}" target="_blank" rel="noopener noreferrer" title="Chat with ${html(booking.customerName||'customer')} on WhatsApp">${WHATSAPP_ICON_SVG}</a>`:''}<a class="btn small secondary" href="${posPrintLink(booking,booking.price,`${booking.serviceName} — ${booking.customerName||'Customer'}`)}" target="_blank" rel="noopener noreferrer" title="Print POS bill">${PRINT_ICON_SVG}</a><button class="btn small green" data-complete-booking="${html(booking.id)}">Complete</button><button class="btn small red" data-cancel-booking="${html(booking.id)}">Cancel</button></div>${bookingChatMarkup(booking,'owner')}</div>`;
+  return `<div class="booking-compact-card ${ringing?'incoming-order':''}">${ringing?'<span class="incoming-order-beacon" aria-label="New booking" title="New booking"></span>':''}<div class="booking-compact-info"><strong>${html(booking.serviceName)}</strong><span class="muted">${html(booking.date)} · ${html(booking.startTime)}${booking.expertName?` · ${html(booking.expertName)}`:''} · ${html(booking.customerName||'Customer')}</span>${balance>0?`<span class="chip due">Balance ${money(balance)}</span>`:''}</div><div class="actions">${waHref?`<a class="btn small whatsapp-btn" href="${waHref}" target="_blank" rel="noopener noreferrer" title="Chat with ${html(booking.customerName||'customer')} on WhatsApp">${WHATSAPP_ICON_SVG}</a>`:''}<button type="button" class="btn small secondary" data-pos-print="${html(posPrintLink(booking,booking.price,`${booking.serviceName} — ${booking.customerName||'Customer'}`))}" title="Print POS bill">${PRINT_ICON_SVG}</button><button class="btn small green" data-complete-booking="${html(booking.id)}">Complete</button><button class="btn small red" data-cancel-booking="${html(booking.id)}">Cancel</button></div>${bookingChatMarkup(booking,'owner')}</div>`;
 }
 function bookingsView(){
   refreshView=bookingsView;
@@ -3081,6 +3090,7 @@ function bookingsView(){
   $$('[data-cancel-booking]').forEach(button=>button.onclick=()=>cancelBooking(button.dataset.cancelBooking));
   $$('[data-reopen-booking-payment]').forEach(button=>button.onclick=()=>reopenBookingPayment(button.dataset.reopenBookingPayment));
   bindBookingChatForms(filtered,'owner',refreshView);
+  bindPosPrintButtons();
 }
 function bookingHistoryTimestamp(booking){
   if(booking.completedAt)return booking.completedAt;
