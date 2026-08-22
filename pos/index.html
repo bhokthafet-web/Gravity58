@@ -816,6 +816,35 @@
         customerName:"",
         paperWidth:"80"
       };
+      // External bill hand-off (e.g. "Print" from Refills bookings/orders): a
+      // caller can open this page with ?amount=&note=&upi=&brand=&source=
+      // to have a bill auto-built and its QR shown, ready to print. It still
+      // goes through the normal setup screen the first time (so the owner
+      // confirms the UPI ID), then straight to the QR on every visit after.
+      const billHandoffParams=new URLSearchParams(location.search);
+      const prefillAmount=Number.parseFloat(billHandoffParams.get("amount"));
+      const prefillNote=billHandoffParams.get("note")||"";
+      const prefillUpi=billHandoffParams.get("upi")||"";
+      const prefillBrand=billHandoffParams.get("brand")||"";
+      function seedExternalPrefillIntoSetup(){
+        if(!Number.isFinite(prefillAmount)||prefillAmount<=0)return;
+        if(localStorage.getItem("g58Settings"))return;
+        if(prefillUpi)$("setupUpiId").value=prefillUpi;
+        if(prefillBrand){
+          $("brandName").value=prefillBrand;
+          $("posEnabled").checked=true;
+          $("posFields").classList.add("show");
+        }
+      }
+      let externalPrefillApplied=false;
+      function applyExternalPrefill(){
+        if(!Number.isFinite(prefillAmount)||prefillAmount<=0)return;
+        if(externalPrefillApplied)return;
+        if(!$("builderScreen").classList.contains("active"))return;
+        externalPrefillApplied=true;
+        window.G58AddLineItem({name:prefillNote,price:prefillAmount,quantity:1});
+        setTimeout(openQrPopup,120);
+      }
       const RECEIPT_WIDTHS={
         "58":{page:"58mm",content:"48mm",font:"10px",qr:"96px"},
         "80":{page:"80mm",content:"72mm",font:"11px",qr:"120px"}
@@ -1635,7 +1664,7 @@
       $("quickGstPercent").addEventListener("change",applyQuickOptions);
       $("quickItemName").addEventListener("change",applyQuickOptions);
       $("quickPrint").addEventListener("change",applyQuickOptions);
-      $("continueBtn").addEventListener("click",saveSetup);
+      $("continueBtn").addEventListener("click",()=>{saveSetup();applyExternalPrefill()});
       $("addValueBtn").addEventListener("click",addValue);
       $("valueInput").addEventListener("keydown",e=>{if(e.key==="Enter")addValue()});
       $("quantityInput").addEventListener("keydown",e=>{if(e.key==="Enter")addValue()});
@@ -1696,11 +1725,13 @@
         $("premiumShell")?.scrollIntoView({behavior:"smooth",block:"start"});
       });
 
+      seedExternalPrefillIntoSetup();
       loadSavedSettings();
       $("reportDate").value=localDateKey(new Date());
       renderHistory();
       renderValues();
-      window.G58ApplyCloudWorkspace=()=>{loadSavedSettings();renderHistory();renderValues();syncQuickOptions();updateProfile()};
+      applyExternalPrefill();
+      window.G58ApplyCloudWorkspace=()=>{loadSavedSettings();renderHistory();renderValues();syncQuickOptions();updateProfile();applyExternalPrefill()};
     })();
   </script>
 

@@ -320,6 +320,8 @@ body.modal-open .promotion-cart-bar{display:none}
 .floating-whatsapp-btn{background:linear-gradient(135deg,#25d366,#128c7e);color:#04231a;box-shadow:0 16px 34px rgba(37,211,102,.35)}
 .whatsapp-btn{background:linear-gradient(135deg,#25d366,#128c7e);color:#04231a;text-decoration:none;display:inline-flex;align-items:center;justify-content:center;gap:6px}
 .whatsapp-icon{flex-shrink:0;display:block}
+.print-icon{flex-shrink:0;display:block}
+.btn.secondary .print-icon{margin:0 auto}
 .payment-warning{background:rgba(248,113,113,.12);border:1px solid rgba(248,113,113,.4);border-radius:14px;padding:12px 14px;margin-bottom:10px}
 .payment-warning strong{display:block;color:var(--red);font-size:13px;margin-bottom:4px}
 .payment-warning p{margin:0;font-size:12.5px;color:var(--muted)}
