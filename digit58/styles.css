@@ -85,9 +85,6 @@ h1,h2,h3,p{margin-top:0}
 @keyframes incomingCallRing{0%{transform:scale(.6);opacity:.9}100%{transform:scale(1.6);opacity:0}}
 .incoming-call-avatar{position:relative;width:88px;height:88px;border-radius:50%;background:var(--panel2);border:1px solid var(--line);display:grid;place-items:center;box-shadow:0 10px 30px rgba(0,0,0,.4)}
 .incoming-call-avatar svg{width:44px;height:44px}
-.customer-accepted-alert .incoming-call-rings span{border-color:rgba(74,222,128,.72)}
-.customer-accepted-alert .incoming-call-avatar{background:linear-gradient(145deg,#14532d,#16a34a);border-color:rgba(187,247,208,.8);box-shadow:0 0 38px rgba(74,222,128,.38)}
-.accepted-alert-icon{font-size:48px;font-weight:900;color:#ecfdf5;line-height:1}
 .medicine-alarm-avatar{font-size:40px;line-height:1}
 .course-card .medicine-list{display:flex;flex-direction:column;gap:8px;margin:10px 0 14px}
 .medicine-row{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 12px;border-radius:12px;background:var(--panel2);border:1px solid var(--line)}
@@ -204,6 +201,8 @@ th,td{text-align:left;padding:12px;border-bottom:1px solid var(--line);white-spa
 .order-step-icon{width:22px;height:22px;border-radius:50%;display:grid;place-items:center;background:rgba(255,255,255,.06);border:1px solid var(--line);font-size:11px}
 .order-step.done .order-step-icon,.order-step.current .order-step-icon{background:linear-gradient(135deg,var(--violet),var(--violet2));border-color:transparent}
 .order-step small{font-size:9px;text-align:center;color:var(--muted);white-space:nowrap}
+.booking-status{background:linear-gradient(135deg,rgba(26,88,122,.9),rgba(35,42,91,.92));border-color:rgba(125,211,252,.28)}
+.booking-stepper .order-step.done .order-step-icon,.booking-stepper .order-step.current .order-step-icon{background:linear-gradient(135deg,#0284c7,#2563eb)}
 .order-items-list{display:grid;gap:4px}
 .order-line-item{display:flex;gap:8px;font-size:13px;color:var(--text)}
 .order-line-item span:first-child{color:var(--muted);min-width:32px}

@@ -101,6 +101,17 @@ export function mockApiScript({ initialUser = null, admin = false, seed = {} } =
           const row=clean({id:'booking-'+(++serial),ownerId:payload.ownerId,storeId:payload.storeId,serviceId:service.id,serviceName:service.name,expertId:expert?.id||'',expertName:expert?.name||'',expertPhone:expert?.phone||'',customerAccountId:user?.\$id,customerName:payload.customerName,customerEmail:payload.customerEmail,phone:String(payload.phone||'').replace(/\D/g,''),doorstepServiceEnabled:Boolean(service.doorstepServiceEnabled),locationLat:hasLocation?lat:'',locationLng:hasLocation?lng:'',locationUrl:hasLocation?'https://www.google.com/maps?q='+lat+','+lng:'',date:payload.date,startTime:payload.startTime,durationMinutes:Number(service.durationMinutes)||30,price,prepaymentPercent,prepaymentAmount:upfrontAmount,upfrontAmount,balanceAmount:price-upfrontAmount,status:upfrontAmount>0?'Pending Payment':'Requested',messages:[],createdAt,updatedAt:createdAt});
           (store[bookingKind]||=[]).unshift(row);notify(bookingKind,row);return {ok:true,booking:clone(row)};
         }
+        if(action==='digit58-accept-owner-order'){
+          const kind='digit58_order_'+String(payload.ownerId||'').replace(/[^a-zA-Z0-9._-]/g,'-').slice(0,40),row=(store[kind]||[]).find(item=>(item.id||item.\$id)===payload.orderId);
+          if(!row||row.customerAccountId!==user?.\$id)throw new Error('Only this order customer can accept the order.');
+          Object.assign(row,{status:'Requested',customerAcceptedAt:new Date().toISOString(),updatedAt:new Date().toISOString()});notify(kind,row);return {ok:true,order:clone(row)};
+        }
+        if(action==='digit58-accept-owner-booking'){
+          const kind='digit58_booking_'+String(payload.ownerId||'').replace(/[^a-zA-Z0-9._-]/g,'-').slice(0,40),row=(store[kind]||[]).find(item=>(item.id||item.\$id)===payload.bookingId);
+          if(!row||row.customerAccountId!==user?.\$id)throw new Error('Only this booking customer can accept the booking.');
+          const nextStatus=Number(row.upfrontAmount||row.prepaymentAmount)>0?'Pending Payment':'Requested';
+          Object.assign(row,{status:nextStatus,customerAcceptedAt:new Date().toISOString(),updatedAt:new Date().toISOString()});notify(kind,row);return {ok:true,booking:clone(row)};
+        }
         if(action==='digit58-set-store-suspended'){
           if(!${admin ? "true" : "false"})throw new Error('Only G58 administrators can manage store status.');
           const kind='digit58_store_'+String(payload.ownerId||'').replace(/[^a-zA-Z0-9._-]/g,'-').slice(0,40);

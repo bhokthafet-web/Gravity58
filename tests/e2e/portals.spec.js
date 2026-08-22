@@ -503,9 +503,17 @@ test("Service owner enables doorstep booking and forwards the customer location 
   await assertNoErrors();
 });
 
-test("Refills customer slides open both incoming and accepted order alerts", async ({ page }) => {
+test("Refills customer gets one incoming order alert and continues with the card actions", async ({ page }) => {
   const ownerId = "slide_order_owner", customerId = "slide_order_customer", storeId = "slide_order_store", orderId = "slide_order";
   const orderKind = `digit58_order_${ownerId}`;
+  await page.addInitScript(() => {
+    const nativeSetInterval = window.setInterval.bind(window);
+    window.__g58IntervalDelays = [];
+    window.setInterval = (callback, delay, ...args) => {
+      window.__g58IntervalDelays.push(Number(delay));
+      return nativeSetInterval(callback, delay, ...args);
+    };
+  });
   await prepareMockApi(page, {
     state: null,
     initialUser: { $id: customerId, email: "slide-order@example.com", name: "Slide Customer" },
@@ -519,23 +527,29 @@ test("Refills customer slides open both incoming and accepted order alerts", asy
   await page.goto(`/digit58/#store&owner=${ownerId}&store=${storeId}`);
   await expect(page.getByRole("heading", { name: "Incoming order!" })).toBeVisible();
   await expect(page.locator(".slide-to-view-label")).toHaveText("Slide to open order");
+  expect(await page.evaluate(() => window.__g58IntervalDelays.filter((delay) => delay === 1900).length)).toBe(0);
+  expect(await page.evaluate((key) => localStorage.getItem(key), `g58-customer-incoming-alert:${customerId}:order:${orderId}`)).toBe("1");
   await slideCustomerAlertOpen(page);
-  await expect(page.locator(`#customer-order-${orderId}`)).toBeVisible();
-
+  const card = page.locator(`#customer-order-${orderId}`);
+  await expect(card).toHaveClass(/slide-open-highlight/);
+  await expect(card.getByRole("button", { name: "Accept Order" })).toBeVisible();
+  await expect(card.getByRole("button", { name: "Reject" })).toBeVisible();
+  await card.getByRole("button", { name: "Accept Order" }).click();
+  await expect(card).toContainText("Requested");
+  await expect(page.locator(".incoming-call-overlay")).toHaveCount(0);
   await page.evaluate(({ kind, id }) => {
     const order = window.__g58Mock.store[kind].find((row) => row.id === id);
     Object.assign(order, { status: "Accepted", acceptedAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
     window.dispatchEvent(new CustomEvent("g58-ad-data-changed", { detail: { kind, row: order } }));
   }, { kind: orderKind, id: orderId });
-  await expect(page.getByRole("heading", { name: "Order accepted!" })).toBeVisible();
-  await expect(page.locator(".customer-accepted-alert .slide-to-view-label")).toHaveText("Slide to open order");
-  await slideCustomerAlertOpen(page);
-  await expect(page.locator(`#customer-order-${orderId}`)).toHaveClass(/slide-open-highlight/);
-  expect(await page.evaluate((key) => localStorage.getItem(key), `g58-customer-alert:${customerId}:order:${orderId}:Accepted`)).toBe("1");
+  await expect(card).toContainText("The store has accepted your order");
+  await expect(page.locator(".incoming-call-overlay")).toHaveCount(0);
+  await page.reload();
+  await expect(page.locator(".incoming-call-overlay")).toHaveCount(0);
   await assertNoErrors();
 });
 
-test("Refills customer slides open both incoming and accepted booking alerts", async ({ page }) => {
+test("Refills customer gets one incoming booking alert and sees booking status icons", async ({ page }) => {
   const ownerId = "slide_booking_owner", customerId = "slide_booking_customer", storeId = "slide_booking_store", bookingId = "slide_booking";
   const bookingKind = `digit58_booking_${ownerId}`, tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
   await prepareMockApi(page, {
@@ -544,26 +558,33 @@ test("Refills customer slides open both incoming and accepted booking alerts", a
     seed: {
       [`digit58_store_${ownerId}`]: [{ id: storeId, ownerId, name: "Slide Services", businessType: "services", category: "Home services", city: "Hyderabad" }],
       [`digit58_customer_${ownerId}`]: [{ id: "slide_booking_link", ownerId, storeId, customerAccountId: customerId, customerName: "Booking Customer", customerEmail: "slide-booking@example.com", phone: "9876543210", agreementAcceptedAt: new Date().toISOString() }],
-      [bookingKind]: [{ id: bookingId, ownerId, storeId, serviceId: "service_one", serviceName: "Home cleaning", customerAccountId: customerId, customerName: "Booking Customer", phone: "9876543210", date: tomorrow, startTime: "10:00", durationMinutes: 60, price: 500, status: "Pending Customer Acceptance", messages: [], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }],
+      [bookingKind]: [{ id: bookingId, ownerId, storeId, serviceId: "service_one", serviceName: "Home cleaning", customerAccountId: customerId, customerName: "Booking Customer", phone: "9876543210", date: tomorrow, startTime: "10:00", durationMinutes: 60, price: 500, upfrontAmount: 100, status: "Pending Customer Acceptance", messages: [], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }],
     },
   });
   const assertNoErrors = monitorPageErrors(page);
   await page.goto(`/digit58/#store&owner=${ownerId}&store=${storeId}`);
   await expect(page.getByRole("heading", { name: "Incoming booking!" })).toBeVisible();
   await expect(page.locator(".slide-to-view-label")).toHaveText("Slide to open booking");
+  expect(await page.evaluate((key) => localStorage.getItem(key), `g58-customer-incoming-alert:${customerId}:booking:${bookingId}`)).toBe("1");
   await slideCustomerAlertOpen(page);
-  await expect(page.locator(`#customer-booking-${bookingId}`)).toBeVisible();
-
+  const card = page.locator(`#customer-booking-${bookingId}`);
+  await expect(card).toHaveClass(/slide-open-highlight/);
+  await expect(card.getByRole("button", { name: "Accept Booking" })).toBeVisible();
+  await expect(card.getByRole("button", { name: "Reject" })).toBeVisible();
+  await expect(card.locator(".booking-stepper .order-step-icon")).toHaveCount(1);
+  await card.getByRole("button", { name: "Accept Booking" }).click();
+  await expect(card).toContainText("Payment");
+  await expect(card.locator(".booking-stepper .order-step-icon")).toHaveCount(4);
+  await expect(page.locator(".incoming-call-overlay")).toHaveCount(0);
   await page.evaluate(({ kind, id }) => {
     const booking = window.__g58Mock.store[kind].find((row) => row.id === id);
     Object.assign(booking, { status: "Confirmed", confirmedAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
     window.dispatchEvent(new CustomEvent("g58-ad-data-changed", { detail: { kind, row: booking } }));
   }, { kind: bookingKind, id: bookingId });
-  await expect(page.getByRole("heading", { name: "Booking accepted!" })).toBeVisible();
-  await expect(page.locator(".customer-accepted-alert .slide-to-view-label")).toHaveText("Slide to open booking");
-  await slideCustomerAlertOpen(page);
-  await expect(page.locator(`#customer-booking-${bookingId}`)).toHaveClass(/slide-open-highlight/);
-  expect(await page.evaluate((key) => localStorage.getItem(key), `g58-customer-alert:${customerId}:booking:${bookingId}:Confirmed`)).toBe("1");
+  await expect(card).toContainText("Your service slot is confirmed");
+  await expect(page.locator(".incoming-call-overlay")).toHaveCount(0);
+  await page.reload();
+  await expect(page.locator(".incoming-call-overlay")).toHaveCount(0);
   await assertNoErrors();
 });
 
