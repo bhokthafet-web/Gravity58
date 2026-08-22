@@ -24,11 +24,14 @@ test("free orders reset at India midnight while processing orders carry for one 
   assert.equal(nextDay.keep, false);
 });
 
-test("Premium orders are permanent and pricing uses the 10 percent period ladder", () => {
+test("Premium closed-order history is retained for one year and pricing uses the 10 percent period ladder", () => {
   const oldOrder = plans.orderRetention({ createdAt: "2020-01-01T00:00:00.000Z", status: "Completed" }, { premium: true, at: new Date("2026-08-12T06:30:00.000Z") });
+  const recentOrder = plans.orderRetention({ createdAt: "2026-01-01T00:00:00.000Z", status: "Completed" }, { premium: true, at: new Date("2026-08-12T06:30:00.000Z") });
+  const activeOrder = plans.orderRetention({ createdAt: "2020-01-01T00:00:00.000Z", status: "Preparing" }, { premium: true, at: new Date("2026-08-12T06:30:00.000Z") });
   const pricing = plans.normalisePricing();
-  assert.equal(oldOrder.keep, true);
-  assert.equal(oldOrder.permanent, true);
+  assert.equal(oldOrder.keep, false);
+  assert.equal(recentOrder.keep, true);
+  assert.equal(activeOrder.keep, true);
   assert.equal(JSON.stringify(pricing.periods.map((period) => plans.priceFor(699, period))), JSON.stringify([699, 3775, 6710, 17615]));
   assert.equal(JSON.stringify(pricing.periods.map((period) => plans.priceFor(1299, period))), JSON.stringify([1299, 7015, 12470, 32735]));
 });

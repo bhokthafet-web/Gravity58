@@ -718,6 +718,7 @@
           </div>
         </div>
       </section>
+
     </section>
 
     <section class="premium-shell" id="premiumShell" style="display:none" aria-live="polite"></section>
@@ -1162,6 +1163,7 @@
         localStorage.setItem("g58Bills",JSON.stringify(filtered.slice(0,100)));
         window.G58Premium?.syncBill(bill);
         renderHistory();
+        window.G58MountPosRetention?.();
       }
 
       function saveCancelledBill(bill){
@@ -1170,6 +1172,7 @@
         filtered.unshift(bill);
         localStorage.setItem("g58CancelledBills",JSON.stringify(filtered.slice(0,100)));
         window.G58Premium?.syncCancelledBill(bill);
+        window.G58MountPosRetention?.();
       }
 
       function renderQrForBill(bill,target,size=235){
@@ -1750,7 +1753,7 @@
       renderHistory();
       renderValues();
       applyExternalPrefill();
-      window.G58ApplyCloudWorkspace=()=>{loadSavedSettings();renderHistory();renderValues();syncQuickOptions();updateProfile();applyExternalPrefill()};
+      window.G58ApplyCloudWorkspace=()=>{loadSavedSettings();renderHistory();renderValues();syncQuickOptions();updateProfile();applyExternalPrefill();window.G58MountPosRetention?.()};
     })();
   </script>
 
@@ -1758,7 +1761,19 @@
 <script src="https://cdn.jsdelivr.net/npm/appwrite@26.2.0"></script>
 <script src="/js/config.js?v=22"></script>
 <script src="/js/appwrite-ads.js?v=20"></script>
-<script src="/js/pos-premium.js?v=36"></script>
+<script src="/js/data-retention.js?v=2"></script>
+<script src="/js/pos-premium.js?v=39"></script>
+<script>
+  window.G58MountPosRetention=()=>{
+    const bills=JSON.parse(localStorage.getItem('g58Bills')||'[]');
+    const cancelled=JSON.parse(localStorage.getItem('g58CancelledBills')||'[]').map(row=>({...row,status:row.status||'Cancelled'}));
+    window.G58DataRetention?.mount({
+      host:'#posRetentionPanel',product:'pos',rows:[...bills,...cancelled],
+      afterDelete:async()=>{localStorage.setItem('g58Bills','[]');localStorage.setItem('g58CancelledBills','[]');setTimeout(()=>location.reload(),500)}
+    });
+  };
+  window.addEventListener('load',()=>setTimeout(window.G58MountPosRetention,1200));
+</script>
 
   <script>
   document.addEventListener("DOMContentLoaded", () => {

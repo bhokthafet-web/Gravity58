@@ -3,9 +3,10 @@ import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { dirname, extname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
-const root = resolve(new URL("../..", import.meta.url).pathname);
-const ignored = new Set([".git", "node_modules", "playwright-report", "test-results"]);
+const root = resolve(fileURLToPath(new URL("../..", import.meta.url)));
+const ignored = new Set([".git", "node_modules", "build", "playwright-report", "test-results"]);
 
 function filesUnder(directory) {
   return readdirSync(directory).flatMap((name) => {
@@ -40,8 +41,8 @@ test("every HTML page declares a title and mobile viewport", () => {
 test("every production page uses the shared Gravity58 favicon", () => {
   for (const file of productionHtmlFiles) {
     const html = readFileSync(file, "utf8");
-    assert.match(html, /<link[^>]+rel=["']icon["'][^>]+href=["']\/assets\/favicon-32\.png\?v=2["']/i, `Missing favicon: ${file}`);
-    assert.match(html, /<link[^>]+rel=["']apple-touch-icon["'][^>]+href=["']\/assets\/apple-touch-icon\.png\?v=2["']/i, `Missing Apple touch icon: ${file}`);
+    assert.match(html, /<link[^>]+rel=["']icon["'][^>]+href=["']\/assets\/favicon-32\.png\?v=\d+["']/i, `Missing favicon: ${file}`);
+    assert.match(html, /<link[^>]+rel=["']apple-touch-icon["'][^>]+href=["']\/assets\/apple-touch-icon\.png\?v=\d+["']/i, `Missing Apple touch icon: ${file}`);
   }
   for (const relative of ["assets/favicon-32.png", "assets/apple-touch-icon.png", "assets/favicon-192.png"]) {
     const path = join(root, relative);
@@ -103,13 +104,16 @@ test("GitHub Pages deployment and custom-domain files exist", () => {
 });
 
 test("Android download buttons point to the published signed installer", () => {
-  const apkRelative = "downloads/GRAVITY58-Android-v1.3.apk";
+  const apkRelative = "downloads/GRAVITY58-Android-v1.4.apk";
   const apkPath = join(root, apkRelative);
+  const refillsApkPath = join(root, "downloads/Refills_Customer.apk");
   assert.ok(existsSync(apkPath), "Published Android installer is missing");
   assert.ok(statSync(apkPath).size > 1_000_000, "Published Android installer is unexpectedly small");
+  assert.ok(existsSync(refillsApkPath), "Published Refills Android installer is missing");
+  assert.ok(statSync(refillsApkPath).size > 1_000_000, "Published Refills Android installer is unexpectedly small");
   for (const relative of ["index.html", "digit58/app.js", "digital-menu/app-v11.js"]) {
     const source = readFileSync(join(root, relative), "utf8");
-    assert.match(source, /href=["']\/downloads\/GRAVITY58-Android-v1\.3\.apk["']/);
+    assert.match(source, /href=["']\/downloads\/GRAVITY58-Android-v1\.4\.apk["']/);
     assert.match(source, /\bdownload\b/);
     assert.doesNotMatch(source, /Android app coming soon/i);
   }

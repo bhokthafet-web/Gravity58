@@ -25,6 +25,8 @@ const ADMIN_TEAM_ID = '6a776960001ca2fb66bf';
 const SUPPORT_KIND = 'support_tickets';
 const PUBLIC_POSTS_KIND = 'posts';
 const BUSINESS_CARD_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
+const HISTORY_RETENTION_MS = 365 * 24 * 60 * 60 * 1000;
+const CUSTOMER_GRACE_MS = 30 * 24 * 60 * 60 * 1000;
 
 const text = (value, max = 250) => String(value ?? '').trim().slice(0, max);
 const finite = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
@@ -257,6 +259,156 @@ async function listRowsByKind(call, kind, limit = 500) {
   const queryString = queries.map(query => `queries[]=${encodeURIComponent(query)}`).join('&');
   const result = await call(`/tablesdb/${DATABASE_ID}/tables/${TABLE_ID}/rows?${queryString}`);
   return result.rows || result.documents || [];
+}
+
+async function listAllRows(call, pageSize = 100) {
+  const rows = [];
+  for (let offset = 0; offset < 10000; offset += pageSize) {
+    const queries = [
+      JSON.stringify({ method: 'limit', values: [pageSize] }),
+      JSON.stringify({ method: 'offset', values: [offset] }),
+    ];
+    const queryString = queries.map(query => `queries[]=${encodeURIComponent(query)}`).join('&');
+    const result = await call(`/tablesdb/${DATABASE_ID}/tables/${TABLE_ID}/rows?${queryString}`);
+    const page = result.rows || result.documents || [];
+    rows.push(...page);
+    if (page.length < pageSize) break;
+  }
+  return rows;
+}
+
+function recordTime(record) {
+  const value = record.deliveredAt || record.completedAt || record.cancelledAt || record.rejectedAt || record.expiredAt || record.updatedAt || record.createdAt || record.$updatedAt || record.$createdAt;
+  const time = new Date(value || 0).getTime();
+  return Number.isFinite(time) ? time : 0;
+}
+
+function closedHistoryRecord(kind, record) {
+  const status = String(record.status || '').toLowerCase();
+  if (kind.startsWith(ORDER_KIND_PREFIX)) return ['completed', 'rejected', 'payment rejected', 'cancelled'].includes(status);
+  if (kind.startsWith(DIGIT58_ORDER_KIND_PREFIX)) return ['delivered', 'rejected', 'cancelled'].includes(status);
+  if (kind.startsWith(DIGIT58_BOOKING_KIND_PREFIX)) return ['completed', 'cancelled', 'rejected'].includes(status);
+  if (kind === 'bookings') return ['expired', 'rejected', 'cancelled', 'completed'].includes(status) || (record.expiresAt && new Date(record.expiresAt).getTime() <= Date.now());
+  return false;
+}
+
+async function verifyCurrentPassword(req, call, userId, password) {
+  const email = text(req.headers['x-appwrite-user-email'], 250).toLowerCase();
+  if (!email || !password || String(password).length > 256) throw new Error('Enter the password for your signed-in G58 account.');
+  const endpoint = process.env.APPWRITE_FUNCTION_API_ENDPOINT || 'https://sgp.cloud.appwrite.io/v1';
+  const project = process.env.APPWRITE_FUNCTION_PROJECT_ID;
+  const response = await fetch(`${endpoint}/account/sessions/email`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-appwrite-project': project },
+    body: JSON.stringify({ email, password: String(password) }),
+  });
+  let session = {};
+  try { session = JSON.parse(await response.text()); } catch {}
+  if (!response.ok || session.userId !== userId) throw new Error('Password is incorrect. No data was deleted.');
+  if (session.secret) {
+    await fetch(`${endpoint}/account/sessions/current`, {
+      method: 'DELETE',
+      headers: { 'x-appwrite-project': project, 'x-appwrite-session': session.secret },
+    }).catch(() => {});
+  }
+  return true;
+}
+
+async function deleteOwnerHistory(call, product, userId) {
+  let deleted = 0;
+  if (product === 'digital-menu') {
+    const rows = await listRowsByKind(call, orderKind(userId));
+    for (const row of rows) if (closedHistoryRecord(row.kind, cleanRow(row))) { await removeRow(call, row.$id); deleted += 1; }
+  } else if (product === 'refills') {
+    const kinds = [digit58OrderKind(userId), digit58BookingKind(userId)];
+    for (const kind of kinds) for (const row of await listRowsByKind(call, kind)) {
+      if (closedHistoryRecord(row.kind, cleanRow(row))) { await removeRow(call, row.$id); deleted += 1; }
+    }
+  } else if (product === 'service') {
+    const rows = await listRowsByKind(call, 'bookings');
+    for (const row of rows) {
+      const record = cleanRow(row);
+      if (record.customerId === userId && closedHistoryRecord(row.kind, record)) { await removeRow(call, row.$id); deleted += 1; }
+    }
+  } else if (product === 'pos') {
+    const rows = await listRowsByKind(call, safeKindId('pos_workspace_', userId, 45));
+    for (const row of rows) {
+      const record = cleanRow(row);
+      if (record.ownerId !== userId) continue;
+      deleted += (record.bills || []).length + (record.cancelledBills || []).length;
+      await updateRow(call, row.$id, { ...record, bills: [], cancelledBills: [], historyDeletedAt: new Date().toISOString() });
+    }
+  } else throw new Error('Choose a valid G58 product history.');
+  return deleted;
+}
+
+async function collectOwnerHistory(call, product, userId) {
+  const history = [];
+  if (product === 'digital-menu') {
+    for (const row of await listRowsByKind(call, orderKind(userId))) {
+      const record = cleanRow(row);
+      if (closedHistoryRecord(row.kind, record)) history.push({ product: 'Digital Menu', ...record });
+    }
+  } else if (product === 'refills') {
+    for (const [kind, recordType] of [[digit58OrderKind(userId), 'Order'], [digit58BookingKind(userId), 'Booking']]) {
+      for (const row of await listRowsByKind(call, kind)) {
+        const record = cleanRow(row);
+        if (closedHistoryRecord(row.kind, record)) history.push({ product: 'Store / Refills', recordType, ...record });
+      }
+    }
+  } else if (product === 'service') {
+    for (const row of await listRowsByKind(call, 'bookings')) {
+      const record = cleanRow(row);
+      if (record.customerId === userId && closedHistoryRecord(row.kind, record)) history.push({ product: 'Service / Advertising', ...record });
+    }
+  } else if (product === 'pos') {
+    for (const row of await listRowsByKind(call, safeKindId('pos_workspace_', userId, 45))) {
+      const record = cleanRow(row);
+      if (record.ownerId !== userId) continue;
+      (record.bills || []).forEach(bill => history.push({ product: 'POS', recordType: 'Received bill', ...bill }));
+      (record.cancelledBills || []).forEach(bill => history.push({ product: 'POS', recordType: 'Cancelled bill', ...bill }));
+    }
+  } else throw new Error('Choose a valid G58 product history.');
+  return history;
+}
+
+async function verifyOrDeleteOwnerHistory(req, call, input, userId, shouldDelete = false) {
+  const confirmation = text(input.confirmation, 30);
+  if (shouldDelete && confirmation !== 'DELETE') throw new Error('Type DELETE to confirm permanent deletion.');
+  await verifyCurrentPassword(req, call, userId, input.password);
+  if (!shouldDelete) {
+    const backupRecords = await collectOwnerHistory(call, text(input.product, 40), userId);
+    return { verified: true, backupRecords, recordCount: backupRecords.length };
+  }
+  return { verified: true, deleted: await deleteOwnerHistory(call, text(input.product, 40), userId) };
+}
+
+async function purgeExpiredOwnerData(call) {
+  const rows = await listAllRows(call);
+  const now = Date.now(), historyCutoff = now - HISTORY_RETENTION_MS, customerCutoff = now - CUSTOMER_GRACE_MS;
+  const expiredOwners = new Set();
+  for (const row of rows) {
+    if (!['digit58_entitlements', 'digital_menu_entitlements'].includes(row.kind)) continue;
+    const record = cleanRow(row), expiry = new Date(record.expiresAt || 0).getTime();
+    if (!record.lifetime && expiry && expiry <= customerCutoff) expiredOwners.add(text(record.ownerId, 64));
+  }
+  let histories = 0, customerLinks = 0, posEntries = 0;
+  for (const row of rows) {
+    const record = cleanRow(row), rowId = row.$id || row.id;
+    if (closedHistoryRecord(row.kind, record) && recordTime(record) && recordTime(record) <= historyCutoff) {
+      await removeRow(call, rowId); histories += 1; continue;
+    }
+    if ((row.kind.startsWith(DIGIT58_CUSTOMER_KIND_PREFIX) || row.kind.startsWith(SUBSCRIPTION_KIND_PREFIX)) && expiredOwners.has(text(record.ownerId, 64))) {
+      await removeRow(call, rowId); customerLinks += 1; continue;
+    }
+    if (row.kind.startsWith('pos_workspace_') && record.ownerId) {
+      const bills = (record.bills || []).filter(item => !recordTime(item) || recordTime(item) > historyCutoff);
+      const cancelledBills = (record.cancelledBills || []).filter(item => !recordTime(item) || recordTime(item) > historyCutoff);
+      const removed = (record.bills || []).length - bills.length + (record.cancelledBills || []).length - cancelledBills.length;
+      if (removed > 0) { await updateRow(call, rowId, { ...record, bills, cancelledBills }); posEntries += removed; }
+    }
+  }
+  return { histories, customerLinks, posEntries };
 }
 
 function parsePublicPostRow(row) {
@@ -1325,8 +1477,9 @@ export default async ({ req, res, error }) => {
       const call = appwriteClient(req);
       const businessCards = await purgeInactiveBusinessCards(call);
       const promotions = await purgeExpiredDigit58Promotions(call);
+      const dataRetention = await purgeExpiredOwnerData(call);
       const pushNotifications = await sendDigit58PushNotifications(call, error).catch(caught => ({ error: caught?.message || String(caught) }));
-      return res.json({ ok: true, scheduled: true, ...businessCards, promotions, pushNotifications });
+      return res.json({ ok: true, scheduled: true, ...businessCards, promotions, dataRetention, pushNotifications });
     } catch (caught) {
       error(`Scheduled business-card cleanup failed: ${caught?.message || caught}`);
       return res.json({ ok: false, error: caught?.message || 'Scheduled business-card cleanup failed.' }, 500);
@@ -1338,6 +1491,14 @@ export default async ({ req, res, error }) => {
   if (!userId) return res.json({ ok: false, error: 'A secure customer session is required. Reload the menu and try again.' }, 401);
   try {
     const requestBody = req.bodyJson || JSON.parse(req.bodyText || '{}');
+    if (requestBody?.action === 'owner-verify-history-delete') {
+      const call = appwriteClient(req);
+      return res.json({ ok: true, ...(await verifyOrDeleteOwnerHistory(req, call, requestBody, userId, false)) });
+    }
+    if (requestBody?.action === 'owner-backup-delete-history') {
+      const call = appwriteClient(req);
+      return res.json({ ok: true, ...(await verifyOrDeleteOwnerHistory(req, call, requestBody, userId, true)) });
+    }
     if (requestBody?.action === 'confirm-payment') {
       const call = appwriteClient(req);
       const ownerId = text(requestBody.ownerId, 64), orderId = text(requestBody.orderId, 36);

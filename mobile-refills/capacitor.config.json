@@ -8,6 +8,6 @@
     "cleartext": false
   },
   "android": {
-    "appendUserAgent": "G58RefillsAndroidApp/1.0"
+    "appendUserAgent": "G58RefillsAndroidApp/1.2"
   }
 }

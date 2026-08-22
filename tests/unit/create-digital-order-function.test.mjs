@@ -64,6 +64,57 @@ test('secure order function requires an authenticated or anonymous Appwrite cust
   assert.match(response.body.error, /secure customer session/i);
 });
 
+test('owner history deletion reauthenticates with the current password and deletes only closed Digital Menu orders', async () => {
+  const previousFetch = globalThis.fetch;
+  const requests = [];
+  const completed = { id: 'closed_order', ownerId, status: 'Completed', createdAt: '2026-01-01T00:00:00.000Z' };
+  const active = { id: 'active_order', ownerId, status: 'Preparing', createdAt: '2026-01-02T00:00:00.000Z' };
+  globalThis.fetch = async (url, options = {}) => {
+    const target = String(url), method = options.method || 'GET';
+    requests.push({ target, method, body: options.body ? JSON.parse(options.body) : null });
+    if (target.endsWith('/account/sessions/email')) return new Response(JSON.stringify({ $id: 'reauth_session', userId: ownerId, secret: 'temporary-session-secret' }), { status: 201 });
+    if (target.endsWith('/account/sessions/current') && method === 'DELETE') return new Response(null, { status: 204 });
+    if (method === 'GET' && target.includes('/rows?')) return new Response(JSON.stringify({ rows: [
+      { $id: completed.id, kind: `digital_order_${ownerId}`, payload: JSON.stringify(completed) },
+      { $id: active.id, kind: `digital_order_${ownerId}`, payload: JSON.stringify(active) },
+    ] }), { status: 200 });
+    if (method === 'DELETE') return new Response(null, { status: 204 });
+    throw new Error(`Unexpected request ${target}`);
+  };
+  process.env.APPWRITE_FUNCTION_PROJECT_ID = 'project_1';
+  try {
+    const response = await createDigitalOrder({
+      req: { method: 'POST', headers: { 'x-appwrite-key': 'dynamic-key', 'x-appwrite-user-id': ownerId, 'x-appwrite-user-email': 'owner@example.test' }, bodyJson: { action: 'owner-backup-delete-history', product: 'digital-menu', password: 'correct-password', confirmation: 'DELETE' } },
+      res: { json: (body, status = 200) => ({ body, status }) }, error: () => {},
+    });
+    assert.equal(response.status, 200);
+    assert.equal(response.body.deleted, 1);
+    assert.ok(requests.some(request => request.target.endsWith('/account/sessions/email')));
+    assert.ok(requests.some(request => request.target.endsWith('/account/sessions/current') && request.method === 'DELETE'));
+    assert.ok(requests.some(request => request.target.endsWith('/rows/closed_order')));
+    assert.ok(!requests.some(request => request.target.endsWith('/rows/active_order')));
+  } finally { globalThis.fetch = previousFetch; }
+});
+
+test('owner history deletion rejects an incorrect password without deleting history', async () => {
+  const previousFetch = globalThis.fetch;
+  const requests = [];
+  globalThis.fetch = async (url, options = {}) => {
+    requests.push({ target: String(url), method: options.method || 'GET' });
+    return new Response(JSON.stringify({ message: 'Invalid credentials' }), { status: 401 });
+  };
+  process.env.APPWRITE_FUNCTION_PROJECT_ID = 'project_1';
+  try {
+    const response = await createDigitalOrder({
+      req: { method: 'POST', headers: { 'x-appwrite-key': 'dynamic-key', 'x-appwrite-user-id': ownerId, 'x-appwrite-user-email': 'owner@example.test' }, bodyJson: { action: 'owner-backup-delete-history', product: 'digital-menu', password: 'wrong-password', confirmation: 'DELETE' } },
+      res: { json: (body, status = 200) => ({ body, status }) }, error: () => {},
+    });
+    assert.equal(response.status, 400);
+    assert.match(response.body.error, /password is incorrect/i);
+    assert.equal(requests.filter(request => request.method === 'DELETE').length, 0);
+  } finally { globalThis.fetch = previousFetch; }
+});
+
 test('receipt image alone is sufficient and is verified against the customer session', async () => {
   const previousFetch = globalThis.fetch;
   globalThis.fetch = async (url, options = {}) => {

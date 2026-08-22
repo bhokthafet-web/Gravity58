@@ -777,7 +777,7 @@ async function pollDigit58SubscriptionActivation(attempt=0){
   await new Promise(resolve=>setTimeout(resolve,2000));
   return pollDigit58SubscriptionActivation(attempt+1);
 }
-const DIGIT58_POLICY_TEXT='Refills generates a payment QR code from the UPI ID you provide, to help you collect payment from your customers. G58 only facilitates this QR generation — we are not a party to any payment and are not responsible for any fraud, dispute or disagreement between you and your customer. Please verify payments independently before fulfilling any order.';
+const DIGIT58_POLICY_TEXT='Refills generates a payment QR code from the UPI ID you provide, to help you collect payment from your customers. G58 only facilitates this QR generation — we are not a party to any payment and are not responsible for any fraud, dispute or disagreement between you and your customer. Please verify payments independently before fulfilling any order. G58 keeps order and booking history for a maximum of 1 year. A backup warning appears during the final 30 days; history is permanently removed at the retention deadline. You may download a CSV and permanently delete closed history earlier after confirming your current password. Active work and customer login accounts are not deleted by that control. After a store subscription expires, owner-linked customer records receive a 30-day buffer and are then permanently removed.';
 const DIGIT58_CUSTOMER_AGREEMENT_TEXT='By continuing, you agree that this store — not G58 — is responsible for its products, pricing, offers, stock, and order fulfillment. Any payment you make (by UPI QR code or payment link shown on your order) goes directly to the store; G58 only provides this ordering platform and does not process, hold, or verify these payments. Before you pay, always confirm the amount matches your order and that the QR code or payment link genuinely belongs to this store. G58 is not responsible for any payment error, fraud, delay, or dispute between you and the store. For any issue with your order or payment, contact the store directly using the Support button in this portal.';
 async function proceedAfterEntitlement(){
   if(!entitlement?.policyAcceptedAt)return renderPolicyGate();
@@ -826,7 +826,7 @@ function renderPlanGate(){
   const monthly=digit58Pricing.monthly;
   let statusNote='';
   if(paused)statusNote=`<div class="card"><p class="muted">Your store subscription is currently paused by the G58 team. Contact G58 support to resume access.</p></div>`;
-  else if(expired)statusNote=`<div class="card"><p class="muted">Your ${entitlement?.freeTrial?'free trial has':'subscription has'} ended. Choose a plan below to continue.</p></div>`;
+  else if(expired){const graceEnds=new Date(new Date(entitlement.expiresAt).getTime()+30*86400000);statusNote=`<div class="card"><p class="muted">Your ${entitlement?.freeTrial?'free trial has':'subscription has'} ended. Choose a plan below to continue. Owner-linked customer records remain available during a 30-day buffer, until ${graceEnds.toLocaleDateString('en-IN',{dateStyle:'medium'})}, and are then permanently removed.</p></div>`;}
   const trialCard=trialEligible?`<article class="plan-card trial">
       <span class="plan-badge">Free Trial</span>
       <h3>1 Month Free</h3>
@@ -871,6 +871,7 @@ function renderOwnerAuth(){
       <div class="field full-name-field hidden"><label>Your name</label><input name="name"></div>
       <div class="field"><label>Email</label><input name="email" type="email" required></div>
       <div class="field"><label>Password</label><input name="password" type="password" minlength="8" required></div>
+      <label class="field full-name-field hidden"><span><input name="retentionAccepted" type="checkbox"> I accept the <a href="/terms/" target="_blank" rel="noopener">Terms</a>, including the 1-year order/booking history, password-confirmed CSV backup and permanent deletion policy.</span></label>
       <button class="btn full" id="ownerAuthSubmit" type="submit">Sign In</button>
     </form>
     <p class="muted" style="text-align:center;margin-top:14px">Are you a customer? Use the link your store shared with you, or <a href="#" id="customerPasteLinkLink">paste your store link</a>.</p>
@@ -884,6 +885,7 @@ function renderOwnerAuth(){
   $('#ownerAuthForm').onsubmit=async event=>{
     event.preventDefault();
     const values=Object.fromEntries(new FormData(event.target)),button=$('#ownerAuthSubmit');
+    if(mode==='signup'&&!values.retentionAccepted)return toast('Accept the data-retention and permanent-deletion Terms to create the account');
     button.disabled=true;
     try{
       if(mode==='signup')await api.register(values.email.trim(),values.password,values.name.trim()||values.email.split('@')[0]);
@@ -969,7 +971,7 @@ function floatingStoreWhatsappButton(store){
 function siteFooter(forCustomer){
   const badge=forCustomer
     ? `<a class="g58-app-badge" href="/downloads/Refills_Customer.apk" download aria-label="Download the G58 Refills Android app"><span class="g58-app-badge-icon">▶</span><span class="g58-app-badge-text"><small>Never miss a refill</small><strong>Get the G58 Refills App</strong></span></a>`
-    : `<a class="g58-app-badge" href="/downloads/GRAVITY58-Android-v1.3.apk" download aria-label="Download the Gravity58 Android app"><span class="g58-app-badge-icon">▶</span><span class="g58-app-badge-text"><small>Download Android</small><strong>Get G58 App</strong></span></a>`;
+    : `<a class="g58-app-badge" href="/downloads/GRAVITY58-Android-v1.4.apk" download aria-label="Download the Gravity58 Android app"><span class="g58-app-badge-icon">▶</span><span class="g58-app-badge-text"><small>Download Android</small><strong>Get G58 App</strong></span></a>`;
   return `<footer class="g58-site-footer"><div class="g58-site-footer-badge">${badge}</div><p class="g58-site-footer-note">© ${new Date().getFullYear()} Gravity58 · Refills</p></footer>`;
 }
 function renderShell(){
@@ -1150,7 +1152,8 @@ function dashboardView(){
   <div class="section-head"><h2>Store-wise performance</h2></div>
   <div class="card table-wrap">${storeWiseTable(bounds)}</div>
   <div class="section-head"><h2>Orders needing attention</h2></div><div class="card table-wrap">${ordersNeedingAttentionTable(needsAttention)}</div>
-  <div class="section-head"><h2>Recent buy-again requests</h2></div><div class="card table-wrap">${buyRequestsTable(cards)}</div>`;
+  <div class="section-head"><h2>Recent buy-again requests</h2></div><div class="card table-wrap">${buyRequestsTable(cards)}</div><div id="retentionControl"></div>`;
+  window.G58DataRetention?.mount({host:'#retentionControl',product:'refills',rows:[...state.orders,...(state.bookings||[])],afterDelete:async()=>{await loadOwnerData();dashboardView()}});
   bindBuyRequestActions();
   $$('[data-open-order-customer]').forEach(button=>button.onclick=()=>{view='wall';customerDetailView(button.dataset.openOrderCustomer)});
 }

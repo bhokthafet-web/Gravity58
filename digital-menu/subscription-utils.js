@@ -54,9 +54,13 @@
   }
 
   function orderRetention(order, { premium = false, at = new Date() } = {}) {
-    if (premium) return { keep: true, permanent: true, carry: false };
     const created = order?.createdAt || order?.$createdAt;
     if (!created || Number.isNaN(new Date(created).getTime())) return { keep: true, carry: false };
+    if (premium) {
+      if (ACTIVE_ORDER_STATUSES.has(order?.status)) return { keep: true, retained: true, carry: false };
+      const age = new Date(at).getTime() - new Date(created).getTime();
+      return { keep: age < 365 * 86400000, retained: true, carry: false };
+    }
     const currentDay = indiaDayKey(at);
     const dayDifference = indiaDayNumber(at) - indiaDayNumber(created);
     if (dayDifference <= 0) return { keep: true, carry: false };

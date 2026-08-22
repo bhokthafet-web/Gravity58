@@ -227,6 +227,7 @@
       <div class="local-account-brand"><a href="/" aria-label="G58 home"><svg class="logo" viewBox="0 0 120 120" fill="none" stroke="#F97316" stroke-width="8"><circle cx="60" cy="26" r="15"/><circle cx="28" cy="82" r="15"/><circle cx="92" cy="82" r="15"/></svg></a><div><h2>${restaurantIntegrationRequested ? "Restaurant POS" : "Restaurant workspace"}</h2><p>${restaurantIntegrationRequested ? "Sign in with the same restaurant-owner account used for Digital Menu." : "Sign in to open your account-synced G58 POS workspace."}</p></div></div>
       <div class="field"><label>Email</label><input id="gateEmail" type="email" autocomplete="email" placeholder="owner@restaurant.com"></div>
       <div class="field"><label>Password</label><input id="gatePassword" type="password" autocomplete="current-password" placeholder="Minimum 6 characters"></div>
+      <label class="local-storage-note hidden" id="gateRetentionAcceptance"><input id="gateRetentionAccepted" type="checkbox"> I accept the <a href="/terms/" target="_blank" rel="noopener">Terms</a>, including the 1-year bill-history retention, password-confirmed CSV backup and permanent deletion policy.</label>
       <div class="gate-actions"><button class="btn btn-primary" id="gateLogin">Login</button>${restaurantIntegrationRequested ? "" : '<button class="btn btn-outline" id="gateSignup">Create account</button>'}<button class="btn btn-dark" id="gateForgot">Forgot password</button></div>
       <p class="local-account-message" id="gateMessage"></p>
       <small class="local-storage-note">Your settings, bills, menu and inventory are stored in your G58 account.</small>
@@ -249,12 +250,19 @@
   }
 
   async function signup() {
+    if ($('gateRetentionAcceptance')?.classList.contains('hidden')) {
+      $('gateRetentionAcceptance').classList.remove('hidden');
+      $('gateSignup').textContent = 'Create account now';
+      $('gateMessage').textContent = 'Review and accept the data-retention Terms, then select Create account now.';
+      return;
+    }
     const email = $("gateEmail").value.trim().toLowerCase();
     const password = $("gatePassword").value;
     if (!/^\S+@\S+\.\S+$/.test(email) || password.length < 6) {
       $("gateMessage").textContent = "Enter a valid email and a password of at least 6 characters.";
       return;
     }
+    if (!$('gateRetentionAccepted')?.checked) return void ($('gateMessage').textContent = 'Accept the data-retention and permanent-deletion Terms to create the account.');
     try {
       const account = await Gravity58Ads.register(email, password, email.split("@")[0]);
       session = { id: account.$id, email: account.email, name: account.name || email.split("@")[0] };
@@ -315,7 +323,8 @@
   function renderTab(tab) {
     if (tab === "account") {
       const request = read(KEYS.subscription, null);
-      box(`<div class="premium-grid"><article class="premium-box"><h3>Signed in securely</h3><p><strong>${esc(session?.email)}</strong></p><p style="margin-top:10px">${linkedRestaurant ? `${esc(linkedRestaurant.name)} has its own POS settings, received bills, cancelled bills and inventory. Digital Menu items and orders are synced live.` : "Your POS settings, received bills, cancelled bills, menu and inventory sync to this account."}</p><button class="btn btn-outline" id="localLogout" style="margin-top:14px">Sign out</button></article><article class="premium-box"><h3>${linkedRestaurant ? "Restaurant sync" : "Account status"}</h3><p>${linkedRestaurant ? `Connected to ${esc(linkedRestaurant.name)} · ${esc(linkedRestaurant.city || "")}. Switching restaurants in Digital Menu opens a different POS workspace.` : "Changes sync automatically. Restaurant and menu images have a 100 KB file limit."}</p>${request ? `<div class="locked-note" style="margin-top:12px">Access request: ${esc(request.plan)} · ${esc(request.status)}</div>` : ""}</article></div>`);
+      box(`<div class="premium-grid"><article class="premium-box"><h3>Signed in securely</h3><p><strong>${esc(session?.email)}</strong></p><p style="margin-top:10px">${linkedRestaurant ? `${esc(linkedRestaurant.name)} has its own POS settings, received bills, cancelled bills and inventory. Digital Menu items and orders are synced live.` : "Your POS settings, received bills, cancelled bills, menu and inventory sync to this account."}</p><button class="btn btn-outline" id="localLogout" style="margin-top:14px">Sign out</button></article><article class="premium-box"><h3>${linkedRestaurant ? "Restaurant sync" : "Account status"}</h3><p>${linkedRestaurant ? `Connected to ${esc(linkedRestaurant.name)} · ${esc(linkedRestaurant.city || "")}. Switching restaurants in Digital Menu opens a different POS workspace.` : "Changes sync automatically. Restaurant and menu images have a 100 KB file limit."}</p>${request ? `<div class="locked-note" style="margin-top:12px">Access request: ${esc(request.plan)} · ${esc(request.status)}</div>` : ""}</article></div><div id="posRetentionPanel"></div>`);
+      window.G58MountPosRetention?.();
       $("localLogout").onclick = async () => { try { await syncWorkspace(); await Gravity58Ads.logout(); } catch {} digitalOrderUnsubscribe?.(); digitalMenuUnsubscribe?.(); localStorage.removeItem(KEYS.session); session = null; renderShell(); renderGate(); };
     }
 
@@ -415,7 +424,8 @@
     const maxTrend = Math.max(1, ...trend.map((row) => row.value));
     box(`<article class="premium-box dashboard-filter"><div><h3>${linkedRestaurant ? `${esc(linkedRestaurant.name)} business dashboard` : "Business dashboard"}</h3><p>${linkedRestaurant ? "Counter POS bills and completed Digital Menu orders are combined for this restaurant." : "Compare received sales with the immediately previous period."} Cancelled bills stay separate.</p></div><div class="dashboard-filter-controls"><select id="dashboardPeriod"><option value="today" ${dashboardFilter.period === "today" ? "selected" : ""}>Today vs yesterday</option><option value="week" ${dashboardFilter.period === "week" ? "selected" : ""}>This week vs last week</option><option value="month" ${dashboardFilter.period === "month" ? "selected" : ""}>This month vs last month</option><option value="custom" ${dashboardFilter.period === "custom" ? "selected" : ""}>Custom dates</option></select><input id="dashboardFrom" type="date" value="${dashboardFilter.from}" ${dashboardFilter.period === "custom" ? "" : "disabled"}><input id="dashboardTo" type="date" value="${dashboardFilter.to}" ${dashboardFilter.period === "custom" ? "" : "disabled"}></div></article>
     <div class="premium-grid three dashboard-metrics"><div class="insight-card"><small>Total received sales</small><strong>${money(current.sales)}</strong><em class="${change >= 0 ? "positive" : "negative"}">${change >= 0 ? "+" : ""}${change.toFixed(1)}% vs previous</em></div><div class="insight-card"><small>Counter POS sales</small><strong>${money(dashboardSummary(currentCounter).sales)}</strong></div><div class="insight-card"><small>Digital Menu sales</small><strong>${money(dashboardSummary(currentOnline).sales)}</strong></div><div class="insight-card"><small>Previous-period sales</small><strong>${money(previous.sales)}</strong></div><div class="insight-card"><small>Received bills / orders</small><strong>${current.bills}</strong></div><div class="insight-card"><small>Cancelled bills / orders</small><strong>${cancelled.length}</strong></div><div class="insight-card"><small>Items sold</small><strong>${current.quantity}</strong></div><div class="insight-card"><small>Average bill</small><strong>${money(current.average)}</strong></div></div>
-    <div class="premium-grid dashboard-detail-grid"><article class="premium-box"><h3>Last 7 days</h3><div class="dashboard-bars">${trend.map((row) => `<div class="dashboard-bar"><strong>${row.value ? money(row.value) : "₹0"}</strong><span style="height:${Math.max(5, Math.round((row.value / maxTrend) * 100))}%"></span><small>${row.label}</small></div>`).join("")}</div></article><article class="premium-box"><h3>Item performance</h3>${Object.entries(ranked).sort((a,b)=>b[1]-a[1]).slice(0, 8).map(([name, qty]) => `<div class="menu-row"><span><strong>${esc(name)}</strong><small>Quantity sold</small></span><strong>${qty}</strong></div>`).join("") || "<p>No received bills in this period.</p>"}</article></div>`);
+    <div class="premium-grid dashboard-detail-grid"><article class="premium-box"><h3>Last 7 days</h3><div class="dashboard-bars">${trend.map((row) => `<div class="dashboard-bar"><strong>${row.value ? money(row.value) : "₹0"}</strong><span style="height:${Math.max(5, Math.round((row.value / maxTrend) * 100))}%"></span><small>${row.label}</small></div>`).join("")}</div></article><article class="premium-box"><h3>Item performance</h3>${Object.entries(ranked).sort((a,b)=>b[1]-a[1]).slice(0, 8).map(([name, qty]) => `<div class="menu-row"><span><strong>${esc(name)}</strong><small>Quantity sold</small></span><strong>${qty}</strong></div>`).join("") || "<p>No received bills in this period.</p>"}</article></div><div id="posRetentionPanel"></div>`);
+    window.G58MountPosRetention?.();
     $("dashboardPeriod").onchange = () => { dashboardFilter.period = $("dashboardPeriod").value; renderDashboardPanel(); };
     $("dashboardFrom").onchange = () => { dashboardFilter.from = $("dashboardFrom").value; if (dashboardFilter.to) renderDashboardPanel(); };
     $("dashboardTo").onchange = () => { dashboardFilter.to = $("dashboardTo").value; if (dashboardFilter.from) renderDashboardPanel(); };
