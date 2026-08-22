@@ -8,6 +8,17 @@ const indiaDate = (value = new Date()) => {
   const parts = Object.fromEntries(new Intl.DateTimeFormat("en-IN", { timeZone: "Asia/Kolkata", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(value).filter((part) => part.type !== "literal").map((part) => [part.type, part.value]));
   return `${parts.year}-${parts.month}-${parts.day}`;
 };
+async function slideCustomerAlertOpen(page) {
+  const overlay = page.locator(".incoming-call-overlay"), track = overlay.locator(".slide-to-view-track"), thumb = overlay.locator(".slide-to-view-thumb");
+  await expect(overlay).toBeVisible();
+  const trackBox = await track.boundingBox(), thumbBox = await thumb.boundingBox();
+  if (!trackBox || !thumbBox) throw new Error("Slide-to-open control is not measurable");
+  await page.mouse.move(thumbBox.x + thumbBox.width / 2, thumbBox.y + thumbBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(trackBox.x + trackBox.width - thumbBox.width / 2 - 5, thumbBox.y + thumbBox.height / 2, { steps: 12 });
+  await page.mouse.up();
+  await expect(overlay).toHaveCount(0);
+}
 
 test("every G58 page reports a backend outage and recovers after retry", async ({ page }) => {
   let serverAvailable = false;
@@ -489,6 +500,70 @@ test("Service owner enables doorstep booking and forwards the customer location 
   const shareUrl = await page.evaluate(() => window.__openedDoorstepShare);
   expect(shareUrl).toContain("wa.me/919876543210");
   expect(decodeURIComponent(shareUrl)).toContain("https://www.google.com/maps?q=17.4065,78.4772");
+  await assertNoErrors();
+});
+
+test("Refills customer slides open both incoming and accepted order alerts", async ({ page }) => {
+  const ownerId = "slide_order_owner", customerId = "slide_order_customer", storeId = "slide_order_store", orderId = "slide_order";
+  const orderKind = `digit58_order_${ownerId}`;
+  await prepareMockApi(page, {
+    state: null,
+    initialUser: { $id: customerId, email: "slide-order@example.com", name: "Slide Customer" },
+    seed: {
+      [`digit58_store_${ownerId}`]: [{ id: storeId, ownerId, name: "Slide Refills", category: "General store", city: "Hyderabad" }],
+      [`digit58_customer_${ownerId}`]: [{ id: "slide_order_link", ownerId, storeId, customerAccountId: customerId, customerName: "Slide Customer", customerEmail: "slide-order@example.com", phone: "9876543210", agreementAcceptedAt: new Date().toISOString() }],
+      [orderKind]: [{ id: orderId, ownerId, storeId, customerAccountId: customerId, customerName: "Slide Customer", phone: "9876543210", items: [{ name: "Monthly essentials", qty: 1 }], amount: 0, status: "Pending Customer Acceptance", messages: [], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }],
+    },
+  });
+  const assertNoErrors = monitorPageErrors(page);
+  await page.goto(`/digit58/#store&owner=${ownerId}&store=${storeId}`);
+  await expect(page.getByRole("heading", { name: "Incoming order!" })).toBeVisible();
+  await expect(page.locator(".slide-to-view-label")).toHaveText("Slide to open order");
+  await slideCustomerAlertOpen(page);
+  await expect(page.locator(`#customer-order-${orderId}`)).toBeVisible();
+
+  await page.evaluate(({ kind, id }) => {
+    const order = window.__g58Mock.store[kind].find((row) => row.id === id);
+    Object.assign(order, { status: "Accepted", acceptedAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
+    window.dispatchEvent(new CustomEvent("g58-ad-data-changed", { detail: { kind, row: order } }));
+  }, { kind: orderKind, id: orderId });
+  await expect(page.getByRole("heading", { name: "Order accepted!" })).toBeVisible();
+  await expect(page.locator(".customer-accepted-alert .slide-to-view-label")).toHaveText("Slide to open order");
+  await slideCustomerAlertOpen(page);
+  await expect(page.locator(`#customer-order-${orderId}`)).toHaveClass(/slide-open-highlight/);
+  expect(await page.evaluate((key) => localStorage.getItem(key), `g58-customer-alert:${customerId}:order:${orderId}:Accepted`)).toBe("1");
+  await assertNoErrors();
+});
+
+test("Refills customer slides open both incoming and accepted booking alerts", async ({ page }) => {
+  const ownerId = "slide_booking_owner", customerId = "slide_booking_customer", storeId = "slide_booking_store", bookingId = "slide_booking";
+  const bookingKind = `digit58_booking_${ownerId}`, tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+  await prepareMockApi(page, {
+    state: null,
+    initialUser: { $id: customerId, email: "slide-booking@example.com", name: "Booking Customer" },
+    seed: {
+      [`digit58_store_${ownerId}`]: [{ id: storeId, ownerId, name: "Slide Services", businessType: "services", category: "Home services", city: "Hyderabad" }],
+      [`digit58_customer_${ownerId}`]: [{ id: "slide_booking_link", ownerId, storeId, customerAccountId: customerId, customerName: "Booking Customer", customerEmail: "slide-booking@example.com", phone: "9876543210", agreementAcceptedAt: new Date().toISOString() }],
+      [bookingKind]: [{ id: bookingId, ownerId, storeId, serviceId: "service_one", serviceName: "Home cleaning", customerAccountId: customerId, customerName: "Booking Customer", phone: "9876543210", date: tomorrow, startTime: "10:00", durationMinutes: 60, price: 500, status: "Pending Customer Acceptance", messages: [], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }],
+    },
+  });
+  const assertNoErrors = monitorPageErrors(page);
+  await page.goto(`/digit58/#store&owner=${ownerId}&store=${storeId}`);
+  await expect(page.getByRole("heading", { name: "Incoming booking!" })).toBeVisible();
+  await expect(page.locator(".slide-to-view-label")).toHaveText("Slide to open booking");
+  await slideCustomerAlertOpen(page);
+  await expect(page.locator(`#customer-booking-${bookingId}`)).toBeVisible();
+
+  await page.evaluate(({ kind, id }) => {
+    const booking = window.__g58Mock.store[kind].find((row) => row.id === id);
+    Object.assign(booking, { status: "Confirmed", confirmedAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
+    window.dispatchEvent(new CustomEvent("g58-ad-data-changed", { detail: { kind, row: booking } }));
+  }, { kind: bookingKind, id: bookingId });
+  await expect(page.getByRole("heading", { name: "Booking accepted!" })).toBeVisible();
+  await expect(page.locator(".customer-accepted-alert .slide-to-view-label")).toHaveText("Slide to open booking");
+  await slideCustomerAlertOpen(page);
+  await expect(page.locator(`#customer-booking-${bookingId}`)).toHaveClass(/slide-open-highlight/);
+  expect(await page.evaluate((key) => localStorage.getItem(key), `g58-customer-alert:${customerId}:booking:${bookingId}:Confirmed`)).toBe("1");
   await assertNoErrors();
 });
 

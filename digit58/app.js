@@ -452,7 +452,8 @@ function stopIncomingCallRing(){if(incomingCallTimer){clearInterval(incomingCall
 function bindSlideToView(wrap,onComplete){
   const track=wrap.querySelector('.slide-to-view-track'),thumb=wrap.querySelector('.slide-to-view-thumb');
   let dragging=false,startClientX=0,startX=0,maxX=0,done=false;
-  const setX=x=>{thumb.style.transform=`translateX(${x}px)`;track.style.setProperty('--slide-progress',maxX>0?x/maxX:0)};
+  const setX=x=>{thumb.style.transform=`translateX(${x}px)`;track.style.setProperty('--slide-progress',maxX>0?x/maxX:0);thumb.setAttribute('aria-valuenow',String(Math.round((maxX>0?x/maxX:0)*100)))};
+  const complete=()=>{if(done)return;done=true;maxX=track.clientWidth-thumb.offsetWidth-8;setX(Math.max(0,maxX));onComplete()};
   const pointerX=event=>(event.touches?event.touches[0]:event).clientX;
   const onDown=event=>{
     if(done)return;
@@ -472,41 +473,71 @@ function bindSlideToView(wrap,onComplete){
     dragging=false;
     const current=/translateX\(([-\d.]+)px\)/.exec(thumb.style.transform);
     const x=current?parseFloat(current[1]):0;
-    if(maxX>0&&x>=maxX*.8){done=true;setX(maxX);onComplete()}
+    if(maxX>0&&x>=maxX*.8)complete()
     else setX(0);
   };
+  thumb.setAttribute('role','slider');thumb.setAttribute('aria-valuemin','0');thumb.setAttribute('aria-valuemax','100');thumb.setAttribute('aria-valuenow','0');
   thumb.addEventListener('pointerdown',onDown);
   thumb.addEventListener('pointermove',onMove);
   thumb.addEventListener('pointerup',onUp);
   thumb.addEventListener('pointercancel',onUp);
+  thumb.addEventListener('keydown',event=>{
+    if(!['ArrowRight','End','Enter',' '].includes(event.key))return;
+    event.preventDefault();maxX=track.clientWidth-thumb.offsetWidth-8;
+    if(['End','Enter',' '].includes(event.key))return complete();
+    const current=/translateX\(([-\d.]+)px\)/.exec(thumb.style.transform),x=Math.min(maxX,(current?parseFloat(current[1]):0)+Math.max(24,maxX*.2));
+    setX(x);if(maxX>0&&x>=maxX*.8)complete();
+  });
 }
-function showIncomingOrderCall(store,customer,message,{title='Order placed!',hint='Slide to view order'}={}){
+function customerPortalRecordId(type,recordId){return `customer-${type}-${recordId}`}
+function focusCustomerPortalRecord(type,recordId){
+  setTimeout(()=>{
+    const target=document.getElementById(customerPortalRecordId(type,recordId));if(!target)return;
+    target.scrollIntoView({behavior:'smooth',block:'center'});target.classList.add('slide-open-highlight');
+    setTimeout(()=>target.classList.remove('slide-open-highlight'),2400);
+  },80);
+}
+function showIncomingOrderCall(store,customer,message,{title='Order placed!',hint='Slide to view order',type='order',recordId='',onOpened=null,accepted=false}={}){
+  if($('.incoming-call-overlay'))return false;
   stopIncomingCallRing();
   const wrap=document.createElement('div');
-  wrap.className='incoming-call-overlay';
-  wrap.innerHTML=`<div class="incoming-call-card"><div class="incoming-call-rings"><span></span><span></span><span></span><div class="incoming-call-avatar"><svg viewBox="0 0 120 120" fill="none" stroke="#7fffd4" stroke-width="8" aria-hidden="true"><circle cx="60" cy="26" r="15"/><circle cx="28" cy="82" r="15"/><circle cx="92" cy="82" r="15"/></svg></div></div><h2>${html(title)}</h2><p class="muted">${html(store.name)}</p><div class="slide-to-view"><div class="slide-to-view-track"><span class="slide-to-view-label">${html(hint)}</span><button type="button" class="slide-to-view-thumb" aria-label="${html(hint)}"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8.59 16.59 13.17 12 8.59 7.41 10 6l6 6-6 6z"/></svg></button></div></div></div>`;
+  wrap.className=`incoming-call-overlay${accepted?' customer-accepted-alert':''}`;
+  wrap.innerHTML=`<div class="incoming-call-card"><div class="incoming-call-rings"><span></span><span></span><span></span><div class="incoming-call-avatar">${accepted?'<span class="accepted-alert-icon" aria-hidden="true">✓</span>':'<svg viewBox="0 0 120 120" fill="none" stroke="#7fffd4" stroke-width="8" aria-hidden="true"><circle cx="60" cy="26" r="15"/><circle cx="28" cy="82" r="15"/><circle cx="92" cy="82" r="15"/></svg>'}</div></div><h2>${html(title)}</h2><p class="muted">${html(store.name)}</p><div class="slide-to-view"><div class="slide-to-view-track"><span class="slide-to-view-label">${html(hint)}</span><button type="button" class="slide-to-view-thumb" aria-label="${html(hint)}"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8.59 16.59 13.17 12 8.59 7.41 10 6l6 6-6 6z"/></svg></button></div></div></div>`;
   document.body.appendChild(wrap);
   playIncomingCallRing();
   incomingCallTimer=setInterval(playIncomingCallRing,1900);
   bindSlideToView(wrap,()=>{
     stopIncomingCallRing();
+    onOpened?.();
     if(message)toast(message);
-    loadAndRenderCustomerView(store,customer);
+    Promise.resolve(loadAndRenderCustomerView(store,customer)).then(()=>recordId&&focusCustomerPortalRecord(type,recordId));
   });
+  return true;
 }
 const pendingOwnerOrderRung=new Set();
-function ringPendingOwnerOrders(store,customer,orders){
-  const pending=orders.filter(row=>row.status==='Pending Customer Acceptance');
-  const unrung=pending.filter(row=>!pendingOwnerOrderRung.has(row.id));
-  pending.forEach(row=>pendingOwnerOrderRung.add(row.id));
-  if(unrung.length)showIncomingOrderCall(store,customer,'New order from the store — review and accept it below',{title:'Incoming order!',hint:'Slide to view order'});
-}
 const pendingOwnerBookingRung=new Set();
-function ringPendingOwnerBookings(store,customer,bookings){
-  const pending=(bookings||[]).filter(row=>row.status==='Pending Customer Acceptance');
-  const unrung=pending.filter(row=>!pendingOwnerBookingRung.has(row.id));
-  pending.forEach(row=>pendingOwnerBookingRung.add(row.id));
-  if(unrung.length)showIncomingOrderCall(store,customer,'New booking from the store — review and accept it below',{title:'Incoming booking!',hint:'Slide to view booking'});
+function customerPortalAlertKey(customer,type,recordId,status){return `g58-customer-alert:${customer.customerAccountId}:${type}:${recordId}:${status}`}
+function customerPortalAlertWasOpened(customer,type,recordId,status){try{return localStorage.getItem(customerPortalAlertKey(customer,type,recordId,status))==='1'}catch{return false}}
+function markCustomerPortalAlertOpened(customer,type,recordId,status){try{localStorage.setItem(customerPortalAlertKey(customer,type,recordId,status),'1')}catch{}}
+function newestRecord(records){return [...records].sort((a,b)=>new Date(b.updatedAt||b.createdAt||0)-new Date(a.updatedAt||a.createdAt||0))[0]}
+function ringCustomerPortalUpdates(store,customer,orders=[],bookings=[]){
+  if($('.incoming-call-overlay'))return;
+  const incomingOrder=newestRecord(orders.filter(row=>row.status==='Pending Customer Acceptance'&&!pendingOwnerOrderRung.has(row.id)));
+  if(incomingOrder){
+    pendingOwnerOrderRung.add(incomingOrder.id);
+    showIncomingOrderCall(store,customer,'New order from the store — review and accept it below',{title:'Incoming order!',hint:'Slide to open order',type:'order',recordId:incomingOrder.id});return;
+  }
+  const incomingBooking=newestRecord((bookings||[]).filter(row=>row.status==='Pending Customer Acceptance'&&!pendingOwnerBookingRung.has(row.id)));
+  if(incomingBooking){
+    pendingOwnerBookingRung.add(incomingBooking.id);
+    showIncomingOrderCall(store,customer,'New booking from the store — review and accept it below',{title:'Incoming booking!',hint:'Slide to open booking',type:'booking',recordId:incomingBooking.id});return;
+  }
+  const acceptedOrder=newestRecord(orders.filter(row=>['Accepted','Preparing','Out for Delivery'].includes(row.status)&&row.acceptedAt&&!customerPortalAlertWasOpened(customer,'order',row.id,'Accepted')));
+  if(acceptedOrder){
+    showIncomingOrderCall(store,customer,'Your order was accepted by the store. Slide to open its live status.',{title:'Order accepted!',hint:'Slide to open order',type:'order',recordId:acceptedOrder.id,accepted:true,onOpened:()=>markCustomerPortalAlertOpened(customer,'order',acceptedOrder.id,'Accepted')});return;
+  }
+  const acceptedBooking=newestRecord((bookings||[]).filter(row=>row.status==='Confirmed'&&!customerPortalAlertWasOpened(customer,'booking',row.id,'Confirmed')));
+  if(acceptedBooking)showIncomingOrderCall(store,customer,'Your booking was accepted and confirmed. Slide to open its details.',{title:'Booking accepted!',hint:'Slide to open booking',type:'booking',recordId:acceptedBooking.id,accepted:true,onOpened:()=>markCustomerPortalAlertOpened(customer,'booking',acceptedBooking.id,'Confirmed')});
 }
 async function acceptOwnerOrder(store,customer,orderId){
   try{
@@ -995,7 +1026,7 @@ function floatingStoreWhatsappButton(store){
 function siteFooter(forCustomer){
   const badge=forCustomer
     ? `<a class="g58-app-badge" href="/downloads/Refills_Customer.apk" download aria-label="Download the G58 Refills Android app"><span class="g58-app-badge-icon">▶</span><span class="g58-app-badge-text"><small>Never miss a refill</small><strong>Get the G58 Refills App</strong></span></a>`
-    : `<a class="g58-app-badge" href="/downloads/GRAVITY58-Android-v1.5.apk" download aria-label="Download the Gravity58 Android app"><span class="g58-app-badge-icon">▶</span><span class="g58-app-badge-text"><small>Download Android</small><strong>Get G58 App</strong></span></a>`;
+    : `<a class="g58-app-badge" href="/downloads/GRAVITY58-Android-v1.6.apk" download aria-label="Download the Gravity58 Android app"><span class="g58-app-badge-icon">▶</span><span class="g58-app-badge-text"><small>Download Android</small><strong>Get G58 App</strong></span></a>`;
   return `<footer class="g58-site-footer"><div class="g58-site-footer-badge">${badge}</div><p class="g58-site-footer-note">© ${new Date().getFullYear()} Gravity58 · Refills</p></footer>`;
 }
 function renderShell(){
@@ -2442,8 +2473,7 @@ function bindCustomerPromotionActions(promotions){
 function renderCustomerCards(store,customer,cards,orders=[],promotions=[],courses=[],services=[],experts=[],bookings=[]){
   if(activePromotionStoreId!==store.id){activePromotionStoreId=store.id;customerPromotionQuantities.clear()}
   ringDueReminders(cards);
-  ringPendingOwnerOrders(store,customer,orders);
-  ringPendingOwnerBookings(store,customer,bookings);
+  ringCustomerPortalUpdates(store,customer,orders,bookings);
   customerCoursesCache=courses;
   const active=activeOrders(orders).sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
   const history=orderHistoryOrders(orders).sort((a,b)=>new Date(b.updatedAt||b.createdAt)-new Date(a.updatedAt||a.createdAt));
@@ -2588,7 +2618,7 @@ function customerOrderMarkup(order,store){
       :`<div class="payment-warning"><strong>⚠️ Before you pay</strong><p>Check that the amount below matches your order, and that this QR code or payment link genuinely belongs to <strong>${html(store?.name||'this store')}</strong>. G58 does not process or verify this payment — any payment issue, fraud, or dispute is strictly between you and the store. If anything looks wrong, use the Support button to contact the store before paying.</p></div><div class="qr-wrap" id="qr-${html(order.id)}"></div><h3 style="margin:10px 0;text-align:center">${money(order.amount)}</h3><p class="muted" style="text-align:center">Scan to pay via UPI${razorpayEnabled?' or use the secure Razorpay option below':''}. The store will accept your order once payment is received.</p>${razorpayEnabled?`<a class="btn full razorpay-pay-btn" data-open-razorpay="${html(order.id)}" href="${html(normaliseRazorpayLink(store.razorpayLink))}" target="_blank" rel="noopener noreferrer">Open Razorpay & Pay ↗</a><p class="razorpay-window-note">Razorpay opens securely in another tab. Keep this G58 page open.</p><div class="razorpay-return-step ${razorpayReturnOpen?'':'is-hidden'}" data-razorpay-return="${html(order.id)}"><strong>Returned from Razorpay?</strong><p>Choose the correct option so your order can move to the next step.</p><div class="razorpay-return-actions"><button type="button" class="btn green" data-confirm-razorpay-payment="${html(order.id)}">Payment completed</button><button type="button" class="btn secondary" data-razorpay-not-paid="${html(order.id)}">Payment not completed</button></div></div>`:''}`
     :order.amount?`<h3 style="margin:10px 0">${money(order.amount)}</h3>`:'<p class="muted">Waiting for the store to review and set the amount.</p>';
   const visibleStatus=order.paymentMarkedAt&&order.status==='Priced'?'Payment Verification':order.status;
-  return `<article class="card order-item-card premium-card"><div class="section-head"><h3>Order #${html(order.id.slice(-6).toUpperCase())}</h3><span class="chip">${html(visibleStatus)}</span></div>${bigStatusMarkup(visibleStatus)}${orderStepperMarkup(order.status)}<div class="order-items-list">${order.items.map(item=>`<div class="order-line-item"><span>${item.qty} ×</span><span>${html(item.name)}</span></div>`).join('')}</div>${Number(order.customerOrderValue)>0?`<div class="customer-order-value"><span>Your estimated order value</span><strong>${money(order.customerOrderValue)}</strong></div>`:''}${order.prescriptionUrl?`<a class="link-btn" href="${html(order.prescriptionUrl)}" target="_blank" rel="noopener">📄 View your prescription</a>`:''}${paymentBlock}${orderChatMarkup(order,'customer')}</article>`;
+  return `<article class="card order-item-card premium-card" id="${html(customerPortalRecordId('order',order.id))}"><div class="section-head"><h3>Order #${html(order.id.slice(-6).toUpperCase())}</h3><span class="chip">${html(visibleStatus)}</span></div>${bigStatusMarkup(visibleStatus)}${orderStepperMarkup(order.status)}<div class="order-items-list">${order.items.map(item=>`<div class="order-line-item"><span>${item.qty} ×</span><span>${html(item.name)}</span></div>`).join('')}</div>${Number(order.customerOrderValue)>0?`<div class="customer-order-value"><span>Your estimated order value</span><strong>${money(order.customerOrderValue)}</strong></div>`:''}${order.prescriptionUrl?`<a class="link-btn" href="${html(order.prescriptionUrl)}" target="_blank" rel="noopener">📄 View your prescription</a>`:''}${paymentBlock}${orderChatMarkup(order,'customer')}</article>`;
 }
 function serviceReminderMarkup(booking){
   return `<article class="card"><h3>${html(booking.serviceName)}</h3><p class="muted">It's been a while since your last visit — ready to book again?</p><button class="btn full" data-rebook-service="${html(booking.serviceId)}" type="button">Book Again</button></article>`;
@@ -2614,7 +2644,7 @@ function customerBookingMarkup(booking,store){
   const expertWaHref=store?.customerWhatsappEnabled!==false?whatsappLink(booking.expertPhone,`Hi ${booking.expertName||'there'}, this is regarding my ${booking.serviceName} booking on ${booking.date} at ${booking.startTime}.`):'';
   const bookingActions=[expertWaHref?`<a class="btn small whatsapp-btn" href="${expertWaHref}" target="_blank" rel="noopener noreferrer">${WHATSAPP_ICON_SVG} WhatsApp ${html(booking.expertName||'Expert')}</a>`:'',canCancel?`<button class="btn small red" data-cancel-my-booking="${html(booking.id)}">Cancel Booking</button>`:''].filter(Boolean).join('');
   const doorstepNote=booking.doorstepServiceEnabled?`<div class="delivery-block"><div class="delivery-info"><strong>🏠 Doorstep Service</strong>${booking.locationUrl?`<a href="${html(booking.locationUrl)}" target="_blank" rel="noopener">📍 Your shared service location</a>`:'<span class="muted">Location will be requested before confirmation.</span>'}</div></div>`:'';
-  return `<article class="card order-item-card premium-card"><div class="section-head"><h3>${html(booking.serviceName)}</h3><span class="chip">${html(status)}</span></div><p class="muted">${html(booking.date)} · ${html(booking.startTime)}${booking.expertName?` · with ${html(booking.expertName)}`:''}</p><p class="muted">Price ${money(booking.price)}${upfrontAmount>0?` · Prepaid ${money(upfrontAmount)}`:''}</p>${doorstepNote}${balanceNote}${pendingAcceptanceBlock}${paymentBlock}${bookingActions?`<div class="actions">${bookingActions}</div>`:''}${bookingChatMarkup(booking,'customer')}</article>`;
+  return `<article class="card order-item-card premium-card" id="${html(customerPortalRecordId('booking',booking.id))}"><div class="section-head"><h3>${html(booking.serviceName)}</h3><span class="chip">${html(status)}</span></div><p class="muted">${html(booking.date)} · ${html(booking.startTime)}${booking.expertName?` · with ${html(booking.expertName)}`:''}</p><p class="muted">Price ${money(booking.price)}${upfrontAmount>0?` · Prepaid ${money(upfrontAmount)}`:''}</p>${doorstepNote}${balanceNote}${pendingAcceptanceBlock}${paymentBlock}${bookingActions?`<div class="actions">${bookingActions}</div>`:''}${bookingChatMarkup(booking,'customer')}</article>`;
 }
 async function cancelCustomerBooking(booking,store,customer){
   try{
