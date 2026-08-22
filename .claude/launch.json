@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "static",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["/private/tmp/claude-501/-Users-rajeshgurram-Desktop-58-caude/718e3f85-256d-43e5-b83e-384b66a3cfeb/scratchpad/static-server.js"],
+      "port": 8123
+    }
+  ]
+}

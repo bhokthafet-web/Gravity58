@@ -953,6 +953,7 @@ function posPrintLink(row,amount,note){
 }
 function openPosPrintModal(url){
   modal('Print POS Bill',`<iframe class="pos-print-frame" src="${html(url)}" title="POS bill"></iframe>`);
+  $('#modal .modal')?.classList.add('pos-print-modal-card');
 }
 function bindPosPrintButtons(){$$('[data-pos-print]').forEach(button=>button.onclick=()=>openPosPrintModal(button.dataset.posPrint))}
 window.addEventListener('message',event=>{

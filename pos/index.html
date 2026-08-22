@@ -290,6 +290,10 @@
       border-radius:28px;background:linear-gradient(155deg,#0e1a2a,#111f33);
       box-shadow:0 35px 110px rgba(0,0,0,.58);padding:24px;text-align:center;
     }
+    /* production-theme.css sets .payment-qr-card{overflow:hidden} and loads after
+       this block, silently disabling scroll whenever the QR card is taller than
+       its box (e.g. inside a shorter embedded iframe) — force it back on. */
+    .payment-qr-card{overflow-y:auto!important}
 
     .timer-ring{
       width:82px;height:82px;margin:0 auto 13px;border-radius:50%;display:grid;place-items:center;
