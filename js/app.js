@@ -2456,11 +2456,11 @@ function scheduleHeroFlowDots() {
     setTimeout(() => {
       heading.classList.remove("dots-active");
       heading.classList.add("result-active");
-    }, 5000);
-    setTimeout(() => heading.classList.remove("result-active"), 8000);
-    setTimeout(run, 9500);
+    }, 6250);
+    setTimeout(() => heading.classList.remove("result-active"), 10000);
+    setTimeout(run, 11875);
   };
-  setTimeout(run, 1400);
+  setTimeout(run, 1750);
 }
 document.addEventListener("DOMContentLoaded", scheduleHeroFlowDots);
 async function openReferAndEarn() {
