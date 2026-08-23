@@ -1050,6 +1050,7 @@ test("Refills customer confirms a reusable Razorpay.me payment and adds promotio
   const promotionTicket = promotionStrip.locator('.customer-ticket[aria-label="Organic Honey"]').first();
   await expect(promotionTicket).toBeVisible();
   await expect(promotionTicket.locator(".promotion-ticket-image img")).toBeVisible();
+  await expect(promotionTicket.locator(".promotion-product-title")).toHaveText("Organic Honey");
   await expect(promotionStrip).toContainText("₹299/- only");
   await expect(promotionStrip).not.toContainText("Special Offer");
   await expect(promotionStrip).not.toContainText("Limited-time store offer");
@@ -1061,11 +1062,11 @@ test("Refills customer confirms a reusable Razorpay.me payment and adds promotio
     const buy = card.querySelector(".promotion-add");
     const price = card.querySelector(".promotion-offer-price");
     const cardBox = card.getBoundingClientRect(), buyBox = buy.getBoundingClientRect();
-    const cardStyle=getComputedStyle(card),priceStyle=getComputedStyle(price);
-    return { width: cardBox.width, buyFits: buyBox.left >= cardBox.left && buyBox.right <= cardBox.right, animation: getComputedStyle(track).animationName, duration: getComputedStyle(track).animationDuration, priceAnimation: priceStyle.animationName, priceColor: priceStyle.color, cardBackground: cardStyle.backgroundImage, cardShadow: cardStyle.boxShadow };
+    const cardStyle=getComputedStyle(card),priceStyle=getComputedStyle(price),titleStyle=getComputedStyle(card.querySelector('.promotion-product-title')),endStyle=getComputedStyle(card.querySelector('.promotion-end-date'));
+    return { width: cardBox.width, buyFits: buyBox.left >= cardBox.left && buyBox.right <= cardBox.right, animation: getComputedStyle(track).animationName, duration: getComputedStyle(track).animationDuration, priceAnimation: priceStyle.animationName, priceColor: priceStyle.color, titleColor:titleStyle.color, titleWeight:titleStyle.fontWeight, endColor:endStyle.color, cardBackground: cardStyle.backgroundImage, cardShadow: cardStyle.boxShadow };
   });
   expect(ticketMotion.width).toBeLessThanOrEqual(158);
-  expect(ticketMotion).toMatchObject({ buyFits: true, animation: "promotionMarquee", duration: "42s", priceAnimation: "none", priceColor: "rgb(220, 38, 38)", cardBackground: "none", cardShadow: "none" });
+  expect(ticketMotion).toMatchObject({ buyFits: true, animation: "promotionMarquee", duration: "42s", priceAnimation: "none", priceColor: "rgb(220, 38, 38)", titleColor:"rgb(255, 255, 255)", titleWeight:"950", endColor:"rgb(255, 255, 255)", cardBackground: "none", cardShadow: "none" });
   const razorpayLink = page.getByRole("link", { name: /Open Razorpay & Pay/ });
   await expect(razorpayLink).toHaveAttribute("href", "https://razorpay.me/@naturerefills");
   await razorpayLink.evaluate((link) => link.addEventListener("click", (event) => event.preventDefault(), { once: true }));

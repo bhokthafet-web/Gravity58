@@ -259,13 +259,14 @@ th,td{text-align:left;padding:12px;border-bottom:1px solid var(--line);white-spa
 .promotion-ticket-image{position:relative;z-index:1;flex:1;min-height:110px;margin:0 0 10px;display:flex}
 .promotion-ticket-image img{width:100%;height:100%;object-fit:contain;display:block;background:none;border:none;image-rendering:auto;filter:none!important;opacity:1!important}
 .promotion-ticket h3{margin:0 0 6px;font-size:18px;line-height:1.08}
+.customer-ticket .promotion-product-title{position:relative;z-index:3;margin:0 0 5px;color:#fff;font-size:13px;font-weight:950;line-height:1.15;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .promotion-ticket-foot{display:flex;flex:0 0 auto;align-items:center;justify-content:center;margin-top:auto;padding-top:7px;border-top:1px dashed rgba(23,16,25,.38)}
 .promotion-ticket-foot>strong{font-size:12px;white-space:nowrap}.customer-ticket{flex:0 0 156px;width:156px;height:248px;padding:10px}.owner-ticket{height:340px}.owner-ticket .chips{margin-top:13px}.owner-ticket .actions{position:relative;z-index:3;margin-top:12px}.promotion-disabled{filter:saturate(.25);opacity:.72}
 .customer-ticket.brand-art-ticket{padding:8px;background:transparent;color:#171019;border:0;box-shadow:none}
 .customer-ticket.brand-art-ticket::before,.customer-ticket.brand-art-ticket::after{display:none}
-.customer-ticket.brand-art-ticket .promotion-ticket-image{height:158px;min-height:158px;flex:0 0 158px;margin:0 0 5px;border-radius:11px;overflow:hidden;background:transparent}
+.customer-ticket.brand-art-ticket .promotion-ticket-image{height:136px;min-height:136px;flex:0 0 136px;margin:0 0 5px;border-radius:11px;overflow:hidden;background:transparent}
 .customer-ticket.brand-art-ticket .promotion-ticket-image img{object-fit:contain}
-.customer-ticket.brand-art-ticket .promotion-end-date{margin:0 2px 4px;text-align:center;color:#4a3729}
+.customer-ticket.brand-art-ticket .promotion-end-date{margin:0 2px 4px;text-align:center;color:#fff}
 .customer-ticket.brand-art-ticket .promotion-ticket-foot{padding-top:5px;border-top:1px solid rgba(23,16,25,.14)}
 .promotion-offer-price{position:relative;z-index:3;display:inline-flex;align-self:center;width:max-content;max-width:100%;margin:0 0 4px;padding:2px 4px;background:transparent;color:#dc2626!important;font-size:12px!important;font-weight:950;line-height:1.1;letter-spacing:.01em;box-shadow:none;text-shadow:none;animation:none;white-space:nowrap}
 .promotion-end-date{display:block;margin:0 0 5px;color:rgba(23,16,25,.82);font-size:8px;font-weight:900;text-transform:uppercase;letter-spacing:.03em}
