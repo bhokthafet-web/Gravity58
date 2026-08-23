@@ -15,6 +15,8 @@ test("homepage uses a single floating rupee link for the dedicated referral page
   await expect(page.getByRole("heading", { name: "How you earn the reward" })).toBeVisible();
   await expect(page.getByText("A free trial alone does not qualify.")).toBeVisible();
   await expect(page.getByRole("button", { name: "Sign In & Get My Link" })).toBeVisible();
+  await expect(page.locator("body.refer-page")).toHaveCSS("background-color", "rgb(246, 243, 236)");
+  await expect(page.getByRole("heading", { name: "How you earn the reward" })).toHaveCSS("color", "rgb(17, 24, 32)");
   await assertNoErrors();
 });
 

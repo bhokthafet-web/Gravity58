@@ -13,11 +13,16 @@ test("the homepage keeps only the floating rupee referral entry point", async ()
 
 test("the referral page explains qualification and provides account-aware link controls", async () => {
   const html = await read("refer/index.html");
+  const css = await read("refer/styles.css");
   assert.match(html, /How you earn the reward/);
   assert.match(html, /A free trial alone does not qualify/);
   assert.match(html, /id="generateReferralButton"/);
   assert.match(html, /id="referralHistory"/);
+  assert.match(html, /name="color-scheme" content="light only"/);
+  assert.match(html, /\/refer\/styles\.css\?v=2/);
   assert.match(html, /\/refer\/app\.js\?v=1/);
+  assert.match(css, /color-scheme:light only/);
+  assert.match(css, /body\.refer-page\{[^}]*background:#f6f3ec!important;[^}]*color:#111820!important/);
 });
 
 test("Refills preserves promotion images already within the 100 KB limit", async () => {
