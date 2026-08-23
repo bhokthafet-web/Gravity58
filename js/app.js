@@ -2463,41 +2463,6 @@ function scheduleHeroFlowDots() {
   setTimeout(run, 1750);
 }
 document.addEventListener("DOMContentLoaded", scheduleHeroFlowDots);
-async function openReferAndEarn() {
-  const user = window.G58SiteUser;
-  if (!user) return window.G58RequestAuth?.("login");
-  const button = document.getElementById("getReferralLinkBtn");
-  const box = document.getElementById("referralLinkBox");
-  const functionId = Gravity58Ads?.config?.digitalOrderFunctionId;
-  if (!button || !box || !Gravity58Ads?.configured || !functionId) return;
-  const originalText = button.textContent;
-  button.disabled = true;
-  button.textContent = "Loading…";
-  try {
-    const result = await Gravity58Ads.executeFunction(functionId, {
-      action: "digit58-get-referral-code",
-      userEmail: user.email,
-      userName: user.displayName,
-    });
-    const link = `${location.origin}/digit58/?ref=${result.code}`;
-    box.innerHTML = `<div class="refer-link-row"><input readonly value="${escapeHtml(link)}" id="referLinkInput"><button class="btn small" id="copyReferLinkBtn" type="button">Copy</button></div>`;
-    box.classList.remove("hidden");
-    button.classList.add("hidden");
-    document.getElementById("copyReferLinkBtn").onclick = async () => {
-      try {
-        await navigator.clipboard.writeText(link);
-      } catch {
-        const input = document.getElementById("referLinkInput");
-        input.select();
-        document.execCommand("copy");
-      }
-    };
-  } catch (error) {
-    alert(error.message || "Could not load your referral link");
-    button.disabled = false;
-    button.textContent = originalText;
-  }
-}
 async function openBusinessCardCreator() {
   const user = window.G58SiteUser;
   if (!user) return window.G58RequestAuth?.("business");

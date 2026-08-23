@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#f6f3ec">
+  <title>Refer &amp; Earn ₹399 | GRAVITY58</title>
+  <meta name="description" content="Share your personal GRAVITY58 referral link with a business owner and earn ₹399 after their first successful paid Refills subscription.">
+  <link rel="canonical" href="https://g58.in/refer/">
+  <link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32.png?v=5">
+  <link rel="apple-touch-icon" sizes="180x180" href="/assets/apple-touch-icon.png?v=5">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&amp;family=Manrope:wght@600;700;800&amp;display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/style.css?v=57">
+  <link rel="stylesheet" href="/refer/styles.css?v=1">
+  <meta name="robots" content="index, follow">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="GRAVITY58">
+  <meta property="og:title" content="Share GRAVITY58. Earn ₹399.">
+  <meta property="og:description" content="Invite a business owner with your personal link. Their first successful paid Refills subscription makes your ₹399 reward eligible.">
+  <meta property="og:url" content="https://g58.in/refer/">
+  <meta property="og:image" content="https://g58.in/assets/g58-whatsapp-card.png">
+  <meta name="twitter:card" content="summary_large_image">
+</head>
+<body class="refer-page">
+  <header class="refer-topbar">
+    <div class="refer-nav shell">
+      <a class="refer-brand" href="/" aria-label="GRAVITY58 home">
+        <svg viewBox="0 0 120 120" fill="none" stroke="currentColor" stroke-width="8" aria-hidden="true"><circle cx="60" cy="26" r="15"/><circle cx="28" cy="82" r="15"/><circle cx="92" cy="82" r="15"/></svg>
+        <span>GRAVITY<em>58</em><small>REFER &amp; EARN</small></span>
+      </a>
+      <nav class="refer-nav-links" aria-label="Referral navigation">
+        <a href="#how-it-works">How it works</a>
+        <a href="#eligibility">Eligibility</a>
+        <a href="#my-referrals">My referrals</a>
+      </nav>
+      <div class="header-account-controls" aria-label="Account controls">
+        <button class="header-account-btn login" id="siteLoginButton" type="button" onclick="window.G58AccountAction?.()">Login</button>
+        <span class="header-user-name hidden" id="siteUserName"></span>
+        <button class="header-account-btn logout hidden" id="siteLogoutButton" type="button" onclick="window.G58LogoutAction?.()">Logout</button>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <section class="refer-hero shell">
+      <div class="refer-hero-copy">
+        <span class="refer-eyebrow">GRAVITY58 BUSINESS REFERRALS</span>
+        <h1>Share G58.<br><span>Earn ₹399.</span></h1>
+        <p>Invite a business owner using your personal link. When their first paid Refills subscription succeeds, your ₹399 referral reward becomes eligible.</p>
+        <div class="refer-hero-actions">
+          <button class="refer-primary" id="heroReferralButton" type="button">Get My Referral Link</button>
+          <a class="refer-secondary" href="#how-it-works">See how it works <span aria-hidden="true">↓</span></a>
+        </div>
+        <div class="refer-trust-row" aria-label="Referral highlights">
+          <span>✓ Personal link</span><span>✓ Clear tracking</span><span>✓ ₹399 per qualified referral</span>
+        </div>
+      </div>
+      <div class="refer-hero-visual" aria-label="A successful referral earns ₹399">
+        <div class="refer-orbit orbit-one"></div>
+        <div class="refer-orbit orbit-two"></div>
+        <span class="refer-person refer-person-you">YOU</span>
+        <span class="refer-person refer-person-friend">FRIEND</span>
+        <div class="refer-rupee">₹<small>399</small></div>
+        <p>after their first successful paid Refills subscription</p>
+      </div>
+    </section>
+
+    <section class="refer-flow shell" id="how-it-works">
+      <div class="refer-section-heading">
+        <span>ONE LINK · FOUR CLEAR STEPS</span>
+        <h2>How you earn the reward</h2>
+        <p>The referral is attached to your G58 account and tracked from link creation to the successful paid subscription.</p>
+      </div>
+      <div class="refer-step-grid">
+        <article><b>01</b><span class="step-icon">↗</span><h3>Get your link</h3><p>Sign in to any G58 account and generate your unique referral link.</p></article>
+        <article><b>02</b><span class="step-icon">⌁</span><h3>Share with an owner</h3><p>Send it to a store or service-business owner who wants to use Refills.</p></article>
+        <article><b>03</b><span class="step-icon">✓</span><h3>They subscribe</h3><p>Your friend opens that link, signs up and completes a paid Refills plan.</p></article>
+        <article><b>04</b><span class="step-icon">₹</span><h3>₹399 becomes eligible</h3><p>After their first successful subscription payment, G58 records your reward.</p></article>
+      </div>
+    </section>
+
+    <section class="refer-workspace shell" id="my-referrals">
+      <div class="refer-link-panel">
+        <div>
+          <span class="refer-eyebrow">YOUR PERSONAL LINK</span>
+          <h2 id="referralPanelTitle">Ready to refer?</h2>
+          <p id="referralPanelCopy">Sign in once to create a permanent referral link tied securely to your G58 account.</p>
+        </div>
+        <button class="refer-primary" id="generateReferralButton" type="button">Sign In &amp; Get My Link</button>
+        <div class="refer-link-result hidden" id="referralLinkResult">
+          <label for="referralLinkInput">Your referral link</label>
+          <div class="refer-link-row">
+            <input id="referralLinkInput" type="text" readonly>
+            <button type="button" id="copyReferralButton">Copy</button>
+            <button type="button" id="shareReferralButton">Share</button>
+          </div>
+          <p class="refer-inline-status" id="referralStatus" role="status" aria-live="polite"></p>
+        </div>
+      </div>
+
+      <div class="refer-history-panel">
+        <div class="refer-history-head">
+          <div><span class="refer-eyebrow">MY REFERRALS</span><h2>Track every referral</h2></div>
+          <a href="/digit58/">Open Refills Dashboard <span aria-hidden="true">→</span></a>
+        </div>
+        <div class="refer-stats">
+          <article><small>Referrals</small><strong id="referralCount">—</strong></article>
+          <article><small>Eligible rewards</small><strong id="eligibleRewards">—</strong></article>
+          <article><small>Recorded value</small><strong id="recordedValue">—</strong></article>
+        </div>
+        <div class="refer-history-list" id="referralHistory">
+          <p>Sign in to view your referral history.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="refer-rules shell" id="eligibility">
+      <div class="refer-rules-main">
+        <span class="refer-eyebrow">ELIGIBILITY</span>
+        <h2>Simple rules. No hidden steps.</h2>
+        <ul>
+          <li><span>✓</span><div><strong>Any signed-in G58 account can refer</strong><small>You do not need an active Refills store to create your personal link.</small></div></li>
+          <li><span>✓</span><div><strong>Your link must be used first</strong><small>The new business owner should open your link before starting their Refills signup.</small></div></li>
+          <li><span>✓</span><div><strong>A paid plan must succeed</strong><small>A free trial alone does not qualify. The first successful paid subscription activates eligibility.</small></div></li>
+          <li><span>✓</span><div><strong>One genuine business owner</strong><small>Self-referrals do not qualify; one reward is recorded per referred owner.</small></div></li>
+        </ul>
+      </div>
+      <aside class="refer-after-payment">
+        <span class="refer-eyebrow">AFTER PAYMENT</span>
+        <h3>What G58 records</h3>
+        <div><span>01</span><p>The referred store owner</p></div>
+        <div><span>02</span><p>The paid plan and date</p></div>
+        <div><span>03</span><p>Your reward status</p></div>
+        <p class="refer-fine-print">Track the record from <strong>Refills Dashboard → Refer &amp; Earn</strong>. G58 confirms and credits eligible rewards after the subscription payment is verified.</p>
+      </aside>
+    </section>
+
+    <section class="refer-final-cta shell">
+      <span>KNOW A BUSINESS OWNER?</span>
+      <h2>One useful introduction can earn you ₹399.</h2>
+      <button class="refer-primary" id="footerReferralButton" type="button">Create My Referral Link</button>
+    </section>
+  </main>
+
+  <footer class="refer-footer">
+    <a href="/">GRAVITY58</a><span>Turn any store or restaurant online.</span><a href="/privacy-policy/">Privacy</a>
+  </footer>
+
+  <script src="https://cdn.jsdelivr.net/npm/appwrite@26.2.0"></script>
+  <script src="/js/config.js"></script>
+  <script src="/js/appwrite-ads.js?v=20"></script>
+  <script src="/js/site-auth.js?v=3"></script>
+  <script src="/refer/app.js?v=1"></script>
+  <script src="/js/server-status.js?v=1"></script>
+</body>
+</html>

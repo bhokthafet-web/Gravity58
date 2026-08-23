@@ -208,7 +208,7 @@ IMPORTANT RULES
 
 The final result should be a clean, premium, 3D-style promotional product visual ready for direct use in marketing materials.`;
 function imageUploadFieldMarkup(previewId,initialPreviewHtml='',extraPreviewClass=''){
-  return `<div class="field local-image-field"><label>Product image <small>(optional · auto-compressed to fit)</small></label><div class="image-guide-tabs"><button type="button" class="image-guide-tab active" data-guide-tab="upload">Upload Photo</button><button type="button" class="image-guide-tab" data-guide-tab="ai">✨ AI Image Guide</button></div><div class="image-guide-panel" data-guide-panel="upload"><input name="imageFile" type="file" accept="image/jpeg,image/png,image/webp"><div class="image-preview ${extraPreviewClass}" id="${previewId}">${initialPreviewHtml}</div></div><div class="image-guide-panel hidden" data-guide-panel="ai">${aiImageGuideMarkup()}</div></div>`;
+  return `<div class="field local-image-field"><label>Product image <small>(optional · files up to 100 KB stay in original quality)</small></label><div class="image-guide-tabs"><button type="button" class="image-guide-tab active" data-guide-tab="upload">Upload Photo</button><button type="button" class="image-guide-tab" data-guide-tab="ai">✨ AI Image Guide</button></div><div class="image-guide-panel" data-guide-panel="upload"><input name="imageFile" type="file" accept="image/jpeg,image/png,image/webp"><div class="image-preview ${extraPreviewClass}" id="${previewId}">${initialPreviewHtml}</div></div><div class="image-guide-panel hidden" data-guide-panel="ai">${aiImageGuideMarkup()}</div></div>`;
 }
 function aiImageGuideMarkup(){
   return `<ol class="image-guide-steps"><li>Open <a href="https://chatgpt.com" target="_blank" rel="noopener noreferrer">ChatGPT</a> in a new tab (sign in if it asks).</li><li>Start a new chat and upload a plain photo of your product.</li><li>Tap <strong>Copy Prompt</strong> below, then paste it into the same chat.</li><li>In the pasted text, replace <code>{{OFFER_PERCENTAGE}}</code> with your discount (e.g. 20%) and <code>{{OFFER_TEXT}}</code> with a short offer line — or delete that line if you don't need one.</li><li>Send it. ChatGPT will generate a premium transparent-background product image with an offer badge.</li><li>Download the image, switch back to <strong>Upload Photo</strong> above, and upload it here.</li></ol><button type="button" class="btn small green" data-copy-ai-prompt>📋 Copy Prompt</button>`;
@@ -1378,7 +1378,7 @@ async function openBrandRequestForm(prefillTarget){
     let compressedBlob=null,previewUrl='';
     imageFile.onchange=async()=>{
       const file=imageFile.files[0];if(!file)return;
-      compressedBlob=null;imagePreview.innerHTML='<span class="muted" style="font-size:12px">Compressing image…</span>';
+      compressedBlob=null;imagePreview.innerHTML='<span class="muted" style="font-size:12px">Preparing clear preview…</span>';
       try{
         compressedBlob=await compressImageTo100Kb(file);
         if(previewUrl)URL.revokeObjectURL(previewUrl);
@@ -1397,7 +1397,8 @@ async function openBrandRequestForm(prefillTarget){
         const duration=BRAND_CARD_PRICING[raw.brandDuration]?raw.brandDuration:'30d';
         const record={id:id('brandreq'),brandOwnerId:brandSession.$id,brandOwnerName:brandProfile?.name||brandSession.email.split('@')[0],brandOwnerEmail:brandSession.email,ownerId:target.ownerId,storeId:target.storeId,storeName:store.name,promotionName:raw.promotionName.trim(),offerText:raw.offerText.trim(),price:Math.max(0,Number(raw.price)||0),duration,status:'Pending Store Approval',createdAt:now()};
         if(compressedBlob){
-          const upload=await api.uploadMenuMedia(new File([compressedBlob],`brand-${id('img')}.webp`,{type:compressedBlob.type}));
+          const ext=compressedBlob.type==='image/webp'?'webp':compressedBlob.type==='image/png'?'png':'jpg';
+          const upload=await api.uploadMenuMedia(new File([compressedBlob],`brand-${id('img')}.${ext}`,{type:compressedBlob.type}));
           record.imageUrl=upload.mediaUrl;record.imageFileId=upload.fileId;
         }
         const created=await api.create(BRAND_REQUEST_KIND,record,record.id,api.collaborativePermissionSet?.(brandSession.$id));
@@ -1595,45 +1596,26 @@ function promotionOwnerCard(promotion){
 }
 function loadBrowserImage(file){return new Promise((resolve,reject)=>{if(!file?.type?.startsWith('image/'))return reject(new Error('Select a JPG, PNG or WebP image'));if(file.size>20*1024*1024)return reject(new Error('Source image must be below 20 MB'));const url=URL.createObjectURL(file),image=new Image();image.onload=()=>{URL.revokeObjectURL(url);resolve(image)};image.onerror=()=>{URL.revokeObjectURL(url);reject(new Error('This image could not be opened'))};image.src=url})}
 function canvasImageBlob(canvas,type,quality){return new Promise((resolve,reject)=>canvas.toBlob(blob=>blob?resolve(blob):reject(new Error('Image compression failed')),type,quality))}
-function imageHasTransparency(image,width,height){
-  const probeWidth=Math.min(200,width),probeHeight=Math.max(1,Math.round(probeWidth*(height/width)));
-  const canvas=document.createElement('canvas');canvas.width=probeWidth;canvas.height=probeHeight;
-  const context=canvas.getContext('2d',{alpha:true});
-  context.drawImage(image,0,0,probeWidth,probeHeight);
-  const data=context.getImageData(0,0,probeWidth,probeHeight).data;
-  for(let i=3;i<data.length;i+=4)if(data[i]<250)return true;
-  return false;
-}
-function stripNearWhiteBackground(canvas){
-  const context=canvas.getContext('2d');
-  const imageData=context.getImageData(0,0,canvas.width,canvas.height);
-  const data=imageData.data,low=225,high=250;
-  for(let i=0;i<data.length;i+=4){
-    const brightness=Math.min(data[i],data[i+1],data[i+2]);
-    if(brightness>=high)data[i+3]=0;
-    else if(brightness>low)data[i+3]=Math.round(data[i+3]*(1-(brightness-low)/(high-low)));
-  }
-  context.putImageData(imageData,0,0);
-}
 async function compressImageTo100Kb(file){
+  if(file.size<=100*1024)return file;
   const image=await loadBrowserImage(file);
-  let width=Math.min(1600,image.naturalWidth||image.width),height=Math.max(1,Math.round((image.naturalHeight||image.height)*(width/(image.naturalWidth||image.width))));
-  const alreadyTransparent=imageHasTransparency(image,width,height);
+  let width=Math.min(1920,image.naturalWidth||image.width),height=Math.max(1,Math.round((image.naturalHeight||image.height)*(width/(image.naturalWidth||image.width))));
   const sourceCanvas=document.createElement('canvas');
   sourceCanvas.width=Math.max(1,Math.round(width));sourceCanvas.height=Math.max(1,Math.round(height));
   const sourceContext=sourceCanvas.getContext('2d',{alpha:true});
+  sourceContext.imageSmoothingEnabled=true;sourceContext.imageSmoothingQuality='high';
   sourceContext.drawImage(image,0,0,sourceCanvas.width,sourceCanvas.height);
-  if(!alreadyTransparent)stripNearWhiteBackground(sourceCanvas);
-  for(let sizePass=0;sizePass<10;sizePass++){
+  for(let sizePass=0;sizePass<12;sizePass++){
     const canvas=document.createElement('canvas');
     canvas.width=Math.max(1,Math.round(width));canvas.height=Math.max(1,Math.round(height));
     const context=canvas.getContext('2d',{alpha:true});
+    context.imageSmoothingEnabled=true;context.imageSmoothingQuality='high';
     context.drawImage(sourceCanvas,0,0,canvas.width,canvas.height);
-    for(let quality=.88;quality>=.3;quality-=.08){
+    for(let quality=.94;quality>=.54;quality-=.05){
       const blob=await canvasImageBlob(canvas,'image/webp',quality);
       if(blob.size<=100*1024)return blob;
     }
-    width*=.78;height*=.78;
+    width*=.9;height*=.9;
   }
   throw new Error('Could not reduce this image below 100 KB. Try a smaller source image.');
 }
@@ -1648,7 +1630,7 @@ function openPromotionForm(promotionId=''){
     imageFile.onchange=async()=>{
       const file=imageFile.files[0];if(!file)return;
       compressedBlob=null;
-      imagePreview.innerHTML=`<span class="muted" style="font-size:12px">Compressing image…</span>`;
+      imagePreview.innerHTML=`<span class="muted" style="font-size:12px">Preparing clear preview…</span>`;
       try{
         compressedBlob=await compressImageTo100Kb(file);
         if(previewUrl)URL.revokeObjectURL(previewUrl);
@@ -1666,7 +1648,7 @@ function openPromotionForm(promotionId=''){
       try{
         if(compressedBlob){
           const oldFileId=promotion.imageFileId;
-          const ext=compressedBlob.type==='image/webp'?'webp':'jpg';
+          const ext=compressedBlob.type==='image/webp'?'webp':compressedBlob.type==='image/png'?'png':'jpg';
           const upload=await api.uploadMenuMedia(new File([compressedBlob],`promo-${id('img')}.${ext}`,{type:compressedBlob.type}));
           values.imageUrl=upload.mediaUrl;values.imageFileId=upload.fileId;
           if(oldFileId&&oldFileId!==upload.fileId)api.removeMenuMedia(oldFileId).catch(()=>{});
@@ -2483,7 +2465,8 @@ function refreshPromotionCartBar(promotions){
   $$('[data-cart-minus]',bar).forEach(button=>button.onclick=()=>adjustPromotionQuantity(promotions,button.dataset.cartMinus,-1));
 }
 function customerPromotionTicket(promotion,decorative=false){
-  return `<article class="promotion-ticket customer-ticket" ${decorative?'aria-hidden="true"':''}>${Number(promotion.price)>0?`<span class="promotion-ticket-ribbon">₹${Math.round(promotion.price)}</span>`:''}${promotion.imageUrl?`<div class="promotion-ticket-image"><img src="${html(promotion.imageUrl)}" alt="" loading="lazy"></div>`:''}<h3>${html(promotion.name)}</h3>${promotion.endsOn?`<small class="promotion-end-date">Offer ends ${html(formatPromotionEnd(promotion.endsOn))}</small>`:''}<div class="promotion-ticket-foot"><div class="promotion-control" data-promotion-control="${html(promotion.id)}">${promotionQuantityControl(promotion.id)}</div></div></article>`;
+  const hasImage=Boolean(promotion.imageUrl);
+  return `<article class="promotion-ticket customer-ticket ${hasImage?'brand-art-ticket':''}" aria-label="${html(promotion.name)}" ${decorative?'aria-hidden="true"':''}>${Number(promotion.price)>0?`<span class="promotion-ticket-ribbon">₹${Math.round(promotion.price)}</span>`:''}${hasImage?`<div class="promotion-ticket-image"><img src="${html(promotion.imageUrl)}" alt="${html(promotion.name)}" loading="lazy" decoding="async"></div>`:`<h3>${html(promotion.name)}</h3>`}${promotion.endsOn?`<small class="promotion-end-date">Offer ends ${html(formatPromotionEnd(promotion.endsOn))}</small>`:''}<div class="promotion-ticket-foot"><div class="promotion-control" data-promotion-control="${html(promotion.id)}">${promotionQuantityControl(promotion.id)}</div></div></article>`;
 }
 function bindCustomerPromotionActions(promotions){
   $$('[data-promotion-add]').forEach(button=>button.onclick=()=>adjustPromotionQuantity(promotions,button.dataset.promotionAdd,1));

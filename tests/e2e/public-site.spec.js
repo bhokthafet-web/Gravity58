@@ -1,6 +1,23 @@
 import { test, expect } from "@playwright/test";
 import { monitorPageErrors, prepareMockApi, prepareOffline } from "./helpers.js";
 
+test("homepage uses a single floating rupee link for the dedicated referral page", async ({ page }) => {
+  await prepareOffline(page);
+  const assertNoErrors = monitorPageErrors(page);
+  await page.goto("/");
+  await expect(page.locator(".g58-refer-section")).toHaveCount(0);
+  const referralLink = page.locator(".g58-referral-float");
+  await expect(referralLink).toHaveText("₹");
+  await expect(referralLink).toHaveAttribute("href", "/refer/");
+
+  await page.goto("/refer/");
+  await expect(page.getByRole("heading", { name: "Share G58. Earn ₹399." })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "How you earn the reward" })).toBeVisible();
+  await expect(page.getByText("A free trial alone does not qualify.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Sign In & Get My Link" })).toBeVisible();
+  await assertNoErrors();
+});
+
 test("public walls, location filters, guides and short-link tools work", async ({ page }) => {
   await prepareOffline(page);
   const assertNoErrors = monitorPageErrors(page);
