@@ -3241,12 +3241,13 @@ function bookingsView(){
   const today=indiaDateValue();
   const dateFilter=$('#bookingsDateFilter')?.value??today;
   const all=(state.bookings||[]).filter(row=>row.storeId===store.id&&!['Completed','Cancelled'].includes(row.status));
-  const filtered=(dateFilter?all.filter(row=>row.date===dateFilter):all).sort((a,b)=>new Date(`${a.date}T${a.startTime}`)-new Date(`${b.date}T${b.startTime}`));
-  const pending=filtered.filter(row=>['Requested','Pending Payment'].includes(row.status));
-  const confirmed=filtered.filter(row=>row.status==='Confirmed');
-  $('#page').innerHTML=`<div class="section-head"><div><h1>Bookings</h1><p class="muted">Manage upcoming bookings for ${html(store.name||'this store')}.</p></div></div>
+  const pending=all.filter(row=>['Pending Customer Acceptance','Requested','Pending Payment'].includes(row.status)).sort((a,b)=>new Date(b.createdAt||`${b.date}T${b.startTime}`)-new Date(a.createdAt||`${a.date}T${a.startTime}`));
+  const confirmed=(dateFilter?all.filter(row=>row.date===dateFilter):all).filter(row=>row.status==='Confirmed').sort((a,b)=>new Date(`${a.date}T${a.startTime}`)-new Date(`${b.date}T${b.startTime}`));
+  const visible=[...pending,...confirmed];
+  $('#page').innerHTML=`<div class="section-head"><div><h1>Bookings</h1><p class="muted">Incoming and payment-pending bookings always stay visible. The date filter applies only to confirmed bookings for ${html(store.name||'this store')}.</p></div></div>
     <div class="card emergency-mode-card"><label class="option-toggle"><input id="emergencyModeToggle" type="checkbox" ${store.emergencyMode?'checked':''}><span><strong>Emergency Mode</strong><small>Pauses new bookings so you can catch up. Existing bookings stay — use the delay below to push them back.</small></span></label>${store.emergencyMode?`<div class="emergency-delay-row"><input id="emergencyDelayMinutes" type="number" min="5" step="5" value="30" placeholder="Minutes"><button class="btn small" id="applyEmergencyDelay" type="button">Apply delay to today's bookings</button></div>`:''}</div>
     <div class="date-filter-bar"><label>Date<input id="bookingsDateFilter" type="date" value="${html(dateFilter)}"></label><button class="btn small secondary" id="bookingsDateToday" type="button">Today</button><button class="btn small secondary" id="bookingsDateAll" type="button">All upcoming</button></div>
+    <div class="section-head"><h2>Incoming &amp; Awaiting Action</h2>${pending.length?`<span class="chip due">${pending.length} waiting</span>`:''}</div>
     <div class="grid card-grid">${pending.map(booking=>ownerBookingMarkup(booking,store)).join('')||'<div class="empty">No bookings awaiting response.</div>'}</div>
     ${confirmed.length?`<div class="section-head"><h2>Confirmed</h2></div><div class="booking-compact-list">${confirmed.map(confirmedBookingCompactMarkup).join('')}</div>`:''}`;
   $('#emergencyModeToggle').onchange=event=>toggleEmergencyMode(store,event.target.checked);
@@ -3262,8 +3263,8 @@ function bookingsView(){
   $$('[data-complete-booking]').forEach(button=>button.onclick=()=>completeBooking(button.dataset.completeBooking));
   $$('[data-cancel-booking]').forEach(button=>button.onclick=()=>cancelBooking(button.dataset.cancelBooking));
   $$('[data-reopen-booking-payment]').forEach(button=>button.onclick=()=>reopenBookingPayment(button.dataset.reopenBookingPayment));
-  bindBookingExpertShareButtons(filtered);
-  bindBookingChatForms(filtered,'owner',refreshView);
+  bindBookingExpertShareButtons(visible);
+  bindBookingChatForms(visible,'owner',refreshView);
   bindPosPrintButtons();
 }
 function bookingHistoryTimestamp(booking){

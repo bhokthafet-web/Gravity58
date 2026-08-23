@@ -565,6 +565,18 @@ test("owner creates a Game Zone and customers reserve independent play-area slot
   await expect(page.locator(".order-item-card", { hasText: "Box Cricket" })).toContainText("Box Cricket Turf 1");
   const booking = await page.evaluate((kind) => window.__g58Mock.store[kind][0], `digit58_booking_${ownerId}`);
   expect(booking).toMatchObject({ serviceId: stored.service.id, expertId: stored.expert.id, status: "Requested" });
+
+  await page.evaluate((ownerId) => {
+    window.stopCustomerRealtime?.();
+    window.__g58Mock.setUser({ $id: ownerId, email: "games@example.com", name: "Game Zone Owner" });
+    location.hash = "";
+  }, ownerId);
+  await expect(page.getByRole("button", { name: /Bookings/ })).toBeVisible();
+  await page.getByRole("button", { name: /Bookings/ }).click();
+  const incomingBooking = page.locator(".order-item-card", { hasText: "Box Cricket" });
+  await expect(page.getByRole("heading", { name: "Incoming & Awaiting Action" })).toBeVisible();
+  await expect(incomingBooking).toContainText("Box Cricket Turf 1");
+  await expect(incomingBooking.getByRole("button", { name: "Accept Booking" })).toBeVisible();
   await assertNoErrors();
 });
 
