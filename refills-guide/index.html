@@ -6,13 +6,13 @@
   <link rel="apple-touch-icon" sizes="180x180" href="/assets/apple-touch-icon.png?v=5" />
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>How Refills Works | GRAVITY58</title>
-<meta name="description" content="See how G58 Refills works for store owners, brand owners and customers — with a live demo of the reminder-to-reorder flow.">
+<meta name="description" content="See how G58 Refills handles repeat orders and service bookings—from service selection and time slot to expert assignment and confirmation.">
 <meta name="robots" content="index, follow, max-image-preview:large">
 <link rel="canonical" href="https://g58.in/refills-guide/">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="GRAVITY58">
 <meta property="og:title" content="How Refills Works | GRAVITY58">
-<meta property="og:description" content="See how G58 Refills works for store owners, brand owners and customers — with a live demo of the reminder-to-reorder flow.">
+<meta property="og:description" content="See how G58 Refills handles repeat orders and service bookings—from service selection and time slot to expert assignment and confirmation.">
 <meta property="og:url" content="https://g58.in/refills-guide/">
 <meta property="og:image" content="https://g58.in/assets/og-gravity58.svg">
 <style>
@@ -174,6 +174,18 @@ a{color:var(--accent)}.brand{display:inline-flex;align-items:center;gap:9px;font
 .g58-plan-card.trial .g58-plan-cta{background:linear-gradient(135deg,#0f8f7c,#0c7565)}
 @media(max-width:900px){.g58-plan-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:520px){.g58-plan-grid{grid-template-columns:1fr}}
+
+/* Services Bookings explainer */
+.service-bookings-showcase{position:relative;margin-top:30px;padding:32px;border:1px solid rgba(249,115,22,.2);border-radius:26px;background:linear-gradient(145deg,#fff 0%,#fffaf5 60%,#f7f9ff 100%);box-shadow:0 22px 60px rgba(18,24,31,.08);overflow:hidden}
+.service-bookings-showcase:before{content:"";position:absolute;right:-140px;top:-170px;width:380px;height:380px;border-radius:50%;background:radial-gradient(circle,rgba(249,115,22,.14),transparent 68%);pointer-events:none}
+.service-bookings-intro{position:relative;max-width:780px;margin:0 auto 28px;text-align:center}.service-bookings-kicker{display:inline-flex;margin-bottom:10px;padding:6px 11px;border-radius:999px;background:rgba(249,115,22,.1);color:#cf5408;font-size:10px;font-weight:900;letter-spacing:.11em;text-transform:uppercase}.service-bookings-intro h2{margin:0 0 11px;font-family:Manrope,sans-serif;font-size:clamp(25px,3.5vw,38px);letter-spacing:-.025em;line-height:1.14}.service-bookings-intro p{max-width:700px;margin:0 auto;color:var(--ink-muted);font-size:14.5px;line-height:1.65}
+.service-bookings-panel{position:relative;padding:16px 10px 10px}.service-bookings-route{position:absolute;left:11.5%;right:11.5%;top:51px;height:2px;background:linear-gradient(90deg,rgba(249,115,22,.18),rgba(29,78,216,.25),rgba(34,197,94,.22));overflow:visible}.service-bookings-route:before{content:"";position:absolute;inset:-1px 0 auto;height:4px;background:linear-gradient(90deg,transparent,#f97316,#2563eb,#22c55e,transparent);transform:scaleX(0);transform-origin:left;animation:serviceBookingRoute 7.2s cubic-bezier(.4,0,.2,1) infinite}.service-bookings-route span{position:absolute;top:50%;left:0;width:11px;height:11px;border:2px solid #fff;border-radius:50%;background:var(--orange);box-shadow:0 0 0 5px rgba(249,115,22,.13),0 0 18px rgba(249,115,22,.55);transform:translate(-50%,-50%);animation:serviceBookingDot 7.2s cubic-bezier(.4,0,.2,1) infinite}
+.service-bookings-steps{position:relative;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px;list-style:none;margin:0;padding:0}.service-bookings-steps li{position:relative;text-align:center;opacity:.58;animation:serviceBookingStep 7.2s ease-in-out infinite;animation-delay:calc(var(--booking-step) * 1.6s)}.service-booking-icon{position:relative;z-index:1;display:grid;place-items:center;width:70px;height:70px;margin:0 auto 15px;border:1px solid rgba(249,115,22,.25);border-radius:22px;background:#fff;color:#d85d0e;box-shadow:0 13px 30px rgba(18,24,31,.09)}.service-booking-icon b{font-family:Manrope,sans-serif;font-size:16px}.service-booking-icon.booking-time{border-color:rgba(29,78,216,.22);color:var(--accent)}.service-booking-icon.booking-time b{font-size:12px}.service-booking-icon.booking-expert{border-color:rgba(124,58,237,.22);color:#7c3aed}.service-booking-icon.booking-confirmed{border-color:rgba(34,197,94,.28);color:#16803c}.service-booking-icon.booking-confirmed b{font-size:25px}.service-bookings-steps small{display:block;margin-bottom:5px;color:#9a6b4e;font-size:9px;font-weight:900;letter-spacing:.1em;text-transform:uppercase}.service-bookings-steps strong{display:block;font-family:Manrope,sans-serif;font-size:15px}.service-bookings-steps p{max-width:210px;margin:7px auto 0;color:var(--ink-muted);font-size:11.5px;line-height:1.5}
+.service-bookings-details{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:23px;padding-top:21px;border-top:1px solid var(--border)}.service-bookings-detail{padding:17px;border:1px solid var(--border);border-radius:15px;background:rgba(255,255,255,.72)}.service-bookings-detail small{display:block;margin-bottom:5px;color:var(--accent);font-size:9px;font-weight:900;letter-spacing:.1em;text-transform:uppercase}.service-bookings-detail strong{display:block;margin-bottom:6px;font-size:14px}.service-bookings-detail p{margin:0;color:var(--ink-muted);font-size:12px;line-height:1.55}.service-bookings-action{text-align:center;margin-top:20px}
+@keyframes serviceBookingRoute{0%,10%{transform:scaleX(0)}70%,88%{transform:scaleX(1)}100%{transform:scaleX(0)}}@keyframes serviceBookingDot{0%,10%{left:0;background:#f97316}32%{left:33.33%;background:#2563eb}54%{left:66.66%;background:#7c3aed}70%,88%{left:100%;background:#22c55e}100%{left:0;background:#f97316}}@keyframes serviceBookingStep{0%,12%,100%{opacity:.58;transform:translateY(0)}16%,31%{opacity:1;transform:translateY(-5px)}36%{opacity:.58;transform:translateY(0)}}
+@media(prefers-reduced-motion:reduce){.service-bookings-route:before,.service-bookings-route span,.service-bookings-steps li{animation:none}.service-bookings-route:before{transform:scaleX(1)}.service-bookings-route span{left:100%}.service-bookings-steps li{opacity:1}}
+@media(max-width:700px){.service-bookings-showcase{padding:26px 19px}.service-bookings-intro{text-align:left}.service-bookings-panel{padding:8px 0}.service-bookings-route{left:34px;right:auto;top:35px;bottom:35px;width:2px;height:auto}.service-bookings-route:before{inset:0 auto 0 -1px;width:4px;height:auto;transform:scaleY(0);transform-origin:top;animation-name:serviceBookingRouteMobile}.service-bookings-route span{top:0;left:50%;animation-name:serviceBookingDotMobile}.service-bookings-steps{grid-template-columns:1fr;gap:14px}.service-bookings-steps li{min-height:86px;padding-left:84px;text-align:left}.service-booking-icon{position:absolute;left:0;top:0;width:68px;height:68px;margin:0}.service-bookings-steps p{max-width:none;margin:5px 0 0}.service-bookings-details{grid-template-columns:1fr}@keyframes serviceBookingRouteMobile{0%,10%{transform:scaleY(0)}70%,88%{transform:scaleY(1)}100%{transform:scaleY(0)}}@keyframes serviceBookingDotMobile{0%,10%{top:0;background:#f97316}32%{top:33.33%;background:#2563eb}54%{top:66.66%;background:#7c3aed}70%,88%{top:100%;background:#22c55e}100%{top:0;background:#f97316}}}
+@media(max-width:700px) and (prefers-reduced-motion:reduce){.service-bookings-route:before{transform:scaleY(1)}.service-bookings-route span{top:100%}}
 </style>
 <script type="application/ld+json">{"@context": "https://schema.org", "@type": "HowTo", "name": "How G58 Refills Works", "url": "https://g58.in/refills-guide/"}</script>
 </head>
@@ -190,7 +202,7 @@ a{color:var(--accent)}.brand{display:inline-flex;align-items:center;gap:9px;font
 <section class="hero">
 <span class="chip">Refills</span>
 <h1>How G58 Refills Works</h1>
-<p>Refills connects three people around one store link: the store owner who sends reminders, the brand owner who can promote on that store, and the customer who reorders in a tap. Here's how each side works, and your first month of store access is free.</p>
+<p>Refills supports both repeat product orders and service bookings through one store link. Stores can send refill reminders, publish bookable services, manage experts and keep customers updated from request to confirmation. Here's how each side works, and your first month of store access is free.</p>
 </section>
 
 <section class="role-section">
@@ -220,6 +232,28 @@ a{color:var(--accent)}.brand{display:inline-flex;align-items:center;gap:9px;font
     </ol>
   </article>
 </div>
+</section>
+
+<section class="service-bookings-showcase" id="services-bookings" aria-labelledby="refillsServicesTitle">
+  <div class="service-bookings-intro">
+    <span class="service-bookings-kicker">Services Bookings</span>
+    <h2 id="refillsServicesTitle">How a service request becomes a confirmed booking</h2>
+    <p>The store first publishes its services, prices, available experts and working slots. After that, every customer booking follows the same clear path below.</p>
+  </div>
+  <div class="service-bookings-panel" aria-label="Customer chooses a service and time, the store assigns an expert, and the booking is confirmed">
+    <div class="service-bookings-route" aria-hidden="true"><span></span></div>
+    <ol class="service-bookings-steps">
+      <li style="--booking-step:0"><span class="service-booking-icon"><b>01</b></span><small>Customer</small><strong>Choose a Service</strong><p>Open the store link, review services and select what is needed.</p></li>
+      <li style="--booking-step:1"><span class="service-booking-icon booking-time"><b>09:30</b></span><small>Availability</small><strong>Pick a Time</strong><p>Select an open date and slot. For doorstep service, share the service location securely.</p></li>
+      <li style="--booking-step:2"><span class="service-booking-icon booking-expert"><b>EX</b></span><small>Store</small><strong>Assign an Expert</strong><p>The owner reviews the request, checks payment when enabled and assigns an available expert.</p></li>
+      <li style="--booking-step:3"><span class="service-booking-icon booking-confirmed"><b>✓</b></span><small>Live status</small><strong>Booking Confirmed</strong><p>The customer sees the expert, confirmed time and current booking status in one place.</p></li>
+    </ol>
+  </div>
+  <div class="service-bookings-details">
+    <article class="service-bookings-detail"><small>For the customer</small><strong>One place to book and follow the service</strong><p>Choose a service and slot, complete any required prepayment, receive confirmation, message the store and track status without repeated phone calls.</p></article>
+    <article class="service-bookings-detail"><small>For the store owner</small><strong>Control every service, expert and booking</strong><p>Create services and schedules, accept or reject requests, assign experts, update statuses and manage doorstep bookings from the Refills dashboard.</p></article>
+  </div>
+  <div class="service-bookings-action"><a class="button" href="/digit58/">Create a Services Store</a></div>
 </section>
 
 <section class="demo-section" aria-label="Refills interactive demo">
