@@ -2451,11 +2451,16 @@ function scheduleHeroFlowDots() {
   if (!heading || window.matchMedia("(prefers-reduced-motion: reduce)").matches)
     return;
   const run = () => {
+    heading.classList.remove("result-active");
     heading.classList.add("dots-active");
-    setTimeout(() => heading.classList.remove("dots-active"), 5000);
-    setTimeout(run, 6000 + Math.random() * 6000);
+    setTimeout(() => {
+      heading.classList.remove("dots-active");
+      heading.classList.add("result-active");
+    }, 5000);
+    setTimeout(() => heading.classList.remove("result-active"), 8000);
+    setTimeout(run, 9500);
   };
-  setTimeout(run, 1200 + Math.random() * 2000);
+  setTimeout(run, 1400);
 }
 document.addEventListener("DOMContentLoaded", scheduleHeroFlowDots);
 async function openReferAndEarn() {
