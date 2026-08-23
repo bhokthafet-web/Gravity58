@@ -2513,6 +2513,8 @@ function renderCustomerCards(store,customer,cards,orders=[],promotions=[],course
   const activeBookings=bookings.filter(row=>!['Completed','Cancelled'].includes(row.status)).sort((a,b)=>new Date(`${a.date}T${a.startTime}`)-new Date(`${b.date}T${b.startTime}`));
   const visibleBookings=activeBookings.filter(row=>bookingEndMs(row)>Date.now());
   const bookingHistoryAll=[...bookings.filter(row=>['Completed','Cancelled'].includes(row.status)),...activeBookings.filter(row=>bookingEndMs(row)<=Date.now())];
+  const cancellationPaymentsDue=unpaidCancellationBookings(bookings);
+  const cancellationPaymentsTotal=cancellationPaymentsDue.reduce((sum,row)=>sum+(Number(row.cancellationDueAmount)||0),0);
   const bookingHistoryFrom=$('#customerBookingHistoryFrom')?.value||today,bookingHistoryTo=$('#customerBookingHistoryTo')?.value||today;
   const filteredBookingHistory=filterBookingsByIndiaDate(bookingHistoryAll,bookingHistoryFrom,bookingHistoryTo).sort((a,b)=>new Date(bookingHistoryTimestamp(b))-new Date(bookingHistoryTimestamp(a)));
   const dueServiceReminders=bookings.filter(row=>row.status==='Completed'&&row.nextReminderAt&&new Date(row.nextReminderAt).getTime()<=Date.now());
@@ -2520,7 +2522,7 @@ function renderCustomerCards(store,customer,cards,orders=[],promotions=[],course
   <div class="customer-reminder-view reminder-view-${customerReminderView}" id="customerCardGrid">${cards.map(customerCardCardMarkup).join('')||'<div class="empty">Your store will add reminder cards here after your first purchase.</div>'}</div>`;
   app.innerHTML=`<main class="public-store">${customerBrandStrip()}${customerStoreHub(store)}<div id="pushNotifyPrompt"></div><section class="store-hero"><span class="chip">${html(store.category||'Store')}</span>${store.highlightText?`<strong class="store-highlight-text">${html(store.highlightText)}</strong>`:''}<h1>${html(store.name)}</h1>${customer.phone?`<p class="customer-phone-line">Your contact number: ${html(customer.phone)}</p>`:''}${storeMinimum(store)?`<p class="store-minimum-order">Minimum new order ${money(storeMinimum(store))}</p>`:''}<p class="muted">${html(store.description||'')}${store.city?' · '+html(store.city):''}</p></section>
   ${promotions.length?`<section class="promotion-strip"><div class="promotion-strip-head"><span>Store Offers</span></div><div class="promotion-rail" id="promotionRail"><div class="promotion-track"><div class="promotion-sequence">${marqueePromotions.map((promotion,index)=>customerPromotionTicket(promotion,index>=promotions.length)).join('')}</div><div class="promotion-sequence" aria-hidden="true">${marqueePromotions.map(promotion=>customerPromotionTicket(promotion,true)).join('')}</div></div></div></section>`:''}
-  ${serviceStoreFlag?`${dueServiceReminders.length?`<div class="section-head"><h2>Time to Book Again?</h2></div><div class="grid card-grid">${dueServiceReminders.map(serviceReminderMarkup).join('')}</div>`:''}<div class="section-head"><div><h2>Book a Service</h2><p class="muted">Pick a service, choose a slot and pay the prepayment to confirm.</p></div>${store.emergencyMode?'':'<button class="btn small" id="bookServiceBtn">+ Book a Service</button>'}</div>${store.emergencyMode?'<p class="muted">This store is not accepting new bookings right now — please check back shortly.</p>':''}<div class="grid card-grid">${visibleBookings.map(booking=>customerBookingMarkup(booking,store)).join('')||'<div class="empty">No bookings yet. Book a service to get started.</div>'}</div>
+  ${serviceStoreFlag?`${cancellationPaymentsDue.length?`<section class="cancellation-payment-section"><div class="section-head"><div><h2>Cancellation payment required</h2><p class="muted">${money(cancellationPaymentsTotal)} must be confirmed by this store before another booking can be made.</p></div></div><div class="grid card-grid">${cancellationPaymentsDue.map(booking=>cancellationPaymentCardMarkup(booking,store)).join('')}</div></section>`:''}${dueServiceReminders.length?`<div class="section-head"><h2>Time to Book Again?</h2></div><div class="grid card-grid">${dueServiceReminders.map(serviceReminderMarkup).join('')}</div>`:''}<div class="section-head"><div><h2>Book a Service</h2><p class="muted">${cancellationPaymentsDue.length?`Bookings are locked until ${money(cancellationPaymentsTotal)} cancellation payment is confirmed.`:'Pick a service, choose a slot and pay the prepayment to confirm.'}</p></div>${store.emergencyMode?'':`<button class="btn small" id="bookServiceBtn" ${cancellationPaymentsDue.length?'disabled':''}>${cancellationPaymentsDue.length?'Payment Required':'+ Book a Service'}</button>`}</div>${store.emergencyMode?'<p class="muted">This store is not accepting new bookings right now — please check back shortly.</p>':''}<div class="grid card-grid">${visibleBookings.map(booking=>customerBookingMarkup(booking,store)).join('')||'<div class="empty">No bookings yet. Book a service to get started.</div>'}</div>
   ${reminderCardsMarkup}
   ${bookingHistoryAll.length?`<section class="order-history-section" id="customerBookingHistory"><div class="section-head"><div><h2>Booking History</h2><p class="muted">Today's completed and cancelled bookings are shown by default. Select a different date range if needed.</p></div></div><div class="date-filter-bar"><label>From<input id="customerBookingHistoryFrom" type="date" value="${html(bookingHistoryFrom)}" max="${html(bookingHistoryTo)}"></label><label>To<input id="customerBookingHistoryTo" type="date" value="${html(bookingHistoryTo)}" min="${html(bookingHistoryFrom)}"></label><button class="btn small secondary" id="customerBookingHistoryToday" type="button">Today</button></div><div class="card table-wrap"><table><thead><tr><th>Service</th><th>Expert</th><th>Amount</th><th>Status</th><th>Date</th></tr></thead><tbody>${filteredBookingHistory.map(customerBookingHistoryRow).join('')||'<tr><td colspan="5">No bookings in this period.</td></tr>'}</tbody></table></div></section>`:''}`:''}
   ${serviceStoreFlag?'':`<div class="section-head"><div><h2>Your orders</h2>${storeMinimum(store)?`<p class="muted">New orders must be at least ${money(storeMinimum(store))}. Refill and reorder requests are exempt.</p>`:''}</div><button class="btn small" id="placeOrderBtn">+ Place New Order</button></div>
@@ -2536,6 +2538,10 @@ function renderCustomerCards(store,customer,cards,orders=[],promotions=[],course
   activeBookings.filter(booking=>booking.status==='Pending Payment'&&booking.upiUri&&!booking.paymentMarkedAt).forEach(booking=>{
     const target=document.getElementById(`booking-qr-${booking.id}`);
     if(target&&window.QRCode)new QRCode(target,{text:booking.upiUri,width:180,height:180});
+  });
+  cancellationPaymentsDue.filter(booking=>booking.cancellationPaymentStatus==='Due'&&booking.cancellationPaymentUpiUri).forEach(booking=>{
+    const target=document.getElementById(`cancellation-qr-${booking.id}`);
+    if(target&&window.QRCode)new QRCode(target,{text:booking.cancellationPaymentUpiUri,width:180,height:180});
   });
   bindCustomerPromotionActions(promotions);
   bindCustomerStoreHub(store);
@@ -2589,6 +2595,10 @@ function renderCustomerCards(store,customer,cards,orders=[],promotions=[],course
   });
   $$('[data-accept-owner-booking]').forEach(button=>button.onclick=()=>acceptOwnerBooking(store,customer,button.dataset.acceptOwnerBooking));
   $$('[data-reject-owner-booking]').forEach(button=>button.onclick=()=>rejectOwnerBooking(store,customer,button.dataset.rejectOwnerBooking));
+  $$('[data-mark-cancellation-paid]').forEach(button=>button.onclick=()=>{
+    const booking=bookings.find(row=>row.id===button.dataset.markCancellationPaid);
+    if(booking)markCancellationPayment(booking,store,customer,button);
+  });
   initShakeDetection();
   initPushNotifications(store,customer);
   (typeof bindAndroidAppFooter==='function'&&bindAndroidAppFooter());
@@ -2644,13 +2654,25 @@ function customerOrderMarkup(order,store){
 function serviceReminderMarkup(booking){
   return `<article class="card"><h3>${html(booking.serviceName)}</h3><p class="muted">It's been a while since your last visit — ready to book again?</p><button class="btn full" data-rebook-service="${html(booking.serviceId)}" type="button">Book Again</button></article>`;
 }
+function unpaidCancellationBookings(bookings=[]){
+  return bookings.filter(booking=>booking.status==='Cancelled'&&Number(booking.cancellationDueAmount)>0&&['Due','Verification'].includes(booking.cancellationPaymentStatus));
+}
+function cancellationPaymentCardMarkup(booking,store){
+  const amount=Number(booking.cancellationDueAmount)||0;
+  const verifying=booking.cancellationPaymentStatus==='Verification';
+  const razorpayEnabled=store?.razorpayEnabled&&validRazorpayLink(store.razorpayLink);
+  const paymentOptions=verifying
+    ?`<div class="razorpay-submitted"><span class="razorpay-submitted-icon">✓</span><div><strong>Payment sent for verification</strong><p>The store owner must confirm receipt before you can book here again.</p></div></div>`
+    :`${booking.cancellationPaymentUpiUri?`<div class="qr-wrap" id="cancellation-qr-${html(booking.id)}"></div>`:''}<h3 class="cancellation-due-amount">${money(amount)}</h3><p class="muted">Pay this cancellation charge to the store. New bookings at this store remain locked until the owner confirms receipt.</p>${razorpayEnabled?`<a class="btn full razorpay-pay-btn" href="${html(normaliseRazorpayLink(store.razorpayLink))}" target="_blank" rel="noopener noreferrer">Open Razorpay & Pay ↗</a>`:''}<button class="btn full green" type="button" data-mark-cancellation-paid="${html(booking.id)}">I have paid — notify store</button>`;
+  return `<article class="card premium-card cancellation-payment-card"><div class="section-head"><div><span class="chip due">Booking Locked</span><h3>Cancellation payment due</h3></div><strong>${money(amount)}</strong></div><p class="muted">${html(booking.serviceName)} · cancelled ${html(booking.date||'')}</p>${paymentOptions}</article>`;
+}
 function customerBookingMarkup(booking,store){
   const status=booking.status||'Pending Payment';
   const visibleStatus=booking.paymentMarkedAt&&status==='Pending Payment'?'Payment Verification':status;
   const razorpayEnabled=store?.razorpayEnabled&&validRazorpayLink(store.razorpayLink);
   const razorpayReturnOpen=razorpayPaymentWasOpened(booking.id);
   const upfrontAmount=Number(booking.upfrontAmount)||Number(booking.prepaymentAmount)||0;
-  const cancellationNote=Number(booking.cancellationChargeAmount)>0?`<p class="muted">Includes ${money(booking.cancellationChargeAmount)} cancellation guarantee</p>`:'';
+  const cancellationNote=Number(booking.cancellationChargeAmount)>0?`<p class="muted">Cancellation fee if you cancel: ${money(booking.cancellationChargeAmount)}</p>`:'';
   const balanceNote=Number(booking.balanceAmount)>0?`<p class="muted">Balance ${money(booking.balanceAmount)}${booking.balancePaid?' · Paid':' due after service'}</p>`:'';
   const paymentBlock=status==='Pending Payment'
     ?(booking.paymentMarkedAt
@@ -2669,12 +2691,26 @@ function customerBookingMarkup(booking,store){
   return `<article class="card order-item-card premium-card" id="${html(customerPortalRecordId('booking',booking.id))}"><div class="section-head"><h3>${html(booking.serviceName)}</h3><span class="chip">${html(visibleStatus)}</span></div>${bookingStatusMarkup(visibleStatus)}${bookingStepperMarkup(visibleStatus)}<p class="muted">${html(booking.date)} · ${html(booking.startTime)}${booking.expertName?` · with ${html(booking.expertName)}`:''}</p><p class="muted">Price ${money(booking.price)}${upfrontAmount>0?` · Prepaid ${money(upfrontAmount)}`:''}</p>${doorstepNote}${balanceNote}${pendingAcceptanceBlock}${paymentBlock}${bookingActions?`<div class="actions">${bookingActions}</div>`:''}${bookingChatMarkup(booking,'customer')}</article>`;
 }
 async function cancelCustomerBooking(booking,store,customer){
+  const cancellationAmount=booking.cancellationChargeMode==='post-cancel'?Math.max(0,Number(booking.cancellationChargeAmount)||0):0;
+  if(cancellationAmount>0&&!confirm(`Cancelling creates a ${money(cancellationAmount)} cancellation charge. You cannot book at this store again until you pay and the store confirms it. Continue?`))return;
+  if(cancellationAmount<=0&&!confirm('Cancel this booking?'))return;
   try{
-    const changes={status:'Cancelled',cancelledAt:now(),updatedAt:now()};
-    await api.update(bookingKind(booking.ownerId),booking.id,changes);
-    toast('Booking cancelled');
+    const result=await api.executeFunction(api.config.digitalOrderFunctionId,{action:'digit58-cancel-customer-booking',ownerId:booking.ownerId,bookingId:booking.id});
+    if(result?.booking)Object.assign(booking,result.booking);
+    toast(cancellationAmount>0?`Booking cancelled — ${money(cancellationAmount)} payment is due`:'Booking cancelled');
     await loadAndRenderCustomerView(store,customer);
   }catch(error){toast(error.message||'Could not cancel booking')}
+}
+async function markCancellationPayment(booking,store,customer,button){
+  if(!booking||booking.cancellationPaymentStatus==='Paid')return;
+  if(!confirm(`Confirm that you paid ${money(booking.cancellationDueAmount)} to ${store.name||'this store'}? The store owner will verify it.`))return;
+  button.disabled=true;button.textContent='Notifying store…';
+  try{
+    const result=await api.executeFunction(api.config.digitalOrderFunctionId,{action:'digit58-mark-cancellation-payment',ownerId:booking.ownerId,bookingId:booking.id});
+    if(result?.booking)Object.assign(booking,result.booking);
+    toast('Payment sent for store verification');
+    await loadAndRenderCustomerView(store,customer);
+  }catch(error){button.disabled=false;button.textContent='I have paid — notify store';toast(error.message||'Could not notify the store')}
 }
 async function submitBookingRazorpayPaymentForVerification(booking,store,customer,button=null,returned=false){
   if(!booking||booking.paymentMarkedAt)return;
@@ -2742,6 +2778,13 @@ function slotButtonMarkup(startTime,booked,selected){
   return `<button type="button" class="slot-btn ${booked?'booked':'available'} ${selected?'selected':''}" data-slot="${html(startTime)}" ${booked?'disabled':''}>${html(startTime)}</button>`;
 }
 function openBookingModal(store,customer,services,experts,preselectServiceId='',ownerBookingFor=null){
+  if(!ownerBookingFor){
+    const outstanding=unpaidCancellationBookings(customerBookingsCache);
+    if(outstanding.length){
+      const amount=outstanding.reduce((sum,row)=>sum+(Number(row.cancellationDueAmount)||0),0);
+      return toast(`Pay the pending cancellation charge of ${money(amount)} before booking again at this store.`);
+    }
+  }
   if(!services.length)return toast('This store has not added any services yet');
   const initialService=services.find(row=>row.id===preselectServiceId)||services[0];
   const initialWindow=bookingWindowForService(store,initialService);
@@ -2790,12 +2833,12 @@ function openBookingModal(store,customer,services,experts,preselectServiceId='',
       const prepayPercent=service.prepaymentPercent??100;
       const prepay=Math.round(service.price*prepayPercent)/100;
       const cancellationCharge=service.cancellationChargeEnabled?Math.max(0,Number(service.cancellationChargeAmount)||0):0;
-      const upfront=Math.round((prepay+cancellationCharge)*100)/100;
-      const balance=Math.round((service.price*100-prepay*100-cancellationCharge*100))/100;
-      const cancelNote=cancellationCharge>0?` (includes ${money(cancellationCharge)} cancellation guarantee, applied to their bill)`:'';
+      const upfront=Math.round(prepay*100)/100;
+      const balance=Math.round((service.price*100-prepay*100))/100;
+      const cancelNote=cancellationCharge>0?` If the customer cancels, a ${money(cancellationCharge)} cancellation charge becomes due and blocks new bookings until payment is confirmed.`:'';
       $('#bookingPriceNote').textContent=ownerBookingFor
-        ?(upfront<=0?`No prepayment required — the customer will pay ${money(service.price)} after the service is done.`:`The customer will be asked to pay ${money(upfront)}${cancelNote} to confirm this booking.`)
-        :(upfront<=0?`No payment needed to book — pay ${money(service.price)} after the service is done.`:balance>0?`Pay ${money(upfront)} now${cancelNote}, ${money(balance)} balance after service.`:`Pay ${money(upfront)} now${cancelNote}.`);
+        ?(upfront<=0?`No prepayment required — the customer will pay ${money(service.price)} after the service is done.${cancelNote}`:`The customer will be asked to pay ${money(upfront)} to confirm this booking.${cancelNote}`)
+        :(upfront<=0?`No payment needed to book — pay ${money(service.price)} after the service is done.${cancelNote}`:balance>0?`Pay ${money(upfront)} now, ${money(balance)} balance after service.${cancelNote}`:`Pay ${money(upfront)} now.${cancelNote}`);
       if(!ownerBookingFor)$('#bookingSubmitBtn').textContent=upfront<=0?'Request Booking':'Book & Pay Prepayment';
       const window=bookingWindowForService(store,service),dateInput=$('#bookingDateInput');
       dateInput.min=window.min;dateInput.max=window.max;
@@ -3006,7 +3049,7 @@ function serviceItemMarkup(item){
 }
 function openServiceForm(store,serviceId=''){
   const service=(state.services||[]).find(row=>row.id===serviceId)||{};
-  modal(serviceId?'Edit Service':'Add Service',`<form id="serviceForm"><div class="field"><label>Service name</label><input name="name" value="${html(service.name||'')}" required></div><div class="form-grid"><div class="field"><label>Price (₹)</label><input name="price" type="number" min="0" step="0.01" value="${service.price??''}" required></div><div class="field"><label>Duration (minutes) <small>(optional)</small></label><input name="durationMinutes" type="number" min="5" step="5" value="${service.durationMinutes||''}" placeholder="Example: 30"></div></div><div class="field"><label>Prepayment at booking (%)</label><input name="prepaymentPercent" type="number" min="0" max="100" step="1" value="${service.prepaymentPercent??100}" required><small class="muted">100% means the customer pays the full amount when booking. Anything less leaves a balance to pay after the service is done. Set to 0 for no prepayment at all — the store accepts the booking directly and the customer pays in full after the service.</small></div><label class="option-toggle"><input id="doorstepServiceEnabled" name="doorstepServiceEnabled" type="checkbox" ${service.doorstepServiceEnabled?'checked':''}><span><strong>Enable Doorstep Service</strong><small>Customers must share the service location while booking. You can forward the booking and Maps location directly to the selected expert's mobile number.</small></span></label><label class="option-toggle"><input id="cancellationChargeEnabled" name="cancellationChargeEnabled" type="checkbox" ${service.cancellationChargeEnabled?'checked':''}><span><strong>Require a cancellation guarantee</strong><small>Customer pays this upfront before you accept the booking. If they cancel you keep it; if the service completes it's applied toward the bill.</small></span></label><div class="field ${service.cancellationChargeEnabled?'':'hidden'}" id="cancellationChargeAmountField"><label>Cancellation guarantee amount (₹)</label><input name="cancellationChargeAmount" type="number" min="0" step="0.01" value="${service.cancellationChargeAmount??''}"></div><div class="field"><label>Advance booking period <small>(optional)</small></label><div class="form-grid"><input name="bookingFromDate" type="date" value="${html(service.bookingFromDate||'')}"><input name="bookingUntilDate" type="date" value="${html(service.bookingUntilDate||'')}"></div><small class="muted">Leave blank to use your store's general Availability window instead. If set, customers can only book this service between these two dates.</small></div><div class="field"><label>Schedule Service — remind to rebook every <small>(optional, days)</small></label><input name="reminderDays" type="number" min="1" step="1" value="${service.reminderDays||''}" placeholder="Example: 30"><small class="muted">Like Refills reminders — once a booking for this service is marked completed, the customer sees a "Book Again" prompt after this many days.</small></div><div class="field"><label>Description <small>(optional)</small></label><textarea name="description">${html(service.description||'')}</textarea></div><button class="btn full" type="submit" style="margin-top:14px">${serviceId?'Save Service':'Add Service'}</button></form>`,()=>{
+  modal(serviceId?'Edit Service':'Add Service',`<form id="serviceForm"><div class="field"><label>Service name</label><input name="name" value="${html(service.name||'')}" required></div><div class="form-grid"><div class="field"><label>Price (₹)</label><input name="price" type="number" min="0" step="0.01" value="${service.price??''}" required></div><div class="field"><label>Duration (minutes) <small>(optional)</small></label><input name="durationMinutes" type="number" min="5" step="5" value="${service.durationMinutes||''}" placeholder="Example: 30"></div></div><div class="field"><label>Prepayment at booking (%)</label><input name="prepaymentPercent" type="number" min="0" max="100" step="1" value="${service.prepaymentPercent??100}" required><small class="muted">100% means the customer pays the full amount when booking. Anything less leaves a balance to pay after the service is done. Set to 0 for no prepayment at all — the store accepts the booking directly and the customer pays in full after the service.</small></div><label class="option-toggle"><input id="doorstepServiceEnabled" name="doorstepServiceEnabled" type="checkbox" ${service.doorstepServiceEnabled?'checked':''}><span><strong>Enable Doorstep Service</strong><small>Customers must share the service location while booking. You can forward the booking and Maps location directly to the selected expert's mobile number.</small></span></label><label class="option-toggle"><input id="cancellationChargeEnabled" name="cancellationChargeEnabled" type="checkbox" ${service.cancellationChargeEnabled?'checked':''}><span><strong>Enable cancellation charge</strong><small>If the customer cancels, this amount becomes due. They cannot make another booking at this store until payment is confirmed by the owner.</small></span></label><div class="field ${service.cancellationChargeEnabled?'':'hidden'}" id="cancellationChargeAmountField"><label>Cancellation charge amount (₹)</label><input name="cancellationChargeAmount" type="number" min="0" step="0.01" value="${service.cancellationChargeAmount??''}"></div><div class="field"><label>Advance booking period <small>(optional)</small></label><div class="form-grid"><input name="bookingFromDate" type="date" value="${html(service.bookingFromDate||'')}"><input name="bookingUntilDate" type="date" value="${html(service.bookingUntilDate||'')}"></div><small class="muted">Leave blank to use your store's general Availability window instead. If set, customers can only book this service between these two dates.</small></div><div class="field"><label>Schedule Service — remind to rebook every <small>(optional, days)</small></label><input name="reminderDays" type="number" min="1" step="1" value="${service.reminderDays||''}" placeholder="Example: 30"><small class="muted">Like Refills reminders — once a booking for this service is marked completed, the customer sees a "Book Again" prompt after this many days.</small></div><div class="field"><label>Description <small>(optional)</small></label><textarea name="description">${html(service.description||'')}</textarea></div><button class="btn full" type="submit" style="margin-top:14px">${serviceId?'Save Service':'Add Service'}</button></form>`,()=>{
     $('#cancellationChargeEnabled').onchange=event=>$('#cancellationChargeAmountField').classList.toggle('hidden',!event.target.checked);
     $('#serviceForm').onsubmit=async event=>{
       event.preventDefault();
@@ -3017,7 +3060,7 @@ function openServiceForm(store,serviceId=''){
       if((bookingFromDate&&!bookingUntilDate)||(!bookingFromDate&&bookingUntilDate))return toast('Set both the from and until dates, or leave both blank');
       if(bookingFromDate&&bookingUntilDate&&bookingFromDate>bookingUntilDate)return toast('The "until" date must be after the "from" date');
       const cancellationChargeEnabled=values.cancellationChargeEnabled==='on',cancellationChargeAmount=cancellationChargeEnabled?Math.max(0,Number(values.cancellationChargeAmount)||0):0;
-      if(cancellationChargeEnabled&&cancellationChargeAmount<=0)return toast('Enter a cancellation guarantee amount');
+      if(cancellationChargeEnabled&&cancellationChargeAmount<=0)return toast('Enter a cancellation charge amount');
       button.disabled=true;
       const reminderDays=Math.max(0,Number(values.reminderDays)||0);
       const doorstepServiceEnabled=values.doorstepServiceEnabled==='on';
@@ -3218,9 +3261,18 @@ function bookingHistoryView(){
   $('#bookingHistoryToday').onclick=()=>{$('#bookingHistoryFrom').value=today;$('#bookingHistoryTo').value=today;bookingHistoryView()};
   $('#exportBookingHistory').onclick=()=>downloadBookingHistoryCsv(filtered,{filePrefix:`${store?.name||'store'}-bookings`.toLowerCase().replace(/[^a-z0-9]+/g,'-'),includeCustomer:true});
   $$('[data-restore-booking]').forEach(button=>button.onclick=()=>restoreBooking(button.dataset.restoreBooking));
+  $$('[data-confirm-cancellation-payment]').forEach(button=>button.onclick=()=>confirmCancellationPayment(button.dataset.confirmCancellationPayment,true,button));
+  $$('[data-reopen-cancellation-payment]').forEach(button=>button.onclick=()=>confirmCancellationPayment(button.dataset.reopenCancellationPayment,false,button));
 }
 function bookingHistoryRow(booking){
-  return `<tr><td>${html(booking.customerName||'Customer')}</td><td>${html(booking.serviceName)}</td><td>${html(booking.expertName||'—')}</td><td>${money(booking.price)}</td><td>${html(booking.status)}</td><td>${new Date(bookingHistoryTimestamp(booking)).toLocaleString('en-IN',{timeZone:'Asia/Kolkata',dateStyle:'medium',timeStyle:'short'})}</td><td>${booking.status==='Cancelled'?`<button class="btn small secondary" data-restore-booking="${html(booking.id)}">Restore</button>`:''}</td></tr>`;
+  const cancellationDue=booking.status==='Cancelled'&&Number(booking.cancellationDueAmount)>0;
+  const paymentStatus=booking.cancellationPaymentStatus||'';
+  const paymentLabel=cancellationDue?`<small class="booking-cancellation-status ${paymentStatus.toLowerCase()}">Cancellation ${money(booking.cancellationDueAmount)} · ${html(paymentStatus==='Verification'?'Verify payment':paymentStatus)}</small>`:'';
+  let actions='';
+  if(cancellationDue&&paymentStatus==='Verification')actions=`<button class="btn small green" data-confirm-cancellation-payment="${html(booking.id)}">Payment Received</button><button class="btn small secondary" data-reopen-cancellation-payment="${html(booking.id)}">Not Received</button>`;
+  else if(cancellationDue&&paymentStatus==='Due')actions=`<button class="btn small green" data-confirm-cancellation-payment="${html(booking.id)}">Mark Payment Received</button>`;
+  if(booking.status==='Cancelled'&&(!cancellationDue||paymentStatus==='Paid'))actions+=`<button class="btn small secondary" data-restore-booking="${html(booking.id)}">Restore</button>`;
+  return `<tr><td>${html(booking.customerName||'Customer')}</td><td>${html(booking.serviceName)}</td><td>${html(booking.expertName||'—')}</td><td>${money(booking.price)}</td><td>${html(booking.status)}${paymentLabel}</td><td>${new Date(bookingHistoryTimestamp(booking)).toLocaleString('en-IN',{timeZone:'Asia/Kolkata',dateStyle:'medium',timeStyle:'short'})}</td><td><div class="actions">${actions}</div></td></tr>`;
 }
 function customerWallBookingHistoryRow(booking){
   return `<tr><td>${html(booking.serviceName)}</td><td>${html(booking.expertName||'—')}</td><td>${money(booking.price)}</td><td>${html(booking.status)}</td><td>${html(booking.date)} · ${html(booking.startTime)}</td></tr>`;
@@ -3234,6 +3286,18 @@ async function reopenBookingPayment(bookingId){
     Object.assign(booking,changes);refreshView();toast('Payment reopened for the customer');
   }catch(error){toast(error.message||'Could not reopen payment')}
 }
+async function confirmCancellationPayment(bookingId,paid,button){
+  const booking=(state.bookings||[]).find(row=>row.id===bookingId);if(!booking)return;
+  const question=paid?`Confirm that ${money(booking.cancellationDueAmount)} cancellation payment was received?`:'Mark this payment as not received and ask the customer to pay again?';
+  if(!confirm(question))return;
+  button.disabled=true;
+  try{
+    const action=paid?'digit58-confirm-cancellation-payment':'digit58-reopen-cancellation-payment';
+    const result=await api.executeFunction(api.config.digitalOrderFunctionId,{action,ownerId:booking.ownerId,bookingId});
+    if(result?.booking)Object.assign(booking,result.booking);
+    save();bookingHistoryView();toast(paid?'Cancellation payment confirmed — customer can book again':'Cancellation payment reopened');
+  }catch(error){button.disabled=false;toast(error.message||'Could not update cancellation payment')}
+}
 function ownerBookingMarkup(booking){
   const status=booking.status||'Pending Payment';
   const ringing=ringingIds.has(booking.id);
@@ -3242,7 +3306,7 @@ function ownerBookingMarkup(booking){
   else if(status==='Pending Payment')actions=booking.paymentMarkedAt?`<button class="btn small green" data-confirm-booking="${html(booking.id)}">Payment Received — Confirm</button><button class="btn small secondary" data-reopen-booking-payment="${html(booking.id)}">Payment Not Received</button>`:`<button class="btn small green" data-confirm-booking="${html(booking.id)}">Payment Received — Confirm</button><button class="btn small red" data-cancel-booking="${html(booking.id)}">Cancel</button>`;
   else if(status==='Confirmed')actions=`<button class="btn small green" data-complete-booking="${html(booking.id)}">Mark Completed</button><button class="btn small red" data-cancel-booking="${html(booking.id)}">Cancel</button>`;
   const upfrontAmount=Number(booking.upfrontAmount)||Number(booking.prepaymentAmount)||0;
-  const cancellationNote=Number(booking.cancellationChargeAmount)>0?`<p class="muted">Includes ${money(booking.cancellationChargeAmount)} cancellation guarantee</p>`:'';
+  const cancellationNote=Number(booking.cancellationChargeAmount)>0?`<p class="muted">Cancellation fee if customer cancels: ${money(booking.cancellationChargeAmount)}</p>`:'';
   const balanceNote=Number(booking.balanceAmount)>0?`<p class="muted">Balance ${money(booking.balanceAmount)}${booking.balancePaid?' · Paid':' due after service'}</p>`:'';
   return `<article class="card order-item-card ${ringing?'incoming-order':''}">${ringing?'<span class="incoming-order-beacon" aria-label="New booking" title="New booking"></span>':''}<div class="section-head"><h3>${html(booking.serviceName)}</h3><span class="chip">${html(status)}</span></div><p class="muted">${html(booking.date)} · ${html(booking.startTime)}${booking.expertName?` · with ${html(booking.expertName)}`:''}</p><p class="muted">${html(booking.customerName||'Customer')}${booking.phone?` · ${html(booking.phone)}`:''}</p><p class="muted">Price ${money(booking.price)}${upfrontAmount>0?` · Prepaid ${money(upfrontAmount)}`:''}</p>${doorstepBookingOwnerMarkup(booking)}${cancellationNote}${balanceNote}${actions?`<div class="actions">${actions}</div>`:''}${bookingChatMarkup(booking,'owner')}</article>`;
 }
@@ -3277,6 +3341,7 @@ async function cancelBooking(bookingId){
 async function restoreBooking(bookingId){
   const booking=(state.bookings||[]).find(row=>row.id===bookingId);if(!booking)return;
   try{
+    if(Number(booking.cancellationDueAmount)>0&&booking.cancellationPaymentStatus!=='Paid')return toast('Confirm the cancellation payment before restoring this booking');
     const changes={status:'Confirmed',cancelledAt:'',confirmedAt:now(),updatedAt:now()};
     await api.update(bookingKind(booking.ownerId),bookingId,changes);
     Object.assign(booking,changes);refreshView();toast('Booking restored');

@@ -151,6 +151,96 @@ test('doorstep service bookings require and securely store the customer location
   } finally { globalThis.fetch = previousFetch; }
 });
 
+test('customer cancellation creates a store-specific cancellation payment due', async () => {
+  const previousFetch = globalThis.fetch;
+  const storeId = 'service_store_cancel', bookingId = 'booking_cancel_1';
+  const store = { id: storeId, ownerId, businessType: 'services', name: 'Home Care', upiId: 'homecare@upi' };
+  const booking = { id: bookingId, ownerId, storeId, customerAccountId: customerId, serviceName: 'AC Service', cancellationChargeAmount: 175, cancellationChargeMode: 'post-cancel', status: 'Confirmed' };
+  globalThis.fetch = async (url, options = {}) => {
+    const target = String(url), method = options.method || 'GET', body = options.body ? JSON.parse(options.body) : null;
+    if (method === 'GET' && target.endsWith(`/rows/${bookingId}`)) return new Response(JSON.stringify({ $id: bookingId, kind: `digit58_booking_${ownerId}`, payload: JSON.stringify(booking) }), { status: 200 });
+    if (method === 'GET' && target.endsWith(`/rows/${storeId}`)) return new Response(JSON.stringify({ $id: storeId, kind: `digit58_store_${ownerId}`, payload: JSON.stringify(store) }), { status: 200 });
+    if (method === 'PATCH' && target.endsWith(`/rows/${bookingId}`)) {
+      Object.assign(booking, JSON.parse(body.data.payload));
+      return new Response(JSON.stringify({ $id: bookingId, kind: `digit58_booking_${ownerId}`, payload: JSON.stringify(booking) }), { status: 200 });
+    }
+    throw new Error(`Unexpected request ${target}`);
+  };
+  process.env.APPWRITE_FUNCTION_PROJECT_ID = 'project_1';
+  try {
+    const response = await createDigitalOrder({
+      req: { method: 'POST', headers: { 'x-appwrite-key': 'dynamic-key', 'x-appwrite-user-id': customerId }, bodyJson: { action: 'digit58-cancel-customer-booking', ownerId, bookingId } },
+      res: { json: (body, status = 200) => ({ body, status }) }, error: () => {},
+    });
+    assert.equal(response.status, 200);
+    assert.equal(response.body.booking.status, 'Cancelled');
+    assert.equal(response.body.booking.cancelledBy, 'customer');
+    assert.equal(response.body.booking.cancellationDueAmount, 175);
+    assert.equal(response.body.booking.cancellationPaymentStatus, 'Due');
+    assert.match(response.body.booking.cancellationPaymentUpiUri, /homecare%40upi/);
+    assert.match(response.body.booking.cancellationPaymentUpiUri, /am=175/);
+  } finally { globalThis.fetch = previousFetch; }
+});
+
+test('new booking is blocked until the store confirms the cancellation payment', async () => {
+  const previousFetch = globalThis.fetch;
+  const storeId = 'service_store_due', serviceId = 'service_due', bookingId = 'booking_due_1';
+  const store = { id: storeId, ownerId, businessType: 'services', name: 'Home Care', availableDays: [], slotStartTime: '00:00', slotEndTime: '23:59', preBookingWindowDays: 30 };
+  const service = { id: serviceId, ownerId, storeId, name: 'AC Service', price: 500, prepaymentPercent: 0, durationMinutes: 30 };
+  const dueBooking = { id: bookingId, ownerId, storeId, customerAccountId: customerId, status: 'Cancelled', cancellationDueAmount: 175, cancellationPaymentStatus: 'Verification' };
+  const requests = [];
+  globalThis.fetch = async (url, options = {}) => {
+    const target = String(url), method = options.method || 'GET';
+    requests.push({ target, method });
+    if (method === 'GET' && target.endsWith(`/rows/${storeId}`)) return new Response(JSON.stringify({ $id: storeId, kind: `digit58_store_${ownerId}`, payload: JSON.stringify(store) }), { status: 200 });
+    if (method === 'GET' && target.endsWith(`/rows/${serviceId}`)) return new Response(JSON.stringify({ $id: serviceId, kind: `digit58_service_${ownerId}`, payload: JSON.stringify(service) }), { status: 200 });
+    if (method === 'GET' && target.includes('/rows?')) return new Response(JSON.stringify({ rows: [{ $id: bookingId, kind: `digit58_booking_${ownerId}`, payload: JSON.stringify(dueBooking) }] }), { status: 200 });
+    throw new Error(`Unexpected request ${target}`);
+  };
+  process.env.APPWRITE_FUNCTION_PROJECT_ID = 'project_1';
+  const bookingDate = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(Date.now() + 2 * 86400000));
+  try {
+    const response = await createDigitalOrder({
+      req: { method: 'POST', headers: { 'x-appwrite-key': 'dynamic-key', 'x-appwrite-user-id': customerId }, bodyJson: { action: 'digit58-create-booking', ownerId, storeId, serviceId, date: bookingDate, startTime: '12:00', customerName: 'Customer', customerEmail: 'customer@example.test', phone: '9999999999' } },
+      res: { json: (body, status = 200) => ({ body, status }) }, error: () => {},
+    });
+    assert.equal(response.status, 400);
+    assert.match(response.body.error, /pending cancellation charge of ₹175/i);
+    assert.ok(!requests.some(request => request.method === 'POST'));
+  } finally { globalThis.fetch = previousFetch; }
+});
+
+test('customer submits cancellation payment and only the store owner can confirm it', async () => {
+  const previousFetch = globalThis.fetch;
+  const bookingId = 'booking_due_2';
+  const booking = { id: bookingId, ownerId, storeId: 'service_store', customerAccountId: customerId, status: 'Cancelled', cancellationDueAmount: 200, cancellationPaymentStatus: 'Due' };
+  globalThis.fetch = async (url, options = {}) => {
+    const target = String(url), method = options.method || 'GET', body = options.body ? JSON.parse(options.body) : null;
+    if (method === 'GET' && target.endsWith(`/rows/${bookingId}`)) return new Response(JSON.stringify({ $id: bookingId, kind: `digit58_booking_${ownerId}`, payload: JSON.stringify(booking) }), { status: 200 });
+    if (method === 'PATCH' && target.endsWith(`/rows/${bookingId}`)) {
+      Object.assign(booking, JSON.parse(body.data.payload));
+      return new Response(JSON.stringify({ $id: bookingId, kind: `digit58_booking_${ownerId}`, payload: JSON.stringify(booking) }), { status: 200 });
+    }
+    throw new Error(`Unexpected request ${target}`);
+  };
+  process.env.APPWRITE_FUNCTION_PROJECT_ID = 'project_1';
+  const call = (action, userId) => createDigitalOrder({
+    req: { method: 'POST', headers: { 'x-appwrite-key': 'dynamic-key', 'x-appwrite-user-id': userId }, bodyJson: { action, ownerId, bookingId } },
+    res: { json: (body, status = 200) => ({ body, status }) }, error: () => {},
+  });
+  try {
+    const submitted = await call('digit58-mark-cancellation-payment', customerId);
+    assert.equal(submitted.status, 200);
+    assert.equal(submitted.body.booking.cancellationPaymentStatus, 'Verification');
+    const denied = await call('digit58-confirm-cancellation-payment', customerId);
+    assert.equal(denied.status, 403);
+    const confirmed = await call('digit58-confirm-cancellation-payment', ownerId);
+    assert.equal(confirmed.status, 200);
+    assert.equal(confirmed.body.booking.cancellationPaymentStatus, 'Paid');
+    assert.ok(confirmed.body.booking.cancellationPaymentConfirmedAt);
+  } finally { globalThis.fetch = previousFetch; }
+});
+
 test('receipt image alone is sufficient and is verified against the customer session', async () => {
   const previousFetch = globalThis.fetch;
   globalThis.fetch = async (url, options = {}) => {

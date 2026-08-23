@@ -503,6 +503,46 @@ test("Service owner enables doorstep booking and forwards the customer location 
   await assertNoErrors();
 });
 
+test("customer cancellation charge blocks only that store until the owner confirms payment", async ({ page }) => {
+  const ownerId = "cancel_owner", customerId = "cancel_customer", storeId = "cancel_store", bookingId = "cancel_booking";
+  const bookingKind = `digit58_booking_${ownerId}`, today = indiaDate(), tomorrow = indiaDate(new Date(Date.now() + 86400000));
+  await prepareMockApi(page, {
+    state: null,
+    initialUser: { $id: customerId, email: "cancel-customer@example.com", name: "Cancel Customer" },
+    seed: {
+      digit58_entitlements: [{ id: "cancel_entitlement", ownerId, active: true, paused: false, lifetime: true, policyAcceptedAt: new Date().toISOString() }],
+      [`digit58_store_${ownerId}`]: [{ id: storeId, ownerId, name: "Cancel Fee Services", businessType: "services", category: "Home services", city: "Hyderabad", upiId: "cancelstore@upi" }],
+      [`digit58_customer_${ownerId}`]: [{ id: "cancel_customer_link", ownerId, storeId, customerAccountId: customerId, customerName: "Cancel Customer", customerEmail: "cancel-customer@example.com", phone: "9876543210", agreementAcceptedAt: new Date().toISOString() }],
+      [`digit58_service_${ownerId}`]: [{ id: "cancel_service", ownerId, storeId, name: "Deep Cleaning", price: 800, prepaymentPercent: 0, cancellationChargeEnabled: true, cancellationChargeAmount: 150, active: true }],
+      [bookingKind]: [{ id: bookingId, ownerId, storeId, serviceId: "cancel_service", serviceName: "Deep Cleaning", customerAccountId: customerId, customerName: "Cancel Customer", phone: "9876543210", date: tomorrow, startTime: "10:00", durationMinutes: 60, price: 800, cancellationChargeAmount: 150, cancellationChargeMode: "post-cancel", status: "Confirmed", messages: [], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }],
+    },
+  });
+  const assertNoErrors = monitorPageErrors(page);
+  await page.goto(`/digit58/#store&owner=${ownerId}&store=${storeId}`);
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.getByRole("button", { name: "Cancel Booking" }).click();
+  await expect(page.getByRole("heading", { name: "Cancellation payment required" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Payment Required" })).toBeDisabled();
+  await expect(page.locator(".cancellation-payment-card")).toContainText("₹150");
+
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.getByRole("button", { name: "I have paid — notify store" }).click();
+  await expect(page.locator(".cancellation-payment-card")).toContainText("Payment sent for verification");
+  await expect(page.getByRole("button", { name: "Payment Required" })).toBeDisabled();
+
+  await page.evaluate((ownerId) => { window.stopCustomerRealtime?.(); window.__g58Mock.setUser({ $id: ownerId, email: "cancel-owner@example.com", name: "Cancel Owner" }); location.hash = ""; }, ownerId);
+  await expect(page.getByRole("button", { name: /Booking History/ })).toBeVisible();
+  await page.getByRole("button", { name: /Booking History/ }).click();
+  await expect(page.locator("#bookingHistoryFrom")).toHaveValue(today);
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.getByRole("button", { name: "Payment Received" }).click();
+  await expect(page.locator("tbody")).toContainText("Paid");
+
+  await page.evaluate(({ customerId, ownerId, storeId }) => { window.stopOwnerRealtime?.(); window.__g58Mock.setUser({ $id: customerId, email: "cancel-customer@example.com", name: "Cancel Customer" }); location.hash = `store&owner=${ownerId}&store=${storeId}`; }, { customerId, ownerId, storeId });
+  await expect(page.getByRole("button", { name: "+ Book a Service" })).toBeEnabled();
+  await assertNoErrors();
+});
+
 test("Refills customer gets one incoming order alert and continues with the card actions", async ({ page }) => {
   const ownerId = "slide_order_owner", customerId = "slide_order_customer", storeId = "slide_order_store", orderId = "slide_order";
   const orderKind = `digit58_order_${ownerId}`;

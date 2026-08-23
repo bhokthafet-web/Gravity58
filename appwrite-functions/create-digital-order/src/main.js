@@ -1075,6 +1075,14 @@ async function createDigit58Booking(call, input, userId, options = {}) {
   }
 
   const existingBookings = (await listRowsByKind(call, digit58BookingKind(ownerId))).map(cleanRow);
+  const unpaidCancellationBookings = existingBookings.filter(row =>
+    row.storeId === storeId && row.customerAccountId === userId && row.status === 'Cancelled' &&
+    Math.max(0, finite(row.cancellationDueAmount)) > 0 &&
+    ['Due', 'Verification'].includes(row.cancellationPaymentStatus));
+  if (unpaidCancellationBookings.length) {
+    const pendingAmount = Math.round(unpaidCancellationBookings.reduce((sum, row) => sum + Math.max(0, finite(row.cancellationDueAmount)), 0) * 100) / 100;
+    throw new Error(`Pay the pending cancellation charge of ₹${pendingAmount.toLocaleString('en-IN')} before booking again at this store.`);
+  }
   const conflict = existingBookings.find(row => {
     if (row.storeId !== storeId || row.date !== date || row.status === 'Cancelled') return false;
     if ((row.expertId || '') !== (expertId || '')) return false;
@@ -1087,8 +1095,8 @@ async function createDigit58Booking(call, input, userId, options = {}) {
   const prepaymentPercent = Math.min(100, Math.max(0, Math.round(finite(service.prepaymentPercent, 100))));
   const prepaymentAmount = Math.round(price * prepaymentPercent) / 100;
   const cancellationChargeAmount = service.cancellationChargeEnabled ? Math.max(0, finite(service.cancellationChargeAmount)) : 0;
-  const upfrontAmount = Math.round((prepaymentAmount + cancellationChargeAmount) * 100) / 100;
-  const balanceAmount = Math.round((price * 100 - prepaymentAmount * 100 - cancellationChargeAmount * 100)) / 100;
+  const upfrontAmount = Math.round(prepaymentAmount * 100) / 100;
+  const balanceAmount = Math.round((price * 100 - prepaymentAmount * 100)) / 100;
   const bookingId = digit58Id('booking');
   const upiId = text(store.upiId, 120);
   const createdAt = new Date().toISOString();
@@ -1099,9 +1107,10 @@ async function createDigit58Booking(call, input, userId, options = {}) {
     doorstepServiceEnabled,
     locationLat: hasLocation ? locationLat : '', locationLng: hasLocation ? locationLng : '',
     locationUrl: hasLocation ? `https://www.google.com/maps?q=${locationLat},${locationLng}` : '',
-    date, startTime, durationMinutes, price, prepaymentPercent, prepaymentAmount, cancellationChargeAmount, upfrontAmount, balanceAmount,
+    date, startTime, durationMinutes, price, prepaymentPercent, prepaymentAmount, cancellationChargeAmount, cancellationChargeMode: 'post-cancel', upfrontAmount, balanceAmount,
     upiId: upfrontAmount > 0 ? upiId : '', upiUri: upfrontAmount > 0 ? buildDigit58UpiUri(upiId, store.name, upfrontAmount, bookingId) : '',
     status: options.initialStatus || (upfrontAmount > 0 ? 'Pending Payment' : 'Requested'), paymentMarkedAt: '', balancePaid: false, balancePaidAt: '',
+    cancellationDueAmount: 0, cancellationPaymentStatus: 'Not Required', cancellationPaymentMarkedAt: '', cancellationPaymentConfirmedAt: '', cancellationPaymentUpiUri: '',
     createdAt, updatedAt: createdAt,
   };
   const created = await createRow(call, bookingId, digit58BookingKind(ownerId), record, rowPermissionsFor([ownerId, userId]));
@@ -1154,6 +1163,60 @@ async function rejectDigit58OwnerBooking(call, input, userId) {
   if (booking.status !== 'Pending Customer Acceptance') throw new Error('This booking has already been handled.');
   const updatedAt = new Date().toISOString();
   const changes = { status: 'Cancelled', cancelledAt: updatedAt, updatedAt };
+  return updateRow(call, bookingId, { ...booking, ...changes });
+}
+
+async function cancelDigit58CustomerBooking(call, input, userId) {
+  const ownerId = text(input.ownerId, 64), bookingId = text(input.bookingId, 40);
+  if (!ownerId || !bookingId) throw new Error('Booking details are missing.');
+  const row = await call(`/tablesdb/${DATABASE_ID}/tables/${TABLE_ID}/rows/${encodeURIComponent(bookingId)}`);
+  if (row.kind !== digit58BookingKind(ownerId)) throw new Error('This is not a booking.');
+  const booking = cleanRow(row);
+  if (booking.customerAccountId !== userId) { const denied = new Error("Only this booking's customer can cancel it."); denied.code = 403; throw denied; }
+  if (!['Requested', 'Pending Payment', 'Confirmed'].includes(booking.status)) throw new Error('This booking can no longer be cancelled.');
+  // Legacy bookings included the old "guarantee" in their upfront amount. Only
+  // post-cancel bookings may create a new debt, preventing a double charge.
+  const cancellationDueAmount = booking.cancellationChargeMode === 'post-cancel' ? Math.max(0, finite(booking.cancellationChargeAmount)) : 0;
+  const storeRow = await call(`/tablesdb/${DATABASE_ID}/tables/${TABLE_ID}/rows/${encodeURIComponent(booking.storeId)}`).catch(() => null);
+  const store = storeRow && storeRow.kind === digit58StoreKind(ownerId) ? cleanRow(storeRow) : {};
+  const updatedAt = new Date().toISOString();
+  const changes = {
+    status: 'Cancelled', cancelledAt: updatedAt, cancelledBy: 'customer', updatedAt,
+    cancellationDueAmount,
+    cancellationPaymentStatus: cancellationDueAmount > 0 ? 'Due' : 'Not Required',
+    cancellationPaymentMarkedAt: '', cancellationPaymentConfirmedAt: '',
+    cancellationPaymentUpiUri: cancellationDueAmount > 0 && text(store.upiId, 120)
+      ? buildDigit58UpiUri(text(store.upiId, 120), store.name, cancellationDueAmount, `CAN-${bookingId}`)
+      : '',
+  };
+  return updateRow(call, bookingId, { ...booking, ...changes });
+}
+
+async function markDigit58CancellationPayment(call, input, userId) {
+  const ownerId = text(input.ownerId, 64), bookingId = text(input.bookingId, 40);
+  if (!ownerId || !bookingId) throw new Error('Cancellation payment details are missing.');
+  const row = await call(`/tablesdb/${DATABASE_ID}/tables/${TABLE_ID}/rows/${encodeURIComponent(bookingId)}`);
+  if (row.kind !== digit58BookingKind(ownerId)) throw new Error('This is not a booking.');
+  const booking = cleanRow(row);
+  if (booking.customerAccountId !== userId) { const denied = new Error("Only this booking's customer can submit its cancellation payment."); denied.code = 403; throw denied; }
+  if (booking.status !== 'Cancelled' || Math.max(0, finite(booking.cancellationDueAmount)) <= 0) throw new Error('No cancellation payment is due for this booking.');
+  if (booking.cancellationPaymentStatus === 'Paid') return booking;
+  const updatedAt = new Date().toISOString();
+  return updateRow(call, bookingId, { ...booking, cancellationPaymentStatus: 'Verification', cancellationPaymentMarkedAt: updatedAt, updatedAt });
+}
+
+async function confirmDigit58CancellationPayment(call, input, userId, paid) {
+  const ownerId = text(input.ownerId, 64), bookingId = text(input.bookingId, 40);
+  if (!ownerId || !bookingId) throw new Error('Cancellation payment details are missing.');
+  if (ownerId !== userId) { const denied = new Error('Only the store owner can verify this cancellation payment.'); denied.code = 403; throw denied; }
+  const row = await call(`/tablesdb/${DATABASE_ID}/tables/${TABLE_ID}/rows/${encodeURIComponent(bookingId)}`);
+  if (row.kind !== digit58BookingKind(ownerId)) throw new Error('This is not a booking.');
+  const booking = cleanRow(row);
+  if (booking.status !== 'Cancelled' || Math.max(0, finite(booking.cancellationDueAmount)) <= 0) throw new Error('No cancellation payment is due for this booking.');
+  const updatedAt = new Date().toISOString();
+  const changes = paid
+    ? { cancellationPaymentStatus: 'Paid', cancellationPaymentConfirmedAt: updatedAt, updatedAt }
+    : { cancellationPaymentStatus: 'Due', cancellationPaymentMarkedAt: '', cancellationPaymentConfirmedAt: '', updatedAt };
   return updateRow(call, bookingId, { ...booking, ...changes });
 }
 
@@ -1572,6 +1635,22 @@ export default async ({ req, res, error }) => {
     if (requestBody?.action === 'digit58-reject-owner-booking') {
       const call = appwriteClient(req);
       return res.json({ ok: true, booking: await rejectDigit58OwnerBooking(call, requestBody, userId) });
+    }
+    if (requestBody?.action === 'digit58-cancel-customer-booking') {
+      const call = appwriteClient(req);
+      return res.json({ ok: true, booking: await cancelDigit58CustomerBooking(call, requestBody, userId) });
+    }
+    if (requestBody?.action === 'digit58-mark-cancellation-payment') {
+      const call = appwriteClient(req);
+      return res.json({ ok: true, booking: await markDigit58CancellationPayment(call, requestBody, userId) });
+    }
+    if (requestBody?.action === 'digit58-confirm-cancellation-payment') {
+      const call = appwriteClient(req);
+      return res.json({ ok: true, booking: await confirmDigit58CancellationPayment(call, requestBody, userId, true) });
+    }
+    if (requestBody?.action === 'digit58-reopen-cancellation-payment') {
+      const call = appwriteClient(req);
+      return res.json({ ok: true, booking: await confirmDigit58CancellationPayment(call, requestBody, userId, false) });
     }
     if (requestBody?.action === 'digit58-create-refill-order') {
       const call = appwriteClient(req);

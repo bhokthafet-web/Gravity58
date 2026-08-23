@@ -95,11 +95,29 @@ export function mockApiScript({ initialUser = null, admin = false, seed = {} } =
           const storeKind='digit58_store_'+safeOwner,serviceKind='digit58_service_'+safeOwner,expertKind='digit58_expert_'+safeOwner,bookingKind='digit58_booking_'+safeOwner;
           const selectedStore=(store[storeKind]||[]).find(row=>(row.id||row.\$id)===payload.storeId),service=(store[serviceKind]||[]).find(row=>(row.id||row.\$id)===payload.serviceId),expert=(store[expertKind]||[]).find(row=>(row.id||row.\$id)===payload.expertId);
           if(!selectedStore||!service)throw new Error('Booking details are missing.');
+          const unpaid=(store[bookingKind]||[]).filter(row=>row.storeId===payload.storeId&&row.customerAccountId===user?.\$id&&row.status==='Cancelled'&&Number(row.cancellationDueAmount)>0&&['Due','Verification'].includes(row.cancellationPaymentStatus));
+          if(unpaid.length)throw new Error('Pay the pending cancellation charge before booking again at this store.');
           const lat=Number(payload.locationLat),lng=Number(payload.locationLng),hasLocation=Number.isFinite(lat)&&Number.isFinite(lng);
           if(service.doorstepServiceEnabled&&!hasLocation)throw new Error('Share the service location before booking this doorstep service.');
-          const price=Number(service.price)||0,prepaymentPercent=Number(service.prepaymentPercent??100),upfrontAmount=Math.round(price*prepaymentPercent)/100,createdAt=new Date().toISOString();
-          const row=clean({id:'booking-'+(++serial),ownerId:payload.ownerId,storeId:payload.storeId,serviceId:service.id,serviceName:service.name,expertId:expert?.id||'',expertName:expert?.name||'',expertPhone:expert?.phone||'',customerAccountId:user?.\$id,customerName:payload.customerName,customerEmail:payload.customerEmail,phone:String(payload.phone||'').replace(/\D/g,''),doorstepServiceEnabled:Boolean(service.doorstepServiceEnabled),locationLat:hasLocation?lat:'',locationLng:hasLocation?lng:'',locationUrl:hasLocation?'https://www.google.com/maps?q='+lat+','+lng:'',date:payload.date,startTime:payload.startTime,durationMinutes:Number(service.durationMinutes)||30,price,prepaymentPercent,prepaymentAmount:upfrontAmount,upfrontAmount,balanceAmount:price-upfrontAmount,status:upfrontAmount>0?'Pending Payment':'Requested',messages:[],createdAt,updatedAt:createdAt});
+          const price=Number(service.price)||0,prepaymentPercent=Number(service.prepaymentPercent??100),upfrontAmount=Math.round(price*prepaymentPercent)/100,cancellationChargeAmount=service.cancellationChargeEnabled?Number(service.cancellationChargeAmount)||0:0,createdAt=new Date().toISOString();
+          const row=clean({id:'booking-'+(++serial),ownerId:payload.ownerId,storeId:payload.storeId,serviceId:service.id,serviceName:service.name,expertId:expert?.id||'',expertName:expert?.name||'',expertPhone:expert?.phone||'',customerAccountId:user?.\$id,customerName:payload.customerName,customerEmail:payload.customerEmail,phone:String(payload.phone||'').replace(/\D/g,''),doorstepServiceEnabled:Boolean(service.doorstepServiceEnabled),locationLat:hasLocation?lat:'',locationLng:hasLocation?lng:'',locationUrl:hasLocation?'https://www.google.com/maps?q='+lat+','+lng:'',date:payload.date,startTime:payload.startTime,durationMinutes:Number(service.durationMinutes)||30,price,prepaymentPercent,prepaymentAmount:upfrontAmount,cancellationChargeAmount,cancellationChargeMode:'post-cancel',upfrontAmount,balanceAmount:price-upfrontAmount,status:upfrontAmount>0?'Pending Payment':'Requested',cancellationDueAmount:0,cancellationPaymentStatus:'Not Required',messages:[],createdAt,updatedAt:createdAt});
           (store[bookingKind]||=[]).unshift(row);notify(bookingKind,row);return {ok:true,booking:clone(row)};
+        }
+        if(action==='digit58-cancel-customer-booking'){
+          const kind='digit58_booking_'+String(payload.ownerId||'').replace(/[^a-zA-Z0-9._-]/g,'-').slice(0,40),row=(store[kind]||[]).find(item=>(item.id||item.\$id)===payload.bookingId);
+          if(!row||row.customerAccountId!==user?.\$id)throw new Error("Only this booking's customer can cancel it.");
+          const amount=Math.max(0,Number(row.cancellationChargeAmount)||0),updatedAt=new Date().toISOString();
+          Object.assign(row,{status:'Cancelled',cancelledAt:updatedAt,cancelledBy:'customer',cancellationDueAmount:amount,cancellationPaymentStatus:amount>0?'Due':'Not Required',cancellationPaymentUpiUri:amount>0?'upi://pay?am='+amount:'',updatedAt});notify(kind,row);return {ok:true,booking:clone(row)};
+        }
+        if(action==='digit58-mark-cancellation-payment'){
+          const kind='digit58_booking_'+String(payload.ownerId||'').replace(/[^a-zA-Z0-9._-]/g,'-').slice(0,40),row=(store[kind]||[]).find(item=>(item.id||item.\$id)===payload.bookingId);
+          if(!row||row.customerAccountId!==user?.\$id)throw new Error("Only this booking's customer can submit its cancellation payment.");
+          Object.assign(row,{cancellationPaymentStatus:'Verification',cancellationPaymentMarkedAt:new Date().toISOString(),updatedAt:new Date().toISOString()});notify(kind,row);return {ok:true,booking:clone(row)};
+        }
+        if(action==='digit58-confirm-cancellation-payment'||action==='digit58-reopen-cancellation-payment'){
+          const kind='digit58_booking_'+String(payload.ownerId||'').replace(/[^a-zA-Z0-9._-]/g,'-').slice(0,40),row=(store[kind]||[]).find(item=>(item.id||item.\$id)===payload.bookingId);
+          if(!row||payload.ownerId!==user?.\$id)throw new Error('Only the store owner can verify this cancellation payment.');
+          const paid=action==='digit58-confirm-cancellation-payment';Object.assign(row,{cancellationPaymentStatus:paid?'Paid':'Due',cancellationPaymentConfirmedAt:paid?new Date().toISOString():'',cancellationPaymentMarkedAt:paid?row.cancellationPaymentMarkedAt||'':'',updatedAt:new Date().toISOString()});notify(kind,row);return {ok:true,booking:clone(row)};
         }
         if(action==='digit58-accept-owner-order'){
           const kind='digit58_order_'+String(payload.ownerId||'').replace(/[^a-zA-Z0-9._-]/g,'-').slice(0,40),row=(store[kind]||[]).find(item=>(item.id||item.\$id)===payload.orderId);
