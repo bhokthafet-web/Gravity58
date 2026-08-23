@@ -539,12 +539,12 @@ async function acceptOwnerOrder(store,customer,orderId){
 }
 async function rejectOwnerOrder(store,customer,orderId){
   if(!confirm('Reject this order from the store?'))return;
+  customerSuppressedRejectionIds.add(orderId);
   try{
-    const result=await api.executeFunction(api.config.digitalOrderFunctionId,{action:'digit58-reject-owner-order',ownerId:store.ownerId,orderId});
-    if(result?.order)markRejectionSeen(result.order,customer);
+    await api.executeFunction(api.config.digitalOrderFunctionId,{action:'digit58-reject-owner-order',ownerId:store.ownerId,orderId});
     toast('Order rejected');
     await loadAndRenderCustomerView(store,customer);
-  }catch(error){toast(error.message||'Could not reject the order')}
+  }catch(error){customerSuppressedRejectionIds.delete(orderId);toast(error.message||'Could not reject the order')}
 }
 async function acceptOwnerBooking(store,customer,bookingId){
   try{
@@ -2153,6 +2153,7 @@ function closeModal(){
     customerRenderPending=false;
     loadAndRenderCustomerView(activeCustomerContext.store,activeCustomerContext.customer);
   }
+  setTimeout(showNextRejectedOrder,0);
 }
 
 async function renderPublicStore(hashParams){
@@ -2247,7 +2248,7 @@ function startCustomerRealtime(store,customer){
   customerBookingsUnsubscribe?.();
   if(isServiceStore(store))customerBookingsUnsubscribe=api.subscribeKind(bookingKind(store.ownerId),()=>loadAndRenderCustomerView(store,customer));
 }
-function stopCustomerRealtime(){customerOrdersUnsubscribe?.();customerCardsUnsubscribe?.();customerPromotionsUnsubscribe?.();customerCoursesUnsubscribe?.();customerBookingsUnsubscribe?.();customerOrdersUnsubscribe=customerCardsUnsubscribe=customerPromotionsUnsubscribe=customerCoursesUnsubscribe=customerBookingsUnsubscribe=null;stopPromotionAutoScroll();clearTimeout(promotionAutoScrollResumeTimer);stopMedicineAlarmTimer();stopBookingReminderTimer();dueReminderRung.clear();pendingDueBeep=false;medicineAlarmRung.clear();bookingReminderRung.clear();knownMessageCounts.clear();activeCustomerContext=null;customerRenderPending=false;stopIncomingCallRing()}
+function stopCustomerRealtime(){customerOrdersUnsubscribe?.();customerCardsUnsubscribe?.();customerPromotionsUnsubscribe?.();customerCoursesUnsubscribe?.();customerBookingsUnsubscribe?.();customerOrdersUnsubscribe=customerCardsUnsubscribe=customerPromotionsUnsubscribe=customerCoursesUnsubscribe=customerBookingsUnsubscribe=null;stopPromotionAutoScroll();clearTimeout(promotionAutoScrollResumeTimer);stopMedicineAlarmTimer();stopBookingReminderTimer();dueReminderRung.clear();pendingDueBeep=false;medicineAlarmRung.clear();bookingReminderRung.clear();knownMessageCounts.clear();resetRejectedOrderNotifications();activeCustomerContext=null;customerRenderPending=false;stopIncomingCallRing()}
 const VAPID_PUBLIC_KEY='BBWHhjt1keQag3HnZIooxS1pJvelQ8CuQ6eWBxFp9AStQLDpTzZqwKHmwj_gomaCpNBykqJRo6AsmfbC0roZoEY';
 function urlBase64ToUint8Array(base64String){
   const padding='='.repeat((4-base64String.length%4)%4);
@@ -2389,22 +2390,55 @@ async function ensureCustomerLink(ownerId,storeId,account){
   return api.executeFunction(api.config.digitalOrderFunctionId,{action:'digit58-link-customer',ownerId,storeId,customerName:account.name||account.email.split('@')[0],customerEmail:account.email});
 }
 let customerPromotionQuantities=new Map(),activePromotionStoreId='',customerReminderView='swipe',customerStoreLinks=[];
-const shownRejectedOrderIds=new Set();
-function rejectedOrderSeenKey(order,customer){return `g58-rejected-order:${customer.customerAccountId}:${order.id}:${order.rejectedAt||order.updatedAt||''}`}
-function rejectionWasSeen(order,customer){try{return localStorage.getItem(rejectedOrderSeenKey(order,customer))==='1'}catch{return false}}
-function markRejectionSeen(order,customer){try{localStorage.setItem(rejectedOrderSeenKey(order,customer),'1')}catch{}}
-function showNextRejectedOrder(orders,store,customer,promotions=[]){
+let rejectedOrderNotificationContext='',rejectedOrderSnapshots=new Map(),rejectedOrderNotificationQueue=[];
+const shownRejectedOrderEvents=new Set(),customerSuppressedRejectionIds=new Set();
+function resetRejectedOrderNotifications(){
+  rejectedOrderNotificationContext='';
+  rejectedOrderSnapshots=new Map();
+  rejectedOrderNotificationQueue=[];
+  shownRejectedOrderEvents.clear();
+  customerSuppressedRejectionIds.clear();
+}
+function rejectedOrderSnapshot(order){return {status:order.status,rejectedAt:order.rejectedAt||''}}
+function rejectedOrderEventKey(order){return `${order.id}:${order.rejectedAt||order.updatedAt||''}`}
+function queueRejectedOrderNotifications(orders,store,customer,promotions=[]){
+  const context=`${store.ownerId}:${store.id}:${customer.customerAccountId}`;
+  if(rejectedOrderNotificationContext!==context){
+    rejectedOrderNotificationContext=context;
+    rejectedOrderSnapshots=new Map(orders.map(order=>[order.id,rejectedOrderSnapshot(order)]));
+    rejectedOrderNotificationQueue=[];
+    shownRejectedOrderEvents.clear();
+    customerSuppressedRejectionIds.clear();
+    return;
+  }
+  const presentIds=new Set(orders.map(order=>order.id));
+  const queuedEvents=new Set(rejectedOrderNotificationQueue.map(entry=>entry.eventKey));
+  orders.forEach(order=>{
+    const previous=rejectedOrderSnapshots.get(order.id);
+    const newlyRejected=order.status==='Rejected'&&previous&&previous.status!=='Rejected';
+    const eventKey=rejectedOrderEventKey(order);
+    if(newlyRejected&&!customerSuppressedRejectionIds.has(order.id)&&!shownRejectedOrderEvents.has(eventKey)&&!queuedEvents.has(eventKey)){
+      rejectedOrderNotificationQueue.push({order,store,customer,promotions,eventKey});
+      queuedEvents.add(eventKey);
+    }
+    rejectedOrderSnapshots.set(order.id,rejectedOrderSnapshot(order));
+  });
+  [...rejectedOrderSnapshots.keys()].forEach(orderId=>{if(!presentIds.has(orderId))rejectedOrderSnapshots.delete(orderId)});
+  setTimeout(showNextRejectedOrder,0);
+}
+function showNextRejectedOrder(){
   if($('.modal-backdrop')||$('.incoming-call-overlay'))return;
-  const order=[...orders].filter(row=>row.status==='Rejected'&&!rejectionWasSeen(row,customer)&&!shownRejectedOrderIds.has(row.id)).sort((a,b)=>new Date(b.rejectedAt||b.updatedAt||0)-new Date(a.rejectedAt||a.updatedAt||0))[0];
-  if(!order)return;shownRejectedOrderIds.add(order.id);
+  const notification=rejectedOrderNotificationQueue.shift();
+  if(!notification)return;
+  const {order,store,customer,promotions,eventKey}=notification;
+  shownRejectedOrderEvents.add(eventKey);
   const reason=order.rejectionReason||'The store could not process this order. Contact the store if you need more information.';
   const storePhone=String(store.phone||'').replace(/[^\d+]/g,'');
   modal('Order Rejected',`<div class="rejection-popup"><span class="rejection-popup-icon" aria-hidden="true">!</span><p>Your order from <strong>${html(store.name)}</strong> was rejected.</p><div class="rejection-reason"><small>Reason</small><strong>${html(reason)}</strong></div><p class="muted">Order #${html(order.id.slice(-6).toUpperCase())}</p><div class="rejection-next-actions"><button class="btn full" id="reviseRejectedOrder" type="button">Revise &amp; Resubmit</button><button class="btn full secondary" id="viewRejectedHistory" type="button">View Order History</button>${storePhone?`<a class="btn full secondary" id="callRejectedStore" href="tel:${html(storePhone)}">Call ${html(store.name)}</a>`:''}<button class="rejection-dismiss" id="dismissRejectedOrder" type="button">Close</button></div></div>`,()=>{
-    const acknowledge=()=>{markRejectionSeen(order,customer);closeModal()};
+    const acknowledge=()=>closeModal();
     $('#reviseRejectedOrder').onclick=()=>{acknowledge();openPlaceOrderModal(store,customer,promotions,order)};
     $('#viewRejectedHistory').onclick=()=>{acknowledge();setTimeout(()=>$('#customerOrderHistory')?.scrollIntoView({behavior:'smooth',block:'start'}),0)};
-    $('#callRejectedStore')?.addEventListener('click',()=>markRejectionSeen(order,customer));
-    $('#dismissRejectedOrder').onclick=()=>{acknowledge();setTimeout(()=>showNextRejectedOrder(orders,store,customer,promotions),0)};
+    $('#dismissRejectedOrder').onclick=acknowledge;
     $('#closeModal').onclick=$('#dismissRejectedOrder').onclick;
   });
 }
@@ -2466,7 +2500,7 @@ function refreshPromotionCartBar(promotions){
 }
 function customerPromotionTicket(promotion,decorative=false){
   const hasImage=Boolean(promotion.imageUrl);
-  return `<article class="promotion-ticket customer-ticket ${hasImage?'brand-art-ticket':''}" aria-label="${html(promotion.name)}" ${decorative?'aria-hidden="true"':''}><h3 class="promotion-product-title">${html(promotion.name)}</h3>${hasImage?`<div class="promotion-ticket-image"><img src="${html(promotion.imageUrl)}" alt="${html(promotion.name)}" loading="lazy" decoding="async"></div>`:''}${Number(promotion.price)>0?`<strong class="promotion-offer-price">₹${Math.round(promotion.price)}/- only</strong>`:''}${promotion.endsOn?`<small class="promotion-end-date">Offer ends ${html(formatPromotionEnd(promotion.endsOn))}</small>`:''}<div class="promotion-ticket-foot"><div class="promotion-control" data-promotion-control="${html(promotion.id)}">${promotionQuantityControl(promotion.id)}</div></div></article>`;
+  return `<article class="promotion-ticket customer-ticket ${hasImage?'brand-art-ticket':''}" aria-label="${html(promotion.name)}" ${decorative?'aria-hidden="true"':''}>${hasImage?`<div class="promotion-ticket-image"><img src="${html(promotion.imageUrl)}" alt="${html(promotion.name)}" loading="lazy" decoding="async"></div>`:''}<h3 class="promotion-product-title">${html(promotion.name)}</h3>${Number(promotion.price)>0?`<strong class="promotion-offer-price">₹${Math.round(promotion.price)}/- only</strong>`:''}${promotion.endsOn?`<small class="promotion-end-date">Offer ends ${html(formatPromotionEnd(promotion.endsOn))}</small>`:''}<div class="promotion-ticket-foot"><div class="promotion-control" data-promotion-control="${html(promotion.id)}">${promotionQuantityControl(promotion.id)}</div></div></article>`;
 }
 function bindCustomerPromotionActions(promotions){
   $$('[data-promotion-add]').forEach(button=>button.onclick=()=>adjustPromotionQuantity(promotions,button.dataset.promotionAdd,1));
@@ -2585,7 +2619,7 @@ function renderCustomerCards(store,customer,cards,orders=[],promotions=[],course
   initShakeDetection();
   initPushNotifications(store,customer);
   (typeof bindAndroidAppFooter==='function'&&bindAndroidAppFooter());
-  setTimeout(()=>showNextRejectedOrder(orders,store,customer,promotions),0);
+  queueRejectedOrderNotifications(orders,store,customer,promotions);
   if(medical)checkMedicineAlarms(store,customer);
   $('#custLogout').onclick=async()=>{stopCustomerRealtime();customerPromotionQuantities.clear();activePromotionStoreId='';customerStoreLinks=[];await api.logout();location.hash=`store&owner=${encodeURIComponent(store.ownerId)}&store=${encodeURIComponent(store.id)}`;boot()};
 }

@@ -36,12 +36,21 @@ test("customer promotion cards show uploaded brand art with a visible product ti
   const source = await read("digit58/app.js");
   assert.match(source, /const hasImage=Boolean\(promotion\.imageUrl\)/);
   assert.match(source, /<h3 class="promotion-product-title">\$\{html\(promotion\.name\)\}<\/h3>/);
-  assert.match(source, /hasImage\?`<div class="promotion-ticket-image"/);
+  assert.match(source, /hasImage\?`<div class="promotion-ticket-image"[^`]+`:[^}]*\}<h3 class="promotion-product-title">/);
   const css = await read("digit58/styles.css");
   assert.match(css, /\.customer-ticket\.brand-art-ticket\{[^}]*background:transparent/);
   assert.match(css, /filter:none!important;opacity:1!important/);
   assert.doesNotMatch(source, /promotion-badge/);
   assert.match(css, /\.promotion-offer-price\{[^}]*color:#dc2626!important;[^}]*animation:none/);
-  assert.match(css, /\.customer-ticket \.promotion-product-title\{[^}]*color:#fff;[^}]*font-weight:950/);
+  assert.match(css, /\.customer-ticket \.promotion-product-title\{[^}]*color:#fff;[^}]*font-weight:950;[^}]*white-space:normal;[^}]*-webkit-line-clamp:2/);
+  assert.match(css, /\.customer-ticket\.brand-art-ticket \.promotion-ticket-image\{[^}]*height:158px;[^}]*min-height:158px;[^}]*flex:0 0 158px/);
   assert.match(css, /\.customer-ticket\.brand-art-ticket \.promotion-end-date\{[^}]*color:#fff/);
+});
+
+test("Refills rejection alerts are limited to live status transitions", async () => {
+  const source = await read("digit58/app.js");
+  assert.doesNotMatch(source, /g58-rejected-order:/);
+  assert.match(source, /const newlyRejected=order\.status==='Rejected'&&previous&&previous\.status!=='Rejected'/);
+  assert.match(source, /rejectedOrderSnapshots=new Map\(orders\.map\(order=>\[order\.id,rejectedOrderSnapshot\(order\)\]\)\)/);
+  assert.match(source, /queueRejectedOrderNotifications\(orders,store,customer,promotions\)/);
 });

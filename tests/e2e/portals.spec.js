@@ -679,7 +679,7 @@ test("Refills minimum criteria supports customer approval, owner rejection reaso
     seed: {
       digit58_entitlements: [{ id: "minimum_entitlement", ownerId, active: true, paused: false, lifetime: true, policyAcceptedAt: new Date().toISOString() }],
       [`digit58_store_${ownerId}`]: [{ id: storeId, ownerId, name: "Minimum Medicals", category: "Medical store", city: "Hyderabad", phone: "9876543210", minimumOrderEnabled: true, minimumOrderValue: 500 }],
-      [`digit58_customer_${ownerId}`]: [{ id: "minimum_link", ownerId, storeId, customerAccountId: customerId, customerName: customer.name, customerEmail: customer.email, phone: "9876543210" }],
+      [`digit58_customer_${ownerId}`]: [{ id: "minimum_link", ownerId, storeId, customerAccountId: customerId, customerName: customer.name, customerEmail: customer.email, phone: "9876543210", agreementAcceptedAt: "2026-08-01T08:00:00.000Z" }],
       [orderKind]: [],
     },
   });
@@ -702,6 +702,7 @@ test("Refills minimum criteria supports customer approval, owner rejection reaso
   await page.locator('#placeOrderForm input[name="itemName[]"]').fill("Monthly health products");
   await page.locator("#customerOrderValue").fill("300");
   await page.locator('#placeOrderForm input[name="phone"]').fill("9876543210");
+  await page.locator('#placeOrderForm textarea[name="address"]').fill("12 Market Road, Hyderabad");
   await page.getByRole("button", { name: "Submit Order", exact: true }).click();
   await expect(page.locator("#toast")).toContainText("Minimum new order value is ₹600");
   await page.getByRole("button", { name: "Request Owner Approval" }).click();
@@ -716,7 +717,7 @@ test("Refills minimum criteria supports customer approval, owner rejection reaso
   await page.evaluate(() => { location.hash = ""; });
   orders = await page.evaluate((kind) => window.__g58Mock.store[kind] || [], orderKind);
   expect(orders, "the approval request must remain in the shared mock cloud after switching accounts").toHaveLength(1);
-  await page.getByRole("button", { name: /Orders/ }).click();
+  await page.getByRole("button", { name: "🧾 Orders", exact: true }).click();
   const approvalCard = page.locator(".order-item-card", { hasText: "Below-minimum approval requested" });
   await expect(approvalCard).toContainText("Customer estimate ₹300");
   await approvalCard.getByRole("button", { name: "Approve Below-Minimum Order" }).click();
@@ -742,23 +743,55 @@ test("Refills minimum criteria supports customer approval, owner rejection reaso
   await page.evaluate(({ ownerId: nextOwnerId, storeId: nextStoreId }) => {
     location.hash = `store&owner=${encodeURIComponent(nextOwnerId)}&store=${encodeURIComponent(nextStoreId)}`;
   }, { ownerId, storeId });
-  await expect(page.getByRole("heading", { name: "Order Rejected" })).toBeVisible();
-  await expect(page.locator(".rejection-reason")).toContainText("Requested product is unavailable today.");
-  await expect(page.getByRole("button", { name: "View Order History" })).toBeVisible();
-  await expect(page.getByRole("link", { name: "Call Minimum Medicals" })).toHaveAttribute("href", "tel:9876543210");
-  await page.getByRole("button", { name: "Revise & Resubmit" }).click();
-  await expect(page.getByRole("heading", { name: "Revise Rejected Order" })).toBeVisible();
-  await expect(page.locator('#placeOrderForm input[name="itemName[]"]')).toHaveValue("Monthly health products");
+  await expect(page.getByRole("heading", { name: "Order Rejected" })).toHaveCount(0);
   await expect(page.locator(".rejection-history-reason")).toContainText("Requested product is unavailable today.");
   await expect(page.locator(".store-minimum-order")).toHaveCount(0);
-
-  await expect(page.locator("#customerOrderValue")).toHaveCount(0);
-  await page.locator('#placeOrderForm input[name="itemName[]"]').fill("Small urgent replacement");
-  await page.locator('#placeOrderForm input[name="phone"]').fill("9876543210");
-  await page.getByRole("button", { name: "Resubmit Order", exact: true }).click();
-  await expect(page.locator("#toast")).toContainText("Order sent to the store");
+  const rejectedHistoryRow = page.locator("#customerOrderHistory tbody tr", { hasText: "Monthly health products" });
+  await rejectedHistoryRow.getByRole("button", { name: "Reorder" }).click();
+  await expect(page.getByRole("heading", { name: "Reorder Previous Items" })).toBeVisible();
+  await page.getByRole("button", { name: "Send Reorder Request" }).click();
+  await expect(page.locator("#toast")).toContainText("Reorder sent");
   orders = await page.evaluate((kind) => window.__g58Mock.store[kind], orderKind);
-  expect(orders[0]).toMatchObject({ status: "Requested", customerOrderValue: 0 });
+  expect(orders[0]).toMatchObject({ status: "Requested", reorderedFrom: orders[1].id });
+  await assertNoErrors();
+});
+
+test("Refills notifies only a rejection that happens during the active customer session", async ({ page }) => {
+  const ownerId = "live_reject_owner", storeId = "live_reject_store", customerId = "live_reject_customer", orderKind = `digit58_order_${ownerId}`;
+  const customer = { $id: customerId, email: "live-reject@example.com", name: "Live Reject Customer" };
+  await prepareMockApi(page, {
+    state: null,
+    initialUser: customer,
+    seed: {
+      [`digit58_store_${ownerId}`]: [{ id: storeId, ownerId, name: "Live Reject Store", category: "General store", city: "Hyderabad", phone: "9876543210" }],
+      [`digit58_customer_${ownerId}`]: [{ id: "live_reject_link", ownerId, storeId, customerAccountId: customerId, customerName: customer.name, customerEmail: customer.email, phone: "9876543210", agreementAcceptedAt: "2026-08-01T08:00:00.000Z" }],
+      [orderKind]: [
+        { id: "historical_rejection", ownerId, storeId, customerAccountId: customerId, customerName: customer.name, phone: "9876543210", items: [{ name: "Old unavailable item", qty: 1 }], amount: 0, status: "Rejected", rejectionReason: "Rejected before this login.", rejectedAt: "2026-08-20T08:00:00.000Z", createdAt: "2026-08-20T07:00:00.000Z", updatedAt: "2026-08-20T08:00:00.000Z", messages: [] },
+        { id: "live_rejection", ownerId, storeId, customerAccountId: customerId, customerName: customer.name, phone: "9876543210", items: [{ name: "Item being reviewed", qty: 1 }], amount: 0, status: "Requested", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), messages: [] },
+      ],
+    },
+  });
+  const assertNoErrors = monitorPageErrors(page);
+  await page.goto(`/digit58/#store&owner=${ownerId}&store=${storeId}`);
+  await expect(page.getByRole("heading", { name: "Order Rejected" })).toHaveCount(0);
+  await page.locator("#customerHistoryFrom").fill("2026-08-20");
+  await page.locator("#customerHistoryTo").fill("2026-08-20");
+  await expect(page.locator(".rejection-history-reason")).toContainText("Rejected before this login.");
+
+  await page.evaluate(async ({ kind }) => {
+    const rejectedAt = new Date().toISOString();
+    await window.Gravity58Ads.update(kind, "live_rejection", { status: "Rejected", rejectionReason: "The item sold out just now.", rejectedAt, updatedAt: rejectedAt });
+  }, { kind: orderKind });
+  await expect(page.getByRole("heading", { name: "Order Rejected" })).toBeVisible();
+  await expect(page.locator(".rejection-reason")).toContainText("The item sold out just now.");
+  await page.getByRole("button", { name: "Close" }).click();
+  await expect(page.getByRole("heading", { name: "Order Rejected" })).toHaveCount(0);
+
+  await page.evaluate(async ({ kind }) => {
+    await window.Gravity58Ads.update(kind, "live_rejection", { messages: [{ from: "owner", text: "This update must not reopen the rejection popup.", at: new Date().toISOString() }] });
+  }, { kind: orderKind });
+  await page.waitForTimeout(250);
+  await expect(page.getByRole("heading", { name: "Order Rejected" })).toHaveCount(0);
   await assertNoErrors();
 });
 
@@ -1040,17 +1073,17 @@ test("Refills customer confirms a reusable Razorpay.me payment and adds promotio
     seed: {
       [`digit58_store_${ownerId}`]: [{ id: storeId, ownerId, name: "Nature Refills", category: "Organic Store", city: "Hyderabad", upiId: "nature@upi", razorpayEnabled: true, razorpayLink: "https://razorpay.me/@naturerefills" }],
       [`digit58_customer_${ownerId}`]: [{ id: "customer_link", ownerId, storeId, customerAccountId: customerId, customerName: "Refill Customer", customerEmail: "customer@example.com", phone: "9876543210", agreementAcceptedAt: "2026-08-01T08:00:00.000Z" }],
-      [`digit58_promo_${ownerId}`]: [{ id: "promo_honey", ownerId, storeId, name: "Organic Honey", offerText: "Pure 500g jar · limited stock", price: 299, endsOn: "2026-08-30", badge: "Weekend Special", imageUrl: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='500'%3E%3Crect width='400' height='500' fill='%23f59e0b'/%3E%3Ctext x='200' y='250' text-anchor='middle' font-size='42'%3EOrganic Honey%3C/text%3E%3C/svg%3E", active: true }],
+      [`digit58_promo_${ownerId}`]: [{ id: "promo_honey", ownerId, storeId, name: "Organic Forest Honey Family Value Pack", offerText: "Pure 500g jar · limited stock", price: 299, endsOn: "2026-08-30", badge: "Weekend Special", imageUrl: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='500'%3E%3Crect width='400' height='500' fill='%23f59e0b'/%3E%3Ctext x='200' y='250' text-anchor='middle' font-size='42'%3EOrganic Honey%3C/text%3E%3C/svg%3E", active: true }],
       [orderKind]: [{ id: "priced_order", ownerId, storeId, customerAccountId: customerId, customerName: "Refill Customer", phone: "9876543210", items: [{ name: "Monthly medicine", qty: 1 }], amount: 525, upiUri: "upi://pay?pa=nature%40upi&am=525", status: "Priced", messages: [], createdAt: "2026-08-15T08:00:00.000Z", updatedAt: "2026-08-15T08:00:00.000Z" }],
     },
   });
   const assertNoErrors = monitorPageErrors(page);
   await page.goto(`/digit58/#store&owner=${ownerId}&store=${storeId}`);
   const promotionStrip = page.locator(".promotion-strip");
-  const promotionTicket = promotionStrip.locator('.customer-ticket[aria-label="Organic Honey"]').first();
+  const promotionTicket = promotionStrip.locator('.customer-ticket[aria-label="Organic Forest Honey Family Value Pack"]').first();
   await expect(promotionTicket).toBeVisible();
   await expect(promotionTicket.locator(".promotion-ticket-image img")).toBeVisible();
-  await expect(promotionTicket.locator(".promotion-product-title")).toHaveText("Organic Honey");
+  await expect(promotionTicket.locator(".promotion-product-title")).toHaveText("Organic Forest Honey Family Value Pack");
   await expect(promotionStrip).toContainText("₹299/- only");
   await expect(promotionStrip).not.toContainText("Special Offer");
   await expect(promotionStrip).not.toContainText("Limited-time store offer");
@@ -1061,12 +1094,17 @@ test("Refills customer confirms a reusable Razorpay.me payment and adds promotio
     const track = document.querySelector(".promotion-track");
     const buy = card.querySelector(".promotion-add");
     const price = card.querySelector(".promotion-offer-price");
-    const cardBox = card.getBoundingClientRect(), buyBox = buy.getBoundingClientRect();
-    const cardStyle=getComputedStyle(card),priceStyle=getComputedStyle(price),titleStyle=getComputedStyle(card.querySelector('.promotion-product-title')),endStyle=getComputedStyle(card.querySelector('.promotion-end-date'));
-    return { width: cardBox.width, buyFits: buyBox.left >= cardBox.left && buyBox.right <= cardBox.right, animation: getComputedStyle(track).animationName, duration: getComputedStyle(track).animationDuration, priceAnimation: priceStyle.animationName, priceColor: priceStyle.color, titleColor:titleStyle.color, titleWeight:titleStyle.fontWeight, endColor:endStyle.color, cardBackground: cardStyle.backgroundImage, cardShadow: cardStyle.boxShadow };
+    const title = card.querySelector('.promotion-product-title');
+    const image = card.querySelector('.promotion-ticket-image');
+    const cardBox = card.getBoundingClientRect(), buyBox = buy.getBoundingClientRect(), titleBox = title.getBoundingClientRect(), imageBox = image.getBoundingClientRect();
+    const cardStyle=getComputedStyle(card),priceStyle=getComputedStyle(price),titleStyle=getComputedStyle(title),endStyle=getComputedStyle(card.querySelector('.promotion-end-date'));
+    return { width: cardBox.width, height: cardBox.height, imageHeight: imageBox.height, titleHeight:titleBox.height, titleBelowImage: titleBox.top >= imageBox.bottom - 1, titleWhiteSpace:titleStyle.whiteSpace, titleClamp:titleStyle.webkitLineClamp, buyFits: buyBox.left >= cardBox.left && buyBox.right <= cardBox.right, animation: getComputedStyle(track).animationName, duration: getComputedStyle(track).animationDuration, priceAnimation: priceStyle.animationName, priceColor: priceStyle.color, titleColor:titleStyle.color, titleWeight:titleStyle.fontWeight, endColor:endStyle.color, cardBackground: cardStyle.backgroundImage, cardShadow: cardStyle.boxShadow };
   });
   expect(ticketMotion.width).toBeLessThanOrEqual(158);
-  expect(ticketMotion).toMatchObject({ buyFits: true, animation: "promotionMarquee", duration: "42s", priceAnimation: "none", priceColor: "rgb(220, 38, 38)", titleColor:"rgb(255, 255, 255)", titleWeight:"950", endColor:"rgb(255, 255, 255)", cardBackground: "none", cardShadow: "none" });
+  expect(ticketMotion.height).toBeGreaterThanOrEqual(270);
+  expect(ticketMotion.imageHeight).toBeGreaterThanOrEqual(158);
+  expect(ticketMotion.titleHeight).toBeGreaterThan(20);
+  expect(ticketMotion).toMatchObject({ titleBelowImage:true, titleWhiteSpace:"normal", titleClamp:"2", buyFits: true, animation: "promotionMarquee", duration: "42s", priceAnimation: "none", priceColor: "rgb(220, 38, 38)", titleColor:"rgb(255, 255, 255)", titleWeight:"950", endColor:"rgb(255, 255, 255)", cardBackground: "none", cardShadow: "none" });
   const razorpayLink = page.getByRole("link", { name: /Open Razorpay & Pay/ });
   await expect(razorpayLink).toHaveAttribute("href", "https://razorpay.me/@naturerefills");
   await razorpayLink.evaluate((link) => link.addEventListener("click", (event) => event.preventDefault(), { once: true }));
@@ -1089,12 +1127,12 @@ test("Refills customer confirms a reusable Razorpay.me payment and adds promotio
   await promotionStrip.getByRole("button", { name: "Add one" }).click();
   await expect(promotionStrip.locator(".promotion-stepper strong").first()).toHaveText("2");
   await page.getByRole("button", { name: "+ Place New Order" }).click();
-  await expect(page.locator('#placeOrderForm input[name="itemName[]"]').first()).toHaveValue("Organic Honey");
+  await expect(page.locator('#placeOrderForm input[name="itemName[]"]').first()).toHaveValue("Organic Forest Honey Family Value Pack");
   await expect(page.locator('#placeOrderForm input[name="itemQty[]"]').first()).toHaveValue("2");
   await page.locator('#placeOrderForm textarea[name="address"]').fill("12 Market Road, Hyderabad");
   await page.getByRole("button", { name: "Submit Order" }).click();
   await expect.poll(async () => page.evaluate((kind) => window.__g58Mock.store[kind].filter((row) => row.status === "Requested").length, orderKind)).toBe(1);
   const orders = await page.evaluate((kind) => window.__g58Mock.store[kind], orderKind);
-  expect(orders.find((row) => row.status === "Requested")).toMatchObject({ status: "Requested", items: [{ name: "Organic Honey", qty: 2 }] });
+  expect(orders.find((row) => row.status === "Requested")).toMatchObject({ status: "Requested", items: [{ name: "Organic Forest Honey Family Value Pack", qty: 2 }] });
   await assertNoErrors();
 });
