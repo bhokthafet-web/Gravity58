@@ -1051,7 +1051,7 @@ test("Refills customer confirms a reusable Razorpay.me payment and adds promotio
   await expect(promotionTicket).toBeVisible();
   await expect(promotionTicket.locator(".promotion-ticket-image img")).toBeVisible();
   await expect(promotionStrip).toContainText("₹299/- only");
-  await expect(promotionStrip).toContainText("Special Offer");
+  await expect(promotionStrip).not.toContainText("Special Offer");
   await expect(promotionStrip).not.toContainText("Limited-time store offer");
   await expect(promotionStrip).toContainText("Offer ends 30 Aug");
   await expect(page.locator("#promotionRail")).toHaveClass(/is-auto-scrolling/);
@@ -1061,10 +1061,11 @@ test("Refills customer confirms a reusable Razorpay.me payment and adds promotio
     const buy = card.querySelector(".promotion-add");
     const price = card.querySelector(".promotion-offer-price");
     const cardBox = card.getBoundingClientRect(), buyBox = buy.getBoundingClientRect();
-    return { width: cardBox.width, buyFits: buyBox.left >= cardBox.left && buyBox.right <= cardBox.right, animation: getComputedStyle(track).animationName, duration: getComputedStyle(track).animationDuration, priceAnimation: getComputedStyle(price).animationName };
+    const cardStyle=getComputedStyle(card),priceStyle=getComputedStyle(price);
+    return { width: cardBox.width, buyFits: buyBox.left >= cardBox.left && buyBox.right <= cardBox.right, animation: getComputedStyle(track).animationName, duration: getComputedStyle(track).animationDuration, priceAnimation: priceStyle.animationName, priceColor: priceStyle.color, cardBackground: cardStyle.backgroundImage, cardShadow: cardStyle.boxShadow };
   });
   expect(ticketMotion.width).toBeLessThanOrEqual(158);
-  expect(ticketMotion).toMatchObject({ buyFits: true, animation: "promotionMarquee", duration: "42s", priceAnimation: "promotionPriceGlitter" });
+  expect(ticketMotion).toMatchObject({ buyFits: true, animation: "promotionMarquee", duration: "42s", priceAnimation: "none", priceColor: "rgb(220, 38, 38)", cardBackground: "none", cardShadow: "none" });
   const razorpayLink = page.getByRole("link", { name: /Open Razorpay & Pay/ });
   await expect(razorpayLink).toHaveAttribute("href", "https://razorpay.me/@naturerefills");
   await razorpayLink.evaluate((link) => link.addEventListener("click", (event) => event.preventDefault(), { once: true }));

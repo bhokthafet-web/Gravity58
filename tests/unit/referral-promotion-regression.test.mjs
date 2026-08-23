@@ -38,6 +38,8 @@ test("customer promotion cards show uploaded brand art without duplicate title t
   assert.match(source, /hasImage\?`<div class="promotion-ticket-image"/);
   assert.match(source, /:`<h3>\$\{html\(promotion\.name\)\}<\/h3>`/);
   const css = await read("digit58/styles.css");
-  assert.match(css, /\.customer-ticket\.brand-art-ticket\{[^}]*background:#fff/);
+  assert.match(css, /\.customer-ticket\.brand-art-ticket\{[^}]*background:transparent/);
   assert.match(css, /filter:none!important;opacity:1!important/);
+  assert.doesNotMatch(source, /promotion-badge/);
+  assert.match(css, /\.promotion-offer-price\{[^}]*color:#dc2626!important;[^}]*animation:none/);
 });
