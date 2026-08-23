@@ -1019,7 +1019,7 @@ test("Refills owner publishes a promotion and enables the optional Razorpay stor
   expect(promotions).toHaveLength(1);
   expect(promotions[0]).toMatchObject({ storeId, name: "Organic Honey", price: 299, endsOn: "2026-08-30", badge: "Special Offer", active: true });
 
-  await page.getByRole("button", { name: /Orders/ }).click();
+  await page.getByRole("button", { name: "🧾 Orders", exact: true }).click();
   await expect(page.getByText("Razorpay payment submitted")).toBeVisible();
   await expect(page.getByRole("button", { name: "Payment Received — Accept" })).toBeVisible();
   page.once("dialog", (dialog) => dialog.accept());
@@ -1039,15 +1039,17 @@ test("Refills customer confirms a reusable Razorpay.me payment and adds promotio
     initialUser: { $id: customerId, email: "customer@example.com", name: "Refill Customer" },
     seed: {
       [`digit58_store_${ownerId}`]: [{ id: storeId, ownerId, name: "Nature Refills", category: "Organic Store", city: "Hyderabad", upiId: "nature@upi", razorpayEnabled: true, razorpayLink: "https://razorpay.me/@naturerefills" }],
-      [`digit58_customer_${ownerId}`]: [{ id: "customer_link", ownerId, storeId, customerAccountId: customerId, customerName: "Refill Customer", customerEmail: "customer@example.com", phone: "9876543210" }],
-      [`digit58_promo_${ownerId}`]: [{ id: "promo_honey", ownerId, storeId, name: "Organic Honey", offerText: "Pure 500g jar · limited stock", price: 299, endsOn: "2026-08-30", badge: "Weekend Special", active: true }],
+      [`digit58_customer_${ownerId}`]: [{ id: "customer_link", ownerId, storeId, customerAccountId: customerId, customerName: "Refill Customer", customerEmail: "customer@example.com", phone: "9876543210", agreementAcceptedAt: "2026-08-01T08:00:00.000Z" }],
+      [`digit58_promo_${ownerId}`]: [{ id: "promo_honey", ownerId, storeId, name: "Organic Honey", offerText: "Pure 500g jar · limited stock", price: 299, endsOn: "2026-08-30", badge: "Weekend Special", imageUrl: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='500'%3E%3Crect width='400' height='500' fill='%23f59e0b'/%3E%3Ctext x='200' y='250' text-anchor='middle' font-size='42'%3EOrganic Honey%3C/text%3E%3C/svg%3E", active: true }],
       [orderKind]: [{ id: "priced_order", ownerId, storeId, customerAccountId: customerId, customerName: "Refill Customer", phone: "9876543210", items: [{ name: "Monthly medicine", qty: 1 }], amount: 525, upiUri: "upi://pay?pa=nature%40upi&am=525", status: "Priced", messages: [], createdAt: "2026-08-15T08:00:00.000Z", updatedAt: "2026-08-15T08:00:00.000Z" }],
     },
   });
   const assertNoErrors = monitorPageErrors(page);
   await page.goto(`/digit58/#store&owner=${ownerId}&store=${storeId}`);
   const promotionStrip = page.locator(".promotion-strip");
-  await expect(promotionStrip).toContainText("Organic Honey");
+  const promotionTicket = promotionStrip.locator('.customer-ticket[aria-label="Organic Honey"]').first();
+  await expect(promotionTicket).toBeVisible();
+  await expect(promotionTicket.locator(".promotion-ticket-image img")).toBeVisible();
   await expect(promotionStrip).toContainText("₹299/- only");
   await expect(promotionStrip).toContainText("Special Offer");
   await expect(promotionStrip).not.toContainText("Limited-time store offer");
@@ -1087,9 +1089,10 @@ test("Refills customer confirms a reusable Razorpay.me payment and adds promotio
   await page.getByRole("button", { name: "+ Place New Order" }).click();
   await expect(page.locator('#placeOrderForm input[name="itemName[]"]').first()).toHaveValue("Organic Honey");
   await expect(page.locator('#placeOrderForm input[name="itemQty[]"]').first()).toHaveValue("2");
+  await page.locator('#placeOrderForm textarea[name="address"]').fill("12 Market Road, Hyderabad");
   await page.getByRole("button", { name: "Submit Order" }).click();
-  await expect(page.locator("#toast")).toContainText("Order sent to the store");
+  await expect.poll(async () => page.evaluate((kind) => window.__g58Mock.store[kind].filter((row) => row.status === "Requested").length, orderKind)).toBe(1);
   const orders = await page.evaluate((kind) => window.__g58Mock.store[kind], orderKind);
-  expect(orders[0]).toMatchObject({ status: "Requested", items: [{ name: "Organic Honey", qty: 2 }] });
+  expect(orders.find((row) => row.status === "Requested")).toMatchObject({ status: "Requested", items: [{ name: "Organic Honey", qty: 2 }] });
   await assertNoErrors();
 });
