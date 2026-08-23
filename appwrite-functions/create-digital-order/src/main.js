@@ -1026,7 +1026,7 @@ async function createDigit58Booking(call, input, userId, options = {}) {
   const storeRow = await call(`/tablesdb/${DATABASE_ID}/tables/${TABLE_ID}/rows/${encodeURIComponent(storeId)}`).catch(() => null);
   if (!storeRow || storeRow.kind !== digit58StoreKind(ownerId)) throw new Error('This store could not be found.');
   const store = cleanRow(storeRow);
-  if (store.businessType !== 'services') throw new Error('This store does not accept bookings.');
+  if (!['services', 'game_zones'].includes(store.businessType)) throw new Error('This store does not accept bookings.');
   if (store.emergencyMode) throw new Error('This store is not accepting new bookings right now. Please check back shortly.');
 
   const availableDays = Array.isArray(store.availableDays) ? store.availableDays.map(Number) : [];

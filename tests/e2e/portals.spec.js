@@ -503,6 +503,71 @@ test("Service owner enables doorstep booking and forwards the customer location 
   await assertNoErrors();
 });
 
+test("owner creates a Game Zone and customers reserve independent play-area slots", async ({ page }) => {
+  const ownerId = "game_zone_owner", customerId = "game_zone_customer";
+  await prepareMockApi(page, {
+    state: null,
+    initialUser: { $id: ownerId, email: "games@example.com", name: "Game Zone Owner" },
+    seed: {
+      digit58_entitlements: [{ id: "game_zone_entitlement", ownerId, active: true, paused: false, lifetime: true, storeSlots: 1, policyAcceptedAt: new Date().toISOString() }],
+    },
+  });
+  const assertNoErrors = monitorPageErrors(page);
+  await page.goto("/digit58/");
+  await page.getByRole("button", { name: "+ New Store" }).click();
+  await expect(page.getByRole("radio", { name: /Game Zone/ })).toBeVisible();
+  await page.getByRole("radio", { name: /Game Zone/ }).check();
+  await page.locator('#storeForm input[name="name"]').fill("PlayOn Arena");
+  await page.locator('#storeForm input[name="city"]').fill("Hyderabad");
+  await page.getByRole("button", { name: "Create Store" }).click();
+
+  await expect(page.getByRole("button", { name: /Games & Slots/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Play Areas/ })).toBeVisible();
+  const storeRecord = await page.evaluate((kind) => window.__g58Mock.store[kind][0], `digit58_store_${ownerId}`);
+  expect(storeRecord).toMatchObject({ name: "PlayOn Arena", businessType: "services", bookingMode: "game_zones", category: "Indoor Game Zone" });
+
+  await page.getByRole("button", { name: /Games & Slots/ }).click();
+  await page.getByRole("button", { name: "+ Add Game / Slot" }).click();
+  await expect(page.locator("#gameZoneExamples option")).toHaveCount(6);
+  await page.locator('#serviceForm input[name="name"]').fill("Box Cricket");
+  await page.locator('#serviceForm input[name="price"]').fill("300");
+  await page.locator('#serviceForm input[name="durationMinutes"]').fill("60");
+  await page.locator('#serviceForm input[name="prepaymentPercent"]').fill("0");
+  await page.getByRole("button", { name: "Add Game / Slot", exact: true }).click();
+  await expect(page.locator(".catalog-item-card", { hasText: "Box Cricket" })).toContainText("60 min");
+
+  await page.getByRole("button", { name: /Play Areas/ }).click();
+  await page.getByRole("button", { name: "+ Add Play Area" }).click();
+  await page.locator('#expertForm input[name="name"]').fill("Box Cricket Turf 1");
+  await page.getByRole("button", { name: "Add Play Area", exact: true }).click();
+  await expect(page.locator(".catalog-item-card", { hasText: "Box Cricket Turf 1" })).toBeVisible();
+
+  const stored = await page.evaluate(({ ownerId }) => {
+    const store = window.__g58Mock.store[`digit58_store_${ownerId}`][0];
+    const service = window.__g58Mock.store[`digit58_service_${ownerId}`][0];
+    const expert = window.__g58Mock.store[`digit58_expert_${ownerId}`][0];
+    return { store, service, expert };
+  }, { ownerId });
+  await page.evaluate(({ customerId, ownerId, storeId }) => {
+    window.stopOwnerRealtime?.();
+    window.__g58Mock.setUser({ $id: customerId, email: "player@example.com", name: "Player One" });
+    window.__g58Mock.store[`digit58_customer_${ownerId}`] = [{ id: "game_zone_link", ownerId, storeId, customerAccountId: customerId, customerName: "Player One", customerEmail: "player@example.com", phone: "9876543210", agreementAcceptedAt: new Date().toISOString() }];
+  }, { customerId, ownerId, storeId: stored.store.id });
+  await page.goto(`/digit58/#store&owner=${ownerId}&store=${stored.store.id}`);
+  await expect(page.getByRole("heading", { name: "Book a Game" })).toBeVisible();
+  await page.getByRole("button", { name: "+ Book a Game" }).click();
+  await expect(page.locator('#bookingForm label', { hasText: "Game / Slot" })).toBeVisible();
+  await expect(page.locator('#bookingForm label', { hasText: "Play Area" })).toBeVisible();
+  await page.locator("#bookingExpertSelect").selectOption(stored.expert.id);
+  await page.locator("#bookingDateInput").fill(indiaDate(new Date(Date.now() + 86400000)));
+  await page.locator(".slot-btn.available").first().click();
+  await page.getByRole("button", { name: "Request Slot" }).click();
+  await expect(page.locator(".order-item-card", { hasText: "Box Cricket" })).toContainText("Box Cricket Turf 1");
+  const booking = await page.evaluate((kind) => window.__g58Mock.store[kind][0], `digit58_booking_${ownerId}`);
+  expect(booking).toMatchObject({ serviceId: stored.service.id, expertId: stored.expert.id, status: "Requested" });
+  await assertNoErrors();
+});
+
 test("customer cancellation charge blocks only that store until the owner confirms payment", async ({ page }) => {
   const ownerId = "cancel_owner", customerId = "cancel_customer", storeId = "cancel_store", bookingId = "cancel_booking";
   const bookingKind = `digit58_booking_${ownerId}`, today = indiaDate(), tomorrow = indiaDate(new Date(Date.now() + 86400000));
@@ -1098,13 +1163,13 @@ test("Refills customer confirms a reusable Razorpay.me payment and adds promotio
     const image = card.querySelector('.promotion-ticket-image');
     const cardBox = card.getBoundingClientRect(), buyBox = buy.getBoundingClientRect(), titleBox = title.getBoundingClientRect(), imageBox = image.getBoundingClientRect();
     const cardStyle=getComputedStyle(card),priceStyle=getComputedStyle(price),titleStyle=getComputedStyle(title),endStyle=getComputedStyle(card.querySelector('.promotion-end-date'));
-    return { width: cardBox.width, height: cardBox.height, imageHeight: imageBox.height, titleHeight:titleBox.height, titleBelowImage: titleBox.top >= imageBox.bottom - 1, titleWhiteSpace:titleStyle.whiteSpace, titleClamp:titleStyle.webkitLineClamp, buyFits: buyBox.left >= cardBox.left && buyBox.right <= cardBox.right, animation: getComputedStyle(track).animationName, duration: getComputedStyle(track).animationDuration, priceAnimation: priceStyle.animationName, priceColor: priceStyle.color, titleColor:titleStyle.color, titleWeight:titleStyle.fontWeight, endColor:endStyle.color, cardBackground: cardStyle.backgroundImage, cardShadow: cardStyle.boxShadow };
+    return { width: cardBox.width, height: cardBox.height, imageHeight: imageBox.height, titleHeight:titleBox.height, titleBelowImage: titleBox.top >= imageBox.bottom - 1, titleSize:titleStyle.fontSize, titleWhiteSpace:titleStyle.whiteSpace, titleClamp:titleStyle.webkitLineClamp, buyFits: buyBox.left >= cardBox.left && buyBox.right <= cardBox.right, animation: getComputedStyle(track).animationName, duration: getComputedStyle(track).animationDuration, priceAnimation: priceStyle.animationName, priceColor: priceStyle.color, titleColor:titleStyle.color, titleWeight:titleStyle.fontWeight, endColor:endStyle.color, cardBackground: cardStyle.backgroundImage, cardShadow: cardStyle.boxShadow };
   });
   expect(ticketMotion.width).toBeLessThanOrEqual(158);
   expect(ticketMotion.height).toBeGreaterThanOrEqual(270);
   expect(ticketMotion.imageHeight).toBeGreaterThanOrEqual(158);
   expect(ticketMotion.titleHeight).toBeGreaterThan(20);
-  expect(ticketMotion).toMatchObject({ titleBelowImage:true, titleWhiteSpace:"normal", titleClamp:"2", buyFits: true, animation: "promotionMarquee", duration: "42s", priceAnimation: "none", priceColor: "rgb(220, 38, 38)", titleColor:"rgb(255, 255, 255)", titleWeight:"950", endColor:"rgb(255, 255, 255)", cardBackground: "none", cardShadow: "none" });
+  expect(ticketMotion).toMatchObject({ titleBelowImage:true, titleSize:"11px", titleWhiteSpace:"normal", titleClamp:"2", buyFits: true, animation: "promotionMarquee", duration: "42s", priceAnimation: "none", priceColor: "rgb(220, 38, 38)", titleColor:"rgb(255, 255, 255)", titleWeight:"950", endColor:"rgb(255, 255, 255)", cardBackground: "none", cardShadow: "none" });
   const razorpayLink = page.getByRole("link", { name: /Open Razorpay & Pay/ });
   await expect(razorpayLink).toHaveAttribute("href", "https://razorpay.me/@naturerefills");
   await razorpayLink.evaluate((link) => link.addEventListener("click", (event) => event.preventDefault(), { once: true }));

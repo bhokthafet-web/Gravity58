@@ -168,7 +168,7 @@ th,td{text-align:left;padding:12px;border-bottom:1px solid var(--line);white-spa
 .option-toggle span{display:grid;gap:3px}.option-toggle strong{font-size:13px}.option-toggle small{color:var(--muted);line-height:1.4}
 .empty{padding:36px;text-align:center;color:var(--muted);border:1px dashed var(--line);border-radius:18px}
 .card-purchase-tiers .option-toggle{margin:8px 0}
-.business-type-toggle{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.business-type-toggle{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
 .business-type-toggle .option-toggle{margin:0}
 @media(max-width:560px){.business-type-toggle{grid-template-columns:1fr}}
 .delivery-days-field{border:1px solid var(--line);border-radius:15px;padding:12px 14px;margin:16px 0}
@@ -259,7 +259,7 @@ th,td{text-align:left;padding:12px;border-bottom:1px solid var(--line);white-spa
 .promotion-ticket-image{position:relative;z-index:1;flex:1;min-height:110px;margin:0 0 10px;display:flex}
 .promotion-ticket-image img{width:100%;height:100%;object-fit:contain;display:block;background:none;border:none;image-rendering:auto;filter:none!important;opacity:1!important}
 .promotion-ticket h3{margin:0 0 6px;font-size:18px;line-height:1.08}
-.customer-ticket .promotion-product-title{position:relative;z-index:3;display:-webkit-box;margin:0 0 5px;color:#fff;font-size:13px;font-weight:950;line-height:1.15;text-align:center;white-space:normal;overflow:hidden;-webkit-box-orient:vertical;-webkit-line-clamp:2}
+.customer-ticket .promotion-product-title{position:relative;z-index:3;display:-webkit-box;margin:0 0 5px;color:#fff;font-size:11px;font-weight:950;line-height:1.2;letter-spacing:.01em;text-align:center;white-space:normal;overflow:hidden;-webkit-box-orient:vertical;-webkit-line-clamp:2}
 .promotion-ticket-foot{display:flex;flex:0 0 auto;align-items:center;justify-content:center;margin-top:auto;padding-top:7px;border-top:1px dashed rgba(23,16,25,.38)}
 .promotion-ticket-foot>strong{font-size:12px;white-space:nowrap}.customer-ticket{flex:0 0 156px;width:156px;height:auto;min-height:270px;padding:10px}.owner-ticket{height:340px}.owner-ticket .chips{margin-top:13px}.owner-ticket .actions{position:relative;z-index:3;margin-top:12px}.promotion-disabled{filter:saturate(.25);opacity:.72}
 .customer-ticket.brand-art-ticket{padding:8px;background:transparent;color:#171019;border:0;box-shadow:none}
