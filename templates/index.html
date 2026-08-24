@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#07111f">
+  <title>Free Business Website Builder — G58</title>
+  <meta name="description" content="Choose a free professional business template, customize every element and download your complete website. No account required.">
+  <meta name="robots" content="index,follow">
+  <link rel="canonical" href="https://g58.in/templates/">
+  <meta property="og:title" content="Free Business Website Builder — G58">
+  <meta property="og:description" content="Choose a template, customize everything and download your complete business website free. No account required.">
+  <meta property="og:url" content="https://g58.in/templates/">
+  <meta property="og:type" content="website">
+  <link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32.png?v=5">
+  <link rel="apple-touch-icon" sizes="180x180" href="/assets/apple-touch-icon.png?v=5">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="marketplace.css?v=1">
+</head>
+<body>
+  <header class="market-header">
+    <a class="g58-brand" href="/" aria-label="Gravity58 home">
+      <svg viewBox="0 0 120 120" fill="none" stroke="currentColor" stroke-width="8" aria-hidden="true"><circle cx="60" cy="26" r="15"/><circle cx="28" cy="82" r="15"/><circle cx="92" cy="82" r="15"/></svg>
+      <div><strong>GRAVITY<span>58</span></strong><small>FREE WEBSITE BUILDER</small></div>
+    </a>
+    <nav><a href="#templates">Templates</a><a href="#localProjects">Your Websites</a><button type="button" id="importProjectTop">Import Project</button></nav>
+  </header>
+
+  <main>
+    <section class="market-hero">
+      <div class="hero-copy">
+        <span class="eyebrow">FREE BUSINESS WEBSITE BUILDER</span>
+        <h1>Build Your Business Website. <em>Free.</em></h1>
+        <p>Choose a professional template, customize every element and download your complete website.</p>
+        <div class="hero-actions"><a href="#templates" class="primary-cta">Start Building Free <span>→</span></a><button type="button" class="text-cta" id="howButton">How It Works</button></div>
+        <div class="trust-line"><span>✓ No account</span><span>✓ No coding</span><span>✓ No subscription</span></div>
+      </div>
+      <div class="hero-studio" aria-label="Website builder preview">
+        <div class="studio-bar"><i></i><i></i><i></i><span>G58 Visual Builder</span></div>
+        <div class="studio-body"><aside><b></b><b></b><b></b><b></b></aside><div class="studio-canvas"><span>YOUR BUSINESS</span><h2>Everything you need.<br>Beautifully presented.</h2><p>Click any element to make it yours.</p><button>Book Now</button><div class="studio-cards"><i></i><i></i><i></i></div></div><aside class="right"><b></b><b></b><b></b></aside></div>
+        <span class="floating-note note-one">Click to edit</span><span class="floating-note note-two">Mobile ready</span>
+      </div>
+    </section>
+
+    <section class="local-projects hidden" id="localProjects">
+      <div class="section-head"><div><span class="eyebrow">SAVED ON THIS DEVICE</span><h2>Your Local Websites</h2><p>Continue where you left off. Your projects stay private in this browser.</p></div><label class="import-button">Import Project<input id="importProject" type="file" accept=".json,.g58project.json,application/json"></label></div>
+      <div class="local-grid" id="localGrid"></div>
+    </section>
+
+    <section class="template-section" id="templates">
+      <div class="section-head"><div><span class="eyebrow">10 PROFESSIONAL STARTING POINTS</span><h2>Choose a template. Make it yours.</h2><p>Every section, image, button and colour is editable.</p></div><div class="category-filter" role="group" aria-label="Template category"><button class="active" data-filter="all">All</button><button data-filter="service">Services</button><button data-filter="product">Products</button><button data-filter="menu">Food & Café</button></div></div>
+      <div class="template-grid" id="templateGrid"></div>
+    </section>
+
+    <section class="how-section" id="how">
+      <div class="section-head"><div><span class="eyebrow">HOW IT WORKS</span><h2>From template to live website.</h2></div></div>
+      <ol class="steps">
+        <li><b>01</b><strong>Choose a template</strong><span>Start from a design made for your type of business.</span></li>
+        <li><b>02</b><strong>Click anything</strong><span>Edit text, images, colours, sections and every visible detail.</span></li>
+        <li><b>03</b><strong>Connect G58</strong><span>Add Orders, Bookings, Refills, Digital Menu or Business Card links.</span></li>
+        <li><b>04</b><strong>Download free</strong><span>Get a complete ZIP ready for any web host.</span></li>
+      </ol>
+    </section>
+  </main>
+
+  <footer><a class="g58-brand" href="/"><svg viewBox="0 0 120 120" fill="none" stroke="currentColor" stroke-width="8"><circle cx="60" cy="26" r="15"/><circle cx="28" cy="82" r="15"/><circle cx="92" cy="82" r="15"/></svg><div><strong>GRAVITY<span>58</span></strong><small>YOUR BUSINESS. ONLINE.</small></div></a><p>Free website templates and a complete visual builder. No account required.</p></footer>
+
+  <dialog id="howDialog"><button class="dialog-close" aria-label="Close">×</button><span class="eyebrow">BUILD YOUR WEBSITE</span><h2>Seven simple steps.</h2><ol><li><b>1</b> Choose a template.</li><li><b>2</b> Click anything to edit it.</li><li><b>3</b> Add or rearrange sections.</li><li><b>4</b> Upload your own images.</li><li><b>5</b> Connect Orders, Bookings or Digital Menu.</li><li><b>6</b> Preview desktop, tablet and mobile.</li><li><b>7</b> Download your website for free.</li></ol><a href="#templates" class="primary-cta" id="dialogStart">Start Building</a></dialog>
+  <div class="toast" id="toast" role="status"></div>
+
+  <script src="builder-core.js?v=1"></script>
+  <script src="marketplace.js?v=1"></script>
+  <script src="/js/server-status.js?v=1"></script>
+</body>
+</html>

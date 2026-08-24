@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#07111f">
+  <title>Website Preview — G58 Builder</title>
+  <meta name="robots" content="noindex,nofollow">
+  <link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32.png?v=5">
+  <link rel="apple-touch-icon" sizes="180x180" href="/assets/apple-touch-icon.png?v=5">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet">
+  <style id="previewStyles"></style>
+  <style>
+    .preview-tools{position:fixed;z-index:100;left:50%;bottom:16px;transform:translateX(-50%);display:flex;align-items:center;gap:6px;padding:7px;border:1px solid rgba(255,255,255,.18);border-radius:15px;background:rgba(7,17,31,.92);box-shadow:0 18px 50px rgba(0,0,0,.28);backdrop-filter:blur(15px)}.preview-tools a,.preview-tools button{min-height:38px;display:grid;place-items:center;padding:0 14px;border:0;border-radius:9px;background:rgba(255,255,255,.08);color:#fff;font:800 11px Inter,sans-serif;text-decoration:none;cursor:pointer}.preview-tools button.active{background:#fff;color:#101827}.preview-tools .edit{background:#ff7419;color:#111}.preview-viewport{width:100%;min-height:100vh;margin:auto;background:#fff;transition:.3s}.preview-viewport.tablet{width:768px;box-shadow:0 0 50px rgba(0,0,0,.18)}.preview-viewport.mobile{width:390px;box-shadow:0 0 50px rgba(0,0,0,.18)}body.preview-device{background:#dfe5ee}.preview-viewport.mobile .wb-nav nav,.preview-viewport.mobile .wb-nav-cta{display:none}.preview-viewport.mobile .wb-mobile-menu{display:block}.preview-viewport.mobile .wb-section{padding:var(--pad-mobile) 18px}.preview-viewport.mobile .wb-section-inner{grid-template-columns:1fr}.preview-viewport.tablet .wb-section{padding:var(--pad-tablet) 28px}.preview-viewport.tablet .wb-layout-split .wb-section-inner{grid-template-columns:1fr}@media(max-width:700px){.preview-tools{bottom:8px;width:calc(100% - 16px);justify-content:center}.preview-tools a,.preview-tools button{padding:0 9px;font-size:9px}}
+  </style>
+</head>
+<body>
+  <div class="preview-viewport" id="previewViewport"></div>
+  <nav class="preview-tools" aria-label="Preview controls"><a href="../">Templates</a><button class="active" data-device="desktop">Desktop</button><button data-device="tablet">Tablet</button><button data-device="mobile">Mobile</button><a class="edit" id="editLink">Edit Website</a></nav>
+  <script src="../builder-core.js?v=1"></script>
+  <script>
+    (async()=>{const B=window.G58Builder,p=new URLSearchParams(location.search),savedId=p.get('project');let project=savedId?await B.getProject(savedId):null;const isSaved=Boolean(project);if(!project)project=B.makeProject(p.get('template')||'salon-spa');let page=project.website.pages.find(row=>row.id===p.get('page'))||project.website.pages.find(row=>row.home)||project.website.pages[0];document.title=`${page.name} — ${project.website.settings.businessName}`;document.getElementById('previewStyles').textContent=`${B.themeCss(project)}\n${B.publicCss}`;document.getElementById('previewViewport').innerHTML=B.renderCanvas(project,page.id,false);document.getElementById('editLink').href=isSaved?`../editor/?project=${project.id}`:`../editor/?template=${project.template}`;document.querySelectorAll('[data-device]').forEach(button=>button.onclick=()=>{document.querySelectorAll('[data-device]').forEach(row=>row.classList.toggle('active',row===button));const device=button.dataset.device,frame=document.getElementById('previewViewport');frame.className=`preview-viewport ${device==='desktop'?'':device}`;document.body.classList.toggle('preview-device',device!=='desktop')});})();
+  </script>
+  <script src="/js/server-status.js?v=1"></script>
+</body>
+</html>

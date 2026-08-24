@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#07111f">
+  <title>G58 Visual Website Builder</title>
+  <meta name="robots" content="noindex,nofollow">
+  <link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32.png?v=5">
+  <link rel="apple-touch-icon" sizes="180x180" href="/assets/apple-touch-icon.png?v=5">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="editor.css?v=1">
+  <style id="siteTheme"></style>
+</head>
+<body>
+  <header class="builder-topbar">
+    <a class="builder-brand" href="../" title="Back to templates"><svg viewBox="0 0 120 120" fill="none" stroke="currentColor" stroke-width="8"><circle cx="60" cy="26" r="15"/><circle cx="28" cy="82" r="15"/><circle cx="92" cy="82" r="15"/></svg><strong>G58 <span>BUILDER</span></strong></a>
+    <label class="website-name"><span>Website</span><input id="websiteName" aria-label="Website name"></label>
+    <div class="history-controls"><button id="undoButton" type="button" title="Undo" aria-label="Undo">↶</button><button id="redoButton" type="button" title="Redo" aria-label="Redo">↷</button></div>
+    <span class="save-status" id="saveStatus"><i></i> Saved on this device</span>
+    <div class="viewport-controls" role="group" aria-label="Responsive preview"><button type="button" data-viewport="desktop" class="active">Desktop</button><button type="button" data-viewport="tablet">Tablet</button><button type="button" data-viewport="mobile">Mobile</button></div>
+    <a class="top-action preview-action" id="previewButton">Preview</a>
+    <button class="top-action more-action" id="projectMenuButton" type="button" aria-expanded="false">Project ▾</button>
+    <button class="top-action download-action" id="downloadButton" type="button">Download Website</button>
+    <div class="project-menu" id="projectMenu"><button id="exportProjectButton" type="button">Export editable project</button><button id="importProjectButton" type="button">Import project</button><button id="newFromTemplateButton" type="button">Back to templates</button><input id="importProjectFile" type="file" accept=".json,.g58project.json,application/json"></div>
+  </header>
+
+  <main class="builder-shell">
+    <aside class="builder-left">
+      <nav class="left-nav" id="leftNav" aria-label="Builder tools"></nav>
+      <section class="left-panel"><div class="panel-title"><span id="leftTitle">Pages</span><button id="collapseLeft" type="button" aria-label="Collapse sidebar">‹</button></div><div id="leftPanelBody"></div></section>
+    </aside>
+    <section class="canvas-stage">
+      <div class="canvas-toolbar"><span id="pageIndicator">Home</span><span class="canvas-help">Click any text, image, button or section to edit it</span><button id="addSectionQuick" type="button">+ Add Section</button></div>
+      <div class="canvas-scroll"><div class="canvas-frame viewport-desktop" id="canvasFrame"><div id="canvas"></div></div></div>
+    </section>
+    <aside class="builder-right"><div class="panel-title"><span>Properties</span><button id="closeProperties" type="button" aria-label="Clear selection">×</button></div><div id="properties"><div class="empty-properties"><span>↖</span><strong>Select anything on the website</strong><p>Its design, content and links will appear here.</p></div></div></aside>
+  </main>
+
+  <dialog id="firstGuide" class="guide-dialog"><span class="guide-kicker">BUILD YOUR WEBSITE</span><h1>Click anything to customize it.</h1><p>You are editing the actual website. Your work saves automatically on this device.</p><div class="guide-flow"><span>Click anything</span><b>→</b><span>Customize</span><b>→</b><span>Add Sections</span><b>→</b><span>Connect G58</span><b>→</b><span>Preview</span><b>→</b><span>Download</span></div><button id="startBuilding" type="button">Start Building</button></dialog>
+  <dialog id="sectionLibrary" class="library-dialog"><div class="dialog-head"><div><span class="guide-kicker">SECTION LIBRARY</span><h2>Add a new section</h2></div><button data-close-dialog="sectionLibrary" type="button">×</button></div><div class="section-library-grid" id="sectionLibraryGrid"></div></dialog>
+  <dialog id="pageDialog" class="page-dialog"><div class="dialog-head"><div><span class="guide-kicker">NEW PAGE</span><h2>Add a website page</h2></div><button data-close-dialog="pageDialog" type="button">×</button></div><label class="field"><span>Page name</span><input id="newPageName" placeholder="Example: Offers" autocomplete="off"></label><button class="dialog-primary" id="confirmAddPage" type="button">Add Page</button></dialog>
+  <div class="toast" id="toast" role="status"></div>
+  <input id="hiddenImageInput" type="file" accept="image/jpeg,image/png,image/webp,image/gif" hidden>
+
+  <script src="../builder-core.js?v=1"></script>
+  <script src="editor.js?v=1"></script>
+  <script src="/js/server-status.js?v=1"></script>
+</body>
+</html>
