@@ -5,9 +5,11 @@ import { readFile } from "node:fs/promises";
 const root = new URL("../../", import.meta.url);
 const read = (path) => readFile(new URL(path, root), "utf8");
 
-test("the homepage keeps only the floating rupee referral entry point", async () => {
+test("the homepage has no floating referral or website builder shortcuts", async () => {
   const html = await read("index.html");
-  assert.match(html, /class="g58-referral-float"[^>]+href="\/refer\/"[^>]*>₹<\/a>/);
+  const css = await read("css/style.css");
+  assert.doesNotMatch(html, /g58-referral-float|g58-builder-float/);
+  assert.doesNotMatch(css, /g58-referral-float|g58-builder-float/);
   assert.doesNotMatch(html, /g58-refer-section/);
 });
 
