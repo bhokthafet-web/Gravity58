@@ -4,3 +4,12 @@
 @media(max-width:760px){.builder-topbar{gap:6px}.builder-brand{padding:0 5px}.builder-brand strong{display:none}.history-controls{display:none}.save-status{font-size:0}.save-status i{width:9px;height:9px}.more-action{display:none}.preview-action{padding:0 8px;font-size:9px}.download-action{padding:0 9px;font-size:9px}.builder-shell{grid-template-columns:1fr}.builder-left{position:fixed;z-index:80;left:0;top:64px;bottom:0;width:290px;grid-template-columns:240px 50px;transform:translateX(-240px);transition:.25s}.builder-left.open{transform:none}.left-nav{grid-column:2;grid-row:1;width:50px}.left-panel{grid-column:1;grid-row:1;margin:0}.canvas-scroll{padding:12px 12px 12px 58px}.canvas-frame{width:390px}.canvas-help{display:none}.section-library-grid{grid-template-columns:1fr 1fr}.guide-dialog{padding:26px}.guide-flow{align-items:stretch;flex-direction:column}.guide-flow b{display:none}}
 .page-dialog{width:min(470px,calc(100% - 32px));padding:28px;border:0;border-radius:24px;box-shadow:0 34px 100px rgba(0,0,0,.34)}.page-dialog .dialog-primary{width:100%;padding:14px 22px;border:0;border-radius:12px;background:var(--blue);color:#fff;font-weight:800;cursor:pointer}
 .canvas-frame [data-editor-region]{outline:2px solid transparent;outline-offset:-2px;cursor:pointer}.canvas-frame [data-editor-region]:hover{outline-color:rgba(36,87,230,.35)}.canvas-frame [data-editor-region].region-selected{outline-color:#2457e6;box-shadow:inset 0 0 0 4px rgba(36,87,230,.09)}.panel-subtitle{margin:0 0 10px;font:800 12px Manrope,sans-serif}
+
+/* Keep the editor chrome fixed while the website canvas scrolls independently. */
+.builder-shell{min-height:0}
+.builder-left,.builder-right,.left-panel{min-height:0}
+.canvas-stage{min-height:0;overflow:hidden;grid-template-rows:44px minmax(0,1fr)}
+.canvas-scroll{min-height:0;overflow:auto;overscroll-behavior:contain;scrollbar-gutter:stable;-webkit-overflow-scrolling:touch;touch-action:pan-x pan-y}
+.canvas-scroll:focus-visible{outline:3px solid var(--blue);outline-offset:-3px}
+.canvas-toolbar .canvas-top-button{border:1px solid #d4dbe5;background:#fff;color:#344054}
+.canvas-toolbar .canvas-top-button:hover{border-color:#9cb6fa;background:#eff4ff;color:var(--blue)}

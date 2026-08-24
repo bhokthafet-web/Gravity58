@@ -11,7 +11,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="editor.css?v=1">
+  <link rel="stylesheet" href="editor.css?v=2">
   <style id="siteTheme"></style>
 </head>
 <body>
@@ -33,8 +33,8 @@
       <section class="left-panel"><div class="panel-title"><span id="leftTitle">Pages</span><button id="collapseLeft" type="button" aria-label="Collapse sidebar">‹</button></div><div id="leftPanelBody"></div></section>
     </aside>
     <section class="canvas-stage">
-      <div class="canvas-toolbar"><span id="pageIndicator">Home</span><span class="canvas-help">Click any text, image, button or section to edit it</span><button id="addSectionQuick" type="button">+ Add Section</button></div>
-      <div class="canvas-scroll"><div class="canvas-frame viewport-desktop" id="canvasFrame"><div id="canvas"></div></div></div>
+      <div class="canvas-toolbar"><span id="pageIndicator">Home</span><span class="canvas-help">Click any text, image, button or section to edit it</span><button class="canvas-top-button" id="scrollCanvasTop" type="button" title="Scroll to the top of this page">↑ Top</button><button id="addSectionQuick" type="button">+ Add Section</button></div>
+      <div class="canvas-scroll" id="canvasScroll" tabindex="0" aria-label="Website editing canvas. Scroll to edit the full page."><div class="canvas-frame viewport-desktop" id="canvasFrame"><div id="canvas"></div></div></div>
     </section>
     <aside class="builder-right"><div class="panel-title"><span>Properties</span><button id="closeProperties" type="button" aria-label="Clear selection">×</button></div><div id="properties"><div class="empty-properties"><span>↖</span><strong>Select anything on the website</strong><p>Its design, content and links will appear here.</p></div></div></aside>
   </main>
@@ -46,7 +46,7 @@
   <input id="hiddenImageInput" type="file" accept="image/jpeg,image/png,image/webp,image/gif" hidden>
 
   <script src="../builder-core.js?v=1"></script>
-  <script src="editor.js?v=1"></script>
+  <script src="editor.js?v=2"></script>
   <script src="/js/server-status.js?v=1"></script>
 </body>
 </html>

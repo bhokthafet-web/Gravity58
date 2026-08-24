@@ -30,7 +30,7 @@ test("visitor edits content, adds a section and creates a page without login", a
   await expect(page.getByRole("button", { name: /Offers 4/ })).toBeVisible();
   await expect(page.getByText("Offers", { exact: true }).first()).toBeVisible();
 
-  await page.locator('[data-editor-region="navigation"]').click({ position: { x: 10, y: 10 } });
+  await page.locator('[data-editor-region="navigation"]').click({ position: { x: 120, y: 10 } });
   await expect(page.getByText("Website header", { exact: true })).toBeVisible();
   await page.locator('[data-tool="elements"]').click();
   await page.locator('[data-add-element="price-card"]').click();
@@ -41,6 +41,27 @@ test("visitor edits content, adds a section and creates a page without login", a
   await page.getByRole("button", { name: /Mobile/ }).click();
   await expect(page.locator("#canvasFrame")).toHaveClass(/viewport-mobile/);
   await expect(page.getByText(/login|create account|verify otp/i)).toHaveCount(0);
+});
+
+test("long editor pages scroll independently and return to the top", async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem("g58BuilderGuideSeen", "1"));
+  await page.goto("/templates/editor/?template=salon-spa");
+  await page.getByRole("button", { name: /Pages/ }).click();
+  await page.getByRole("button", { name: /About/ }).click();
+
+  const canvas = page.locator("#canvasScroll");
+  const metrics = await canvas.evaluate((element) => ({
+    clientHeight: element.clientHeight,
+    scrollHeight: element.scrollHeight,
+    overflowY: getComputedStyle(element).overflowY,
+  }));
+  expect(metrics.overflowY).toBe("auto");
+  expect(metrics.scrollHeight).toBeGreaterThan(metrics.clientHeight);
+
+  await canvas.evaluate((element) => element.scrollTo({ top: element.scrollHeight }));
+  await expect.poll(() => canvas.evaluate((element) => element.scrollTop)).toBeGreaterThan(100);
+  await page.getByRole("button", { name: "↑ Top" }).click();
+  await expect.poll(() => canvas.evaluate((element) => element.scrollTop)).toBeLessThan(2);
 });
 
 test("G58 integration links save locally and appear in preview", async ({ page }) => {
