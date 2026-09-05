@@ -85,8 +85,8 @@ test("production configuration has no placeholders or server secrets", () => {
   for (const relative of configFiles) {
     const source = readFileSync(join(root, relative), "utf8");
     assert.doesNotMatch(source, /YOUR_[A-Z0-9_]+|service[_-]?role|api[_-]?key/i, `Unsafe or incomplete config: ${relative}`);
-    assert.match(source, /6a776883001717bca81c/, `Wrong Appwrite project: ${relative}`);
-    assert.match(source, /gravity58/, `Wrong Appwrite database: ${relative}`);
+    assert.match(source, /https:\/\/server\.g58\.in\/api\/v1/, `Wrong G58 API endpoint: ${relative}`);
+    assert.doesNotMatch(source, /appwrite/i, `Legacy backend configuration remains: ${relative}`);
   }
 });
 
@@ -119,20 +119,20 @@ test("Android download buttons point to the published signed installer", () => {
   }
 });
 
-test("normal advertiser records do not request administrator-team permissions", () => {
-  const source = readFileSync(join(root, "js/appwrite-ads.js"), "utf8");
-  assert.match(source, /function permissionSet\(kind, userId, includeAdminTeam = false\)/);
-  assert.match(source, /if \(includeAdminTeam && config\.adminTeamId/);
+test("browser data adapter targets only the first-party G58 API", () => {
+  const source = readFileSync(join(root, "js/g58-api.js"), "utf8");
+  assert.match(source, /https:\/\/server\.g58\.in\/api\/v1/);
+  assert.doesNotMatch(source, /appwrite|sgp\.cloud|\/v1\/databases/i);
+  assert.match(source, /credentials: "include"/);
 });
 
-test("customer receipt uploads only grant roles available to that customer", () => {
-  const source = readFileSync(join(root, "js/appwrite-ads.js"), "utf8");
+test("customer receipt uploads use the authenticated first-party media endpoint", () => {
+  const source = readFileSync(join(root, "js/g58-api.js"), "utf8");
   const start = source.indexOf("async function uploadPaymentReceipt");
   const end = source.indexOf("async function removeAdMedia", start);
   assert.ok(start >= 0 && end > start, "Dedicated payment receipt uploader is missing");
   const receiptUploader = source.slice(start, end);
-  assert.match(receiptUploader, /await ensureUser\(\)/, "Receipt upload must start an invisible anonymous customer session");
-  assert.match(receiptUploader, /Role\.user\(current\.\$id\)/);
-  assert.match(receiptUploader, /Role\.any\(\)/);
-  assert.doesNotMatch(receiptUploader, /Role\.team|adminTeamId/, "Customer receipt upload cannot grant an administrator-team role");
+  assert.match(receiptUploader, /await ensureUser\(\)/, "Receipt upload must establish a customer session");
+  assert.match(receiptUploader, /uploadMedia\(file, "payment-receipt"\)/);
+  assert.doesNotMatch(receiptUploader, /admin|team|secret|api.?key/i, "Customer receipt upload cannot contain administrator credentials");
 });

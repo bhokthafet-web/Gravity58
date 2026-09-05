@@ -30,7 +30,7 @@
       });
       return { customers, businesses };
     } catch (error) {
-      console.error("[G58 Appwrite] Could not load posts", error);
+      console.error("[G58 Core] Could not load posts", error);
       return localLoad();
     }
   }

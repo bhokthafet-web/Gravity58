@@ -2464,15 +2464,6 @@ function scheduleHeroFlowDots() {
 }
 document.addEventListener("DOMContentLoaded", scheduleHeroFlowDots);
 async function openBusinessCardCreator() {
-  const user = window.G58SiteUser;
-  if (!user) return window.G58RequestAuth?.("business");
-  const allowed = await hasBusinessCardAccess(user);
-  if (!allowed) {
-    alert(
-      "A digital business card is available for Refills store owners, Digital Menu Premium accounts and POS Premium accounts. Upgrade one of these plans to create your card.",
-    );
-    return;
-  }
   activeMode = "business";
   openCreateModal();
   const type = document.getElementById("postType");
@@ -3346,17 +3337,9 @@ document.addEventListener("DOMContentLoaded", () => {
       try {
         const user = await api.ensureUser();
         if (!user) throw new Error("Could not start a secure session.");
-        const Role = window.Appwrite.Role, Permission = window.Appwrite.Permission;
-        const permissions = [
-          Permission.read(Role.users()),
-          Permission.update(Role.users()),
-          Permission.delete(Role.users()),
-        ];
         await api.create(
           "g58_contact_requests",
           { name, phone, interest, createdAt: new Date().toISOString() },
-          undefined,
-          permissions,
         );
         closeG58ContactModal();
         document.getElementById("g58ContactForm").reset();

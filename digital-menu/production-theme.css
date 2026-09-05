@@ -103,11 +103,14 @@ body{background:radial-gradient(circle at 12% 3%,#ffdcae 0,transparent 32%),radi
 @media(max-width:650px){.schedule-auth-choice{grid-template-columns:1fr}.subscription-activation-panel{grid-template-columns:1fr}.subscription-activation-panel button{width:100%}}
 
 /* Readable owner date controls and Premium restaurant POS entry. */
-.owner-period-filter select,.owner-period-filter input{border-color:#d7b593;background:#fffaf3;color:#251309;color-scheme:light;font-weight:800;box-shadow:inset 0 1px 2px rgba(70,32,8,.06)}.owner-period-filter select option{background:#fff;color:#251309}
+.owner-period-filter select,.owner-period-filter input{border-color:#d7b593;background:#fffaf3;color:#2d160a;color-scheme:light;font-weight:800;box-shadow:inset 0 1px 2px rgba(70,32,8,.06)}.owner-period-filter select option{background:#fff;color:#2d160a}
 .order-history-controls{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
 @media(max-width:700px){.order-history-controls{width:100%;justify-content:space-between}}
 .orders-header-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .premium-pos-button{border-color:#111!important;background:linear-gradient(135deg,#211008,#050505)!important;color:#fff!important;text-decoration:none;box-shadow:0 8px 20px rgba(21,9,4,.24)!important}
+.premium-pos-sync-card{display:flex;align-items:center;justify-content:space-between;gap:24px;margin:20px 0;border:1px solid rgba(201,106,42,.3)!important;background:linear-gradient(135deg,#fffaf3,#fff 65%,#ffead7)!important}
+.premium-pos-sync-title{display:block;margin:6px 0;font-size:clamp(20px,2vw,28px);color:#2d160a}.premium-pos-sync-card p{margin:0}
+@media(max-width:720px){.premium-pos-sync-card{align-items:stretch;flex-direction:column}.premium-pos-sync-card .premium-pos-button{text-align:center}}
 
 /* Customer identity, order history, and open counter tabs. */
 .customer-order-history{display:grid;gap:16px}.customer-order-history-summary{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.customer-order-history-summary article{display:grid;gap:3px;padding:15px;border:1px solid #e2c19d;border-radius:14px;background:#fff6eb}.customer-order-history-summary strong{color:#a43a06;font-size:24px}.customer-order-history-summary span{color:#77523a;font-size:10px;font-weight:850}.customer-order-history-list{display:grid;gap:9px;max-height:55vh;overflow:auto}.customer-order-history-list>article{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:center;padding:13px;border:1px solid #e2c5a1;border-radius:13px;background:#fff}.customer-order-history-list h3{margin:5px 0;font-size:14px}.customer-order-history-list small{color:#80604b}.customer-order-history-list>article>div:last-child{display:grid;justify-items:end;gap:5px}.customer-entry-form input[name="phone"]:invalid:not(:placeholder-shown){border-color:#c93518;box-shadow:0 0 0 2px rgba(201,53,24,.12)}

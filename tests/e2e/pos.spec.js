@@ -1,12 +1,14 @@
 import { test, expect } from "@playwright/test";
 import { monitorPageErrors, prepareMockApi } from "./helpers.js";
 
-async function createPosAccount(page) {
-  await prepareMockApi(page, { state: null });
+async function createPosAccount(page, options = {}) {
+  await prepareMockApi(page, { state: null, ...options });
   await page.goto("/pos/");
   await expect(page.locator("#posAccountGate")).toBeVisible();
   await page.locator("#gateEmail").fill("owner@example.com");
   await page.locator("#gatePassword").fill("secret123");
+  await page.locator("#gateSignup").click();
+  await page.locator("#gateRetentionAccepted").check();
   await page.locator("#gateSignup").click();
   await expect(page.locator("#posAccountGate")).toHaveCount(0);
   if (await page.locator("#posGuideModal.show").count()) await page.locator("#startUsingPosBtn").click();
@@ -26,9 +28,7 @@ async function configurePos(page, { gst = false } = {}) {
 test("free POS validates setup, calculates quantity and settles received/cancelled bills", async ({ page }) => {
   const assertNoErrors = monitorPageErrors(page);
   await createPosAccount(page);
-  await expect(page.getByRole("link", { name: "Home" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "P Wall" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "C Wall" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Home", exact: true })).toBeVisible();
 
   await page.locator("#continueBtn").click();
   await expect(page.locator("#setupUpiError")).toBeVisible();
@@ -89,16 +89,19 @@ test("POS account logout, cloud forgot-password and new login work", async ({ pa
   await assertNoErrors();
 });
 
-test("premium activation, menu import/removal, optional inventory and dashboard work", async ({ page }) => {
+test("Refills entitlement unlocks menu import/removal, optional inventory and dashboard", async ({ page }) => {
   const assertNoErrors = monitorPageErrors(page);
   page.on("dialog", (dialog) => dialog.accept());
-  await createPosAccount(page);
+  await createPosAccount(page, {
+    seed: {
+      digit58_entitlements: [{ id: "refills-entitlement", ownerId: "user-1", active: true, paused: false, lifetime: true }],
+    },
+  });
   await configurePos(page);
 
   await page.locator('#premiumShell [data-p="license"]').click();
-  await page.locator("#localPremiumKey").fill("G58-POS-TEST-2026");
-  await page.locator("#activateLocalPremium").click();
-  await expect(page.locator("#premiumShell")).toContainText("PREMIUM ACTIVE");
+  await expect(page.locator("#premiumShell")).toContainText("Extra features unlocked");
+  await expect(page.locator("#premiumShell")).toContainText("Refills store subscription");
 
   await page.locator('#premiumShell [data-p="menu"]').click();
   await page.locator("#inventoryToggle").check();
@@ -145,15 +148,13 @@ test("premium activation, menu import/removal, optional inventory and dashboard 
   await assertNoErrors();
 });
 
-test("premium purchase request is stored without opening WhatsApp", async ({ page }) => {
+test("POS explains that premium access comes from Refills or Digital Menu", async ({ page }) => {
   const assertNoErrors = monitorPageErrors(page);
   await createPosAccount(page);
-  await page.locator("#openPremiumPlansBtn").click();
-  await expect(page.locator("#premiumPlansModal")).toHaveClass(/open/);
-  await page.locator('.buy-plan[data-plan="Monthly"]').click();
-  await expect(page.locator("#premiumPlansModal")).not.toHaveClass(/open/);
-  const request = await page.evaluate(() => JSON.parse(localStorage.getItem("g58SubscriptionRequest")));
-  expect(request).toMatchObject({ plan: "monthly", amount: 299, status: "requested", email: "owner@example.com" });
+  await page.locator('#premiumShell [data-p="license"]').click();
+  await expect(page.locator("#premiumShell")).toContainText("there is no separate POS purchase");
+  await expect(page.getByRole("link", { name: "Explore Refills" })).toHaveAttribute("href", "/digit58/");
+  await expect(page.getByRole("link", { name: "Explore Digital Menu" })).toHaveAttribute("href", "/digital-menu/");
   await assertNoErrors();
 });
 
@@ -180,7 +181,7 @@ test("Digital Menu Premium opens a restaurant-scoped POS with synced menu and or
   await expect(page.locator("#posAccountGate")).toHaveCount(0);
   if (await page.locator("#posGuideModal.show").count()) await page.locator("#startUsingPosBtn").click();
   await expect(page.locator(".restaurant-sync-banner")).toContainText("Sync Kitchen");
-  await expect(page.locator("#premiumShell")).toContainText("PREMIUM ACTIVE");
+  await expect(page.locator("#premiumShell")).toContainText("restaurant-synced workspace");
 
   await page.locator('#premiumShell [data-p="menu"]').click();
   await expect(page.locator("#localMenuList")).toContainText("Sync Meal");

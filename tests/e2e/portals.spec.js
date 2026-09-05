@@ -23,9 +23,9 @@ async function slideCustomerAlertOpen(page) {
 test("every G58 page reports a backend outage and recovers after retry", async ({ page }) => {
   let serverAvailable = false;
   await page.addInitScript(() => { window.__G58_TEST_SERVER_STATUS__ = true; });
-  await page.route(/server\.g58\.in\/v1\/account\?g58-status=/, (route) => {
+  await page.route(/server\.g58\.in\/api\/v1\/health\?g58-status=/, (route) => {
     if (!serverAvailable) return route.abort("failed");
-    return route.fulfill({ status: 401, contentType: "application/json", body: JSON.stringify({ message: "Authentication required" }) });
+    return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ status: "ok", service: "g58-core" }) });
   });
   await page.goto("/about/");
   const status = page.locator("#g58ServerStatus");
@@ -45,6 +45,7 @@ test("advertising user can register, book a timed placement and view the request
   await page.locator('#register input[name="phone"]').fill("9876543210");
   await page.locator('#register input[name="email"]').fill("ads@example.com");
   await page.locator('#register input[name="password"]').fill("testing123");
+  await page.locator('#register input[name="retentionAccepted"]').check();
   await page.locator("#register").getByRole("button", { name: "Create Account" }).click();
   await expect(page.getByText("Welcome, Ad Customer")).toBeVisible();
 
@@ -518,7 +519,7 @@ test("Refills customer reorders from history into a fresh store-owner request", 
     initialUser: { $id: customerId, email: "customer@example.com", name: "Refill Customer" },
     seed: {
       [`digit58_store_${ownerId}`]: [{ id: storeId, ownerId, name: "Health Refills", category: "Pharmacy", city: "Hyderabad", upiId: "health@upi" }],
-      [`digit58_customer_${ownerId}`]: [{ id: "customer_link", ownerId, storeId, customerAccountId: customerId, customerName: "Refill Customer", customerEmail: "customer@example.com", phone: "9876543210" }],
+      [`digit58_customer_${ownerId}`]: [{ id: "customer_link", ownerId, storeId, customerAccountId: customerId, customerName: "Refill Customer", customerEmail: "customer@example.com", phone: "9876543210", address: "12 Market Road, Hyderabad", agreementAcceptedAt: new Date().toISOString() }],
       [orderKind]: [{ id: "history_order", ownerId, storeId, customerAccountId: customerId, customerName: "Refill Customer", customerEmail: "customer@example.com", phone: "9876543210", items: [{ name: "Monthly medicine", qty: 2 }], amount: 480, status: "Delivered", createdAt: new Date(Date.now()-3600000).toISOString(), updatedAt: new Date().toISOString() }],
     },
   });
@@ -539,7 +540,7 @@ test("Refills customer reorders from history into a fresh store-owner request", 
   await assertNoErrors();
 });
 
-test("Refills owner header links to G58 and stores a customer highlight message", async ({ page }) => {
+test("Refills owner quick links and customer highlight message work", async ({ page }) => {
   const ownerId = "highlight_owner", storeId = "highlight_store";
   await prepareMockApi(page, {
     state: null,
@@ -551,10 +552,11 @@ test("Refills owner header links to G58 and stores a customer highlight message"
   });
   const assertNoErrors = monitorPageErrors(page);
   await page.goto("/digit58/");
-  const homeLink = page.locator(".g58-topbar-home");
-  await expect(homeLink).toHaveText("www.g58.in");
+  const homeLink = page.locator('.g58-topbar-home a[aria-label="Home"]');
+  await expect(homeLink).toContainText("Home");
   await expect(homeLink).toHaveAttribute("href", "https://www.g58.in/");
-  expect(await homeLink.evaluate((node) => getComputedStyle(node).animationName)).toBe("g58TopbarBlink");
+  await expect(page.locator('.g58-topbar-home a[aria-label="Refills"]')).toHaveAttribute("href", "/digit58/");
+  await expect(page.locator('.g58-topbar-home a[aria-label="Digital Menu"]')).toHaveAttribute("href", "/digital-menu/");
   await expect(page.locator(".floating-support-btn")).toBeVisible();
 
   await page.getByRole("button", { name: /My Stores/ }).click();
@@ -564,6 +566,7 @@ test("Refills owner header links to G58 and stores a customer highlight message"
   await expect(page.locator(".store-grid")).toContainText("20% Off");
 
   await page.goto(`/digit58/#store&owner=${ownerId}&store=${storeId}`);
+  await page.getByRole("button", { name: "I Accept" }).click();
   await expect(page.locator(".store-hero .store-highlight-text")).toHaveText("20% Off");
   const highlightPosition = await page.locator(".store-hero .store-highlight-text").evaluate((node) => {
     const nodeBox = node.getBoundingClientRect(), heroBox = node.parentElement.getBoundingClientRect();
@@ -1016,13 +1019,13 @@ test("Refills owner reviews a reordered request and sends the normal payment QR"
     seed: {
       digit58_entitlements: [{ id: "entitlement_1", ownerId, active: true, paused: false, lifetime: true, policyAcceptedAt: "2026-08-01T08:00:00.000Z" }],
       [`digit58_store_${ownerId}`]: [{ id: storeId, ownerId, name: "Health Refills", category: "Pharmacy", city: "Hyderabad", upiId: "health@upi" }],
-      [`digit58_customer_${ownerId}`]: [{ id: "customer_link", ownerId, storeId, customerAccountId: "refill_customer", customerName: "Refill Customer", phone: "9888888888" }],
+      [`digit58_customer_${ownerId}`]: [{ id: "customer_link", ownerId, storeId, customerAccountId: "refill_customer", customerName: "Refill Customer", phone: "9888888888", agreementAcceptedAt: new Date().toISOString() }],
       [orderKind]: [{ id: "reorder_1", ownerId, storeId, customerAccountId: "refill_customer", customerName: "Refill Customer", phone: "9888888888", items: [{ name: "Monthly medicine", qty: 2 }], amount: 0, previousAmount: 480, upiUri: "", reorderedFrom: "history_order", status: "Requested", messages: [], createdAt: "2026-08-15T08:00:00.000Z", updatedAt: "2026-08-15T08:00:00.000Z" }],
     },
   });
   const assertNoErrors = monitorPageErrors(page);
   await page.goto("/digit58/");
-  await page.getByRole("button", { name: /Orders/ }).click();
+  await page.getByRole("button", { name: "🧾 Orders", exact: true }).click();
   await expect(page.locator(".order-item-card")).toContainText("Monthly medicine");
   await expect(page.locator(".order-item-card")).toContainText("Previous order amount");
   await expect(page.locator(".order-item-card")).toContainText("₹480");
@@ -1049,7 +1052,7 @@ test("Refills becomes available when the reminder period ends and creates a regu
     initialUser: { $id: customerId, email: "customer@example.com", name: "Refill Customer" },
     seed: {
       [`digit58_store_${ownerId}`]: [{ id: storeId, ownerId, name: "Cycle Pharmacy", category: "Pharmacy", city: "Hyderabad", upiId: "cycle@upi" }],
-      [`digit58_customer_${ownerId}`]: [{ id: "cycle_customer_link", ownerId, storeId, customerAccountId: customerId, customerName: "Refill Customer", customerEmail: "customer@example.com", phone: "9876543210" }],
+      [`digit58_customer_${ownerId}`]: [{ id: "cycle_customer_link", ownerId, storeId, customerAccountId: customerId, customerName: "Refill Customer", customerEmail: "customer@example.com", phone: "9876543210", address: "12 Market Road, Hyderabad", agreementAcceptedAt: new Date().toISOString() }],
       [cardKind]: [{ id: cardId, ownerId, storeId, customerAccountId: customerId, productName: "Thyroid medicine", price: 199, reminderDays: 30, phone: "9876543210", status: "Active", timesDelivered: 1, purchasedAt: new Date(Date.now() - 31 * 86400000).toISOString() }],
       [orderKind]: [],
     },
@@ -1084,7 +1087,7 @@ test("Refills reminder cards default to swipe view and can switch temporarily to
     initialUser: { $id: customerId, email: "customer@example.com", name: "View Customer" },
     seed: {
       [`digit58_store_${ownerId}`]: [{ id: storeId, ownerId, name: "Swipe Pharmacy", category: "Pharmacy", city: "Hyderabad" }],
-      [`digit58_customer_${ownerId}`]: [{ id: "view_customer_link", ownerId, storeId, customerAccountId: customerId, customerName: "View Customer", customerEmail: "customer@example.com", phone: "9876543210" }],
+      [`digit58_customer_${ownerId}`]: [{ id: "view_customer_link", ownerId, storeId, customerAccountId: customerId, customerName: "View Customer", customerEmail: "customer@example.com", phone: "9876543210", agreementAcceptedAt: new Date().toISOString() }],
       [cardKind]: [
         { id: "view_card_1", ownerId, storeId, customerAccountId: customerId, productName: "Vitamin tablets", price: 99, reminderDays: 30, purchasedAt, status: "Active" },
         { id: "view_card_2", ownerId, storeId, customerAccountId: customerId, productName: "Protein powder", price: 499, reminderDays: 20, purchasedAt, status: "Active" },
@@ -1131,14 +1134,14 @@ test("Refills delivery completion resets the reminder for its next cycle", async
     seed: {
       digit58_entitlements: [{ id: "reset_entitlement", ownerId, active: true, paused: false, lifetime: true, policyAcceptedAt: new Date().toISOString() }],
       [`digit58_store_${ownerId}`]: [{ id: storeId, ownerId, name: "Cycle Pharmacy", category: "Pharmacy", city: "Hyderabad", upiId: "cycle@upi" }],
-      [`digit58_customer_${ownerId}`]: [{ id: "reset_customer_link", ownerId, storeId, customerAccountId: customerId, customerName: "Refill Customer", phone: "9876543210" }],
+      [`digit58_customer_${ownerId}`]: [{ id: "reset_customer_link", ownerId, storeId, customerAccountId: customerId, customerName: "Refill Customer", phone: "9876543210", agreementAcceptedAt: new Date().toISOString() }],
       [cardKind]: [{ id: cardId, ownerId, storeId, customerAccountId: customerId, productName: "Thyroid medicine", price: 199, reminderDays: 30, status: "Refill Requested", timesDelivered: 1, dueAt: new Date(Date.now() - 86400000).toISOString(), activeOrderId: orderId }],
       [orderKind]: [{ id: orderId, ownerId, storeId, customerAccountId: customerId, customerName: "Refill Customer", phone: "9876543210", items: [{ name: "Thyroid medicine", qty: 1 }], amount: 210, previousAmount: 199, refillCardId: cardId, status: "Out for Delivery", messages: [], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }],
     },
   });
   const assertNoErrors = monitorPageErrors(page);
   await page.goto("/digit58/");
-  await page.getByRole("button", { name: /Orders/ }).click();
+  await page.getByRole("button", { name: "🧾 Orders", exact: true }).click();
   await expect(page.locator(".order-item-card")).toContainText("Refill order");
   await page.getByRole("button", { name: "Mark Delivered" }).click();
   await expect(page.locator("#toast")).toContainText("Order delivered");
@@ -1162,7 +1165,7 @@ test("Refills customer history defaults to today, filters a date range and expor
     initialUser: { $id: customerId, email: "customer@example.com", name: "Refill Customer" },
     seed: {
       [`digit58_store_${ownerId}`]: [{ id: storeId, ownerId, name: "History Refills", category: "Pharmacy", city: "Hyderabad" }],
-      [`digit58_customer_${ownerId}`]: [{ id: "customer_link", ownerId, storeId, customerAccountId: customerId, customerName: "Refill Customer", phone: "9876543210" }],
+      [`digit58_customer_${ownerId}`]: [{ id: "customer_link", ownerId, storeId, customerAccountId: customerId, customerName: "Refill Customer", phone: "9876543210", agreementAcceptedAt: new Date().toISOString() }],
       [`digit58_order_${ownerId}`]: [
         { id: "today_order", ownerId, storeId, customerAccountId: customerId, items: [{ name: "Today's tablets", qty: 1 }], amount: 120, status: "Delivered", createdAt: today.toISOString(), updatedAt: today.toISOString() },
         { id: "older_order", ownerId, storeId, customerAccountId: customerId, items: [{ name: "Older refill", qty: 2 }], amount: 240, status: "Delivered", createdAt: older.toISOString(), updatedAt: older.toISOString() },
@@ -1199,7 +1202,7 @@ test("Refills owner history defaults to today, filters a date range and exports 
     seed: {
       digit58_entitlements: [{ id: "entitlement_history", ownerId, active: true, paused: false, lifetime: true, policyAcceptedAt: today.toISOString() }],
       [`digit58_store_${ownerId}`]: [{ id: storeId, ownerId, name: "Owner History", category: "General", city: "Hyderabad" }],
-      [`digit58_customer_${ownerId}`]: [{ id: "customer_link", ownerId, storeId, customerAccountId: customerId, customerName: "History Customer", phone: "9876543210" }],
+      [`digit58_customer_${ownerId}`]: [{ id: "customer_link", ownerId, storeId, customerAccountId: customerId, customerName: "History Customer", phone: "9876543210", agreementAcceptedAt: new Date().toISOString() }],
       [`digit58_order_${ownerId}`]: [
         { id: "today_owner_order", ownerId, storeId, customerAccountId: customerId, customerName: "History Customer", phone: "9876543210", items: [{ name: "Today's owner item", qty: 1 }], amount: 150, status: "Delivered", deliveredAt: today.toISOString(), createdAt: today.toISOString(), updatedAt: today.toISOString() },
         { id: "older_owner_order", ownerId, storeId, customerAccountId: customerId, customerName: "History Customer", phone: "9876543210", items: [{ name: "Older owner item", qty: 3 }], amount: 450, status: "Rejected", rejectedAt: older.toISOString(), createdAt: older.toISOString(), updatedAt: older.toISOString() },

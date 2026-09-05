@@ -2,14 +2,14 @@ import { test, expect } from "@playwright/test";
 import { prepareOffline, mockApiScript, monitorPageErrors } from "./helpers.js";
 
 const configPattern = /\/(?:js|advertise|digital-menu|team-admin)\/config\.js(?:\?.*)?$/;
-const adapterPattern = /\/js\/appwrite-ads\.js(?:\?.*)?$/;
+const adapterPattern = /\/js\/g58-api\.js(?:\?.*)?$/;
 
 async function prepareProductionMock(page, options) {
   await prepareOffline(page);
   await page.unroute(configPattern);
   await page.route(configPattern, (route) => route.fulfill({
     contentType: "application/javascript",
-    body: "window.GRAVITY58_CONFIG={testMode:false,gravity58Url:'/',adBookingPortalUrl:'/advertise/',appwrite:{endpoint:'mock',projectId:'mock',databaseId:'mock'}};window.GRAVITY58_AD_ADMIN_CONFIG=window.GRAVITY58_CONFIG;",
+    body: "window.GRAVITY58_CONFIG={testMode:false,gravity58Url:'/',adBookingPortalUrl:'/advertise/',g58:{endpoint:'http://127.0.0.1:4173/api/v1'}};window.GRAVITY58_AD_ADMIN_CONFIG=window.GRAVITY58_CONFIG;",
   }));
   await page.route(adapterPattern, (route) => route.fulfill({ contentType: "application/javascript", body: mockApiScript(options) }));
 }

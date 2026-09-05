@@ -14,6 +14,8 @@ import { closeDatabase, query, ready, transaction } from "./db.js";
 import { isAdmin, isPublicKind, isStaff, visibilityForKind } from "./access.js";
 import { hashPassword, publicUser, randomToken, tokenHash, verifyPassword } from "./security.js";
 import { sendPasswordReset } from "./mailer.js";
+import handleAction from "./actions.js";
+import { createCompatibilityStore } from "./compat-store.js";
 
 const app = Fastify({ logger: true, trustProxy: true, bodyLimit: config.maxMediaBytes + 1024 * 1024 });
 const stateChanging = new Set(["POST", "PUT", "PATCH", "DELETE"]);
@@ -216,7 +218,7 @@ app.patch("/api/v1/records/:kind/:id", async (request, reply) => {
   const kind = safeKind(request.params.kind);
   const input = z.object({ data: z.record(z.string(), z.unknown()), participantIds: z.array(z.string().uuid()).max(20).optional() }).parse(request.body);
   const existing = await query(`SELECT * FROM records WHERE kind=$1 AND id=$2 AND deleted_at IS NULL`, [kind, request.params.id]);
-  if (!existing.rows[0] || (!isAdmin(user) && existing.rows[0].owner_id !== user.id)) return reply.code(404).send({ error: "Record not found" });
+  if (!existing.rows[0] || (!isAdmin(user) && existing.rows[0].owner_id !== user.id && !(existing.rows[0].participant_ids || []).includes(user.id))) return reply.code(404).send({ error: "Record not found" });
   const result = await query(
     `UPDATE records SET payload=payload || $1::jsonb, participant_ids=COALESCE($2,participant_ids) WHERE id=$3 RETURNING *`,
     [JSON.stringify(input.data), input.participantIds || null, request.params.id],
@@ -231,7 +233,7 @@ app.delete("/api/v1/records/:kind/:id", async (request, reply) => {
   if (!user) return;
   const kind = safeKind(request.params.kind);
   const existing = await query(`SELECT * FROM records WHERE kind=$1 AND id=$2 AND deleted_at IS NULL`, [kind, request.params.id]);
-  if (!existing.rows[0] || (!isAdmin(user) && existing.rows[0].owner_id !== user.id)) return reply.code(404).send({ error: "Record not found" });
+  if (!existing.rows[0] || (!isAdmin(user) && existing.rows[0].owner_id !== user.id && !(existing.rows[0].participant_ids || []).includes(user.id))) return reply.code(404).send({ error: "Record not found" });
   await query(`UPDATE records SET deleted_at=now() WHERE id=$1`, [request.params.id]);
   await audit(request, "record.delete", kind, request.params.id);
   publish(kind, "delete", existing.rows[0]);
@@ -264,9 +266,16 @@ app.post("/api/v1/media", async (request, reply) => {
 });
 
 app.get("/api/v1/media/:id", async (request, reply) => {
-  const result = await query(`SELECT * FROM media_files WHERE id=$1 AND deleted_at IS NULL`, [request.params.id]);
+  const result = await query(
+    `SELECT m.*, r.owner_id AS record_owner_id, r.participant_ids AS record_participant_ids
+       FROM media_files m
+       LEFT JOIN records r ON r.id=m.record_id AND r.deleted_at IS NULL
+      WHERE m.id=$1 AND m.deleted_at IS NULL`,
+    [request.params.id],
+  );
   const file = result.rows[0];
-  if (!file || (!file.is_public && !isStaff(request.user) && file.owner_id !== request.user?.id)) return reply.code(404).send({ error: "File not found" });
+  const linkedParticipant = file?.record_owner_id === request.user?.id || (file?.record_participant_ids || []).includes(request.user?.id);
+  if (!file || (!file.is_public && !isStaff(request.user) && file.owner_id !== request.user?.id && !linkedParticipant)) return reply.code(404).send({ error: "File not found" });
   const filename = path.join(config.mediaRoot, file.storage_name);
   const data = await fs.readFile(filename).catch(() => null);
   if (!data) return reply.code(404).send({ error: "File not found" });
@@ -283,6 +292,35 @@ app.delete("/api/v1/media/:id", async (request, reply) => {
   await query(`UPDATE media_files SET deleted_at=now() WHERE id=$1`, [file.id]);
   await audit(request, "media.delete", "media", file.id);
   return { ok: true };
+});
+
+app.post("/api/v1/actions", { config: { rateLimit: { max: 180, timeWindow: "1 minute" } } }, async (request, reply) => {
+  const user = requireUser(request, reply);
+  if (!user) return;
+  const call = createCompatibilityStore({ actor: user, onMutation: publish });
+  let sent = false;
+  const response = {
+    json(payload, status = 200) {
+      sent = true;
+      reply.code(status).send(payload);
+      return payload;
+    },
+  };
+  await handleAction({
+    req: {
+      method: "POST",
+      bodyJson: request.body || {},
+      bodyText: JSON.stringify(request.body || {}),
+      call,
+      headers: {
+        "x-g58-user-id": user.id,
+        "x-g58-user-email": user.email || "",
+      },
+    },
+    res: response,
+    error: (message) => request.log.error(message),
+  });
+  if (!sent && !reply.sent) return reply.code(500).send({ ok: false, error: "The secure action returned no response" });
 });
 
 app.get("/api/v1/events", async (request, reply) => {

@@ -62,6 +62,7 @@
     $("siteLoginButton")?.classList.toggle("hidden", active);
     $("siteLogoutButton")?.classList.toggle("hidden", !active);
     $("myPostsButton")?.classList.toggle("hidden", !active);
+    $("myBusinessCardButton")?.classList.toggle("hidden", !active);
     if ($("siteUserName")) { $("siteUserName").textContent = user?.name || user?.email?.split("@")[0] || ""; $("siteUserName").classList.toggle("hidden", !active); }
   }
   async function finish() {
@@ -151,9 +152,14 @@
     return result;
   };
 
-  api?.currentUser().then(async (activeUser) => {
-    user = activeUser?.email ? activeUser : null;
-    if (user) await finish();
-    else updateHeader();
-  });
+  api?.currentUser()
+    .then(async (activeUser) => {
+      user = activeUser?.email ? activeUser : null;
+      if (user) await finish();
+      else updateHeader();
+    })
+    .catch(() => {
+      user = null;
+      updateHeader();
+    });
 })();

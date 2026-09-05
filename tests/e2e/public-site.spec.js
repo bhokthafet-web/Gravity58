@@ -1,14 +1,12 @@
 import { test, expect } from "@playwright/test";
 import { monitorPageErrors, prepareMockApi, prepareOffline } from "./helpers.js";
 
-test("homepage uses a single floating rupee link for the dedicated referral page", async ({ page }) => {
+test("homepage keeps referrals on a dedicated readable page without a floating button", async ({ page }) => {
   await prepareOffline(page);
   const assertNoErrors = monitorPageErrors(page);
   await page.goto("/");
   await expect(page.locator(".g58-refer-section")).toHaveCount(0);
-  const referralLink = page.locator(".g58-referral-float");
-  await expect(referralLink).toHaveText("₹");
-  await expect(referralLink).toHaveAttribute("href", "/refer/");
+  await expect(page.locator(".g58-referral-float")).toHaveCount(0);
 
   await page.goto("/refer/");
   await expect(page.getByRole("heading", { name: "Share G58. Earn ₹399." })).toBeVisible();
@@ -20,32 +18,26 @@ test("homepage uses a single floating rupee link for the dedicated referral page
   await assertNoErrors();
 });
 
-test("public walls, location filters, guides and short-link tools work", async ({ page }) => {
+test("public walls, location filters and guides work", async ({ page }) => {
   await prepareOffline(page);
   const assertNoErrors = monitorPageErrors(page);
   await page.goto("/");
 
-  await expect(page.locator(".left-side .side-title")).toContainText("Recent Jobs");
-  await expect(page.locator(".left-side .recent-menu-launch")).toHaveAttribute("href", "/digital-menu/");
-  await page.locator(".catalogue-btn.jobs").click();
-  await expect(page.getByRole("heading", { name: "Customer Requirements" })).toBeVisible();
+  await expect(page.locator(".workflow-menu .product-workflow-cta")).toHaveAttribute("href", "/digital-menu-guide/");
+  await page.evaluate(() => selectMode("customer"));
+  await expect(page.getByRole("heading", { name: "Customer Wall" })).toBeVisible();
   await page.locator("#categoryFilter").selectOption({ label: "Plumbing" });
   await expect(page.getByRole("heading", { name: "Emergency Plumbing Repair", exact: true })).toBeVisible();
 
-  await page.locator("#businessTab").click();
-  await expect(page.getByRole("heading", { name: "Business Owners" })).toBeVisible();
+  await page.evaluate(() => selectMode("business"));
+  await expect(page.locator(".bw-header h2")).toContainText("Find the right business");
   await expect(page.getByRole("heading", { name: "QuickFix Plumbing", exact: true })).toBeVisible();
 
-  await page.locator("#browseGuideButton").click();
+  await page.evaluate(() => openBrowseGuide());
   await expect(page.locator("#browseGuideModal")).toHaveClass(/show/);
   await page.locator("#browseGuideModal").getByRole("button", { name: "Close" }).click();
   await expect(page.locator("#browseGuideModal")).not.toHaveClass(/show/);
 
-  await page.evaluate(() => openShortTool("whatsapp"));
-  await page.locator("#shortToolInput").fill("9876543210");
-  await page.locator("#shortToolMessage").fill("Hello Gravity58");
-  await page.getByRole("button", { name: "Generate Link" }).click();
-  await expect(page.locator("#shortToolOutput")).toHaveValue(/wa\.me\/919876543210/);
   await assertNoErrors();
 });
 
@@ -324,11 +316,12 @@ test("landing explains Refills and Digital Menu with matching visual workflows",
   const assertNoErrors = monitorPageErrors(page);
   await page.goto("/");
   const section = page.locator(".product-workflow-section");
-  await expect(section.getByRole("heading", { name: "See how G58 products work" })).toBeVisible();
+  await expect(section.getByRole("heading", { name: "Bring repeat customers back automatically" })).toBeVisible();
+  await expect(section.getByRole("heading", { name: "Move every table order from scan to kitchen" })).toBeVisible();
   await expect(section.locator(".workflow-refills .product-flow-node")).toHaveCount(3);
   await expect(section.locator(".workflow-menu .product-flow-node")).toHaveCount(3);
-  await expect(section.getByRole("link", { name: /Explore Refills/ })).toHaveAttribute("href", "/digit58/");
-  await expect(section.getByRole("link", { name: /Explore Digital Menu/ })).toHaveAttribute("href", "/digital-menu/");
+  await expect(section.getByRole("link", { name: /Explore Refills/ })).toHaveAttribute("href", "/refills-guide/");
+  await expect(section.getByRole("link", { name: /Explore Digital Menu/ })).toHaveAttribute("href", "/digital-menu-guide/");
   await assertNoErrors();
 });
 

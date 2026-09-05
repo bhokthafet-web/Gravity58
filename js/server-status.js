@@ -3,14 +3,12 @@
 
   const BANNER_ID = "g58ServerStatus";
   const STYLE_ID = "g58ServerStatusStyles";
-  const DEFAULT_ENDPOINT = "https://server.g58.in/v1";
-  const DEFAULT_PROJECT_ID = "6a776883001717bca81c";
+  const DEFAULT_ENDPOINT = "https://server.g58.in/api/v1";
   const CHECK_INTERVAL_MS = 60_000;
   const REQUEST_TIMEOUT_MS = 8_000;
   const rootConfig = window.GRAVITY58_CONFIG || window.GRAVITY58_AD_BOOKING_CONFIG || window.GRAVITY58_AD_ADMIN_CONFIG || {};
-  const appwriteConfig = rootConfig.appwrite || {};
-  const endpoint = String(appwriteConfig.endpoint || DEFAULT_ENDPOINT).replace(/\/$/, "");
-  const projectId = String(appwriteConfig.projectId || DEFAULT_PROJECT_ID);
+  const g58Config = rootConfig.g58 || rootConfig.api || {};
+  const endpoint = String(g58Config.endpoint || DEFAULT_ENDPOINT).replace(/\/$/, "");
   const localPreview = ["localhost", "127.0.0.1"].includes(location.hostname);
   const testEnabled = window.__G58_TEST_SERVER_STATUS__ === true;
   let timer = 0;
@@ -68,12 +66,11 @@
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
     try {
-      const response = await fetch(`${endpoint}/account?g58-status=${Date.now()}`, {
+      const response = await fetch(`${endpoint}/health?g58-status=${Date.now()}`, {
         method: "GET",
         mode: "cors",
         credentials: "omit",
         cache: "no-store",
-        headers: { "X-Appwrite-Project": projectId },
         signal: controller.signal,
       });
       if (response.status >= 500) throw new Error(`Server returned ${response.status}`);

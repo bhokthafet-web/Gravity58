@@ -1669,7 +1669,7 @@ function loadBrowserImage(file){return new Promise((resolve,reject)=>{if(!file?.
 function canvasImageBlob(canvas,type,quality){return new Promise((resolve,reject)=>canvas.toBlob(blob=>blob?resolve(blob):reject(new Error('Image compression failed')),type,quality))}
 const PROMOTION_IMAGE_MAX_BYTES=95000;
 async function compressImageTo100Kb(file){
-  // Appwrite storage limits are decimal bytes. Keeping a small safety margin
+  // Keep a small safety margin below the server media limit.
   // avoids a 100 KiB browser file being rejected by a 100,000-byte bucket.
   if(file.size<=PROMOTION_IMAGE_MAX_BYTES)return file;
   const image=await loadBrowserImage(file);
@@ -2433,7 +2433,7 @@ async function renderPushPrompt(store,customer){
   $('#pushHintDismiss').onclick=()=>{localStorage.setItem(pushDismissKey(store),'1');container.innerHTML=''};
 }
 function initPushNotifications(store,customer){renderPushPrompt(store,customer)}
-// The Appwrite realtime WebSocket doesn't auto-reconnect after the app is
+// The live-event connection may not reconnect after the app is
 // backgrounded (common on mobile/Android app resume) or the network drops.
 // Re-arm the subscriptions and force a fresh fetch whenever we come back.
 function resumeRealtimeConnections(){

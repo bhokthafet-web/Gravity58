@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { monitorPageErrors, prepareOffline } from "./helpers.js";
+import { monitorPageErrors, prepareMockApi } from "./helpers.js";
 
 const routes = [
   "/", "/about/", "/admin/", "/advertise/", "/business/",
@@ -14,7 +14,7 @@ const routes = [
 
 for (const route of routes) {
   test(`route ${route} loads without a JavaScript crash`, async ({ page }) => {
-    await prepareOffline(page);
+    await prepareMockApi(page);
     const assertNoErrors = monitorPageErrors(page);
     const response = await page.goto(route, { waitUntil: "domcontentloaded" });
     expect(response?.status(), route).toBeLessThan(400);

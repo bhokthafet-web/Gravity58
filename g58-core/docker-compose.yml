@@ -33,9 +33,28 @@ services:
       - g58-media:/data/media
     networks: [g58-private]
 
+  edge:
+    image: caddy:2.10-alpine
+    container_name: g58-edge
+    restart: unless-stopped
+    profiles: ["edge"]
+    depends_on:
+      api:
+        condition: service_started
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - g58-caddy-data:/data
+      - g58-caddy-config:/config
+    networks: [g58-private]
+
 volumes:
   g58-postgres-data:
   g58-media:
+  g58-caddy-data:
+  g58-caddy-config:
 
 networks:
   g58-private:

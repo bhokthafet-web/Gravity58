@@ -1,4 +1,4 @@
-# Gravity58 GitHub + Appwrite Release
+# Gravity58 Production Release
 
 This folder is the production deployment package for the Gravity58 public marketplace, account-synced POS, restaurant Digital Menu, advertisement booking and private team administration.
 
@@ -7,16 +7,18 @@ This folder is the production deployment package for the Gravity58 public market
 - `/` — public customer and business marketplace
 - `/pos/` — Free/Premium POS with unit price × quantity billing
 - `/digital-menu/` — restaurant owner dashboard and customer QR menu
-- `/advertise/` — Appwrite-authenticated advertisement booking
-- `/team-admin/` — Appwrite-team-protected unified G58 administration
+- `/advertise/` — authenticated advertisement booking
+- `/team-admin/` — role-protected unified G58 administration
 
-## Storage boundary
+## Architecture
 
-Restaurant/menu records, live orders, POS settings, bills, cancellations and inventory are account-scoped in G58 Cloud through Appwrite. Restaurant and food images also use Appwrite Storage with public viewing, owner-only update/delete permissions and an application-enforced 100 KB limit. The dashboard compressor processes images only in browser memory and lets the owner download an upload-ready WebP. Appwrite also stores public marketplace/advertisement records, advertiser authentication, ad bookings, targeting keys and published campaigns.
+GitHub Pages hosts the public website. The self-hosted G58 Core service at `server.g58.in` provides accounts, password recovery, role-based access, PostgreSQL records, media, live updates, secure actions and the private team console. No third-party backend API is required.
+
+Restaurant/menu records, live orders, POS settings, bills, cancellations, inventory, marketplace records and advertisements are account-scoped in G58 Core. Uploaded media is stored on the G58 server with owner-aware access rules. The menu-image compressor processes source images only in browser memory before upload.
 
 ## Deployment
 
-The production Appwrite project and G58 administrator team IDs are already configured. See [APPWRITE-SETUP.md](APPWRITE-SETUP.md) for the deployed advertising-data schema and storage boundary.
+The production endpoint is configured as `https://server.g58.in/api/v1`. Backend deployment and operating instructions are in [`g58-core/README.md`](g58-core/README.md).
 
 1. Push this folder to the `main` branch of the GitHub repository.
 2. In repository Settings → Pages, select **GitHub Actions**.

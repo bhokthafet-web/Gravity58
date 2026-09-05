@@ -336,6 +336,7 @@ test("digital-menu local account creation and password reset work", async ({ pag
   await page.locator('#registerForm input[name="email"]').fill("newowner@example.com");
   await page.locator('#registerForm input[name="password"]').fill("newpass123");
   await page.locator('#registerForm input[name="confirm"]').fill("newpass123");
+  await page.locator('#registerForm input[name="retentionAccepted"]').check();
   await page.locator("#registerForm").getByRole("button", { name: "Create Account" }).click();
   await expect(page.getByRole("heading", { name: "Create your first Digital Menu" })).toBeVisible();
   await page.locator("#onboardingLogout").click();
@@ -378,7 +379,7 @@ test("existing Gravity58 account can open its account-scoped restaurant setup", 
   await assertNoErrors();
 });
 
-test("restaurant menu loads from the signed-in account and CSV changes persist to Appwrite", async ({ page }) => {
+test("restaurant menu loads from the signed-in account and CSV changes persist to G58 Core", async ({ page }) => {
   const cloudMenu = {
     id: "cloud-cafe",
     ownerId: "cloud-owner-1",
@@ -499,7 +500,7 @@ test("customer can load the latest account menu on another device", async ({ pag
     id: "public-cloud-cafe",
     ownerId: "public-owner",
     schemaVersion: 2,
-    restaurant: { id: "public-cloud-cafe", name: "Public Cloud Café", type: "Restaurant", city: "Hyderabad", description: "Loaded from Appwrite", address: "Market Road", phone: "+91 9888888888", open: true, accepting: true, tax: 5, service: 0, identification: "Customer Name", restaurantKey: "Public Cloud Café|Hyderabad", social: {}, logoImageUrl: "https://cdn.example.com/restaurant.jpg" },
+    restaurant: { id: "public-cloud-cafe", name: "Public Cloud Café", type: "Restaurant", city: "Hyderabad", description: "Loaded from G58 Core", address: "Market Road", phone: "+91 9888888888", open: true, accepting: true, tax: 5, service: 0, identification: "Customer Name", restaurantKey: "Public Cloud Café|Hyderabad", social: {}, logoImageUrl: "https://cdn.example.com/restaurant.jpg" },
     categories: [{ id: "specials", name: "Specials" }],
     items: [{ id: "cloud-meal", categoryId: "specials", name: "Cloud Meal", description: "Visible on every device", price: 299, type: "Veg", available: true, prep: 12, prepareInstructionsEnabled: false, imageUrl: "https://cdn.example.com/cloud-meal.jpg" }],
   };
@@ -513,7 +514,7 @@ test("customer can load the latest account menu on another device", async ({ pag
   const assertNoErrors = monitorPageErrors(page);
   await page.goto("/digital-menu/#menu&cloud=public-cloud-cafe&owner=public-owner");
   await expect(page.getByRole("heading", { name: "Public Cloud Café", exact: true })).toBeVisible();
-  await expect(page.getByText("Live account menu")).toBeVisible();
+  await expect(page.getByText("Loaded from G58 Core")).toBeVisible();
   await page.getByRole("textbox", { name: "Enter your name" }).fill("Cloud Guest");
   await page.getByPlaceholder("Enter customer phone number").fill("9876543213");
   await page.getByRole("button", { name: "Continue to Menu" }).click();
@@ -704,7 +705,7 @@ test("owner gets an automatic G58 Cloud customer menu link", async ({ page }) =>
   await assertNoErrors();
 });
 
-test("customer can load a hosted static config without menu records in Appwrite", async ({ page }) => {
+test("customer can load a hosted static config without menu records in G58 Core", async ({ page }) => {
   await prepareOffline(page, { state: null });
   const assertNoErrors = monitorPageErrors(page);
   const hostedConfig = {

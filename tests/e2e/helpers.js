@@ -1,20 +1,19 @@
 import { expect } from "@playwright/test";
 
 export const emptyConfigScript = `
-window.GRAVITY58_CONFIG={testMode:true,gravity58Url:'http://127.0.0.1:4173/',adBookingPortalUrl:'/advertise/',appwrite:{}};
+window.GRAVITY58_CONFIG={testMode:true,gravity58Url:'http://127.0.0.1:4173/',adBookingPortalUrl:'/advertise/',g58:{}};
 window.GRAVITY58_AD_BOOKING_CONFIG=window.GRAVITY58_CONFIG;
 window.GRAVITY58_AD_ADMIN_CONFIG=window.GRAVITY58_CONFIG;
 `;
 
 export const externalLibraryMocks = `
-window.Appwrite={};
 window.QRCode=class QRCode{constructor(target,options={}){target.dataset.qrText=options.text||'';target.innerHTML='<div data-testid="qr-rendered">QR</div>'}};
 window.QRCode.CorrectLevel={H:'H'};
 window.jspdf={jsPDF:class{setFont(){} setFontSize(){} text(){} line(){} setDrawColor(){} addPage(){} save(name){window.__lastDownload=name} output(){return new Blob(['pdf'],{type:'application/pdf'})}}};
 `;
 
 export async function prepareOffline(page, { state = "Telangana", blockSiteAuth = false } = {}) {
-  await page.route(/cdn\.jsdelivr\.net\/npm\/appwrite|cdnjs\.cloudflare\.com\/ajax\/libs\/qrcodejs|cdnjs\.cloudflare\.com\/ajax\/libs\/jspdf|cdn\.jsdelivr\.net\/npm\/qrcodejs/, (route) =>
+  await page.route(/cdnjs\.cloudflare\.com\/ajax\/libs\/qrcodejs|cdnjs\.cloudflare\.com\/ajax\/libs\/jspdf|cdn\.jsdelivr\.net\/npm\/qrcodejs/, (route) =>
     route.fulfill({ contentType: "application/javascript", body: externalLibraryMocks }),
   );
   await page.route(/\/(?:js|advertise|digit58|digital-menu|team-admin)\/config\.js(?:\?.*)?$/, (route) =>
@@ -167,7 +166,7 @@ export function mockApiScript({ initialUser = null, admin = false, seed = {} } =
 
 export async function prepareMockApi(page, options = {}) {
   await prepareOffline(page, { state: options.state ?? "Telangana" });
-  await page.route(/\/js\/appwrite-ads\.js(?:\?.*)?$/, (route) =>
+  await page.route(/\/js\/g58-api\.js(?:\?.*)?$/, (route) =>
     route.fulfill({ contentType: "application/javascript", body: mockApiScript(options) }),
   );
 }

@@ -266,7 +266,7 @@
     try {
       const account = await Gravity58Ads.register(email, password, email.split("@")[0]);
       session = { id: account.$id, email: account.email, name: account.name || email.split("@")[0] };
-      write(KEYS.session, session); await syncWorkspace(); renderGate(); renderShell(); toast("G58 restaurant account created");
+      write(KEYS.session, session); await loadWorkspace(); await syncWorkspace(); renderGate(); renderShell(); toast("G58 restaurant account created");
     } catch (error) { $("gateMessage").textContent = error.message || "Could not create account."; }
   }
 

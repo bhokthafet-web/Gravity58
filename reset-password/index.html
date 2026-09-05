@@ -7,9 +7,8 @@
     <meta name="viewport" content="width=device-width" />
     <title>Reset G58 password</title>
     <link rel="stylesheet" href="/js/portal.css" />
-    <script src="https://cdn.jsdelivr.net/npm/appwrite@26.2.0"></script>
     <script src="/js/config.js?v=23"></script>
-    <script src="/js/appwrite-ads.js?v=20"></script>
+    <script src="/js/g58-api.js?v=21"></script>
   </head>
   <body>
     <main>
@@ -36,8 +35,9 @@
       const params = new URLSearchParams(location.search);
       const userId = params.get("userId");
       const secret = params.get("secret");
+      const token = params.get("token");
       function sessionReady() {
-        const ready = Boolean(userId && secret && window.Gravity58Ads?.configured);
+        const ready = Boolean((token || (userId && secret)) && window.Gravity58Ads?.configured);
         byId("savePassword").disabled = !ready;
         byId("instructions").textContent = ready
           ? "Enter and confirm your new password."
@@ -53,7 +53,7 @@
         if (password !== confirm)
           return (byId("resetMessage").textContent = "Passwords do not match.");
         try {
-          await Gravity58Ads.completeRecovery(userId, secret, password);
+          await Gravity58Ads.completeRecovery(userId, token || secret, password);
           byId("resetMessage").textContent = "Password updated successfully. You can now return and sign in.";
         } catch (error) {
           byId("resetMessage").textContent = error.message || "Could not update the password.";

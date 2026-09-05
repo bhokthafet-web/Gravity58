@@ -2,9 +2,11 @@ import webpush from 'web-push';
 import { initializeApp as initializeFirebaseApp, getApps as getFirebaseApps, cert as firebaseCert } from 'firebase-admin/app';
 import { getMessaging } from 'firebase-admin/messaging';
 import { createHash } from 'crypto';
-import nodeFetch from 'node-fetch';
+import { config } from './config.js';
+import { query } from './db.js';
+import { verifyPassword } from './security.js';
 
-const runtimeFetch = (...args) => (globalThis.fetch || nodeFetch)(...args);
+const runtimeFetch = (...args) => globalThis.fetch(...args);
 
 const DATABASE_ID = 'gravity58';
 const TABLE_ID = 'g58_records';
@@ -38,7 +40,7 @@ const indiaDay = (value = new Date()) => new Intl.DateTimeFormat('en-CA', {
   timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit',
 }).format(new Date(value));
 const safeKindId = (prefix, ownerId, maxOwnerLength) => `${prefix}${String(ownerId).replace(/[^a-zA-Z0-9._-]/g, '-').slice(0, maxOwnerLength)}`;
-// Row IDs are capped at 36 chars by Appwrite, so pairing two full IDs (usually 20 chars each)
+// Row IDs are capped at 36 chars by G58, so pairing two full IDs (usually 20 chars each)
 // needs a hash rather than truncated concatenation to stay under the limit without collisions.
 const pairRowId = (prefix, a, b) => `${prefix}${createHash('sha1').update(`${a}:${b}`).digest('hex').slice(0, 32 - prefix.length)}`;
 const orderKind = ownerId => safeKindId(ORDER_KIND_PREFIX, ownerId, 47);
@@ -80,32 +82,9 @@ const cleanRow = row => {
   return { ...row, ...payload, id: payload.id || row?.$id };
 };
 
-function appwriteClient(req) {
-  const endpoint = process.env.APPWRITE_FUNCTION_API_ENDPOINT || 'https://server.g58.in/v1';
-  const project = process.env.APPWRITE_FUNCTION_PROJECT_ID;
-  const key = req.headers['x-appwrite-key'];
-  if (!project || !key) throw new Error('Function service credentials are unavailable.');
-  return async (path, options = {}) => {
-    const response = await runtimeFetch(`${endpoint}${path}`, {
-      ...options,
-      headers: {
-        'content-type': 'application/json',
-        'x-appwrite-project': project,
-        'x-appwrite-key': key,
-        ...(options.headers || {}),
-      },
-    });
-    const body = await response.text();
-    let data = {};
-    try { data = body ? JSON.parse(body) : {}; } catch { data = { message: body }; }
-    if (!response.ok) {
-      const error = new Error(data.message || `Appwrite request failed (${response.status})`);
-      error.code = response.status;
-      error.type = data.type;
-      throw error;
-    }
-    return data;
-  };
+function g58Store(req) {
+  if (typeof req.call !== 'function') throw new Error('G58 data service is unavailable.');
+  return req.call;
 }
 
 function parseMenu(row, ownerId, restaurantId, requireAccepting = true) {
@@ -231,7 +210,7 @@ async function validateReceipt(call, input, userId) {
   if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.mimeType)) throw new Error('Payment receipt must be a JPG, PNG or WebP image.');
   input.paymentReceiptName = text(file.name, 200);
   input.paymentReceiptType = file.mimeType;
-  input.paymentReceiptUrl = `${process.env.APPWRITE_FUNCTION_API_ENDPOINT || 'https://server.g58.in/v1'}/storage/buckets/${MEDIA_BUCKET_ID}/files/${encodeURIComponent(fileId)}/view?project=${encodeURIComponent(process.env.APPWRITE_FUNCTION_PROJECT_ID)}`;
+  input.paymentReceiptUrl = `${config.publicApiUrl}/api/v1/media/${encodeURIComponent(fileId)}`;
 }
 
 async function createRow(call, rowId, kind, payload, permissions) {
@@ -316,23 +295,11 @@ function closedHistoryRecord(kind, record) {
 }
 
 async function verifyCurrentPassword(req, call, userId, password) {
-  const email = text(req.headers['x-appwrite-user-email'], 250).toLowerCase();
+  const email = text(req.headers['x-g58-user-email'], 250).toLowerCase();
   if (!email || !password || String(password).length > 256) throw new Error('Enter the password for your signed-in G58 account.');
-  const endpoint = process.env.APPWRITE_FUNCTION_API_ENDPOINT || 'https://server.g58.in/v1';
-  const project = process.env.APPWRITE_FUNCTION_PROJECT_ID;
-  const response = await runtimeFetch(`${endpoint}/account/sessions/email`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', 'x-appwrite-project': project },
-    body: JSON.stringify({ email, password: String(password) }),
-  });
-  let session = {};
-  try { session = JSON.parse(await response.text()); } catch {}
-  if (!response.ok || session.userId !== userId) throw new Error('Password is incorrect. No data was deleted.');
-  if (session.secret) {
-    await runtimeFetch(`${endpoint}/account/sessions/current`, {
-      method: 'DELETE',
-      headers: { 'x-appwrite-project': project, 'x-appwrite-session': session.secret },
-    }).catch(() => {});
+  const result = await query(`SELECT id,password_hash FROM users WHERE id=$1 AND email=$2 AND deleted_at IS NULL`, [userId, email]);
+  if (!result.rows[0]?.password_hash || !(await verifyPassword(result.rows[0].password_hash, String(password)))) {
+    throw new Error('Password is incorrect. No data was deleted.');
   }
   return true;
 }
@@ -1570,9 +1537,9 @@ async function sendDigit58PushNotifications(call, error) {
 }
 
 export default async ({ req, res, error }) => {
-  if (req.headers['x-appwrite-trigger'] === 'schedule') {
+  if (req.headers['x-g58-trigger'] === 'schedule') {
     try {
-      const call = appwriteClient(req);
+      const call = g58Store(req);
       const businessCards = await purgeInactiveBusinessCards(call);
       const promotions = await purgeExpiredDigit58Promotions(call);
       const dataRetention = await purgeExpiredOwnerData(call);
@@ -1585,181 +1552,181 @@ export default async ({ req, res, error }) => {
   }
   if (req.method === 'GET') return res.json({ ok: true, service: 'Gravity58 secure digital orders' });
   if (req.method !== 'POST') return res.json({ ok: false, error: 'Method not allowed.' }, 405);
-  const userId = text(req.headers['x-appwrite-user-id'], 64);
+  const userId = text(req.headers['x-g58-user-id'], 64);
   if (!userId) return res.json({ ok: false, error: 'A secure customer session is required. Reload the menu and try again.' }, 401);
   try {
     const requestBody = req.bodyJson || JSON.parse(req.bodyText || '{}');
     if (requestBody?.action === 'owner-verify-history-delete') {
-      const call = appwriteClient(req);
+      const call = g58Store(req);
       return res.json({ ok: true, ...(await verifyOrDeleteOwnerHistory(req, call, requestBody, userId, false)) });
     }
     if (requestBody?.action === 'owner-backup-delete-history') {
-      const call = appwriteClient(req);
+      const call = g58Store(req);
       return res.json({ ok: true, ...(await verifyOrDeleteOwnerHistory(req, call, requestBody, userId, true)) });
     }
     if (requestBody?.action === 'confirm-payment') {
-      const call = appwriteClient(req);
+      const call = g58Store(req);
       const ownerId = text(requestBody.ownerId, 64), orderId = text(requestBody.orderId, 36);
       if (!ownerId || !orderId) throw new Error('Order approval details are missing.');
       return res.json({ ok: true, order: await confirmPayment(call, orderId, ownerId, userId) });
     }
     if (requestBody?.action === 'create-subscription') {
-      const call = appwriteClient(req);
-      const subscription = await createSubscription(call, requestBody.subscription || {}, userId, req.headers['x-appwrite-user-email']);
+      const call = g58Store(req);
+      const subscription = await createSubscription(call, requestBody.subscription || {}, userId, req.headers['x-g58-user-email']);
       return res.json({ ok: true, subscription }, 201);
     }
     if (requestBody?.action === 'send-subscription-link') {
-      const call = appwriteClient(req);
+      const call = g58Store(req);
       return res.json({ ok: true, subscription: await sendSubscriptionLink(call, requestBody.subscription || {}, userId) });
     }
     if (requestBody?.action === 'submit-subscription-payment') {
-      const call = appwriteClient(req);
+      const call = g58Store(req);
       return res.json({ ok: true, subscription: await submitSubscriptionPayment(call, requestBody.subscription || {}, userId) });
     }
     if (requestBody?.action === 'confirm-subscription-payment') {
-      const call = appwriteClient(req);
+      const call = g58Store(req);
       return res.json({ ok: true, subscription: await confirmSubscriptionPayment(call, requestBody.subscription || {}, userId) });
     }
     if (requestBody?.action === 'digit58-link-customer') {
-      const call = appwriteClient(req);
+      const call = g58Store(req);
       const customer = await linkDigit58Customer(call, requestBody, userId);
       return res.json({ ok: true, customer, stores: await listDigit58CustomerPortalStores(call, userId) });
     }
     if (requestBody?.action === 'digit58-list-customer-stores') {
-      const call = appwriteClient(req);
+      const call = g58Store(req);
       return res.json({ ok: true, stores: await listDigit58CustomerPortalStores(call, userId) });
     }
     if (requestBody?.action === 'digit58-create-card') {
-      const call = appwriteClient(req);
+      const call = g58Store(req);
       return res.json({ ok: true, card: await createDigit58Card(call, requestBody, userId) }, 201);
     }
     if (requestBody?.action === 'digit58-request-buy-again') {
-      const call = appwriteClient(req);
+      const call = g58Store(req);
       return res.json({ ok: true, card: await requestDigit58BuyAgain(call, requestBody, userId) });
     }
     if (requestBody?.action === 'digit58-create-order') {
-      const call = appwriteClient(req);
+      const call = g58Store(req);
       return res.json({ ok: true, order: await createDigit58Order(call, requestBody, userId) }, 201);
     }
     if (requestBody?.action === 'digit58-create-booking') {
-      const call = appwriteClient(req);
+      const call = g58Store(req);
       return res.json({ ok: true, booking: await createDigit58Booking(call, requestBody, userId) }, 201);
     }
     if (requestBody?.action === 'digit58-get-slot-status') {
-      const call = appwriteClient(req);
+      const call = g58Store(req);
       return res.json({ ok: true, ...(await getDigit58SlotStatus(call, requestBody)) });
     }
     if (requestBody?.action === 'digit58-owner-create-booking') {
-      const call = appwriteClient(req);
+      const call = g58Store(req);
       return res.json({ ok: true, booking: await createDigit58OwnerBooking(call, requestBody, userId) }, 201);
     }
     if (requestBody?.action === 'digit58-accept-owner-booking') {
-      const call = appwriteClient(req);
+      const call = g58Store(req);
       return res.json({ ok: true, booking: await acceptDigit58OwnerBooking(call, requestBody, userId) });
     }
     if (requestBody?.action === 'digit58-reject-owner-booking') {
-      const call = appwriteClient(req);
+      const call = g58Store(req);
       return res.json({ ok: true, booking: await rejectDigit58OwnerBooking(call, requestBody, userId) });
     }
     if (requestBody?.action === 'digit58-cancel-customer-booking') {
-      const call = appwriteClient(req);
+      const call = g58Store(req);
       return res.json({ ok: true, booking: await cancelDigit58CustomerBooking(call, requestBody, userId) });
     }
     if (requestBody?.action === 'digit58-mark-cancellation-payment') {
-      const call = appwriteClient(req);
+      const call = g58Store(req);
       return res.json({ ok: true, booking: await markDigit58CancellationPayment(call, requestBody, userId) });
     }
     if (requestBody?.action === 'digit58-confirm-cancellation-payment') {
-      const call = appwriteClient(req);
+      const call = g58Store(req);
       return res.json({ ok: true, booking: await confirmDigit58CancellationPayment(call, requestBody, userId, true) });
     }
     if (requestBody?.action === 'digit58-reopen-cancellation-payment') {
-      const call = appwriteClient(req);
+      const call = g58Store(req);
       return res.json({ ok: true, booking: await confirmDigit58CancellationPayment(call, requestBody, userId, false) });
     }
     if (requestBody?.action === 'digit58-create-refill-order') {
-      const call = appwriteClient(req);
+      const call = g58Store(req);
       return res.json({ ok: true, order: await createDigit58RefillOrder(call, requestBody, userId) }, 201);
     }
     if (requestBody?.action === 'digit58-reorder') {
-      const call = appwriteClient(req);
+      const call = g58Store(req);
       return res.json({ ok: true, order: await createDigit58Reorder(call, requestBody, userId) }, 201);
     }
     if (requestBody?.action === 'digit58-owner-create-order') {
-      const call = appwriteClient(req);
+      const call = g58Store(req);
       return res.json({ ok: true, order: await createDigit58OwnerOrder(call, requestBody, userId) }, 201);
     }
     if (requestBody?.action === 'digit58-accept-owner-order') {
-      const call = appwriteClient(req);
+      const call = g58Store(req);
       return res.json({ ok: true, order: await acceptDigit58OwnerOrder(call, requestBody, userId) });
     }
     if (requestBody?.action === 'digit58-reject-owner-order') {
-      const call = appwriteClient(req);
+      const call = g58Store(req);
       return res.json({ ok: true, order: await rejectDigit58OwnerOrder(call, requestBody, userId) });
     }
     if (requestBody?.action === 'digit58-create-course') {
-      const call = appwriteClient(req);
+      const call = g58Store(req);
       return res.json({ ok: true, course: await createDigit58Course(call, requestBody, userId) }, 201);
     }
     if (requestBody?.action === 'digit58-add-medicine') {
-      const call = appwriteClient(req);
+      const call = g58Store(req);
       return res.json({ ok: true, course: await addDigit58Medicine(call, requestBody, userId) });
     }
     if (requestBody?.action === 'digit58-save-push-subscription') {
-      const call = appwriteClient(req);
+      const call = g58Store(req);
       return res.json({ ok: true, subscription: await saveDigit58PushSubscription(call, requestBody, userId) }, 201);
     }
     if (requestBody?.action === 'digit58-save-fcm-token') {
-      const call = appwriteClient(req);
+      const call = g58Store(req);
       return res.json({ ok: true, token: await saveDigit58FcmToken(call, requestBody, userId) }, 201);
     }
     if (requestBody?.action === 'raise-support-ticket') {
-      const call = appwriteClient(req);
+      const call = g58Store(req);
       return res.json({ ok: true, ticket: await raiseSupportTicket(call, requestBody, userId) }, 201);
     }
     if (requestBody?.action === 'digit58-accept-policy') {
-      const call = appwriteClient(req);
+      const call = g58Store(req);
       return res.json({ ok: true, entitlement: await acceptDigit58Policy(call, requestBody, userId) });
     }
     if (requestBody?.action === 'digit58-create-subscription-checkout') {
-      const call = appwriteClient(req);
+      const call = g58Store(req);
       const checkout = await createDigit58SubscriptionCheckout(call, requestBody, userId);
       return res.json({ ok: true, ...checkout }, 201);
     }
     if (requestBody?.action === 'digit58-cancel-subscription') {
-      const call = appwriteClient(req);
+      const call = g58Store(req);
       return res.json({ ok: true, entitlement: await cancelDigit58Subscription(call, requestBody, userId) });
     }
     if (requestBody?.action === 'digit58-get-referral-code') {
-      const call = appwriteClient(req);
+      const call = g58Store(req);
       return res.json({ ok: true, ...(await getDigit58ReferralCode(call, requestBody, userId)) });
     }
     if (requestBody?.action === 'digit58-admin-delete-entitlement') {
-      const call = appwriteClient(req);
+      const call = g58Store(req);
       return res.json({ ok: true, ...(await deleteDigit58Entitlement(call, requestBody, userId)) });
     }
     if (requestBody?.action === 'digit58-set-store-suspended') {
-      const call = appwriteClient(req);
+      const call = g58Store(req);
       return res.json({ ok: true, store: await setDigit58StoreSuspended(call, requestBody, userId) });
     }
     if (requestBody?.action === 'touch-business-card') {
-      const call = appwriteClient(req);
+      const call = g58Store(req);
       return res.json({ ok: true, business: await touchBusinessCard(call, requestBody) });
     }
     if (requestBody?.action === 'rate-business-card') {
-      const call = appwriteClient(req);
+      const call = g58Store(req);
       const result = await rateBusinessCard(call, requestBody, userId);
       return res.json({ ok: true, ...result });
     }
     if (requestBody?.action === 'delete-business-rating') {
-      const call = appwriteClient(req);
+      const call = g58Store(req);
       return res.json({ ok: true, business: await deleteBusinessRating(call, requestBody, userId) });
     }
     const input = requestBody?.order || requestBody || {};
     const ownerId = text(input.cloudOwnerId || input.ownerId, 64);
     const restaurantId = text(input.restaurantId, 64);
     if (!ownerId || !restaurantId) throw new Error('Restaurant details are missing. Reload the menu and try again.');
-    const call = appwriteClient(req);
+    const call = g58Store(req);
     const menuRow = await call(`/tablesdb/${DATABASE_ID}/tables/${TABLE_ID}/rows/${encodeURIComponent(restaurantId)}`);
     const menu = parseMenu(menuRow, ownerId, restaurantId);
     await validateReceipt(call, input, userId);

@@ -407,6 +407,10 @@ async function syncCloudOrders({alertNew=false}={}){
 }
 async function persistCloudOrder(order){
   if(!order?.id||!order.cloudOwnerId)return order;
+  if(!Gravity58Ads?.configured){
+    order.tokenNumber||=await reserveOrderToken(order.cloudOwnerId,order.restaurantId);
+    return order;
+  }
   const kind=cloudOrderKind(order.cloudOwnerId);
   const current=await Gravity58Ads.ensureUser();
   order.customerAccountId||=current?.$id||'';
@@ -432,7 +436,7 @@ async function persistCloudOrder(order){
     if(!result?.order)throw new Error('Secure order service did not return the order.');
     return result.order;
   }
-  // Local and automated-test adapters do not run Appwrite Functions.
+  // Local and automated-test adapters may not run the secure action service.
   order.tokenNumber||=await reserveOrderToken(order.cloudOwnerId,order.restaurantId);
   const permissions=Gravity58Ads.userPermissionSet?.([order.customerAccountId,order.cloudOwnerId])||Gravity58Ads.collaborativePermissionSet?.(order.customerAccountId);
   return Gravity58Ads.create(kind,order,order.id,permissions);
@@ -536,7 +540,7 @@ function renderShell(){const r=activeRestaurant();if(!r)return renderOwnerOnboar
 }
 function navButton(v,i,t){return `<button data-view="${v}" class="${view===v?'active':''}"><span>${i}</span>${t}</button>`}
 function renderView(){({dashboard:dashboardView,restaurants:restaurantsView,menu:menuView,orders:ordersView,schedule:scheduleView,subscriptions:subscriptionsView,qr:qrView,reports:reportsView,pricing:pricingView,publish:publishSetupView,settings:settingsView}[view]||dashboardView)()}
-function dashboardView(){const r=activeRestaurant(),items=restaurantItems(),orders=ordersForOwnerPeriod(restaurantOrders()),period=ownerPeriodLabel(),completed=orders.filter(x=>x.status==='Completed');$('#page').innerHTML=`<div class="hero"><div><span class="status-pill"><span class="dot"></span>${r.open?'Open':'Closed'}</span><h1 style="margin:12px 0 6px">${r.logo} ${r.name}</h1><p>${r.description||r.type+' in '+r.city}</p></div><div class="actions"><button class="btn secondary" id="previewMenu">Preview Menu</button><button class="btn secondary" id="openOrders">Open Orders</button><button class="btn" id="openCsv">Manage Menu</button></div></div><div class="dashboard-filter-row"><div><h2>${html(period)} overview</h2><p class="muted">Order totals and the list below follow this period.</p></div>${ownerPeriodControls('Filter restaurant dashboard')}</div><div class="grid stats">${metric('Categories',restaurantCategories().length)}${metric('Menu Items',items.length)}${metric('Orders',orders.length)}${metric('Revenue',money(completed.reduce((a,b)=>a+b.total,0)))}</div><div class="section-head"><div><h2>Orders for ${html(period)}</h2><p class="muted">${orders.length} order${orders.length===1?'':'s'} in the selected period</p></div></div>${orderCompactTable(orders.slice(0,12),{actions:false,emptyText:'No orders in this period'})}<div id="retentionControl"></div>`;
+function dashboardView(){const r=activeRestaurant(),items=restaurantItems(),orders=ordersForOwnerPeriod(restaurantOrders()),period=ownerPeriodLabel(),completed=orders.filter(x=>x.status==='Completed'),posSync=menuFeature('posPremium')&&isCloudMenuSession()?`<article class="card premium-pos-sync-card"><div><span class="eyebrow">PREMIUM POS SYNC</span><strong class="premium-pos-sync-title">Restaurant billing workspace</strong><p class="muted">Open the complete POS workspace for ${html(r.name)} with its order data selected.</p></div><a class="btn premium-pos-button" href="${premiumPosUrl(r)}">▣ Open Premium POS</a></article>`:'';$('#page').innerHTML=`<div class="hero"><div><span class="status-pill"><span class="dot"></span>${r.open?'Open':'Closed'}</span><h1 style="margin:12px 0 6px">${r.logo} ${r.name}</h1><p>${r.description||r.type+' in '+r.city}</p></div><div class="actions"><button class="btn secondary" id="previewMenu">Preview Menu</button><button class="btn secondary" id="openOrders">Open Orders</button><button class="btn" id="openCsv">Manage Menu</button></div></div>${posSync}<div class="dashboard-filter-row"><div><h2>${html(period)} overview</h2><p class="muted">Order totals and the list below follow this period.</p></div>${ownerPeriodControls('Filter restaurant dashboard')}</div><div class="grid stats">${metric('Categories',restaurantCategories().length)}${metric('Menu Items',items.length)}${metric('Orders',orders.length)}${metric('Revenue',money(completed.reduce((a,b)=>a+b.total,0)))}</div><div class="section-head"><div><h2>Orders for ${html(period)}</h2><p class="muted">${orders.length} order${orders.length===1?'':'s'} in the selected period</p></div></div>${orderCompactTable(orders.slice(0,12),{actions:false,emptyText:'No orders in this period'})}<div id="retentionControl"></div>`;
   window.G58DataRetention?.mount({host:'#retentionControl',product:'digital-menu',rows:state.orders,afterDelete:async()=>{await syncCloudOrders();dashboardView()}});
   bindOwnerPeriodControls(dashboardView);$('#previewMenu').onclick=()=>{location.href=cloudCustomerMenuUrl(r)};$('#openCsv').onclick=()=>{view='menu';renderShell()};$('#openOrders').onclick=()=>{view=menuFeature('ordersEnabled')?'orders':'pricing';renderShell();if(view==='pricing')toast('Request Standard or Premium activation to receive orders')};}
 function metric(label,value){return `<article class="card"><span class="muted">${label}</span><div class="metric">${value}</div></article>`}
@@ -704,7 +708,7 @@ function orderCompactTable(orders,{actions=true,emptyText='No orders in this per
 function ordersBoardMarkup(orders,emptyText='No orders yet'){
   if(!orders.length)return empty(emptyText);
   const activeOrders=orders.filter(order=>activeQueueStatus(order.status));
-  const featured=activeOrders.length?activeOrders:orders.slice().sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt)).slice(0,3);
+  const featured=(activeOrders.length?activeOrders:orders.slice().sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt))).slice(0,3);
   const featuredIds=new Set(featured.map(order=>order.id));
   const history=orders.filter(order=>!featuredIds.has(order.id));
   const subtitle=activeOrders.length?'Completed and other closed orders.':'Order 4 onward is shown in a compact list.';
@@ -801,7 +805,7 @@ function scheduleView(){
   const scheduled=restaurantOrders().filter(order=>{
     if(!order.scheduledFor)return false;
     if(['Completed','Rejected','Payment Rejected'].includes(order.status))return false;
-    if(order.status==='Scheduled')return new Date(order.scheduledFor).getTime()-current<=15*60000;
+    if(order.status==='Scheduled')return true;
     return true;
   }).sort((a,b)=>new Date(a.scheduledFor)-new Date(b.scheduledFor));
   $('#page').innerHTML=`<div class="section-head"><div><h1>Scheduled Orders</h1><p class="muted">Orders appear here once they're within 15 minutes of their scheduled time, and ring continuously — like an incoming call — until started.</p></div><span class="status-pill"><span class="dot"></span> Premium scheduling</span></div><div class="grid order-grid">${scheduled.map(order=>{const ringing=ringingOrderIds.has(order.id);return `<article class="card schedule-card ${ringing?'incoming-order':''}">${ringing?'<span class="incoming-order-beacon" aria-label="Scheduled order starting" title="Scheduled order starting"></span>':''}<span class="eyebrow">TOKEN ${formatToken(order.tokenNumber)}</span><h2>${new Date(order.scheduledFor).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'})}</h2><p><strong>${html(order.customerName||order.customer)}</strong> · ${order.items.map(item=>`${item.qty} × ${html(item.name)}`).join(', ')}</p><div class="chips"><span class="chip">${html(order.status)}</span><span class="chip">${money(order.total)}</span></div><div class="actions">${orderActions(order)}<button class="btn small secondary" data-print-order="${html(order.id)}">Print</button></div></article>`}).join('')||empty('No scheduled orders')}</div>`;
@@ -1017,7 +1021,7 @@ function renderPublicMenu(){
   app.innerHTML=`<main class="public-menu compact-public-menu">
     <section class="menu-sticky-header">
     <section class="compact-menu-hero">
-      <nav class="menu-nav compact-nav"><div>${published?'<span class="published-menu-badge">Published customer menu</span>':''}${!published?'<button class="meal-subscription-entry" id="openCustomerOrders" type="button" hidden>My Orders</button>':''}${r.premiumFeatures?'<button class="meal-subscription-entry" id="openMealSubscriptions" type="button" hidden>My Meal Dashboard</button>':''}</div><a class="sponsor-mini" href="https://www.g58.in" target="_blank" rel="noopener">Sponsored by <svg class="sponsor-logo" viewBox="0 0 120 120" fill="none" stroke="currentColor" stroke-width="10" aria-hidden="true"><circle cx="60" cy="26" r="15"/><circle cx="28" cy="82" r="15"/><circle cx="92" cy="82" r="15"/></svg></a></nav>
+      <nav class="menu-nav compact-nav"><div>${published?'<span class="published-menu-badge">Published customer menu</span>':''}${!published&&customerContext?'<button class="meal-subscription-entry" id="startNewCustomer" type="button">Start New Customer</button>':''}${!published?'<button class="meal-subscription-entry" id="openCustomerOrders" type="button" hidden>My Orders</button>':''}${r.premiumFeatures?'<button class="meal-subscription-entry" id="openMealSubscriptions" type="button" hidden>My Meal Dashboard</button>':''}</div><a class="sponsor-mini" href="https://www.g58.in" target="_blank" rel="noopener">Sponsored by <svg class="sponsor-logo" viewBox="0 0 120 120" fill="none" stroke="currentColor" stroke-width="10" aria-hidden="true"><circle cx="60" cy="26" r="15"/><circle cx="28" cy="82" r="15"/><circle cx="92" cy="82" r="15"/></svg></a></nav>
       <div class="compact-hero-layout"><div><p class="eyebrow">PREMIUM DIGITAL MENU</p><h1>${html(r.name)}</h1><p>${html(r.description)}</p><div class="compact-details"><span>📍 ${html(r.address||r.city)}</span><span>☎ ${html(r.phone||'Contact restaurant')}</span><span class="open-tag">${r.open?'Open now':'Closed'}</span></div></div><div class="compact-hero-dish">${imageMarkup(restaurantHero,r.name?.[0]||'G','compact-hero-photo')}</div></div>
     </section>
     <aside class="header-ad-panel">
@@ -1058,6 +1062,14 @@ function renderPublicMenu(){
   $$('[data-diet]').forEach(b=>b.onclick=()=>{filters.diet=b.dataset.diet;applyFilters()});
   $('#availableOnlyFilter').onchange=e=>{filters.available=e.target.checked;applyFilters()};
   $('#publicMenuSearch').oninput=e=>{filters.search=e.target.value;applyFilters()};
+  if($('#startNewCustomer'))$('#startNewCustomer').onclick=()=>{
+    customerContext=null;
+    customerCart=[];
+    sessionStorage.removeItem(`gravity58Customer_${rid}`);
+    sessionStorage.removeItem(`gravity58Cart_${rid}`);
+    sessionStorage.removeItem(customerOpenOrderKey(rid));
+    renderPublicMenu();
+  };
   if(!published&&orderingEnabled){
     const itemMap=new Map(items.map(item=>[String(item.id),item]));
     $$('[data-qty-action]').forEach(button=>button.onclick=event=>{event.preventDefault();changeCartQuantity(button.dataset.item,button.dataset.qtyAction,itemMap.get(String(button.dataset.item)))});
