@@ -792,7 +792,6 @@ function stopEntitlementStatusPolling(){
 }
 function startEntitlementStatusPolling(){
   stopEntitlementStatusPolling();
-  if(!myRequest||!['Requested','Payment Link Sent','Activated'].includes(myRequest.status))return;
   entitlementStatusTimer=setInterval(async()=>{
     const previousStatus=myRequest?.status||'';
     try{
@@ -804,7 +803,7 @@ function startEntitlementStatusPolling(){
       }
       if((myRequest?.status||'')!==previousStatus)renderPlanGate();
     }catch(error){console.warn('Refills activation status could not be refreshed',error)}
-  },8000);
+  },Number(window.G58EntitlementRefreshMs)||8000);
 }
 async function startDigit58FreeTrial(){
   const button=$('#startTrialBtn');if(button)button.disabled=true;
@@ -924,10 +923,11 @@ function renderPlanGate(){
       <button class="btn full" data-subscribe-plan="${period.id}" type="button">Subscribe</button>
     </article>`;
   }).join('');
-  app.innerHTML=`<main class="screen"><section class="auth-card" style="width:min(760px,100%)"><a class="brand" href="../"><svg class="brand-mark" viewBox="0 0 120 120" fill="none" stroke="#7fffd4" stroke-width="8" aria-hidden="true"><circle cx="60" cy="26" r="15"/><circle cx="28" cy="82" r="15"/><circle cx="92" cy="82" r="15"/></svg><div><h2>Choose your Refills plan</h2><p class="tagline">Start free, or subscribe to keep your store live.</p></div></a>${statusNote}<div class="plan-grid">${trialCard}${planCards}</div><div class="actions" style="margin-top:16px"><button class="btn secondary full" id="gateLogout">Sign out</button></div></section></main>${siteFooter()}`;
+  app.innerHTML=`<main class="screen"><section class="auth-card" style="width:min(760px,100%)"><a class="brand" href="../"><svg class="brand-mark" viewBox="0 0 120 120" fill="none" stroke="#7fffd4" stroke-width="8" aria-hidden="true"><circle cx="60" cy="26" r="15"/><circle cx="28" cy="82" r="15"/><circle cx="92" cy="82" r="15"/></svg><div><h2>Choose your Refills plan</h2><p class="tagline">Start free, or subscribe to keep your store live.</p></div></a>${statusNote}<div class="plan-grid">${trialCard}${planCards}</div><div class="actions" style="margin-top:16px"><button class="btn full" id="refreshAccessStatus" type="button">Refresh Access Status</button><button class="btn secondary full" id="gateLogout">Sign out</button></div></section></main>${siteFooter()}`;
   (typeof bindAndroidAppFooter==='function'&&bindAndroidAppFooter());
   $('#startTrialBtn')?.addEventListener('click',startDigit58FreeTrial);
   $('#refreshTrialStatus')?.addEventListener('click',async()=>{const button=$('#refreshTrialStatus');button.disabled=true;try{await loadEntitlement();if(hasActiveEntitlement())return proceedAfterEntitlement();renderPlanGate();toast('Approval is still pending')}catch(error){button.disabled=false;toast(error.message||'Could not refresh approval status')}});
+  $('#refreshAccessStatus').onclick=async()=>{const button=$('#refreshAccessStatus');button.disabled=true;button.textContent='Checking…';try{await loadEntitlement();if(hasActiveEntitlement())return proceedAfterEntitlement();renderPlanGate();toast(myRequest?'Approval is still pending':'No active Refills approval found yet')}catch(error){button.disabled=false;button.textContent='Refresh Access Status';toast(error.message||'Could not refresh access status')}};
   $$('[data-subscribe-plan]').forEach(button=>button.addEventListener('click',()=>startDigit58Subscription(button.dataset.subscribePlan)));
   $('#gateLogout').onclick=async()=>{stopOwnerRealtime();await api.logout();session=null;renderOwnerAuth()};
   startEntitlementStatusPolling();

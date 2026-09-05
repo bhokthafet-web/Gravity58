@@ -323,6 +323,30 @@ test("Refills free trial creates an admin approval request instead of an active 
   await assertNoErrors();
 });
 
+test("Refills owner detects an admin activation even when the plan page opened before a request existed", async ({ page }) => {
+  const ownerId = "refills-live-activation-owner";
+  await prepareMockApi(page, {
+    initialUser: { $id: ownerId, email: "live-activation@example.com", name: "Live Activation Owner" },
+    seed: { digit58_requests: [], digit58_entitlements: [] },
+  });
+  await page.addInitScript(() => { window.G58EntitlementRefreshMs = 50; });
+  const assertNoErrors = monitorPageErrors(page);
+
+  await page.goto("/digit58/");
+  await expect(page.getByRole("button", { name: "Refresh Access Status" })).toBeVisible();
+  await page.evaluate(({ ownerId }) => {
+    window.__g58Mock.store.digit58_entitlements.unshift({
+      id: `d58-${ownerId}`, ownerId, ownerEmail: "live-activation@example.com",
+      active: true, paused: false, freeTrial: true, trialUsed: true, plan: "trial",
+      subscriptionStatus: "trial", storeSlots: 1, activatedAt: new Date().toISOString(),
+      expiresAt: new Date(Date.now() + 30 * 86_400_000).toISOString(),
+    });
+  }, { ownerId });
+
+  await expect(page.getByRole("heading", { name: "Before you continue" })).toBeVisible();
+  await assertNoErrors();
+});
+
 test("G58 admin approval activates a pending Refills free trial for 30 days", async ({ page }) => {
   const ownerId = "pending-trial-owner";
   const createdAt = new Date().toISOString();
@@ -356,6 +380,34 @@ test("G58 admin approval activates a pending Refills free trial for 30 days", as
   const days = (new Date(result.entitlement.expiresAt).getTime() - Date.now()) / 86_400_000;
   expect(days).toBeGreaterThan(29.9);
   expect(days).toBeLessThanOrEqual(30.1);
+  await expect(page.locator("#page")).toContainText("Free Trial");
+  await assertNoErrors();
+});
+
+test("G58 admin Refills page refreshes newly activated subscriptions without a page reload", async ({ page }) => {
+  const ownerId = "admin-live-refills-owner";
+  await prepareMockApi(page, { admin: true, state: null, seed: { digit58_requests: [], digit58_entitlements: [] } });
+  await page.addInitScript(() => { window.G58AdminRefreshMs = 50; });
+  const assertNoErrors = monitorPageErrors(page);
+
+  await page.goto("/team-admin/");
+  await page.locator('#login input[name="email"]').fill("admin@g58.in");
+  await page.locator('#login input[name="password"]').fill("testing123");
+  await page.locator("#login").getByRole("button", { name: "Secure Login" }).click();
+  await page.locator('[data-view="digit58"]').click();
+  await expect(page.getByText("No activated Refills subscriptions.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Refresh Subscriptions" })).toBeVisible();
+
+  await page.evaluate(({ ownerId }) => {
+    window.__g58Mock.store.digit58_entitlements.unshift({
+      id: `d58-${ownerId}`, ownerId, ownerEmail: "new-active-owner@example.com",
+      active: true, paused: false, freeTrial: true, trialUsed: true, plan: "trial",
+      subscriptionStatus: "trial", storeSlots: 1, activatedAt: new Date().toISOString(),
+      expiresAt: new Date(Date.now() + 30 * 86_400_000).toISOString(),
+    });
+  }, { ownerId });
+
+  await expect(page.locator("#page")).toContainText("new-active-owner@example.com");
   await expect(page.locator("#page")).toContainText("Free Trial");
   await assertNoErrors();
 });

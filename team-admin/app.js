@@ -5,6 +5,8 @@ const digit58StoreKind=ownerId=>`digit58_store_${String(ownerId||'').replace(/[^
 const AD_PLACEMENT_SPECS={right_rail:{label:'Right menu rail',size:'1080 × 1350 px',ratio:'4:5'},preparing:{label:'Preparing screen',size:'1200 × 628 px',ratio:'1.91:1'},thankyou:{label:'Thank-you screen',size:'1080 × 1080 px',ratio:'1:1'}};
 const placementSpec=slotId=>AD_PLACEMENT_SPECS[slotId]||{label:slotId||'Advertisement',size:'Confirm with G58',ratio:''};
 let user=null,view='overview',data={bookings:[],advertisements:[],profiles:[],slots:[],customers:[],businesses:[],postRows:[],legacyPostDocument:null,menuPricing:[],menuEntitlements:[],menuRequests:[],dinerOrders:[],dinerOrdersLoaded:false,digit58Stores:[],digit58Requests:[],digit58Entitlements:[],digit58Customers:[],digit58CustomersLoaded:false,digit58Pricing:[],digit58CardPurchases:[],digit58BrandRequests:[],digit58BrandOwners:[],digit58Referrals:[],digit58ReferrerProfiles:[],supportTickets:[],contactRequests:[]};
+const DIGIT58_ADMIN_REFRESH_MS=10000;
+let digit58AdminRefreshTimer=null,digit58AdminRenderedSignature='';
 function toast(message){const target=$('#toast');target.textContent=message;target.classList.add('show');setTimeout(()=>target.classList.remove('show'),2200)}
 function timeLeft(expiresAt,lifetime=false){if(lifetime)return'Lifetime';if(!expiresAt)return'No expiry';const ms=new Date(expiresAt)-new Date();if(ms<=0)return'Expired';const days=Math.floor(ms/864e5),hours=Math.floor(ms%864e5/36e5),minutes=Math.floor(ms%36e5/6e4);return`${days?days+'d ':''}${hours}h ${minutes}m remaining`}
 async function boot(){if(!api.configured)return configurationRequired();user=await api.currentUser();if(!user)return login();if(!await api.isTeamAdmin())return accessDenied();await loadData();shell()}
@@ -48,7 +50,7 @@ async function reconcileExpiredCampaigns(){
 }
 function parse(value){try{return Array.isArray(value)?value:JSON.parse(value||'[]')}catch{return[]}}
 function parsePost(value){try{return typeof value==='string'?JSON.parse(value):value}catch{return null}}
-function shell(){app.innerHTML=`<div class="shell"><aside class="sidebar"><a class="brand" href="../"><svg class="brand-mark" viewBox="0 0 120 120" fill="none" stroke="#6d5ef0" stroke-width="8" aria-hidden="true"><circle cx="60" cy="26" r="15"/><circle cx="28" cy="82" r="15"/><circle cx="92" cy="82" r="15"/></svg><div><strong>Gravity58</strong><small class="muted">Team Administration</small></div></a><nav class="nav">${nav('overview','◉','Overview')}${nav('bookings','▣','Ad Bookings')}${nav('campaigns','✦','Campaigns')}${nav('digitalMenus','◇','Digital Menu Plans')}${nav('diners','☎','Customer Details')}${nav('digit58','⬡','Refills')}${nav('referrals','🎁','Referrals')}${nav('brandOwners','◈','Brand Owners')}${nav('contactRequests','✉','Contact Requests')}${nav('support','☏','Support Tickets')}${nav('marketplace','⌘','Business Cards')}${nav('accounts','◎','Accounts')}${nav('slots','▦','Ad Placements')}${nav('system','⌗','System')}<button id="logout">⇥ Logout</button></nav></aside><main class="main"><header class="topbar"><strong>Private Gravity58 Team Portal</strong><span class="status-pill"><span class="dot"></span>${esc(user.email)}</span></header><section class="content" id="page"></section></main></div>`;$$('[data-view]').forEach(button=>button.onclick=()=>{view=button.dataset.view;shell()});$('#logout').onclick=async()=>{await api.logout();user=null;login()};renderView()}
+function shell(){app.innerHTML=`<div class="shell"><aside class="sidebar"><a class="brand" href="../"><svg class="brand-mark" viewBox="0 0 120 120" fill="none" stroke="#6d5ef0" stroke-width="8" aria-hidden="true"><circle cx="60" cy="26" r="15"/><circle cx="28" cy="82" r="15"/><circle cx="92" cy="82" r="15"/></svg><div><strong>Gravity58</strong><small class="muted">Team Administration</small></div></a><nav class="nav">${nav('overview','◉','Overview')}${nav('bookings','▣','Ad Bookings')}${nav('campaigns','✦','Campaigns')}${nav('digitalMenus','◇','Digital Menu Plans')}${nav('diners','☎','Customer Details')}${nav('digit58','⬡','Refills')}${nav('referrals','🎁','Referrals')}${nav('brandOwners','◈','Brand Owners')}${nav('contactRequests','✉','Contact Requests')}${nav('support','☏','Support Tickets')}${nav('marketplace','⌘','Business Cards')}${nav('accounts','◎','Accounts')}${nav('slots','▦','Ad Placements')}${nav('system','⌗','System')}<button id="logout">⇥ Logout</button></nav></aside><main class="main"><header class="topbar"><strong>Private Gravity58 Team Portal</strong><span class="status-pill"><span class="dot"></span>${esc(user.email)}</span></header><section class="content" id="page"></section></main></div>`;$$('[data-view]').forEach(button=>button.onclick=()=>{stopDigit58AdminRefresh();view=button.dataset.view;shell()});$('#logout').onclick=async()=>{stopDigit58AdminRefresh();await api.logout();user=null;login()};renderView()}
 function nav(key,icon,label){return`<button data-view="${key}" class="${view===key?'active':''}"><span>${icon}</span>${label}</button>`}
 function renderView(){({overview,bookings,campaigns,digitalMenus,diners,digit58,referrals:referralsView,brandOwners:digit58BrandOwnersView,contactRequests:contactRequestsView,support:supportTicketsView,marketplace,accounts,slots,system:systemView}[view]||overview)()}
 function metric(title,value){return`<article class="metric"><span>${title}</span><strong>${value}</strong></article>`}
@@ -260,6 +262,30 @@ function editDigit58Pricing(){
     };
   });
 }
+function digit58AdminSignature(requests=data.digit58Requests,entitlements=data.digit58Entitlements){
+  return JSON.stringify([
+    requests.map(row=>[row.id,row.ownerId,row.status,row.updatedAt,row.activatedAt]).sort((a,b)=>String(a[0]).localeCompare(String(b[0]))),
+    entitlements.map(row=>[row.id,row.ownerId,row.active,row.paused,row.freeTrial,row.expiresAt,row.storeSlots,row.updatedAt]).sort((a,b)=>String(a[0]).localeCompare(String(b[0]))),
+  ]);
+}
+function stopDigit58AdminRefresh(){
+  if(digit58AdminRefreshTimer){clearTimeout(digit58AdminRefreshTimer);digit58AdminRefreshTimer=null}
+}
+function scheduleDigit58AdminRefresh(){
+  stopDigit58AdminRefresh();
+  if(view!=='digit58')return;
+  digit58AdminRefreshTimer=setTimeout(async()=>{
+    if(view!=='digit58')return;
+    try{
+      const [requests,entitlements]=await Promise.all([api.list('digit58_requests'),api.list('digit58_entitlements')]);
+      data.digit58Requests=requests;
+      data.digit58Entitlements=entitlements;
+      const nextSignature=digit58AdminSignature(requests,entitlements);
+      if(nextSignature!==digit58AdminRenderedSignature&&!$('#modal'))return digit58();
+    }catch(error){console.warn('Refills subscriptions could not be refreshed',error)}
+    scheduleDigit58AdminRefresh();
+  },Number(window.G58AdminRefreshMs)||DIGIT58_ADMIN_REFRESH_MS);
+}
 function digit58(){
   const stores=[...data.digit58Stores].sort((a,b)=>new Date(b.createdAt||b.$createdAt)-new Date(a.createdAt||a.$createdAt));
   const owners=new Set(stores.map(row=>row.ownerId)).size;
@@ -268,7 +294,8 @@ function digit58(){
   const cardPurchases=[...data.digit58CardPurchases].sort((a,b)=>new Date(b.declaredPaidAt||b.createdAt||0)-new Date(a.declaredPaidAt||a.createdAt||0));
   const brandRequests=[...data.digit58BrandRequests].sort((a,b)=>new Date(b.createdAt||0)-new Date(a.createdAt||0));
   const pricing=digit58PricingConfig();
-  $('#page').innerHTML=`<div class="section-head"><div><h1>Refills</h1><p class="muted">Store subscriptions, activation requests, stores and customers across every Refills owner.</p></div><button class="btn secondary" id="editDigit58Pricing">Edit Pricing</button></div><div class="grid stats">${metric('Stores',stores.length)}${metric('Store Owners',owners)}${metric('Pending Requests',requests.length)}${metric('Active Subscriptions',entitlements.filter(row=>row.active&&!row.paused).length)}${metric('Card & Brand Revenue',money(digit58CardBrandRevenue()))}</div>
+  digit58AdminRenderedSignature=digit58AdminSignature();
+  $('#page').innerHTML=`<div class="section-head"><div><h1>Refills</h1><p class="muted">Store subscriptions, activation requests, stores and customers across every Refills owner. Subscription status refreshes automatically.</p></div><div class="actions"><button class="btn" id="refreshDigit58">Refresh Subscriptions</button><button class="btn secondary" id="editDigit58Pricing">Edit Pricing</button></div></div><div class="grid stats">${metric('Stores',stores.length)}${metric('Store Owners',owners)}${metric('Pending Requests',requests.length)}${metric('Active Subscriptions',entitlements.filter(row=>row.active&&!row.paused).length)}${metric('Card & Brand Revenue',money(digit58CardBrandRevenue()))}</div>
   <div class="section-head"><h2>Refills Plans — pricing preview</h2></div>
   <div class="grid restaurant-grid admin-pricing-preview">${pricing.periods.map(period=>`<article class="card"><span class="eyebrow">${esc(period.label)}</span><h3>${money(digit58PlanAmount(pricing.monthly,period))}</h3><small>${period.discount?`${period.discount}% discount`:'No discount'}</small></article>`).join('')}</div>
   <div class="section-head"><h2>Store owner requests</h2></div>
@@ -286,6 +313,7 @@ function digit58(){
   const bindStoreActions=()=>{$$('[data-manage-digit58-store]').forEach(button=>button.onclick=()=>manageDigit58Store(button.dataset.ownerId,button.dataset.manageDigit58Store));$$('[data-toggle-digit58-store]').forEach(button=>button.onclick=()=>toggleDigit58Store(button.dataset.toggleDigit58Store,button.dataset.ownerId))};
   const draw=()=>{const q=$('#digit58Search').value.toLowerCase(),category=$('#digit58Category').value,rows=stores.filter(row=>(category==='All'||row.category===category)&&`${row.storeName} ${row.storeId||row.id} ${row.category} ${row.ownerEmail}`.toLowerCase().includes(q));$('#digit58Rows').innerHTML=rows.map(digit58Row).join('')||'<tr><td colspan="8">No matching stores.</td></tr>';bindStoreActions()};
   $('#digit58Search').oninput=draw;$('#digit58Category').onchange=draw;
+  $('#refreshDigit58').onclick=async()=>{const button=$('#refreshDigit58');button.disabled=true;button.textContent='Refreshing…';try{await refresh();toast('Refills subscriptions refreshed')}catch(error){button.disabled=false;button.textContent='Refresh Subscriptions';toast(error.message||'Could not refresh Refills subscriptions')}};
   $('#editDigit58Pricing').onclick=editDigit58Pricing;
   $$('[data-send-digit58-link]').forEach(button=>button.onclick=()=>sendDigit58PaymentLink(button.dataset.sendDigit58Link));
   $$('[data-activate-digit58]').forEach(button=>button.onclick=()=>activateDigit58Request(button.dataset.activateDigit58));
@@ -298,6 +326,7 @@ function digit58(){
   $$('[data-pause-digit58-brand]').forEach(button=>button.onclick=()=>toggleDigit58BrandRequestPause(button.dataset.pauseDigit58Brand));
   bindStoreActions();
   $('#loadDigit58Customers').onclick=async()=>{$('#loadDigit58Customers').disabled=true;await loadDigit58Customers(true);digit58()};
+  scheduleDigit58AdminRefresh();
 }
 function digit58Row(row){const storeId=row.storeId||row.id;return `<tr data-digit58-store-row="${esc(row.ownerId)}:${esc(storeId)}"><td><strong>${esc(row.storeName||row.name||'Store')}</strong>${row.highlightText?`<br><small>${esc(row.highlightText)}</small>`:''}</td><td><code>${esc(storeId)}</code></td><td>${esc(row.category||'General store')}</td><td>${esc(row.city||'')}</td><td>${esc(row.ownerEmail||row.ownerId||'')}<br><small>${esc(row.ownerId||'')}</small></td><td><span class="chip ${row.suspended?'due':'delivered'}">${row.suspended?'Paused':'Active'}</span></td><td>${row.createdAt?new Date(row.createdAt).toLocaleDateString('en-IN',{dateStyle:'medium'}):''}</td><td><div class="actions"><button class="btn small" data-manage-digit58-store="${esc(storeId)}" data-owner-id="${esc(row.ownerId)}">Manage</button><button class="btn small ${row.suspended?'green':'red'}" data-toggle-digit58-store="${esc(storeId)}" data-owner-id="${esc(row.ownerId)}">${row.suspended?'Resume':'Pause'}</button></div></td></tr>`}
 function manageDigit58Store(ownerId,storeId){
