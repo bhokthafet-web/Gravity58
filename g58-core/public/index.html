@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="robots" content="noindex,nofollow">
+  <title>G58 Server Console</title>
+  <link rel="stylesheet" href="/console/console.css">
+</head>
+<body>
+  <div class="ambient ambient-one"></div><div class="ambient ambient-two"></div>
+  <header class="topbar">
+    <a class="brand" href="/console/"><span class="mark"><i></i><i></i><i></i></span><span>G58 <b>Server Console</b></span></a>
+    <div class="server-pill"><span></span><strong id="serverStatus">Checking server</strong></div>
+    <button id="logoutButton" class="ghost hidden" type="button">Sign out</button>
+  </header>
+
+  <main>
+    <section id="loginView" class="login-shell">
+      <div class="login-copy">
+        <p class="eyebrow">PRIVATE G58 INFRASTRUCTURE</p>
+        <h1>Your platform.<br>Your data.<br>Your control.</h1>
+        <p>Authentication, database, storage, realtime operations and audit history running on G58 infrastructure.</p>
+      </div>
+      <form id="loginForm" class="panel login-card">
+        <p class="eyebrow">AUTHORIZED TEAM ONLY</p>
+        <h2>Administrator sign in</h2>
+        <label>Email<input name="email" type="email" autocomplete="username" required></label>
+        <label>Password<input name="password" type="password" autocomplete="current-password" required></label>
+        <button class="primary" type="submit">Open console</button>
+        <p id="loginMessage" class="message"></p>
+      </form>
+    </section>
+
+    <section id="consoleView" class="console hidden">
+      <aside class="sidebar">
+        <p class="eyebrow">MANAGEMENT</p>
+        <button class="nav active" data-view="overview">Overview</button>
+        <button class="nav" data-view="users">Accounts</button>
+        <button class="nav" data-view="records">Data collections</button>
+        <button class="nav" data-view="audit">Audit trail</button>
+      </aside>
+      <div class="workspace">
+        <div class="workspace-head"><div><p class="eyebrow">G58 CORE</p><h1 id="viewTitle">Infrastructure overview</h1></div><button id="refreshButton" class="ghost">Refresh</button></div>
+        <div id="content"></div>
+      </div>
+    </section>
+  </main>
+  <script src="/console/console.js"></script>
+</body>
+</html>

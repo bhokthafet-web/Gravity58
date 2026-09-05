@@ -1,0 +1,42 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: g58-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: g58
+      POSTGRES_USER: g58
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+    volumes:
+      - g58-postgres-data:/var/lib/postgresql/data
+      - ./sql:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U g58 -d g58"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks: [g58-private]
+
+  api:
+    build: .
+    container_name: g58-core
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgres://g58:${POSTGRES_PASSWORD}@postgres:5432/g58
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:8088:8088"
+    volumes:
+      - g58-media:/data/media
+    networks: [g58-private]
+
+volumes:
+  g58-postgres-data:
+  g58-media:
+
+networks:
+  g58-private:
+    driver: bridge
