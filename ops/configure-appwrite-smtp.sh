@@ -14,6 +14,8 @@ if [[ "${EUID}" -ne 0 ]]; then
   exit 1
 fi
 
+smtp_secret_label="SMTP password"
+
 if [[ "${1:-}" == "--gmail" ]]; then
   smtp_host="smtp.gmail.com"
   smtp_port="587"
@@ -21,6 +23,16 @@ if [[ "${1:-}" == "--gmail" ]]; then
   smtp_username="rajeshqvd@gmail.com"
   sender_name="Gravity58"
   sender_email="${smtp_username}"
+  smtp_secret_label="Google App Password"
+elif [[ "${1:-}" == "--brevo" ]]; then
+  smtp_host="smtp-relay.brevo.com"
+  smtp_port="587"
+  smtp_secure="tls"
+  read -r -p "Brevo SMTP login: " smtp_username
+  sender_name="Gravity58"
+  read -r -p "Verified sender email [accounts@g58.in]: " sender_email
+  sender_email="${sender_email:-accounts@g58.in}"
+  smtp_secret_label="Brevo SMTP key"
 else
   read -r -p "SMTP host [smtp.gmail.com]: " smtp_host
   smtp_host="${smtp_host:-smtp.gmail.com}"
@@ -35,11 +47,15 @@ else
   read -r -p "Sender email [${smtp_username}]: " sender_email
   sender_email="${sender_email:-${smtp_username}}"
 fi
-read -r -s -p "SMTP password (use a Google App Password, not your normal password): " smtp_password
+read -r -s -p "${smtp_secret_label}: " smtp_password
 echo
 
+if [[ -z "${smtp_username}" ]]; then
+  echo "SMTP username cannot be empty." >&2
+  exit 1
+fi
 if [[ -z "${smtp_password}" ]]; then
-  echo "SMTP password cannot be empty." >&2
+  echo "${smtp_secret_label} cannot be empty." >&2
   exit 1
 fi
 if [[ ! "${smtp_port}" =~ ^[0-9]+$ ]]; then
