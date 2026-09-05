@@ -14,18 +14,27 @@ if [[ "${EUID}" -ne 0 ]]; then
   exit 1
 fi
 
-read -r -p "SMTP host [smtp.gmail.com]: " smtp_host
-smtp_host="${smtp_host:-smtp.gmail.com}"
-read -r -p "SMTP port [587]: " smtp_port
-smtp_port="${smtp_port:-587}"
-read -r -p "SMTP security [tls]: " smtp_secure
-smtp_secure="${smtp_secure:-tls}"
-read -r -p "SMTP username/email [rajeshqvd@gmail.com]: " smtp_username
-smtp_username="${smtp_username:-rajeshqvd@gmail.com}"
-read -r -p "Sender name [Gravity58]: " sender_name
-sender_name="${sender_name:-Gravity58}"
-read -r -p "Sender email [${smtp_username}]: " sender_email
-sender_email="${sender_email:-${smtp_username}}"
+if [[ "${1:-}" == "--gmail" ]]; then
+  smtp_host="smtp.gmail.com"
+  smtp_port="587"
+  smtp_secure="tls"
+  smtp_username="rajeshqvd@gmail.com"
+  sender_name="Gravity58"
+  sender_email="${smtp_username}"
+else
+  read -r -p "SMTP host [smtp.gmail.com]: " smtp_host
+  smtp_host="${smtp_host:-smtp.gmail.com}"
+  read -r -p "SMTP port [587]: " smtp_port
+  smtp_port="${smtp_port:-587}"
+  read -r -p "SMTP security [tls]: " smtp_secure
+  smtp_secure="${smtp_secure:-tls}"
+  read -r -p "SMTP username/email [rajeshqvd@gmail.com]: " smtp_username
+  smtp_username="${smtp_username:-rajeshqvd@gmail.com}"
+  read -r -p "Sender name [Gravity58]: " sender_name
+  sender_name="${sender_name:-Gravity58}"
+  read -r -p "Sender email [${smtp_username}]: " sender_email
+  sender_email="${sender_email:-${smtp_username}}"
+fi
 read -r -s -p "SMTP password (use a Google App Password, not your normal password): " smtp_password
 echo
 
