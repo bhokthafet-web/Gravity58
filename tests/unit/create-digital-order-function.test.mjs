@@ -857,6 +857,42 @@ test('digit58: the store owner can accept the one-time policy on their own entit
   }
 });
 
+test('digit58: policy acceptance finds a migrated entitlement whose row id is not deterministic', async () => {
+  const previousFetch = globalThis.fetch;
+  const migratedRow = {
+    $id: 'migrated-entitlement-row',
+    kind: 'digit58_entitlements',
+    payload: JSON.stringify({ ownerId, active: true, paused: false }),
+  };
+  const requests = [];
+  globalThis.fetch = async (url, options = {}) => {
+    const method = options.method || 'GET';
+    requests.push({ url: String(url), method });
+    if (method === 'GET' && !String(url).includes('?')) {
+      return new Response(JSON.stringify({ message: 'Row not found' }), { status: 404 });
+    }
+    if (method === 'GET' && String(url).includes('?')) {
+      return new Response(JSON.stringify({ rows: [migratedRow] }), { status: 200 });
+    }
+    if (method === 'PATCH' && String(url).endsWith('/migrated-entitlement-row')) {
+      return new Response(JSON.stringify({ $id: migratedRow.$id, kind: migratedRow.kind, ...JSON.parse(options.body).data }), { status: 200 });
+    }
+    throw new Error(`Unexpected request ${url}`);
+  };
+  process.env.APPWRITE_FUNCTION_PROJECT_ID = 'project_1';
+  try {
+    const response = await createDigitalOrder({
+      req: { method: 'POST', headers: { 'x-appwrite-key': 'dynamic-key', 'x-appwrite-user-id': ownerId }, bodyJson: { action: 'digit58-accept-policy', ownerId } },
+      res: { json: (body, status = 200) => ({ body, status }) }, error: () => {},
+    });
+    assert.equal(response.status, 200);
+    assert.ok(response.body.entitlement.policyAcceptedAt);
+    assert.ok(requests.some(request => request.method === 'PATCH' && request.url.endsWith('/migrated-entitlement-row')));
+  } finally {
+    globalThis.fetch = previousFetch;
+  }
+});
+
 test('digit58: only the owner themselves can accept their policy', async () => {
   const response = await createDigitalOrder({
     req: { method: 'POST', headers: { 'x-appwrite-key': 'dynamic-key', 'x-appwrite-user-id': 'someone_else' }, bodyJson: { action: 'digit58-accept-policy', ownerId } },

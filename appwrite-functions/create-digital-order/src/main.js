@@ -261,6 +261,26 @@ async function listRowsByKind(call, kind, limit = 500) {
   return result.rows || result.documents || [];
 }
 
+async function findDigit58Entitlement(call, ownerId) {
+  const expectedRowId = digit58EntitlementRowId(ownerId);
+  const directRow = await call(`/tablesdb/${DATABASE_ID}/tables/${TABLE_ID}/rows/${encodeURIComponent(expectedRowId)}`).catch(() => null);
+  if (directRow) {
+    const entitlement = cleanRow(directRow);
+    if (entitlement.ownerId === ownerId) {
+      return { entitlement, rowId: directRow.$id || entitlement.id || expectedRowId };
+    }
+  }
+
+  // Older and migrated Refills records may not use the current deterministic
+  // row ID. Resolve them by their immutable owner ID so policy acceptance and
+  // subscription management continue to work after a backend migration.
+  const matchingRow = (await listRowsByKind(call, DIGIT58_ENTITLEMENT_KIND))
+    .find(row => cleanRow(row).ownerId === ownerId);
+  if (!matchingRow) return null;
+  const entitlement = cleanRow(matchingRow);
+  return { entitlement, rowId: matchingRow.$id || entitlement.id };
+}
+
 async function listAllRows(call, pageSize = 100) {
   const rows = [];
   for (let offset = 0; offset < 10000; offset += pageSize) {
@@ -804,10 +824,9 @@ async function raiseSupportTicket(call, input, userId) {
 async function acceptDigit58Policy(call, input, userId) {
   const ownerId = text(input.ownerId, 64);
   if (!ownerId || ownerId !== userId) { const denied = new Error('Only the store owner can accept this policy.'); denied.code = 403; throw denied; }
-  const rowId = digit58EntitlementRowId(ownerId);
-  const row = await call(`/tablesdb/${DATABASE_ID}/tables/${TABLE_ID}/rows/${encodeURIComponent(rowId)}`).catch(() => null);
-  if (!row) throw new Error('No active Refills subscription found for this account.');
-  const entitlement = cleanRow(row);
+  const record = await findDigit58Entitlement(call, ownerId);
+  if (!record) throw new Error('No active Refills subscription found for this account.');
+  const { entitlement, rowId } = record;
   return updateRow(call, rowId, { ...entitlement, policyAcceptedAt: new Date().toISOString() });
 }
 
@@ -867,9 +886,9 @@ async function createDigit58SubscriptionCheckout(call, input, userId) {
   const { monthly } = await digit58PricingDoc(call);
   const amount = digit58PlanAmount(monthly, periodId);
   const planId = await ensureDigit58RazorpayPlan(call, periodId, amount);
-  const rowId = digit58EntitlementRowId(ownerId);
-  const existingRow = await call(`/tablesdb/${DATABASE_ID}/tables/${TABLE_ID}/rows/${encodeURIComponent(rowId)}`).catch(() => null);
-  const entitlement = existingRow ? cleanRow(existingRow) : null;
+  const existingRecord = await findDigit58Entitlement(call, ownerId);
+  const rowId = existingRecord?.rowId || digit58EntitlementRowId(ownerId);
+  const entitlement = existingRecord?.entitlement || null;
   let customerId = entitlement?.razorpayCustomerId;
   if (!customerId) {
     const customer = await razorpayApi('/customers', { method: 'POST', body: JSON.stringify({ name, email, fail_existing: 0 }) });
@@ -894,10 +913,9 @@ async function createDigit58SubscriptionCheckout(call, input, userId) {
 async function cancelDigit58Subscription(call, input, userId) {
   const ownerId = text(input.ownerId, 64);
   if (!ownerId || ownerId !== userId) { const denied = new Error('Only the store owner can cancel this subscription.'); denied.code = 403; throw denied; }
-  const rowId = digit58EntitlementRowId(ownerId);
-  const row = await call(`/tablesdb/${DATABASE_ID}/tables/${TABLE_ID}/rows/${encodeURIComponent(rowId)}`).catch(() => null);
-  if (!row) throw new Error('No Refills subscription found for this account.');
-  const entitlement = cleanRow(row);
+  const record = await findDigit58Entitlement(call, ownerId);
+  if (!record) throw new Error('No Refills subscription found for this account.');
+  const { entitlement, rowId } = record;
   if (!entitlement.razorpaySubscriptionId) throw new Error('There is no active paid subscription to cancel.');
   if (entitlement.cancelAtPeriodEnd) throw new Error('This subscription is already set to cancel at the end of the paid period.');
   await razorpayApi(`/subscriptions/${encodeURIComponent(entitlement.razorpaySubscriptionId)}/cancel`, { method: 'POST', body: JSON.stringify({ cancel_at_cycle_end: 1 }) });
@@ -950,10 +968,9 @@ async function deleteDigit58Entitlement(call, input, userId) {
   if (!(await isDigit58Admin(call, userId))) { const denied = new Error('Only G58 administrators can delete a Refills subscription.'); denied.code = 403; throw denied; }
   const ownerId = text(input.ownerId, 64);
   if (!ownerId) throw new Error('Owner details are missing.');
-  const rowId = digit58EntitlementRowId(ownerId);
-  const row = await call(`/tablesdb/${DATABASE_ID}/tables/${TABLE_ID}/rows/${encodeURIComponent(rowId)}`).catch(() => null);
-  if (!row) throw new Error('No Refills subscription found for this owner.');
-  const entitlement = cleanRow(row);
+  const record = await findDigit58Entitlement(call, ownerId);
+  if (!record) throw new Error('No Refills subscription found for this owner.');
+  const { entitlement, rowId } = record;
   if (entitlement.razorpaySubscriptionId) {
     await razorpayApi(`/subscriptions/${encodeURIComponent(entitlement.razorpaySubscriptionId)}/cancel`, { method: 'POST', body: JSON.stringify({ cancel_at_cycle_end: 0 }) }).catch(() => {});
   }
