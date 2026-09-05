@@ -285,9 +285,33 @@ function bindShareLocationButton(button,statusEl,onCaptured){
     button.disabled=false;
   };
 }
+function customerFor(entity){
+  return state.customers.find(customer=>customer.customerAccountId===entity?.customerAccountId&&customer.storeId===entity?.storeId)||null;
+}
+function customerSavedPoint(customer){
+  const lat=Number(customer?.savedLocationLat),lng=Number(customer?.savedLocationLng);
+  return Number.isFinite(lat)&&Number.isFinite(lng)&&lat>=-90&&lat<=90&&lng>=-180&&lng<=180?{lat,lng}:null;
+}
+function mapsLinkForDetails(entity,customer=customerFor(entity)){
+  if(entity?.locationUrl)return entity.locationUrl;
+  const point=customerSavedPoint(customer);
+  if(point)return `https://www.google.com/maps?q=${point.lat},${point.lng}`;
+  const address=String(entity?.address||customer?.address||'').trim();
+  return address?`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`:'';
+}
+function deliveryDetailsFor(entity){
+  const customer=customerFor(entity);
+  return {
+    customer,
+    phone:String(entity?.phone||customer?.phone||'').trim(),
+    address:String(entity?.address||customer?.address||'').trim(),
+    locationUrl:mapsLinkForDetails(entity,customer),
+  };
+}
 function deliveryContactMarkup(entity){
-  if(!entity.phone&&!entity.locationUrl)return'';
-  return `<div class="delivery-block"><div class="delivery-info">${entity.phone?`<span>📞 ${html(entity.phone)}</span>`:''}${entity.locationUrl?`<a href="${html(entity.locationUrl)}" target="_blank" rel="noopener">📍 View location</a>`:''}</div><button type="button" class="btn small secondary" data-share-delivery="${html(entity.id)}">Share with Delivery Boy</button></div>`;
+  const details=deliveryDetailsFor(entity);
+  if(!details.phone&&!details.address&&!details.locationUrl)return'';
+  return `<div class="delivery-block"><div class="delivery-info">${details.phone?`<span>📞 ${html(details.phone)}</span>`:''}${details.address?`<span>🏠 ${html(details.address)}</span>`:''}${details.locationUrl?`<a href="${html(details.locationUrl)}" target="_blank" rel="noopener">📍 Open map location</a>`:''}</div><button type="button" class="btn small secondary" data-share-delivery="${html(entity.id)}">Share with Delivery Boy</button></div>`;
 }
 function customerNameFor(entity){
   if(entity.customerName)return entity.customerName;
@@ -295,7 +319,8 @@ function customerNameFor(entity){
   return customer?.customerName||'Customer';
 }
 function shareWithDeliveryBoy(entity){
-  const lines=[`Delivery for ${customerNameFor(entity)}`,entity.phone?`Contact: ${entity.phone}`:'',entity.locationUrl?`Location: ${entity.locationUrl}`:''].filter(Boolean);
+  const details=deliveryDetailsFor(entity);
+  const lines=[`Delivery for ${customerNameFor(entity)}`,details.phone?`Contact: ${details.phone}`:'',details.address?`Full address: ${details.address}`:'',details.locationUrl?`Map location: ${details.locationUrl}`:''].filter(Boolean);
   if(lines.length<2)return toast('No contact or location shared yet for this order');
   window.open(`https://wa.me/?text=${encodeURIComponent(lines.join('\n'))}`,'_blank','noopener');
 }
@@ -307,18 +332,21 @@ function bindDeliveryShareButtons(records){
 }
 function doorstepBookingOwnerMarkup(booking){
   if(!booking.doorstepServiceEnabled)return'';
-  const location=booking.locationUrl?`<a href="${html(booking.locationUrl)}" target="_blank" rel="noopener">📍 View doorstep location</a>`:'<span class="muted">Waiting for customer location</span>';
+  const details=deliveryDetailsFor(booking);
+  const location=details.locationUrl?`<a href="${html(details.locationUrl)}" target="_blank" rel="noopener">📍 View doorstep location</a>`:'<span class="muted">Waiting for customer location</span>';
   const shareLabel=booking.expertPhone?`Send to ${html(booking.expertName||'Expert')}`:'Share with Expert';
-  return `<div class="delivery-block doorstep-booking-block"><div class="delivery-info"><strong>🏠 Doorstep Service</strong>${location}${booking.phone?`<span>📞 ${html(booking.phone)}</span>`:''}</div>${booking.locationUrl?`<button type="button" class="btn small whatsapp-btn" data-share-booking-expert="${html(booking.id)}">${WHATSAPP_ICON_SVG} ${shareLabel}</button>`:''}</div>`;
+  return `<div class="delivery-block doorstep-booking-block"><div class="delivery-info"><strong>🏠 Doorstep Service</strong>${details.address?`<span>🏠 ${html(details.address)}</span>`:''}${location}${details.phone?`<span>📞 ${html(details.phone)}</span>`:''}</div>${details.locationUrl?`<button type="button" class="btn small whatsapp-btn" data-share-booking-expert="${html(booking.id)}">${WHATSAPP_ICON_SVG} ${shareLabel}</button>`:''}</div>`;
 }
 function shareBookingWithExpert(booking){
-  if(!booking?.locationUrl)return toast('The customer has not shared a service location yet');
+  const details=deliveryDetailsFor(booking);
+  if(!details.locationUrl)return toast('The customer has not shared a service location yet');
   const message=[
     `Doorstep service: ${booking.serviceName||'Service'}`,
     `Customer: ${customerNameFor(booking)}`,
-    booking.phone?`Contact: ${booking.phone}`:'',
+    details.phone?`Contact: ${details.phone}`:'',
+    details.address?`Full address: ${details.address}`:'',
     booking.date&&booking.startTime?`Schedule: ${booking.date} at ${booking.startTime}`:'',
-    `Location: ${booking.locationUrl}`,
+    `Map location: ${details.locationUrl}`,
   ].filter(Boolean).join('\n');
   const direct=whatsappLink(booking.expertPhone,message);
   window.open(direct||`https://wa.me/?text=${encodeURIComponent(message)}`,'_blank','noopener');
@@ -2229,6 +2257,7 @@ async function renderPublicStore(hashParams){
     return;
   }
   customerStoreLinks=linked.stores?.length?linked.stores:[{ownerId,storeId,storeName:store.name,category:store.category,city:store.city}];
+  linked.customer=await hydrateCustomerDeliveryProfile(linked.customer,ownerId,storeId);
   if(!linked.customer.agreementAcceptedAt)return renderCustomerAgreementGate(store,linked.customer);
   await loadAndRenderCustomerView(store,linked.customer);
   startCustomerRealtime(store,linked.customer);
@@ -2444,6 +2473,57 @@ async function ensureCustomerLink(ownerId,storeId,account){
   return api.executeFunction(api.config.digitalOrderFunctionId,{action:'digit58-link-customer',ownerId,storeId,customerName:account.name||account.email.split('@')[0],customerEmail:account.email});
 }
 let customerPromotionQuantities=new Map(),activePromotionStoreId='',customerReminderView='swipe',customerStoreLinks=[];
+async function hydrateCustomerDeliveryProfile(customer,ownerId,storeId){
+  const missingPhone=!String(customer?.phone||'').trim(),missingAddress=!String(customer?.address||'').trim(),missingLocation=!customerSavedPoint(customer);
+  if(!missingPhone&&!missingAddress&&!missingLocation)return customer;
+  const otherLinks=customerStoreLinks.filter(link=>link.customerId&&(link.ownerId!==ownerId||link.storeId!==storeId));
+  if(!otherLinks.length)return customer;
+  const profiles=(await Promise.all(otherLinks.map(link=>api.get(customerKind(link.ownerId),link.customerId).catch(()=>null))))
+    .filter(Boolean).sort((a,b)=>new Date(b.profileUpdatedAt||b.lastLoginAt||b.createdAt||0)-new Date(a.profileUpdatedAt||a.lastLoginAt||a.createdAt||0));
+  const changes={};
+  if(missingPhone){const source=profiles.find(row=>String(row.phone||'').trim());if(source)changes.phone=source.phone}
+  if(missingAddress){const source=profiles.find(row=>String(row.address||'').trim());if(source)changes.address=source.address}
+  if(missingLocation){const source=profiles.find(row=>customerSavedPoint(row));if(source){changes.savedLocationLat=source.savedLocationLat;changes.savedLocationLng=source.savedLocationLng}}
+  if(!Object.keys(changes).length)return customer;
+  await api.update(customerKind(ownerId),customer.id,{...changes,profileUpdatedAt:now()}).catch(()=>{});
+  return Object.assign(customer,changes);
+}
+async function saveCustomerDeliveryProfile(store,customer,{phone,address,location}={}){
+  const cleanPhone=String(phone||'').replace(/[^\d+]/g,'').trim();
+  const cleanAddress=String(address||'').replace(/\s+/g,' ').trim();
+  if(cleanPhone.replace(/\D/g,'').length<10)throw new Error('Enter a valid contact number');
+  if(cleanAddress.length<8)throw new Error('Enter your full delivery address');
+  const point=location||customerSavedPoint(customer);
+  const changes={phone:cleanPhone,address:cleanAddress,profileUpdatedAt:now()};
+  if(point){changes.savedLocationLat=point.lat;changes.savedLocationLng=point.lng}
+  const targets=[...customerStoreLinks.filter(link=>link.customerId).map(link=>({ownerId:link.ownerId,customerId:link.customerId})),{ownerId:store.ownerId,customerId:customer.id}];
+  const unique=[...new Map(targets.map(target=>[`${target.ownerId}:${target.customerId}`,target])).values()];
+  const results=await Promise.allSettled(unique.map(target=>api.update(customerKind(target.ownerId),target.customerId,changes)));
+  const currentIndex=unique.findIndex(target=>target.ownerId===store.ownerId&&target.customerId===customer.id);
+  if(currentIndex<0||results[currentIndex]?.status==='rejected')throw results[currentIndex]?.reason||new Error('Could not save delivery details');
+  Object.assign(customer,changes);
+  const cached=state.customers.find(row=>row.id===customer.id);if(cached)Object.assign(cached,changes);
+  save();
+  return {synced:results.filter(result=>result.status==='fulfilled').length,total:unique.length};
+}
+function customerDeliveryProfileMarkup(customer){
+  const point=customerSavedPoint(customer),locationUrl=mapsLinkForDetails({},customer),complete=customer.phone&&customer.address;
+  return `<div class="customer-delivery-profile"><div><small>Saved delivery details</small><strong>${complete?'Ready for faster orders':'Add once, reuse every time'}</strong><span>${customer.phone?`📞 ${html(customer.phone)}`:'Contact number not added'}${customer.address?` · 🏠 ${html(customer.address)}`:' · Full address not added'}</span>${locationUrl?`<a href="${html(locationUrl)}" target="_blank" rel="noopener">📍 ${point?'Saved map location':'Open address in Maps'}</a>`:'<span> · Map location not added</span>'}</div><button type="button" class="btn small secondary" id="editCustomerDeliveryDetails">${complete?'Edit Details':'Add Details'}</button></div>`;
+}
+function openCustomerDeliveryProfileModal(store,customer){
+  let capturedLocation=customerSavedPoint(customer);
+  modal('My Delivery Details',`<form id="customerDeliveryProfileForm"><p class="muted">Save these once. G58 will fill them automatically for new orders, refills and doorstep bookings.</p><div class="field"><label>Contact number</label><input name="phone" type="tel" value="${html(customer.phone||'')}" placeholder="10-digit mobile number" required></div><div class="field"><label>Full delivery address</label><textarea name="address" rows="3" placeholder="House/flat no., street, landmark, area, city and PIN code" required>${html(customer.address||'')}</textarea></div><div class="field"><label>Map location</label><button type="button" class="btn small secondary" id="profileShareLocationBtn">📍 ${capturedLocation?'Update Current Location':'Use My Current Location'}</button><p class="muted ${capturedLocation?'location-captured':''}" id="profileLocationStatus" style="margin-top:6px">${capturedLocation?'📍 Location saved — it will be shared with the delivery person.':'Optional — if skipped, the full address opens in Google Maps.'}</p></div><button class="btn full green" type="submit" style="margin-top:12px">Save Delivery Details</button></form>`,()=>{
+    bindShareLocationButton($('#profileShareLocationBtn'),$('#profileLocationStatus'),point=>{capturedLocation=point});
+    $('#customerDeliveryProfileForm').onsubmit=async event=>{
+      event.preventDefault();const values=Object.fromEntries(new FormData(event.target)),button=event.submitter;button.disabled=true;
+      try{
+        const result=await saveCustomerDeliveryProfile(store,customer,{phone:values.phone,address:values.address,location:capturedLocation});
+        closeModal();toast(result.synced===result.total?'Delivery details saved for all your stores':'Delivery details saved for this store');
+        await loadAndRenderCustomerView(store,customer);
+      }catch(error){button.disabled=false;toast(error.message||'Could not save delivery details')}
+    };
+  });
+}
 let rejectedOrderNotificationContext='',rejectedOrderSnapshots=new Map(),rejectedOrderNotificationQueue=[];
 const shownRejectedOrderEvents=new Set(),customerSuppressedRejectionIds=new Set();
 function resetRejectedOrderNotifications(){
@@ -2592,7 +2672,7 @@ function renderCustomerCards(store,customer,cards,orders=[],promotions=[],course
   const dueServiceReminders=gameZone?[]:bookings.filter(row=>row.status==='Completed'&&row.nextReminderAt&&new Date(row.nextReminderAt).getTime()<=Date.now());
   const reminderCardsMarkup=`<div class="section-head reminder-section-head"><div><h2>Your reminder cards</h2>${cards.length>1?'<p class="muted">Swipe to see the next card or switch to list view.</p>':''}</div>${cards.length>1?`<div class="reminder-view-toggle" role="group" aria-label="Reminder card view"><button type="button" class="${customerReminderView==='swipe'?'active':''}" data-reminder-view="swipe" aria-pressed="${customerReminderView==='swipe'}">Swipe</button><button type="button" class="${customerReminderView==='list'?'active':''}" data-reminder-view="list" aria-pressed="${customerReminderView==='list'}">List</button></div>`:''}</div>
   <div class="customer-reminder-view reminder-view-${customerReminderView}" id="customerCardGrid">${cards.map(customerCardCardMarkup).join('')||'<div class="empty">Your store will add reminder cards here after your first purchase.</div>'}</div>`;
-  app.innerHTML=`<main class="public-store">${customerBrandStrip()}${customerStoreHub(store)}<div id="pushNotifyPrompt"></div><section class="store-hero"><span class="chip">${html(store.category||'Store')}</span>${store.highlightText?`<strong class="store-highlight-text">${html(store.highlightText)}</strong>`:''}<h1>${html(store.name)}</h1>${customer.phone?`<p class="customer-phone-line">Your contact number: ${html(customer.phone)}</p>`:''}${storeMinimum(store)?`<p class="store-minimum-order">Minimum new order ${money(storeMinimum(store))}</p>`:''}<p class="muted">${html(store.description||'')}${store.city?' · '+html(store.city):''}</p></section>
+  app.innerHTML=`<main class="public-store">${customerBrandStrip()}${customerStoreHub(store)}<div id="pushNotifyPrompt"></div><section class="store-hero"><span class="chip">${html(store.category||'Store')}</span>${store.highlightText?`<strong class="store-highlight-text">${html(store.highlightText)}</strong>`:''}<h1>${html(store.name)}</h1>${storeMinimum(store)?`<p class="store-minimum-order">Minimum new order ${money(storeMinimum(store))}</p>`:''}<p class="muted">${html(store.description||'')}${store.city?' · '+html(store.city):''}</p>${customerDeliveryProfileMarkup(customer)}</section>
   ${promotions.length?`<section class="promotion-strip"><div class="promotion-strip-head"><span>Store Offers</span></div><div class="promotion-rail" id="promotionRail"><div class="promotion-track"><div class="promotion-sequence">${marqueePromotions.map((promotion,index)=>customerPromotionTicket(promotion,index>=promotions.length)).join('')}</div><div class="promotion-sequence" aria-hidden="true">${marqueePromotions.map(promotion=>customerPromotionTicket(promotion,true)).join('')}</div></div></div></section>`:''}
   ${serviceStoreFlag?`${cancellationPaymentsDue.length?`<section class="cancellation-payment-section"><div class="section-head"><div><h2>Cancellation payment required</h2><p class="muted">${money(cancellationPaymentsTotal)} must be confirmed by this store before another booking can be made.</p></div></div><div class="grid card-grid">${cancellationPaymentsDue.map(booking=>cancellationPaymentCardMarkup(booking,store)).join('')}</div></section>`:''}${dueServiceReminders.length?`<div class="section-head"><h2>Time to Book Again?</h2></div><div class="grid card-grid">${dueServiceReminders.map(serviceReminderMarkup).join('')}</div>`:''}<div class="section-head"><div><h2>${copy.bookTitle}</h2><p class="muted">${cancellationPaymentsDue.length?`Bookings are locked until ${money(cancellationPaymentsTotal)} cancellation payment is confirmed.`:gameZone?'Choose a game, select a play area and reserve an available time slot.':'Pick a service, choose a slot and pay the prepayment to confirm.'}</p></div>${store.emergencyMode?'':`<button class="btn small" id="bookServiceBtn" ${cancellationPaymentsDue.length?'disabled':''}>${cancellationPaymentsDue.length?'Payment Required':copy.bookButton}</button>`}</div>${store.emergencyMode?`<p class="muted">This ${gameZone?'game zone':'store'} is not accepting new bookings right now — please check back shortly.</p>`:''}<div class="grid card-grid">${visibleBookings.map(booking=>customerBookingMarkup(booking,store)).join('')||`<div class="empty">${copy.empty}</div>`}</div>
   ${reminderCardsMarkup}
@@ -2617,6 +2697,7 @@ function renderCustomerCards(store,customer,cards,orders=[],promotions=[],course
   });
   bindCustomerPromotionActions(promotions);
   bindCustomerStoreHub(store);
+  $('#editCustomerDeliveryDetails').onclick=()=>openCustomerDeliveryProfileModal(store,customer);
   startPromotionAutoScroll();
   bindRazorpayPaymentActions(active,store,customer);
   bindBookingRazorpayPaymentActions(activeBookings,store,customer);
@@ -2694,16 +2775,17 @@ function customerCardCardMarkup(card){
   return `<article class="card reminder-card premium-card vial-card ${due?'due':''}">${due?'<span class="reminder-due-bell" aria-label="Reminder due" title="Reminder due"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg></span>':''}<div class="vial-card-body"><div class="vial-card-info"><h3>${html(card.productName)}</h3><p class="muted">${money(card.price)} · every ${Number(card.reminderDays)} day(s)</p><div class="chips"><span class="chip ${due?'due':''}">${due?'Due now':`${remaining} day(s) left`}</span>${refillPending?'<span class="chip due">Refill order sent</span>':''}</div></div>${vialMarkup(card)}</div>${payBlock}${cardChatMarkup(card,'customer')}</article>`;
 }
 function openBuyAgainModal(cardId,store,customer,productName){
-  let capturedLocation=null;
-  modal('Request Refill',`<form id="buyAgainForm"><p class="muted">${productName?`Confirm your refill request for <strong>${html(productName)}</strong>.`:'Confirm your refill request.'}</p><div class="field"><label>Contact number</label><input name="phone" type="tel" value="${html(customer.phone||'')}" placeholder="10-digit mobile number" required></div><div class="field"><button type="button" class="btn small secondary" id="shareLocationBtn">📍 Share My Location</button><p class="muted" id="locationStatus" style="margin-top:6px">Optional — helps the store guide your delivery.</p></div><button class="btn full green" type="submit" style="margin-top:10px">Send Refill Request</button></form>`,()=>{
+  let capturedLocation=customerSavedPoint(customer);
+  modal('Request Refill',`<form id="buyAgainForm"><p class="muted">${productName?`Confirm your refill request for <strong>${html(productName)}</strong>.`:'Confirm your refill request.'}</p><div class="field"><label>Contact number</label><input name="phone" type="tel" value="${html(customer.phone||'')}" placeholder="10-digit mobile number" required></div><div class="field"><label>Full delivery address</label><textarea name="address" rows="2" placeholder="House/flat no., street, landmark, area, city and PIN code" required>${html(customer.address||'')}</textarea></div><div class="field"><button type="button" class="btn small secondary" id="shareLocationBtn">📍 ${capturedLocation?'Update Location':'Share My Location'}</button><p class="muted ${capturedLocation?'location-captured':''}" id="locationStatus" style="margin-top:6px">${capturedLocation?'📍 Using your saved location — it will be sent with your refill.':'Optional — your full address will still open in Google Maps.'}</p></div><button class="btn full green" type="submit" style="margin-top:10px">Send Refill Request</button></form>`,()=>{
     bindShareLocationButton($('#shareLocationBtn'),$('#locationStatus'),point=>{capturedLocation=point});
     $('#buyAgainForm').onsubmit=async event=>{
       event.preventDefault();
       const phone=$('input[name="phone"]',event.target).value.trim();
+      const address=$('textarea[name="address"]',event.target).value.trim();
       const button=event.submitter;button.disabled=true;
       try{
-        await api.executeFunction(api.config.digitalOrderFunctionId,{action:'digit58-create-refill-order',ownerId:store.ownerId,cardId,customerName:customer.customerName,customerEmail:customer.customerEmail,phone,locationLat:capturedLocation?.lat,locationLng:capturedLocation?.lng});
-        if(phone&&phone!==customer.phone){await api.update(customerKind(store.ownerId),customer.id,{phone}).catch(()=>{});customer.phone=phone}
+        await saveCustomerDeliveryProfile(store,customer,{phone,address,location:capturedLocation});
+        await api.executeFunction(api.config.digitalOrderFunctionId,{action:'digit58-create-refill-order',ownerId:store.ownerId,cardId,customerName:customer.customerName,customerEmail:customer.customerEmail,phone,address,locationLat:capturedLocation?.lat,locationLng:capturedLocation?.lng});
         closeModal();toast('Refill order sent — the store can now review and process it');
         await loadAndRenderCustomerView(store,customer);
       }catch(error){button.disabled=false;toast(error.message||'Could not send request')}
@@ -2862,13 +2944,13 @@ function openBookingModal(store,customer,services,experts,preselectServiceId='',
   if(!services.length)return toast(`This ${gameZone?'game zone':'store'} has not added any ${gameZone?'games or slots':'services'} yet`);
   const initialService=services.find(row=>row.id===preselectServiceId)||services[0];
   const initialWindow=bookingWindowForService(store,initialService);
-  let slotFetchToken=0,capturedLocation=null;
+  let slotFetchToken=0,capturedLocation=customerSavedPoint(customer);
   const title=ownerBookingFor?`Book ${copy.item} for Customer`:copy.bookTitle;
   const intro=ownerBookingFor?`<p class="muted">Creates a booking for ${html(ownerBookingFor.customerName||'this customer')}. They'll get a call-style alert and must accept it before it's confirmed.</p>`:'';
   const submitLabel=ownerBookingFor?'Send to Customer':gameZone?'Reserve & Pay Prepayment':'Book & Pay Prepayment';
   const askPhone=!ownerBookingFor&&!customer.phone;
   const phoneField=askPhone?'<div class="field"><label>Your phone number</label><input name="phone" type="tel" placeholder="10-digit mobile number" required><small class="muted">Saved to your account so the store and expert can reach you — you won\'t be asked again.</small></div>':'';
-  const doorstepField=ownerBookingFor||gameZone?'':`<div class="field ${initialService.doorstepServiceEnabled?'':'hidden'}" id="doorstepLocationField"><label>Doorstep service location</label><button type="button" class="btn secondary" id="bookingShareLocationBtn">📍 Share Service Location</button><p class="muted" id="bookingLocationStatus" style="margin-top:6px">Required — the service owner can forward this Maps location to the selected expert.</p></div>`;
+  const doorstepField=ownerBookingFor||gameZone?'':`<div class="field ${initialService.doorstepServiceEnabled?'':'hidden'}" id="doorstepLocationField"><label>Full service address</label><textarea name="address" id="bookingAddressInput" rows="2" placeholder="House/flat no., street, landmark, area, city and PIN code">${html(customer.address||'')}</textarea><label style="margin-top:10px">Doorstep service map location</label><button type="button" class="btn secondary" id="bookingShareLocationBtn">📍 ${capturedLocation?'Update Service Location':'Share Service Location'}</button><p class="muted ${capturedLocation?'location-captured':''}" id="bookingLocationStatus" style="margin-top:6px">${capturedLocation?'📍 Using your saved location — it can be forwarded to the selected expert.':'Required — the service owner can forward this Maps location to the selected expert.'}</p></div>`;
   modal(title,`<form id="bookingForm">${intro}${phoneField}<div class="field"><label>${copy.item}</label><select name="serviceId" id="bookingServiceSelect" required>${services.map(service=>`<option value="${html(service.id)}" ${service.id===initialService.id?'selected':''}>${html(service.name)} — ${money(service.price)}${service.doorstepServiceEnabled&&!gameZone?' · Doorstep':''}</option>`).join('')}</select></div>${experts.length?`<div class="field"><label>${copy.resource} <small>(optional)</small></label><select name="expertId" id="bookingExpertSelect"><option value="">${gameZone?'Any available area':'No preference'}</option>${experts.map(expert=>`<option value="${html(expert.id)}">${html(expert.name)}</option>`).join('')}</select></div>`:''}${doorstepField}<div class="field"><label>Date</label><input name="date" type="date" id="bookingDateInput" min="${initialWindow.min}" max="${initialWindow.max}" value="${initialWindow.min}" required></div><div class="field"><label>Time slot</label><div class="slot-grid" id="bookingSlotGrid"><p class="muted">Loading slots…</p></div><input type="hidden" name="startTime" id="bookingStartTimeInput" required><p class="slot-legend"><span class="slot-legend-dot available"></span>Available<span class="slot-legend-dot booked"></span>Booked</p></div><p class="muted" id="bookingPriceNote"></p><button class="btn full" type="submit" id="bookingSubmitBtn" style="margin-top:14px" disabled>${submitLabel}</button></form>`,()=>{
     const currentService=()=>services.find(row=>row.id===$('#bookingServiceSelect').value);
     const doorstepRequired=()=>!ownerBookingFor&&currentService()?.doorstepServiceEnabled===true;
@@ -2904,6 +2986,7 @@ function openBookingModal(store,customer,services,experts,preselectServiceId='',
     const updateNote=()=>{
       const service=currentService();if(!service)return;
       $('#doorstepLocationField')?.classList.toggle('hidden',!service.doorstepServiceEnabled);
+      if($('#bookingAddressInput'))$('#bookingAddressInput').required=service.doorstepServiceEnabled===true;
       const prepayPercent=service.prepaymentPercent??100;
       const prepay=Math.round(service.price*prepayPercent)/100;
       const cancellationCharge=service.cancellationChargeEnabled?Math.max(0,Number(service.cancellationChargeAmount)||0):0;
@@ -2937,8 +3020,10 @@ function openBookingModal(store,customer,services,experts,preselectServiceId='',
           customerDetailView(ownerBookingFor.id);
         }else{
           const phone=(values.phone||customer.phone||'').trim();
-          const result=await api.executeFunction(api.config.digitalOrderFunctionId,{action:'digit58-create-booking',ownerId:store.ownerId,storeId:store.id,serviceId:values.serviceId,expertId:values.expertId||'',date:values.date,startTime:values.startTime,customerName:customer.customerName,customerEmail:customer.customerEmail,phone,locationLat:capturedLocation?.lat,locationLng:capturedLocation?.lng});
-          if(askPhone&&phone){
+          const address=(values.address||customer.address||'').trim();
+          if(currentService()?.doorstepServiceEnabled)await saveCustomerDeliveryProfile(store,customer,{phone,address,location:capturedLocation});
+          const result=await api.executeFunction(api.config.digitalOrderFunctionId,{action:'digit58-create-booking',ownerId:store.ownerId,storeId:store.id,serviceId:values.serviceId,expertId:values.expertId||'',date:values.date,startTime:values.startTime,customerName:customer.customerName,customerEmail:customer.customerEmail,phone,address,locationLat:capturedLocation?.lat,locationLng:capturedLocation?.lng});
+          if(askPhone&&phone&&!currentService()?.doorstepServiceEnabled){
             try{
               await api.update(customerKind(store.ownerId),customer.id,{phone});
               customer.phone=phone;
@@ -3008,17 +3093,18 @@ function customerBookingHistoryRow(booking){
   return `<tr><td>${html(booking.serviceName)}</td><td>${html(booking.expertName||'—')}</td><td>${money(booking.price)}</td><td>${html(booking.status)}</td><td>${new Date(bookingHistoryTimestamp(booking)).toLocaleString('en-IN',{timeZone:'Asia/Kolkata',dateStyle:'medium',timeStyle:'short'})}</td></tr>`;
 }
 function openReorderOrderModal(order,store,customer){
-  let capturedLocation=null;
+  let capturedLocation=customerSavedPoint(customer);
   const itemSummary=order.items.map(item=>`<li>${Number(item.qty)||1} × ${html(item.name)}</li>`).join('');
-  modal('Reorder Previous Items',`<form id="reorderForm"><p class="muted">A fresh order request will be sent to ${html(store.name)}. The store reviews the current amount and then sends your payment QR.</p><div class="card" style="margin:12px 0"><strong>Items</strong><ul style="margin:8px 0 0;padding-left:20px">${itemSummary}</ul></div><div class="field"><label>Contact number</label><input name="phone" type="tel" value="${html(customer.phone||order.phone||'')}" placeholder="10-digit mobile number" required></div><div class="field"><button type="button" class="btn small secondary" id="shareLocationBtn">📍 Share My Location</button><p class="muted" id="locationStatus" style="margin-top:6px">Optional — helps the store guide your delivery.</p></div><button class="btn full green" type="submit" style="margin-top:10px">Send Reorder Request</button></form>`,()=>{
+  modal('Reorder Previous Items',`<form id="reorderForm"><p class="muted">A fresh order request will be sent to ${html(store.name)}. The store reviews the current amount and then sends your payment QR.</p><div class="card" style="margin:12px 0"><strong>Items</strong><ul style="margin:8px 0 0;padding-left:20px">${itemSummary}</ul></div><div class="field"><label>Contact number</label><input name="phone" type="tel" value="${html(customer.phone||order.phone||'')}" placeholder="10-digit mobile number" required></div><div class="field"><label>Full delivery address</label><textarea name="address" rows="2" placeholder="House/flat no., street, landmark, area, city and PIN code" required>${html(customer.address||order.address||'')}</textarea></div><div class="field"><button type="button" class="btn small secondary" id="shareLocationBtn">📍 ${capturedLocation?'Update Location':'Share My Location'}</button><p class="muted ${capturedLocation?'location-captured':''}" id="locationStatus" style="margin-top:6px">${capturedLocation?'📍 Using your saved location — it will be sent with your reorder.':'Optional — your full address will still open in Google Maps.'}</p></div><button class="btn full green" type="submit" style="margin-top:10px">Send Reorder Request</button></form>`,()=>{
     bindShareLocationButton($('#shareLocationBtn'),$('#locationStatus'),point=>{capturedLocation=point});
     $('#reorderForm').onsubmit=async event=>{
       event.preventDefault();
       const phone=$('input[name="phone"]',event.target).value.trim();
+      const address=$('textarea[name="address"]',event.target).value.trim();
       const button=event.submitter;button.disabled=true;
       try{
-        await api.executeFunction(api.config.digitalOrderFunctionId,{action:'digit58-reorder',ownerId:store.ownerId,orderId:order.id,phone,locationLat:capturedLocation?.lat,locationLng:capturedLocation?.lng});
-        if(phone&&phone!==customer.phone){await api.update(customerKind(store.ownerId),customer.id,{phone}).catch(()=>{});customer.phone=phone}
+        await saveCustomerDeliveryProfile(store,customer,{phone,address,location:capturedLocation});
+        await api.executeFunction(api.config.digitalOrderFunctionId,{action:'digit58-reorder',ownerId:store.ownerId,orderId:order.id,phone,address,locationLat:capturedLocation?.lat,locationLng:capturedLocation?.lng});
         closeModal();toast('Reorder sent — the store will review the amount and send your payment QR');
         await loadAndRenderCustomerView(store,customer);
       }catch(error){button.disabled=false;toast(error.message||'Could not send reorder request')}
@@ -3484,7 +3570,7 @@ function openAddMedicineModal(store,customer,course){
   });
 }
 function openPlaceOrderModal(store,customer,promotions=[],rejectedDraft=null){
-  let capturedLocation=(customer.savedLocationLat&&customer.savedLocationLng)?{lat:customer.savedLocationLat,lng:customer.savedLocationLng}:null;
+  let capturedLocation=customerSavedPoint(customer);
   const selectedPromotions=promotions.filter(promotion=>customerPromotionQuantities.has(promotion.id)).map(promotion=>({name:promotion.name,qty:customerPromotionQuantities.get(promotion.id)}));
   const rejectedItems=Array.isArray(rejectedDraft?.items)?rejectedDraft.items.map(item=>({name:item.name,qty:item.qty})).filter(item=>item.name):[];
   const startingItems=rejectedItems.length?rejectedItems:(selectedPromotions.length?selectedPromotions:[{}]);
@@ -3511,6 +3597,7 @@ function openPlaceOrderModal(store,customer,promotions=[],rejectedDraft=null){
       const address=$('textarea[name="address"]',event.target).value.trim();
       const button=event.submitter;button.disabled=true;
       try{
+        await saveCustomerDeliveryProfile(store,customer,{phone,address,location:capturedLocation});
         let prescription={};
         const file=$('#prescriptionFile').files[0];
         if(file){
@@ -3518,11 +3605,6 @@ function openPlaceOrderModal(store,customer,promotions=[],rejectedDraft=null){
           prescription={prescriptionUrl:uploaded.mediaUrl,prescriptionFileId:uploaded.fileId,prescriptionName:uploaded.mediaName,prescriptionType:uploaded.mediaType};
         }
         await api.executeFunction(api.config.digitalOrderFunctionId,{action:'digit58-create-order',ownerId:store.ownerId,storeId:store.id,customerName:customer.customerName,customerEmail:customer.customerEmail,items,customerOrderValue,requestMinimumApproval,phone,address,locationLat:capturedLocation?.lat,locationLng:capturedLocation?.lng,...prescription});
-        const profileUpdates={};
-        if(phone&&phone!==customer.phone)profileUpdates.phone=phone;
-        if(address&&address!==customer.address)profileUpdates.address=address;
-        if(capturedLocation&&(capturedLocation.lat!==customer.savedLocationLat||capturedLocation.lng!==customer.savedLocationLng)){profileUpdates.savedLocationLat=capturedLocation.lat;profileUpdates.savedLocationLng=capturedLocation.lng}
-        if(Object.keys(profileUpdates).length){await api.update(customerKind(store.ownerId),customer.id,profileUpdates).catch(()=>{});Object.assign(customer,profileUpdates)}
         customerPromotionQuantities.clear();
         closeModal();toast(requestMinimumApproval?'Minimum-order approval requested from the store':'Order sent to the store');
         await loadAndRenderCustomerView(store,customer);

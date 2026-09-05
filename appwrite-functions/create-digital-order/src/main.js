@@ -1123,7 +1123,7 @@ async function createDigit58Booking(call, input, userId, options = {}) {
   const record = {
     id: bookingId, ownerId, storeId, serviceId, serviceName: service.name, expertId, expertName, expertPhone,
     customerAccountId: userId, customerName: text(input.customerName, 120), customerEmail: text(input.customerEmail, 250),
-    phone: normalisePhone(input.phone).slice(0, 15),
+    phone: normalisePhone(input.phone).slice(0, 15), address: text(input.address, 300),
     doorstepServiceEnabled,
     locationLat: hasLocation ? locationLat : '', locationLng: hasLocation ? locationLng : '',
     locationUrl: hasLocation ? `https://www.google.com/maps?q=${locationLat},${locationLng}` : '',
@@ -1156,7 +1156,8 @@ async function createDigit58OwnerBooking(call, input, userId) {
   if (!customer) throw new Error('This customer is not linked to the selected store.');
   return createDigit58Booking(call, {
     ownerId, storeId, serviceId: input.serviceId, expertId: input.expertId, date: input.date, startTime: input.startTime,
-    customerName: customer.customerName, customerEmail: customer.customerEmail, phone: customer.phone,
+    customerName: customer.customerName, customerEmail: customer.customerEmail, phone: customer.phone, address: customer.address,
+    locationLat: customer.savedLocationLat, locationLng: customer.savedLocationLng,
   }, customerAccountId, { initialStatus: 'Pending Customer Acceptance', allowMissingDoorstepLocation: true });
 }
 
@@ -1320,12 +1321,14 @@ async function createDigit58RefillOrder(call, input, userId) {
   const phone = normalisePhone(input.phone || card.phone);
   const order = await createDigit58Order(call, {
     ownerId, storeId: card.storeId, customerName: text(input.customerName, 120), customerEmail: text(input.customerEmail, 250),
-    phone, locationLat: input.locationLat, locationLng: input.locationLng,
+    phone, address: text(input.address, 300) || text(card.address, 300), locationLat: input.locationLat, locationLng: input.locationLng,
     items: [{ name: card.productName, qty: 1 }],
   }, userId, { previousAmount: card.price, refillCardId: cardId, enforceMinimum: false });
   await updateRow(call, cardId, {
     ...card, status: 'Refill Requested', refillRequestedAt: new Date().toISOString(), activeOrderId: order.id,
-    phone: phone.slice(0, 15), updatedAt: new Date().toISOString(),
+    phone: phone.slice(0, 15), address: text(input.address, 300) || text(card.address, 300),
+    locationLat: order.locationLat, locationLng: order.locationLng, locationUrl: order.locationUrl,
+    updatedAt: new Date().toISOString(),
   });
   return order;
 }
@@ -1350,6 +1353,7 @@ async function createDigit58Reorder(call, input, userId) {
     customerName: previous.customerName,
     customerEmail: previous.customerEmail,
     phone: text(input.phone, 20) || previous.phone,
+    address: text(input.address, 300) || previous.address,
     locationLat: input.locationLat,
     locationLng: input.locationLng,
     items: previous.items,
@@ -1367,7 +1371,8 @@ async function createDigit58OwnerOrder(call, input, userId) {
   return createDigit58Order(call, {
     ownerId, storeId, items: input.items,
     customerName: customer.customerName, customerEmail: customer.customerEmail,
-    phone: customer.phone,
+    phone: customer.phone, address: customer.address,
+    locationLat: customer.savedLocationLat, locationLng: customer.savedLocationLng,
   }, customerAccountId, { enforceMinimum: false, initialStatus: 'Pending Customer Acceptance' });
 }
 

@@ -142,9 +142,10 @@ test('doorstep service bookings require and securely store the customer location
     assert.match(missing.body.error, /share the service location/i);
     assert.equal(requests.filter(item => item.method === 'POST').length, 0);
 
-    const response = await request({ locationLat: 17.4065, locationLng: 78.4772 });
+    const response = await request({ address: '12 Market Road, Hyderabad', locationLat: 17.4065, locationLng: 78.4772 });
     assert.equal(response.status, 201);
     assert.equal(response.body.booking.doorstepServiceEnabled, true);
+    assert.equal(response.body.booking.address, '12 Market Road, Hyderabad');
     assert.equal(response.body.booking.locationLat, 17.4065);
     assert.equal(response.body.booking.locationLng, 78.4772);
     assert.equal(response.body.booking.locationUrl, 'https://www.google.com/maps?q=17.4065,78.4772');
@@ -685,6 +686,7 @@ test('digit58: customer reorders a history item into a fresh owner-priced order'
   const previousOrder = {
     id: 'order_history_1', ownerId, storeId: 'store_1', customerAccountId: customerId,
     customerName: 'Test Customer', customerEmail: 'customer@example.test', phone: '9999999999',
+    address: 'Old address, Hyderabad', locationLat: 17.4, locationLng: 78.4,
     items: [{ name: 'Monthly medicine', qty: 2 }], amount: 480, status: 'Delivered',
   };
   const row = { $id: previousOrder.id, kind: `digit58_order_${ownerId}`, payload: JSON.stringify(previousOrder) };
@@ -700,7 +702,7 @@ test('digit58: customer reorders a history item into a fresh owner-priced order'
     const response = await createDigitalOrder({
       req: {
         method: 'POST', headers: { 'x-appwrite-key': 'dynamic-key', 'x-appwrite-user-id': customerId },
-        bodyJson: { action: 'digit58-reorder', ownerId, orderId: previousOrder.id, phone: '9888888888' },
+        bodyJson: { action: 'digit58-reorder', ownerId, orderId: previousOrder.id, phone: '9888888888', address: '12 Market Road, Hyderabad', locationLat: 17.4065, locationLng: 78.4772 },
       },
       res: { json: (body, status = 200) => ({ body, status }) }, error: () => {},
     });
@@ -711,6 +713,8 @@ test('digit58: customer reorders a history item into a fresh owner-priced order'
     assert.equal(response.body.order.reorderedFrom, previousOrder.id);
     assert.deepEqual(response.body.order.items, previousOrder.items);
     assert.equal(response.body.order.phone, '9888888888');
+    assert.equal(response.body.order.address, '12 Market Road, Hyderabad');
+    assert.equal(response.body.order.locationUrl, 'https://www.google.com/maps?q=17.4065,78.4772');
     assert.ok(requests.some(request => request.method === 'POST'));
   } finally {
     globalThis.fetch = previousFetch;
@@ -743,7 +747,7 @@ test('digit58: a due reminder creates one regular refill order and marks the car
     const response = await createDigitalOrder({
       req: {
         method: 'POST', headers: { 'x-appwrite-key': 'dynamic-key', 'x-appwrite-user-id': customerId },
-        bodyJson: { action: 'digit58-create-refill-order', ownerId, cardId: card.id, customerName: 'Test Customer', customerEmail: 'customer@example.test', phone: '9888888888' },
+        bodyJson: { action: 'digit58-create-refill-order', ownerId, cardId: card.id, customerName: 'Test Customer', customerEmail: 'customer@example.test', phone: '9888888888', address: '12 Market Road, Hyderabad', locationLat: 17.4065, locationLng: 78.4772 },
       },
       res: { json: (body, status = 200) => ({ body, status }) }, error: () => {},
     });
@@ -752,6 +756,8 @@ test('digit58: a due reminder creates one regular refill order and marks the car
     assert.equal(response.body.order.refillCardId, card.id);
     assert.equal(response.body.order.previousAmount, 199);
     assert.equal(response.body.order.phone, '9888888888');
+    assert.equal(response.body.order.address, '12 Market Road, Hyderabad');
+    assert.equal(response.body.order.locationUrl, 'https://www.google.com/maps?q=17.4065,78.4772');
     assert.deepEqual(response.body.order.items, [{ name: 'Thyroid medicine', qty: 1 }]);
     const createdOrder = requests.find(request => request.method === 'POST');
     assert.equal(createdOrder.body.data.kind, orderKind);
@@ -761,6 +767,8 @@ test('digit58: a due reminder creates one regular refill order and marks the car
     const savedCard = JSON.parse(updatedCard.body.data.payload);
     assert.equal(savedCard.status, 'Refill Requested');
     assert.equal(savedCard.activeOrderId, response.body.order.id);
+    assert.equal(savedCard.address, '12 Market Road, Hyderabad');
+    assert.equal(savedCard.locationUrl, 'https://www.google.com/maps?q=17.4065,78.4772');
   } finally {
     globalThis.fetch = previousFetch;
   }

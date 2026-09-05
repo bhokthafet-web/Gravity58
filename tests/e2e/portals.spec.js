@@ -609,13 +609,14 @@ test("Service owner enables doorstep booking and forwards the customer location 
   await page.getByRole("button", { name: "+ Book a Service" }).click();
   await expect(page.locator("#doorstepLocationField")).toBeVisible();
   await page.locator("#bookingExpertSelect").selectOption(expertId);
+  await page.locator("#bookingAddressInput").fill("12 Market Road, Hyderabad");
   await page.getByRole("button", { name: /Share Service Location/ }).click();
   await expect(page.locator("#bookingLocationStatus")).toContainText("Location captured");
   await page.locator(".slot-btn.available").first().click();
   await page.getByRole("button", { name: "Request Booking" }).click();
   await expect(page.locator(".order-item-card", { hasText: "Doorstep AC Repair" })).toContainText("Doorstep Service");
   const booking = await page.evaluate((kind) => window.__g58Mock.store[kind][0], `digit58_booking_${ownerId}`);
-  expect(booking).toMatchObject({ serviceId, expertId, expertPhone: "919876543210", doorstepServiceEnabled: true, locationLat: 17.4065, locationLng: 78.4772 });
+  expect(booking).toMatchObject({ serviceId, expertId, expertPhone: "919876543210", doorstepServiceEnabled: true, address: "12 Market Road, Hyderabad", locationLat: 17.4065, locationLng: 78.4772 });
 
   await page.evaluate((ownerId) => { window.stopCustomerRealtime?.(); window.__g58Mock.setUser({ $id: ownerId, email: "service-owner@example.com", name: "Service Owner" }); location.hash = ""; }, ownerId);
   await expect(page.getByRole("button", { name: /Bookings/ })).toBeVisible();
@@ -627,6 +628,7 @@ test("Service owner enables doorstep booking and forwards the customer location 
   await ownerCard.getByRole("button", { name: /Send to Ravi Expert/ }).click();
   const shareUrl = await page.evaluate(() => window.__openedDoorstepShare);
   expect(shareUrl).toContain("wa.me/919876543210");
+  expect(decodeURIComponent(shareUrl)).toContain("Full address: 12 Market Road, Hyderabad");
   expect(decodeURIComponent(shareUrl)).toContain("https://www.google.com/maps?q=17.4065,78.4772");
   await assertNoErrors();
 });
@@ -842,8 +844,8 @@ test("one Refills customer portal switches between every linked store and keeps 
     seed: {
       [`digit58_store_${firstOwner}`]: [{ id: firstStore, ownerId: firstOwner, name: "Amruth Medicals", category: "Medical store", city: "Hyderabad", minimumOrderEnabled: true, minimumOrderValue: 500 }],
       [`digit58_store_${secondOwner}`]: [{ id: secondStore, ownerId: secondOwner, name: "test2", category: "General store", city: "Hyderabad" }],
-      [`digit58_customer_${firstOwner}`]: [{ id: "customer_a", ownerId: firstOwner, storeId: firstStore, customerAccountId: customerId, customerName: "Shared Customer", customerEmail: "shared@example.com", phone: "9876543210" }],
-      [`digit58_customer_${secondOwner}`]: [{ id: "customer_b", ownerId: secondOwner, storeId: secondStore, customerAccountId: customerId, customerName: "Shared Customer", customerEmail: "shared@example.com", phone: "9876543210" }],
+      [`digit58_customer_${firstOwner}`]: [{ id: "customer_a", ownerId: firstOwner, storeId: firstStore, customerAccountId: customerId, customerName: "Shared Customer", customerEmail: "shared@example.com", phone: "9876543210", address: "12 Market Road, Hyderabad", savedLocationLat: 17.4065, savedLocationLng: 78.4772, agreementAcceptedAt: new Date().toISOString() }],
+      [`digit58_customer_${secondOwner}`]: [{ id: "customer_b", ownerId: secondOwner, storeId: secondStore, customerAccountId: customerId, customerName: "Shared Customer", customerEmail: "shared@example.com", agreementAcceptedAt: new Date().toISOString() }],
       [`digit58_order_${firstOwner}`]: [{ id: "refill_chat_order", ownerId: firstOwner, storeId: firstStore, customerAccountId: customerId, customerName: "Shared Customer", phone: "9876543210", items: [{ name: "Monthly tablets", qty: 1 }], amount: 0, status: "Requested", messages: [], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }],
       [`digit58_card_${firstOwner}`]: [{ id: "anytime_card", ownerId: firstOwner, storeId: firstStore, customerAccountId: customerId, productName: "Vitamin tablets", price: 99, reminderDays: 30, dueAt: new Date(Date.now() + 20 * 86400000).toISOString(), status: "Active" }],
     },
@@ -852,6 +854,7 @@ test("one Refills customer portal switches between every linked store and keeps 
   await page.goto(`/digit58/#store&owner=${firstOwner}&store=${firstStore}`);
   await expect(page.locator("#customerStoreSwitch option")).toHaveCount(2);
   await expect(page.locator(".customer-store-hub")).toContainText("2 linked stores");
+  await expect(page.locator(".customer-delivery-profile")).toContainText("12 Market Road, Hyderabad");
   const chatForm = page.locator('[data-order-chat="refill_chat_order"]');
   await expect(chatForm.getByRole("button", { name: "Send" })).toBeVisible();
   const sendBox = await chatForm.getByRole("button", { name: "Send" }).boundingBox();
@@ -868,7 +871,10 @@ test("one Refills customer portal switches between every linked store and keeps 
 
   await page.locator("#customerStoreSwitch").selectOption(`${secondOwner}:${secondStore}`);
   await expect(page.locator(".store-hero")).toContainText("test2");
+  await expect(page.locator(".customer-delivery-profile")).toContainText("12 Market Road, Hyderabad");
   await expect(page).toHaveURL(new RegExp(`owner=${secondOwner}&store=${secondStore}`));
+  const secondProfile = await page.evaluate((kind) => window.__g58Mock.store[kind][0], `digit58_customer_${secondOwner}`);
+  expect(secondProfile).toMatchObject({ phone: "9876543210", address: "12 Market Road, Hyderabad", savedLocationLat: 17.4065, savedLocationLng: 78.4772 });
 
   await expect(page.locator(".floating-support-btn")).toHaveCount(0);
   await assertNoErrors();
@@ -1279,13 +1285,15 @@ test("Refills customer confirms a reusable Razorpay.me payment and adds promotio
   const customerId = "promo_customer";
   const storeId = "promo_store";
   const orderKind = `digit58_order_${ownerId}`;
+  const promotionEnd = indiaDate(new Date(Date.now() + 7 * 86400000));
+  const promotionEndLabel = new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short", timeZone: "Asia/Kolkata" }).format(new Date(`${promotionEnd}T12:00:00+05:30`));
   await prepareMockApi(page, {
     state: null,
     initialUser: { $id: customerId, email: "customer@example.com", name: "Refill Customer" },
     seed: {
       [`digit58_store_${ownerId}`]: [{ id: storeId, ownerId, name: "Nature Refills", category: "Organic Store", city: "Hyderabad", upiId: "nature@upi", razorpayEnabled: true, razorpayLink: "https://razorpay.me/@naturerefills" }],
       [`digit58_customer_${ownerId}`]: [{ id: "customer_link", ownerId, storeId, customerAccountId: customerId, customerName: "Refill Customer", customerEmail: "customer@example.com", phone: "9876543210", agreementAcceptedAt: "2026-08-01T08:00:00.000Z" }],
-      [`digit58_promo_${ownerId}`]: [{ id: "promo_honey", ownerId, storeId, name: "Organic Forest Honey Family Value Pack", offerText: "Pure 500g jar · limited stock", price: 299, endsOn: "2026-08-30", badge: "Weekend Special", imageUrl: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='500'%3E%3Crect width='400' height='500' fill='%23f59e0b'/%3E%3Ctext x='200' y='250' text-anchor='middle' font-size='42'%3EOrganic Honey%3C/text%3E%3C/svg%3E", active: true }],
+      [`digit58_promo_${ownerId}`]: [{ id: "promo_honey", ownerId, storeId, name: "Organic Forest Honey Family Value Pack", offerText: "Pure 500g jar · limited stock", price: 299, endsOn: promotionEnd, badge: "Weekend Special", imageUrl: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='500'%3E%3Crect width='400' height='500' fill='%23f59e0b'/%3E%3Ctext x='200' y='250' text-anchor='middle' font-size='42'%3EOrganic Honey%3C/text%3E%3C/svg%3E", active: true }],
       [orderKind]: [{ id: "priced_order", ownerId, storeId, customerAccountId: customerId, customerName: "Refill Customer", phone: "9876543210", items: [{ name: "Monthly medicine", qty: 1 }], amount: 525, upiUri: "upi://pay?pa=nature%40upi&am=525", status: "Priced", messages: [], createdAt: "2026-08-15T08:00:00.000Z", updatedAt: "2026-08-15T08:00:00.000Z" }],
     },
   });
@@ -1299,7 +1307,7 @@ test("Refills customer confirms a reusable Razorpay.me payment and adds promotio
   await expect(promotionStrip).toContainText("₹299/- only");
   await expect(promotionStrip).not.toContainText("Special Offer");
   await expect(promotionStrip).not.toContainText("Limited-time store offer");
-  await expect(promotionStrip).toContainText("Offer ends 30 Aug");
+  await expect(promotionStrip).toContainText(`Offer ends ${promotionEndLabel}`);
   await expect(page.locator("#promotionRail")).toHaveClass(/is-auto-scrolling/);
   const ticketMotion = await page.evaluate(() => {
     const card = document.querySelector(".customer-ticket");
