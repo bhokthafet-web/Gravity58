@@ -16,7 +16,7 @@ const cleanRow = row => {
 };
 
 function appwriteClient(req) {
-  const endpoint = process.env.APPWRITE_FUNCTION_API_ENDPOINT || 'https://sgp.cloud.appwrite.io/v1';
+  const endpoint = process.env.APPWRITE_FUNCTION_API_ENDPOINT || 'https://server.g58.in/v1';
   const project = process.env.APPWRITE_FUNCTION_PROJECT_ID;
   const key = req.headers['x-appwrite-key'];
   if (!project || !key) throw new Error('Function service credentials are unavailable.');
