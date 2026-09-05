@@ -284,6 +284,82 @@ test("G58 admin manages Refills stores independently for the same owner", async 
   await assertNoErrors();
 });
 
+test("Refills free trial creates an admin approval request instead of an active subscription", async ({ page }) => {
+  const ownerId = "refills-trial-owner";
+  await prepareMockApi(page, {
+    initialUser: { $id: ownerId, email: "trial-owner@example.com", name: "Trial Owner" },
+    seed: { digit58_requests: [], digit58_entitlements: [] },
+  });
+  const assertNoErrors = monitorPageErrors(page);
+
+  await page.goto("/digit58/");
+  await expect(page.getByRole("button", { name: "Request Free Trial" })).toBeVisible();
+  await page.getByRole("button", { name: "Request Free Trial" }).click();
+
+  await expect(page.getByText("Approval pending")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Free-trial request sent" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Refresh Approval Status" })).toBeVisible();
+  const result = await page.evaluate(() => ({
+    requests: window.__g58Mock.store.digit58_requests,
+    entitlements: window.__g58Mock.store.digit58_entitlements,
+  }));
+  expect(result.requests).toHaveLength(1);
+  expect(result.requests[0]).toMatchObject({ ownerId, type: "free-trial", plan: "trial", amount: 0, status: "Requested", months: 1 });
+  expect(result.entitlements).toHaveLength(0);
+
+  await page.evaluate(({ ownerId }) => {
+    const request = window.__g58Mock.store.digit58_requests[0];
+    Object.assign(request, { status: "Activated", activatedAt: new Date().toISOString() });
+    window.__g58Mock.store.digit58_entitlements.unshift({
+      id: "approved-trial-entitlement", ownerId, ownerEmail: "trial-owner@example.com",
+      active: true, paused: false, freeTrial: true, trialUsed: true, plan: "trial",
+      subscriptionStatus: "trial", storeSlots: 1, activatedAt: new Date().toISOString(),
+      expiresAt: new Date(Date.now() + 30 * 86_400_000).toISOString(),
+    });
+  }, { ownerId });
+  await page.getByRole("button", { name: "Refresh Approval Status" }).click();
+  await expect(page.getByRole("heading", { name: "Before you continue" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "I Accept" })).toBeVisible();
+  await assertNoErrors();
+});
+
+test("G58 admin approval activates a pending Refills free trial for 30 days", async ({ page }) => {
+  const ownerId = "pending-trial-owner";
+  const createdAt = new Date().toISOString();
+  await prepareMockApi(page, {
+    admin: true,
+    state: null,
+    seed: {
+      digit58_requests: [{ id: "trial-request-1", ownerId, ownerEmail: "pending@example.com", ownerName: "Pending Owner", amount: 0, status: "Requested", type: "free-trial", plan: "trial", months: 1, createdAt }],
+      digit58_entitlements: [{ id: "trial-entitlement-1", ownerId, ownerEmail: "pending@example.com", active: false, paused: false, freeTrial: true, trialUsed: true, storeSlots: 1 }],
+    },
+  });
+  const assertNoErrors = monitorPageErrors(page);
+
+  await page.goto("/team-admin/");
+  await page.locator('#login input[name="email"]').fill("admin@g58.in");
+  await page.locator('#login input[name="password"]').fill("testing123");
+  await page.locator("#login").getByRole("button", { name: "Secure Login" }).click();
+  await page.locator('[data-view="digit58"]').click();
+
+  await expect(page.getByText("30-day free trial")).toBeVisible();
+  await page.getByRole("button", { name: "Approve Free Trial" }).click();
+  await expect(page.getByRole("heading", { name: "Approve 30-Day Free Trial" })).toBeVisible();
+  await page.getByRole("button", { name: "Approve & Activate Trial" }).click();
+
+  const result = await page.evaluate(() => ({
+    request: window.__g58Mock.store.digit58_requests.find((row) => row.id === "trial-request-1"),
+    entitlement: window.__g58Mock.store.digit58_entitlements.find((row) => row.ownerId === "pending-trial-owner"),
+  }));
+  expect(result.request).toMatchObject({ status: "Activated" });
+  expect(result.entitlement).toMatchObject({ active: true, paused: false, freeTrial: true, trialUsed: true, plan: "trial", subscriptionStatus: "trial", storeSlots: 1 });
+  const days = (new Date(result.entitlement.expiresAt).getTime() - Date.now()) / 86_400_000;
+  expect(days).toBeGreaterThan(29.9);
+  expect(days).toBeLessThanOrEqual(30.1);
+  await expect(page.locator("#page")).toContainText("Free Trial");
+  await assertNoErrors();
+});
+
 test("admin requests a paid extension, confirms it, and permanently deletes all ad records and media", async ({ page }) => {
   const originalExpiry = new Date(Date.now() + 3_600_000).toISOString();
   await prepareMockApi(page, {

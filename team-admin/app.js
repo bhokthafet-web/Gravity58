@@ -315,10 +315,11 @@ async function toggleDigit58Store(storeId,ownerId){
 }
 function digit58RequestRow(row){
   const isAdditional=row.type==='additional-store';
-  const actions=row.status==='Requested'?`<button class="btn small" data-send-digit58-link="${esc(row.id)}">Send Payment Link</button><button class="btn small red" data-reject-digit58="${esc(row.id)}">Reject</button>`
+  const isFreeTrial=row.type==='free-trial';
+  const actions=row.status==='Requested'?(isFreeTrial?`<button class="btn small green" data-activate-digit58="${esc(row.id)}">Approve Free Trial</button><button class="btn small red" data-reject-digit58="${esc(row.id)}">Reject</button>`:`<button class="btn small" data-send-digit58-link="${esc(row.id)}">Send Payment Link</button><button class="btn small red" data-reject-digit58="${esc(row.id)}">Reject</button>`)
     :row.status==='Payment Link Sent'?`<button class="btn small green" data-activate-digit58="${esc(row.id)}">Activate</button><button class="btn small red" data-reject-digit58="${esc(row.id)}">Reject</button>`
     :`<button class="btn small green" data-activate-digit58="${esc(row.id)}">Activate</button>`;
-  return `<tr><td><strong>${esc(row.ownerName||'Store Owner')}</strong><br><small>${esc(row.ownerEmail||row.ownerId)}</small>${isAdditional?' <span class="chip due">+1 Store</span>':''}</td><td>${money(row.amount||399)}</td><td>${esc(row.status||'Requested')}</td><td><div class="actions">${actions}</div></td></tr>`;
+  return `<tr><td><strong>${esc(row.ownerName||'Store Owner')}</strong><br><small>${esc(row.ownerEmail||row.ownerId)}</small>${isAdditional?' <span class="chip due">+1 Store</span>':isFreeTrial?' <span class="chip delivered">30-day free trial</span>':''}</td><td>${isFreeTrial?'Free':money(row.amount||399)}</td><td>${esc(row.status||'Requested')}</td><td><div class="actions">${actions}</div></td></tr>`;
 }
 const DIGIT58_PLAN_LABELS={'6m':'6 Months','1y':'1 Year','3y':'3 Years'};
 function digit58EntitlementRow(row){
@@ -447,6 +448,23 @@ function sendDigit58PaymentLink(id){
 }
 function activateDigit58Request(id){
   const request=data.digit58Requests.find(row=>row.id===id),existing=data.digit58Entitlements.find(row=>row.ownerId===request?.ownerId);if(!request)return;
+  if(request.type==='free-trial'){
+    const expiresAt=new Date(Date.now()+30*86400000).toISOString();
+    modal('Approve 30-Day Free Trial',`<div class="card"><p><strong>${esc(request.ownerEmail||request.ownerId)}</strong> requested the one-month Refills free trial.</p><p class="muted">Approval activates one store slot immediately for 30 days. The owner must still accept the Refills policy before entering the dashboard.</p></div><div class="actions" style="margin-top:14px"><button class="btn green full" id="confirmDigit58Trial">Approve & Activate Trial</button></div>`,()=>{
+      $('#confirmDigit58Trial').onclick=async()=>{
+        const button=$('#confirmDigit58Trial');button.disabled=true;
+        const payload={ownerId:request.ownerId,ownerEmail:request.ownerEmail||'',active:true,paused:false,lifetime:false,freeTrial:true,trialUsed:true,plan:'trial',subscriptionStatus:'trial',expiresAt,storeSlots:Math.max(1,Number(existing?.storeSlots)||1),activatedAt:existing?.activatedAt||now(),updatedAt:now()};
+        if(request.referredByCode&&!existing?.referredByCode)payload.referredByCode=request.referredByCode;
+        try{
+          if(existing)await api.update('digit58_entitlements',existing.id,payload);
+          else await api.create('digit58_entitlements',payload,`d58-${String(request.ownerId).slice(0,30)}`,api.permissionSet?.('digit58_entitlements',request.ownerId,true)||api.collaborativePermissionSet(request.ownerId));
+          await api.update('digit58_requests',id,{status:'Activated',activatedAt:now(),approvedBy:user.$id,updatedAt:now()});
+          closeModal();await refresh();toast('30-day Refills free trial activated');
+        }catch(error){button.disabled=false;toast(error.message||'Could not activate the free trial')}
+      };
+    });
+    return;
+  }
   if(request.type==='additional-store'){
     const nextSlots=Math.max(1,Number(existing?.storeSlots)||1)+1;
     modal('Grant Additional Store Slot',`<p><strong>${esc(request.ownerEmail||request.ownerId)}</strong> paid for one more store (${money(request.amount||399)}/month). This raises their paid store slots to <strong>${nextSlots}</strong>.</p><div class="actions" style="margin-top:14px"><button class="btn green full" id="confirmGrantSlot">Grant Store Slot</button></div>`,()=>{

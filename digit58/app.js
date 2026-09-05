@@ -786,22 +786,42 @@ async function boot(){
   if(!hasActiveEntitlement())return renderPlanGate();
   await proceedAfterEntitlement();
 }
-const FREE_TRIAL_DAYS=30;
+let entitlementStatusTimer=null;
+function stopEntitlementStatusPolling(){
+  if(entitlementStatusTimer){clearInterval(entitlementStatusTimer);entitlementStatusTimer=null}
+}
+function startEntitlementStatusPolling(){
+  stopEntitlementStatusPolling();
+  if(!myRequest||!['Requested','Payment Link Sent','Activated'].includes(myRequest.status))return;
+  entitlementStatusTimer=setInterval(async()=>{
+    const previousStatus=myRequest?.status||'';
+    try{
+      await loadEntitlement();
+      if(hasActiveEntitlement()){
+        stopEntitlementStatusPolling();
+        toast('Your Refills access is active');
+        return proceedAfterEntitlement();
+      }
+      if((myRequest?.status||'')!==previousStatus)renderPlanGate();
+    }catch(error){console.warn('Refills activation status could not be refreshed',error)}
+  },8000);
+}
 async function startDigit58FreeTrial(){
   const button=$('#startTrialBtn');if(button)button.disabled=true;
   const ownerId=cloudOwnerId();
   try{
-    const expiresAt=new Date(Date.now()+FREE_TRIAL_DAYS*86400000).toISOString();
-    const payload={ownerId,ownerEmail:session?.email||'',active:true,paused:false,lifetime:false,storeSlots:1,freeTrial:true,trialUsed:true,activatedAt:now(),expiresAt,updatedAt:now()};
-    if(!entitlement){
-      const referredByCode=localStorage.getItem('g58ReferredByCode');
-      if(referredByCode)payload.referredByCode=referredByCode;
-    }
-    entitlement=entitlement
-      ?await api.update(ENTITLEMENT_KIND,entitlement.id,payload)
-      :await api.create(ENTITLEMENT_KIND,payload,`d58-${String(ownerId).slice(0,30)}`,api.managedPermissionSet?.()||api.collaborativePermissionSet(ownerId));
-    await proceedAfterEntitlement();
-  }catch(error){if(button)button.disabled=false;toast(error.message||'Could not start your free trial')}
+    if(myRequest&&['Requested','Payment Link Sent'].includes(myRequest.status))throw new Error('Your Refills access request is already waiting for G58 approval.');
+    const record={
+      id:id('req'),ownerId,ownerEmail:session?.email||'',ownerName:session?.name||session?.email?.split('@')[0]||'Store Owner',
+      amount:0,status:'Requested',type:'free-trial',plan:'trial',periodLabel:'1 Month',months:1,
+      paymentLink:'',createdAt:now(),updatedAt:now(),
+    };
+    const referredByCode=localStorage.getItem('g58ReferredByCode');
+    if(referredByCode)record.referredByCode=referredByCode;
+    myRequest=await api.create(REQUEST_KIND,record,record.id,api.permissionSet?.(REQUEST_KIND,ownerId,true)||api.collaborativePermissionSet(ownerId));
+    renderPlanGate();
+    toast('Free-trial request sent to the G58 admin for approval');
+  }catch(error){if(button)button.disabled=false;toast(error.message||'Could not request your free trial')}
 }
 async function startDigit58Subscription(periodId){
   const period=DIGIT58_PLAN_PERIODS.find(row=>row.id===periodId);if(!period)return;
@@ -830,6 +850,7 @@ async function pollDigit58SubscriptionActivation(attempt=0){
 const DIGIT58_POLICY_TEXT='Refills generates a payment QR code from the UPI ID you provide, to help you collect payment from your customers. G58 only facilitates this QR generation — we are not a party to any payment and are not responsible for any fraud, dispute or disagreement between you and your customer. Please verify payments independently before fulfilling any order. G58 keeps order and booking history for a maximum of 1 year. A backup warning appears during the final 30 days; history is permanently removed at the retention deadline. You may download a CSV and permanently delete closed history earlier after confirming your current password. Active work and customer login accounts are not deleted by that control. After a store subscription expires, owner-linked customer records receive a 30-day buffer and are then permanently removed.';
 const DIGIT58_CUSTOMER_AGREEMENT_TEXT='By continuing, you agree that this store — not G58 — is responsible for its products, pricing, offers, stock, and order fulfillment. Any payment you make (by UPI QR code or payment link shown on your order) goes directly to the store; G58 only provides this ordering platform and does not process, hold, or verify these payments. Before you pay, always confirm the amount matches your order and that the QR code or payment link genuinely belongs to this store. G58 is not responsible for any payment error, fraud, delay, or dispute between you and the store. For any issue with your order or payment, contact the store directly using the Support button in this portal.';
 async function proceedAfterEntitlement(){
+  stopEntitlementStatusPolling();
   if(!entitlement?.policyAcceptedAt)return renderPolicyGate();
   await loadOwnerData();
   startOwnerRealtime();
@@ -870,19 +891,28 @@ function hasActiveEntitlement(){
   return true;
 }
 function renderPlanGate(){
-  const trialEligible=!entitlement?.trialUsed;
+  const requestStatus=myRequest?.status||'';
+  const pendingAccessRequest=['Requested','Payment Link Sent'].includes(requestStatus);
+  const pendingTrial=myRequest?.type==='free-trial'&&pendingAccessRequest;
+  const approvedTrial=myRequest?.type==='free-trial'&&requestStatus==='Activated';
+  const rejectedTrial=myRequest?.type==='free-trial'&&requestStatus==='Rejected';
   const expired=!!(entitlement&&entitlement.expiresAt&&new Date(entitlement.expiresAt).getTime()<Date.now());
   const paused=!!entitlement?.paused;
+  const repairableInactiveTrial=!!(entitlement?.freeTrial&&!entitlement.active&&!paused&&!expired);
+  const trialEligible=(!entitlement?.trialUsed||repairableInactiveTrial)&&!pendingAccessRequest&&!approvedTrial&&!rejectedTrial;
   const monthly=digit58Pricing.monthly;
   let statusNote='';
   if(paused)statusNote=`<div class="card"><p class="muted">Your store subscription is currently paused by the G58 team. Contact G58 support to resume access.</p></div>`;
   else if(expired){const graceEnds=new Date(new Date(entitlement.expiresAt).getTime()+30*86400000);statusNote=`<div class="card"><p class="muted">Your ${entitlement?.freeTrial?'free trial has':'subscription has'} ended. Choose a plan below to continue. Owner-linked customer records remain available during a 30-day buffer, until ${graceEnds.toLocaleDateString('en-IN',{dateStyle:'medium'})}, and are then permanently removed.</p></div>`;}
+  else if(pendingTrial)statusNote=`<div class="card trial-request-status"><span class="chip due">Approval pending</span><h3>Free-trial request sent</h3><p class="muted">The G58 admin will review and activate your 30-day Refills trial. This page checks the approval automatically; you may also sign in again later.</p><button class="btn secondary full" id="refreshTrialStatus" type="button">Refresh Approval Status</button></div>`;
+  else if(approvedTrial)statusNote=`<div class="card trial-request-status"><span class="chip delivered">Approved</span><h3>Finishing your activation</h3><p class="muted">Your trial was approved. Refresh the status to enter your Refills dashboard.</p><button class="btn secondary full" id="refreshTrialStatus" type="button">Refresh Approval Status</button></div>`;
+  else if(rejectedTrial)statusNote=`<div class="card trial-request-status"><span class="chip due">Request not approved</span><h3>Contact G58 support</h3><p class="muted">The G58 team could not approve this free-trial request. Contact support if you believe this needs another review.</p></div>`;
   const trialCard=trialEligible?`<article class="plan-card trial">
       <span class="plan-badge">Free Trial</span>
       <h3>1 Month Free</h3>
       <div class="plan-price">₹0<small> for 30 days</small></div>
-      <p class="plan-note">Full store access for 30 days, no payment required. Add your store details right after you start — G58 can pause or remove your store at any time during this period.</p>
-      <button class="btn full" id="startTrialBtn" type="button">Start Free Trial</button>
+      <p class="plan-note">Request full store access for 30 days with no payment. The G58 admin reviews and activates every free trial before the store goes live.</p>
+      <button class="btn full" id="startTrialBtn" type="button">Request Free Trial</button>
     </article>`:'';
   const planCards=DIGIT58_PLAN_PERIODS.map(period=>{
     const amount=digit58PlanAmount(monthly,period);
@@ -897,8 +927,10 @@ function renderPlanGate(){
   app.innerHTML=`<main class="screen"><section class="auth-card" style="width:min(760px,100%)"><a class="brand" href="../"><svg class="brand-mark" viewBox="0 0 120 120" fill="none" stroke="#7fffd4" stroke-width="8" aria-hidden="true"><circle cx="60" cy="26" r="15"/><circle cx="28" cy="82" r="15"/><circle cx="92" cy="82" r="15"/></svg><div><h2>Choose your Refills plan</h2><p class="tagline">Start free, or subscribe to keep your store live.</p></div></a>${statusNote}<div class="plan-grid">${trialCard}${planCards}</div><div class="actions" style="margin-top:16px"><button class="btn secondary full" id="gateLogout">Sign out</button></div></section></main>${siteFooter()}`;
   (typeof bindAndroidAppFooter==='function'&&bindAndroidAppFooter());
   $('#startTrialBtn')?.addEventListener('click',startDigit58FreeTrial);
+  $('#refreshTrialStatus')?.addEventListener('click',async()=>{const button=$('#refreshTrialStatus');button.disabled=true;try{await loadEntitlement();if(hasActiveEntitlement())return proceedAfterEntitlement();renderPlanGate();toast('Approval is still pending')}catch(error){button.disabled=false;toast(error.message||'Could not refresh approval status')}});
   $$('[data-subscribe-plan]').forEach(button=>button.addEventListener('click',()=>startDigit58Subscription(button.dataset.subscribePlan)));
   $('#gateLogout').onclick=async()=>{stopOwnerRealtime();await api.logout();session=null;renderOwnerAuth()};
+  startEntitlementStatusPolling();
 }
 async function requestAdditionalStore(){
   const button=$('#requestStoreSlot');if(button)button.disabled=true;
