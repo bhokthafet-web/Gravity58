@@ -27,9 +27,12 @@ test("the referral page explains qualification and provides account-aware link c
   assert.match(css, /body\.refer-page\{[^}]*background:#f6f3ec!important;[^}]*color:#111820!important/);
 });
 
-test("Refills preserves promotion images already within the 100 KB limit", async () => {
+test("Refills preserves safe promotion images and auto-compresses larger uploads", async () => {
   const source = await read("digit58/app.js");
-  assert.match(source, /if\(file\.size<=100\*1024\)return file;/);
+  assert.match(source, /const PROMOTION_IMAGE_MAX_BYTES=95000;/);
+  assert.match(source, /if\(file\.size<=PROMOTION_IMAGE_MAX_BYTES\)return file;/);
+  assert.match(source, /if\(blob\.size<=PROMOTION_IMAGE_MAX_BYTES\)return blob;/);
+  assert.match(source, /if\(compressionPromise\)await compressionPromise;/);
   assert.doesNotMatch(source, /stripNearWhiteBackground/);
   assert.match(source, /imageSmoothingQuality='high'/);
 });

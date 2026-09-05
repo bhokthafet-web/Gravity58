@@ -1246,16 +1246,23 @@ test("Refills owner publishes a promotion and enables the optional Razorpay stor
 
   await page.getByRole("button", { name: /Promotions/ }).click();
   await page.getByRole("button", { name: "+ New Promotion" }).click();
+  const tinyPng = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=", "base64");
+  const oversizedPng = Buffer.concat([tinyPng, Buffer.alloc(150000)]);
+  await page.locator('#promotionForm input[name="imageFile"]').setInputFiles({ name: "large-promotion.png", mimeType: "image/png", buffer: oversizedPng });
+  await expect(page.locator("#promotionImagePreview img")).toBeVisible();
   await page.locator('#promotionForm input[name="name"]').fill("Organic Honey");
   await page.locator('#promotionForm input[name="offerText"]').fill("Pure 500g jar · limited stock");
   await page.locator('#promotionForm input[name="price"]').fill("299");
-  await page.locator('#promotionForm input[name="endsOn"]').fill("2026-08-30");
+  const promotionEnd = indiaDate(new Date(Date.now() + 7 * 86400000));
+  await page.locator('#promotionForm input[name="endsOn"]').fill(promotionEnd);
   await page.getByRole("button", { name: "Publish Promotion" }).click();
   await expect(page.locator(".promotion-owner-grid")).toContainText("Organic Honey");
   await expect(page.locator(".promotion-owner-grid")).toContainText("₹299/- only");
   const promotions = await page.evaluate((kind) => window.__g58Mock.store[kind], `digit58_promo_${ownerId}`);
   expect(promotions).toHaveLength(1);
-  expect(promotions[0]).toMatchObject({ storeId, name: "Organic Honey", price: 299, endsOn: "2026-08-30", badge: "Special Offer", active: true });
+  expect(promotions[0]).toMatchObject({ storeId, name: "Organic Honey", price: 299, endsOn: promotionEnd, badge: "Special Offer", active: true, imageFileId: expect.stringMatching(/^mock-menu-/) });
+  const uploadedPromotion = await page.evaluate(() => window.__g58Mock.uploadedMenuMedia.at(-1));
+  expect(uploadedPromotion.size).toBeLessThanOrEqual(95000);
 
   await page.getByRole("button", { name: "🧾 Orders", exact: true }).click();
   await expect(page.getByText("Razorpay payment submitted")).toBeVisible();

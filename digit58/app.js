@@ -212,7 +212,7 @@ IMPORTANT RULES
 
 The final result should be a clean, premium, 3D-style promotional product visual ready for direct use in marketing materials.`;
 function imageUploadFieldMarkup(previewId,initialPreviewHtml='',extraPreviewClass=''){
-  return `<div class="field local-image-field"><label>Product image <small>(optional · files up to 100 KB stay in original quality)</small></label><div class="image-guide-tabs"><button type="button" class="image-guide-tab active" data-guide-tab="upload">Upload Photo</button><button type="button" class="image-guide-tab" data-guide-tab="ai">✨ AI Image Guide</button></div><div class="image-guide-panel" data-guide-panel="upload"><input name="imageFile" type="file" accept="image/jpeg,image/png,image/webp"><div class="image-preview ${extraPreviewClass}" id="${previewId}">${initialPreviewHtml}</div></div><div class="image-guide-panel hidden" data-guide-panel="ai">${aiImageGuideMarkup()}</div></div>`;
+  return `<div class="field local-image-field"><label>Product image <small>(optional · large images are compressed automatically)</small></label><div class="image-guide-tabs"><button type="button" class="image-guide-tab active" data-guide-tab="upload">Upload Photo</button><button type="button" class="image-guide-tab" data-guide-tab="ai">✨ AI Image Guide</button></div><div class="image-guide-panel" data-guide-panel="upload"><input name="imageFile" type="file" accept="image/jpeg,image/png,image/webp"><div class="image-preview ${extraPreviewClass}" id="${previewId}">${initialPreviewHtml}</div></div><div class="image-guide-panel hidden" data-guide-panel="ai">${aiImageGuideMarkup()}</div></div>`;
 }
 function aiImageGuideMarkup(){
   return `<ol class="image-guide-steps"><li>Open <a href="https://chatgpt.com" target="_blank" rel="noopener noreferrer">ChatGPT</a> in a new tab (sign in if it asks).</li><li>Start a new chat and upload a plain photo of your product.</li><li>Tap <strong>Copy Prompt</strong> below, then paste it into the same chat.</li><li>In the pasted text, replace <code>{{OFFER_PERCENTAGE}}</code> with your discount (e.g. 20%) and <code>{{OFFER_TEXT}}</code> with a short offer line — or delete that line if you don't need one.</li><li>Send it. ChatGPT will generate a premium transparent-background product image with an offer badge.</li><li>Download the image, switch back to <strong>Upload Photo</strong> above, and upload it here.</li></ol><button type="button" class="btn small green" data-copy-ai-prompt>📋 Copy Prompt</button>`;
@@ -1410,18 +1410,20 @@ async function openBrandRequestForm(prefillTarget){
   const storeField=prefillStore?`<div class="field"><label>Store</label><input value="${html(prefillStore.name)}" disabled></div>`:`<div class="field"><label>Store link</label><input name="storeLink" placeholder="https://g58.in/digit58/#store&owner=...&store=..." required></div>`;
   const tierOptions=Object.entries(BRAND_CARD_PRICING).map(([key,tier])=>`<label class="option-toggle"><input type="radio" name="brandDuration" value="${key}" ${key==='30d'?'checked':''}><span><strong>${tier.label}</strong><small>${money(tier.amount)}</small></span></label>`).join('');
   modal('New Card Request',`<form id="brandRequestForm">${storeField}<div class="field"><label>Product name</label><input name="promotionName" maxlength="80" required></div><div class="field"><label>Offer line</label><input name="offerText" maxlength="120" placeholder="Pure 500g jar · limited stock"></div><div class="field"><label>Price to display</label><input name="price" type="number" min="0" step="0.01" required></div>${imageUploadFieldMarkup('brandImagePreview')}<div class="field"><label>Plan duration</label><div class="card-purchase-tiers">${tierOptions}</div></div><p class="muted">This request goes to the store owner for approval, then costs the plan amount above for that placement duration.</p><button class="btn full" style="margin-top:10px">Send Request</button></form>`,()=>{
-    const form=$('#brandRequestForm'),imageFile=form.imageFile,imagePreview=$('#brandImagePreview');
+    const form=$('#brandRequestForm'),imageFile=form.imageFile,imagePreview=$('#brandImagePreview'),submitButton=$('button.btn.full',form);
     bindImageGuideTabs(form);
-    let compressedBlob=null,previewUrl='';
+    let compressedBlob=null,previewUrl='',compressionPromise=null;
     imageFile.onchange=async()=>{
       const file=imageFile.files[0];if(!file)return;
-      compressedBlob=null;imagePreview.innerHTML='<span class="muted" style="font-size:12px">Preparing clear preview…</span>';
+      compressedBlob=null;submitButton.disabled=true;imagePreview.innerHTML='<span class="muted" style="font-size:12px">Compressing image for upload…</span>';
+      compressionPromise=compressImageTo100Kb(file);
       try{
-        compressedBlob=await compressImageTo100Kb(file);
+        compressedBlob=await compressionPromise;
         if(previewUrl)URL.revokeObjectURL(previewUrl);
         previewUrl=URL.createObjectURL(compressedBlob);
         imagePreview.innerHTML=`<img src="${previewUrl}" alt="">`;
       }catch(error){imageFile.value='';imagePreview.innerHTML='';toast(error.message)}
+      finally{compressionPromise=null;submitButton.disabled=false}
     };
     form.onsubmit=async event=>{
       event.preventDefault();
@@ -1430,6 +1432,8 @@ async function openBrandRequestForm(prefillTarget){
       if(!target)return toast("That doesn't look like a valid store link");
       button.disabled=true;
       try{
+        if(compressionPromise)await compressionPromise;
+        if(imageFile.files[0]&&!compressedBlob)compressedBlob=await compressImageTo100Kb(imageFile.files[0]);
         const store=prefillStore||await api.get(storeKind(target.ownerId),target.storeId);
         const duration=BRAND_CARD_PRICING[raw.brandDuration]?raw.brandDuration:'30d';
         const record={id:id('brandreq'),brandOwnerId:brandSession.$id,brandOwnerName:brandProfile?.name||brandSession.email.split('@')[0],brandOwnerEmail:brandSession.email,ownerId:target.ownerId,storeId:target.storeId,storeName:store.name,promotionName:raw.promotionName.trim(),offerText:raw.offerText.trim(),price:Math.max(0,Number(raw.price)||0),duration,status:'Pending Store Approval',createdAt:now()};
@@ -1635,8 +1639,11 @@ function promotionOwnerCard(promotion){
 }
 function loadBrowserImage(file){return new Promise((resolve,reject)=>{if(!file?.type?.startsWith('image/'))return reject(new Error('Select a JPG, PNG or WebP image'));if(file.size>20*1024*1024)return reject(new Error('Source image must be below 20 MB'));const url=URL.createObjectURL(file),image=new Image();image.onload=()=>{URL.revokeObjectURL(url);resolve(image)};image.onerror=()=>{URL.revokeObjectURL(url);reject(new Error('This image could not be opened'))};image.src=url})}
 function canvasImageBlob(canvas,type,quality){return new Promise((resolve,reject)=>canvas.toBlob(blob=>blob?resolve(blob):reject(new Error('Image compression failed')),type,quality))}
+const PROMOTION_IMAGE_MAX_BYTES=95000;
 async function compressImageTo100Kb(file){
-  if(file.size<=100*1024)return file;
+  // Appwrite storage limits are decimal bytes. Keeping a small safety margin
+  // avoids a 100 KiB browser file being rejected by a 100,000-byte bucket.
+  if(file.size<=PROMOTION_IMAGE_MAX_BYTES)return file;
   const image=await loadBrowserImage(file);
   let width=Math.min(1920,image.naturalWidth||image.width),height=Math.max(1,Math.round((image.naturalHeight||image.height)*(width/(image.naturalWidth||image.width))));
   const sourceCanvas=document.createElement('canvas');
@@ -1644,38 +1651,40 @@ async function compressImageTo100Kb(file){
   const sourceContext=sourceCanvas.getContext('2d',{alpha:true});
   sourceContext.imageSmoothingEnabled=true;sourceContext.imageSmoothingQuality='high';
   sourceContext.drawImage(image,0,0,sourceCanvas.width,sourceCanvas.height);
-  for(let sizePass=0;sizePass<12;sizePass++){
+  for(let sizePass=0;sizePass<16;sizePass++){
     const canvas=document.createElement('canvas');
     canvas.width=Math.max(1,Math.round(width));canvas.height=Math.max(1,Math.round(height));
     const context=canvas.getContext('2d',{alpha:true});
     context.imageSmoothingEnabled=true;context.imageSmoothingQuality='high';
     context.drawImage(sourceCanvas,0,0,canvas.width,canvas.height);
-    for(let quality=.94;quality>=.54;quality-=.05){
+    for(let quality=.94;quality>=.34;quality-=.05){
       const blob=await canvasImageBlob(canvas,'image/webp',quality);
-      if(blob.size<=100*1024)return blob;
+      if(blob.size<=PROMOTION_IMAGE_MAX_BYTES)return blob;
     }
-    width*=.9;height*=.9;
+    width*=.86;height*=.86;
   }
-  throw new Error('Could not reduce this image below 100 KB. Try a smaller source image.');
+  throw new Error('This image could not be prepared for upload. Try a JPG, PNG or WebP image below 20 MB.');
 }
 function openPromotionForm(promotionId=''){
   const store=activeStore(),promotion=state.promotions.find(row=>row.id===promotionId)||{};if(!store)return;
   if(!promotionId&&storePromotions(store.id).length>=promotionCardAllowance(store.id))return openBuyPromotionCardForm(store);
   const defaultEnd=indiaDateValue(new Date(Date.now()+7*86400000)),today=indiaDateValue();
   modal(promotionId?'Edit Promotion':'Create Promotion',`<form id="promotionForm"><div class="field"><label>Product name</label><input name="name" value="${html(promotion.name||'')}" placeholder="Organic Honey" maxlength="80" required></div><div class="field"><label>Offer line</label><input name="offerText" value="${html(promotion.offerText||'')}" placeholder="Pure 500g jar · limited stock" maxlength="120"></div>${imageUploadFieldMarkup('promotionImagePreview',promotion.imageUrl?`<img src="${html(promotion.imageUrl)}" alt="">`:'','promotion-image-preview')}<div class="form-grid"><div class="field"><label>Offer price</label><input name="price" type="number" min="0" step="0.01" value="${Number(promotion.price)||''}" placeholder="299" required></div><div class="field"><label>Offer ends</label><input name="endsOn" type="date" min="${today}" value="${html(promotion.endsOn||defaultEnd)}" required></div></div><label class="option-toggle"><input name="active" type="checkbox" ${promotion.active===false?'':'checked'}><span><strong>Show to customers</strong><small>Paused promotions remain saved but disappear from the customer portal.</small></span></label><button class="btn full" style="margin-top:14px">${promotionId?'Save Promotion':'Publish Promotion'}</button></form>`,()=>{
-    const form=$('#promotionForm'),imageFile=form.imageFile,imagePreview=$('#promotionImagePreview');
+    const form=$('#promotionForm'),imageFile=form.imageFile,imagePreview=$('#promotionImagePreview'),submitButton=$('button.btn.full',form);
     bindImageGuideTabs(form);
-    let previewUrl='',compressedBlob=null;
+    let previewUrl='',compressedBlob=null,compressionPromise=null;
     imageFile.onchange=async()=>{
       const file=imageFile.files[0];if(!file)return;
-      compressedBlob=null;
-      imagePreview.innerHTML=`<span class="muted" style="font-size:12px">Preparing clear preview…</span>`;
+      compressedBlob=null;submitButton.disabled=true;
+      imagePreview.innerHTML=`<span class="muted" style="font-size:12px">Compressing image for upload…</span>`;
+      compressionPromise=compressImageTo100Kb(file);
       try{
-        compressedBlob=await compressImageTo100Kb(file);
+        compressedBlob=await compressionPromise;
         if(previewUrl)URL.revokeObjectURL(previewUrl);
         previewUrl=URL.createObjectURL(compressedBlob);
         imagePreview.innerHTML=`<img src="${previewUrl}" alt="">`;
       }catch(error){imageFile.value='';imagePreview.innerHTML=promotion.imageUrl?`<img src="${html(promotion.imageUrl)}" alt="">`:'';toast(error.message)}
+      finally{compressionPromise=null;submitButton.disabled=false}
     };
     form.onsubmit=async event=>{
       event.preventDefault();
@@ -1685,6 +1694,8 @@ function openPromotionForm(promotionId=''){
       if(!values.endsOn||values.endsOn<today)return toast('Choose today or a future offer end date');
       button.disabled=true;
       try{
+        if(compressionPromise)await compressionPromise;
+        if(imageFile.files[0]&&!compressedBlob)compressedBlob=await compressImageTo100Kb(imageFile.files[0]);
         if(compressedBlob){
           const oldFileId=promotion.imageFileId;
           const ext=compressedBlob.type==='image/webp'?'webp':compressedBlob.type==='image/png'?'png':'jpg';
