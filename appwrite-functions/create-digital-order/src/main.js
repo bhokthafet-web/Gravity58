@@ -2,6 +2,9 @@ import webpush from 'web-push';
 import { initializeApp as initializeFirebaseApp, getApps as getFirebaseApps, cert as firebaseCert } from 'firebase-admin/app';
 import { getMessaging } from 'firebase-admin/messaging';
 import { createHash } from 'crypto';
+import nodeFetch from 'node-fetch';
+
+const runtimeFetch = (...args) => (globalThis.fetch || nodeFetch)(...args);
 
 const DATABASE_ID = 'gravity58';
 const TABLE_ID = 'g58_records';
@@ -83,7 +86,7 @@ function appwriteClient(req) {
   const key = req.headers['x-appwrite-key'];
   if (!project || !key) throw new Error('Function service credentials are unavailable.');
   return async (path, options = {}) => {
-    const response = await fetch(`${endpoint}${path}`, {
+    const response = await runtimeFetch(`${endpoint}${path}`, {
       ...options,
       headers: {
         'content-type': 'application/json',
@@ -317,7 +320,7 @@ async function verifyCurrentPassword(req, call, userId, password) {
   if (!email || !password || String(password).length > 256) throw new Error('Enter the password for your signed-in G58 account.');
   const endpoint = process.env.APPWRITE_FUNCTION_API_ENDPOINT || 'https://server.g58.in/v1';
   const project = process.env.APPWRITE_FUNCTION_PROJECT_ID;
-  const response = await fetch(`${endpoint}/account/sessions/email`, {
+  const response = await runtimeFetch(`${endpoint}/account/sessions/email`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', 'x-appwrite-project': project },
     body: JSON.stringify({ email, password: String(password) }),
@@ -326,7 +329,7 @@ async function verifyCurrentPassword(req, call, userId, password) {
   try { session = JSON.parse(await response.text()); } catch {}
   if (!response.ok || session.userId !== userId) throw new Error('Password is incorrect. No data was deleted.');
   if (session.secret) {
-    await fetch(`${endpoint}/account/sessions/current`, {
+    await runtimeFetch(`${endpoint}/account/sessions/current`, {
       method: 'DELETE',
       headers: { 'x-appwrite-project': project, 'x-appwrite-session': session.secret },
     }).catch(() => {});
@@ -834,7 +837,7 @@ async function razorpayApi(path, options = {}) {
   const keyId = process.env.RAZORPAY_KEY_ID, keySecret = process.env.RAZORPAY_KEY_SECRET;
   if (!keyId || !keySecret) throw new Error('Razorpay is not configured on the server yet.');
   const auth = Buffer.from(`${keyId}:${keySecret}`).toString('base64');
-  const response = await fetch(`https://api.razorpay.com/v1${path}`, {
+  const response = await runtimeFetch(`https://api.razorpay.com/v1${path}`, {
     ...options,
     headers: { 'content-type': 'application/json', authorization: `Basic ${auth}`, ...(options.headers || {}) },
   });
