@@ -23,6 +23,6 @@
   <script>
     (async()=>{const B=window.G58Builder,p=new URLSearchParams(location.search),savedId=p.get('project');let project=savedId?await B.getProject(savedId):null;const isSaved=Boolean(project);if(!project)project=B.makeProject(p.get('template')||'salon-spa');let page=project.website.pages.find(row=>row.id===p.get('page'))||project.website.pages.find(row=>row.home)||project.website.pages[0];document.title=`${page.name} — ${project.website.settings.businessName}`;document.getElementById('previewStyles').textContent=`${B.themeCss(project)}\n${B.publicCss}`;document.getElementById('previewViewport').innerHTML=B.renderCanvas(project,page.id,false);document.getElementById('editLink').href=isSaved?`../editor/?project=${project.id}`:`../editor/?template=${project.template}`;document.querySelectorAll('[data-device]').forEach(button=>button.onclick=()=>{document.querySelectorAll('[data-device]').forEach(row=>row.classList.toggle('active',row===button));const device=button.dataset.device,frame=document.getElementById('previewViewport');frame.className=`preview-viewport ${device==='desktop'?'':device}`;document.body.classList.toggle('preview-device',device!=='desktop')});})();
   </script>
-  <script src="/js/server-status.js?v=1"></script>
+  <script src="/js/server-status.js?v=2"></script>
 </body>
 </html>

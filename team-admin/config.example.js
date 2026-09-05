@@ -1,6 +1,6 @@
 window.GRAVITY58_AD_ADMIN_CONFIG = {
   appwrite: {
-    endpoint: "https://cloud.appwrite.io/v1",
+    endpoint: "https://server.g58.in/v1",
     projectId: "YOUR_APPWRITE_PROJECT_ID",
     databaseId: "gravity58",
     adminTeamId: "YOUR_G58_TEAM_ID",

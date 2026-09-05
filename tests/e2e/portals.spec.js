@@ -23,7 +23,7 @@ async function slideCustomerAlertOpen(page) {
 test("every G58 page reports a backend outage and recovers after retry", async ({ page }) => {
   let serverAvailable = false;
   await page.addInitScript(() => { window.__G58_TEST_SERVER_STATUS__ = true; });
-  await page.route(/sgp\.cloud\.appwrite\.io\/v1\/account\?g58-status=/, (route) => {
+  await page.route(/server\.g58\.in\/v1\/account\?g58-status=/, (route) => {
     if (!serverAvailable) return route.abort("failed");
     return route.fulfill({ status: 401, contentType: "application/json", body: JSON.stringify({ message: "Authentication required" }) });
   });

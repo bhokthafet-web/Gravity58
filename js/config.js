@@ -1,6 +1,6 @@
 window.GRAVITY58_CONFIG = Object.freeze({
   appwrite: {
-    endpoint: "https://sgp.cloud.appwrite.io/v1",
+    endpoint: "https://server.g58.in/v1",
     projectId: "6a776883001717bca81c",
     databaseId: "gravity58",
     adminTeamId: "6a776960001ca2fb66bf",

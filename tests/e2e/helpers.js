@@ -17,7 +17,7 @@ export async function prepareOffline(page, { state = "Telangana", blockSiteAuth 
   await page.route(/cdn\.jsdelivr\.net\/npm\/appwrite|cdnjs\.cloudflare\.com\/ajax\/libs\/qrcodejs|cdnjs\.cloudflare\.com\/ajax\/libs\/jspdf|cdn\.jsdelivr\.net\/npm\/qrcodejs/, (route) =>
     route.fulfill({ contentType: "application/javascript", body: externalLibraryMocks }),
   );
-  await page.route(/\/(?:js|advertise|digital-menu|team-admin)\/config\.js(?:\?.*)?$/, (route) =>
+  await page.route(/\/(?:js|advertise|digit58|digital-menu|team-admin)\/config\.js(?:\?.*)?$/, (route) =>
     route.fulfill({ contentType: "application/javascript", body: emptyConfigScript }),
   );
   if (blockSiteAuth) {

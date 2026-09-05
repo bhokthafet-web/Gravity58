@@ -5,13 +5,11 @@ const routes = [
   "/", "/about/", "/admin/", "/advertise/", "/business/",
   "/business/dreamspace-interiors-gachibowli-hyderabad/",
   "/business/quickfix-plumbing-kukatpally-hyderabad/",
-  "/business/telangana/hyderabad/", "/category/carpentry/",
-  "/category/digital-marketing/", "/category/electrical/",
-  "/category/interior-design/", "/category/painting/", "/category/plumbing/",
-  "/contact/", "/dashboard/", "/digital-menu/", "/jobs/",
-  "/jobs/emergency-plumbing-repair-kondapur-hyderabad/",
-  "/jobs/need-modular-kitchen-installation-madhapur-hyderabad/",
-  "/pos/", "/privacy-policy/", "/reset-password/", "/team-admin/", "/terms/",
+  "/business/telangana/hyderabad/", "/contact/", "/dashboard/",
+  "/digit58/", "/digital-menu-guide/", "/digital-menu/", "/pos/",
+  "/pricing/", "/privacy-policy/", "/refer/", "/refills-guide/",
+  "/reset-password/", "/support/", "/team-admin/", "/templates/",
+  "/terms/",
 ];
 
 for (const route of routes) {

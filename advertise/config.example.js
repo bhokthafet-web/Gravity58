@@ -2,7 +2,7 @@ window.GRAVITY58_AD_BOOKING_CONFIG = {
   demoMode: false,
   adminWhatsApp: "919000000000",
   appwrite: {
-    endpoint: "https://cloud.appwrite.io/v1",
+    endpoint: "https://server.g58.in/v1",
     projectId: "YOUR_APPWRITE_PROJECT_ID",
     databaseId: "gravity58",
     adminTeamId: "YOUR_G58_TEAM_ID",

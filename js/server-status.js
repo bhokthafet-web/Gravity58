@@ -3,7 +3,7 @@
 
   const BANNER_ID = "g58ServerStatus";
   const STYLE_ID = "g58ServerStatusStyles";
-  const DEFAULT_ENDPOINT = "https://sgp.cloud.appwrite.io/v1";
+  const DEFAULT_ENDPOINT = "https://server.g58.in/v1";
   const DEFAULT_PROJECT_ID = "6a776883001717bca81c";
   const CHECK_INTERVAL_MS = 60_000;
   const REQUEST_TIMEOUT_MS = 8_000;

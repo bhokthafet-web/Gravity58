@@ -78,7 +78,7 @@ const cleanRow = row => {
 };
 
 function appwriteClient(req) {
-  const endpoint = process.env.APPWRITE_FUNCTION_API_ENDPOINT || 'https://sgp.cloud.appwrite.io/v1';
+  const endpoint = process.env.APPWRITE_FUNCTION_API_ENDPOINT || 'https://server.g58.in/v1';
   const project = process.env.APPWRITE_FUNCTION_PROJECT_ID;
   const key = req.headers['x-appwrite-key'];
   if (!project || !key) throw new Error('Function service credentials are unavailable.');
@@ -228,7 +228,7 @@ async function validateReceipt(call, input, userId) {
   if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.mimeType)) throw new Error('Payment receipt must be a JPG, PNG or WebP image.');
   input.paymentReceiptName = text(file.name, 200);
   input.paymentReceiptType = file.mimeType;
-  input.paymentReceiptUrl = `${process.env.APPWRITE_FUNCTION_API_ENDPOINT || 'https://sgp.cloud.appwrite.io/v1'}/storage/buckets/${MEDIA_BUCKET_ID}/files/${encodeURIComponent(fileId)}/view?project=${encodeURIComponent(process.env.APPWRITE_FUNCTION_PROJECT_ID)}`;
+  input.paymentReceiptUrl = `${process.env.APPWRITE_FUNCTION_API_ENDPOINT || 'https://server.g58.in/v1'}/storage/buckets/${MEDIA_BUCKET_ID}/files/${encodeURIComponent(fileId)}/view?project=${encodeURIComponent(process.env.APPWRITE_FUNCTION_PROJECT_ID)}`;
 }
 
 async function createRow(call, rowId, kind, payload, permissions) {

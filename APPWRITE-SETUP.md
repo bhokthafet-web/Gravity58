@@ -1,13 +1,13 @@
-# G58 Cloud setup
+# G58 self-hosted Appwrite setup
 
 Appwrite stores public posts, advertising accounts, bookings, placements, active campaigns, restaurant/menu configuration, restaurant orders, POS workspaces and all restaurant/menu images. Restaurant owners never receive or configure storage credentials.
 
 ## Production project
 
 - Project: `Gravity58`
-- Region: Singapore
+- Hosting: G58 managed VPS
 - Project ID: `6a776883001717bca81c`
-- Endpoint: `https://sgp.cloud.appwrite.io/v1`
+- Endpoint: `https://server.g58.in/v1`
 - Admin team: `Gravity58 Administrators`
 - Admin team ID: `6a776960001ca2fb66bf`
 
@@ -41,3 +41,5 @@ Register these Web hostnames:
 - `bhokthafet-web.github.io`
 
 Do not put an Appwrite API key in this repository. Permanent deletion of Appwrite Authentication users should be implemented as a protected Appwrite Function; the static admin portal intentionally cannot use a server API key.
+
+This is a fresh production backend. Existing Appwrite Cloud rows and files are intentionally not migrated.
