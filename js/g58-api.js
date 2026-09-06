@@ -196,6 +196,15 @@
     return uploadMedia(file, "payment-receipt");
   }
 
+  async function uploadStayIdentity(file) {
+    if (!file?.size) throw new Error("Choose a guest identity image first.");
+    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) throw new Error("Use a JPG, PNG or WebP identity image.");
+    if (file.size > 5 * 1024 * 1024) throw new Error("Guest identity image must be below 5 MB.");
+    if (!configured) return localMedia(file, "stay-identity");
+    await ensureUser();
+    return uploadMedia(file, "stay-identity");
+  }
+
   async function uploadMenuMedia(file) {
     validateMenuImage(file);
     if (!configured) return localMedia(file, "menu");
@@ -243,7 +252,7 @@
     list, get, create, update, remove, upsertSlot,
     permissionSet, userPermissionSet, collaborativePermissionSet, managedPermissionSet,
     register, login, logout, currentUser, ensureUser, forgotPassword, completeRecovery, createJWT, isTeamAdmin,
-    validateMediaFile, uploadAdMedia, uploadPaymentReceipt, removeAdMedia,
+    validateMediaFile, uploadAdMedia, uploadPaymentReceipt, uploadStayIdentity, removeAdMedia,
     validateMenuImage, uploadMenuMedia, removeMenuMedia, executeFunction,
     subscribeAdvertisements, subscribeKind,
   });

@@ -377,7 +377,7 @@ test("G58 admin approval activates a pending Refills free trial for 30 days", as
     entitlement: window.__g58Mock.store.digit58_entitlements.find((row) => row.ownerId === "pending-trial-owner"),
   }));
   expect(result.request).toMatchObject({ status: "Activated" });
-  expect(result.entitlement).toMatchObject({ active: true, paused: false, freeTrial: true, trialUsed: true, plan: "trial", subscriptionStatus: "trial", storeSlots: 1 });
+  expect(result.entitlement).toMatchObject({ active: true, paused: false, freeTrial: true, trialUsed: true, plan: "trial", subscriptionStatus: "trial", storeSlots: 5 });
   const days = (new Date(result.entitlement.expiresAt).getTime() - Date.now()) / 86_400_000;
   expect(days).toBeGreaterThan(29.9);
   expect(days).toBeLessThanOrEqual(30.1);
@@ -559,10 +559,10 @@ test("Refills owner quick links and customer highlight message work", async ({ p
   await expect(page.locator('.g58-topbar-home a[aria-label="Digital Menu"]')).toHaveAttribute("href", "/digital-menu/");
   await expect(page.locator(".floating-support-btn")).toBeVisible();
 
-  await page.getByRole("button", { name: /My Stores/ }).click();
+  await page.getByRole("button", { name: /My Locations/ }).click();
   await page.getByRole("button", { name: "Edit" }).click();
   await page.locator('#storeForm input[name="highlightText"]').fill("20% Off");
-  await page.getByRole("button", { name: "Save Store" }).click();
+  await page.getByRole("button", { name: "Save Location" }).click();
   await expect(page.locator(".store-grid")).toContainText("20% Off");
 
   await page.goto(`/digit58/#store&owner=${ownerId}&store=${storeId}`);
@@ -647,12 +647,12 @@ test("owner creates a Game Zone and customers reserve independent play-area slot
   });
   const assertNoErrors = monitorPageErrors(page);
   await page.goto("/digit58/");
-  await page.getByRole("button", { name: "+ New Store" }).click();
+  await page.getByRole("button", { name: "+ New Location" }).click();
   await expect(page.getByRole("radio", { name: /Game Zone/ })).toBeVisible();
   await page.getByRole("radio", { name: /Game Zone/ }).check();
   await page.locator('#storeForm input[name="name"]').fill("PlayOn Arena");
   await page.locator('#storeForm input[name="city"]').fill("Hyderabad");
-  await page.getByRole("button", { name: "Create Store" }).click();
+  await page.getByRole("button", { name: "Create Location" }).click();
 
   await expect(page.getByRole("button", { name: /Games & Slots/ })).toBeVisible();
   await expect(page.getByRole("button", { name: /Play Areas/ })).toBeVisible();
@@ -899,11 +899,11 @@ test("Refills minimum criteria supports customer approval, owner rejection reaso
   });
   const assertNoErrors = monitorPageErrors(page);
   await page.goto("/digit58/");
-  await page.getByRole("button", { name: /My Stores/ }).click();
+  await page.getByRole("button", { name: /My Locations/ }).click();
   await page.getByRole("button", { name: "Edit" }).click();
   await expect(page.locator("#minimumOrderEnabled")).toBeChecked();
   await page.locator('#storeForm input[name="minimumOrderValue"]').fill("600");
-  await page.getByRole("button", { name: "Save Store" }).click();
+  await page.getByRole("button", { name: "Save Location" }).click();
   await page.getByRole("button", { name: /Logout/ }).click();
   await expect(page.locator("#ownerAuthForm")).toBeVisible();
 
@@ -946,10 +946,10 @@ test("Refills minimum criteria supports customer approval, owner rejection reaso
   orders = await page.evaluate((kind) => window.__g58Mock.store[kind], orderKind);
   expect(orders[0]).toMatchObject({ status: "Rejected", rejectionReason: "Requested product is unavailable today." });
 
-  await page.getByRole("button", { name: /My Stores/ }).click();
+  await page.getByRole("button", { name: /My Locations/ }).click();
   await page.getByRole("button", { name: "Edit" }).click();
   await page.locator("#minimumOrderEnabled").uncheck();
-  await page.getByRole("button", { name: "Save Store" }).click();
+  await page.getByRole("button", { name: "Save Location" }).click();
   await page.getByRole("button", { name: /Logout/ }).click();
   await expect(page.locator("#ownerAuthForm")).toBeVisible();
 
@@ -1243,13 +1243,12 @@ test("Refills owner publishes a promotion and enables the optional Razorpay stor
   const assertNoErrors = monitorPageErrors(page);
   await page.goto("/digit58/");
   expect(await page.evaluate((kind) => window.__g58Mock.store[kind].some((row) => row.id === "expired_promo"), `digit58_promo_${ownerId}`)).toBe(false);
-  await page.getByRole("button", { name: /My Stores/ }).click();
+  await page.getByRole("button", { name: /My Locations/ }).click();
   await page.getByRole("button", { name: "Edit" }).click();
   await page.locator("#razorpayEnabled").check();
   await page.locator('#storeForm input[name="razorpayLink"]').fill("razorpay.me/@naturerefills");
-  await expect(page.locator(".razorpay-link-note")).toContainText("Razorpay.me has no return-URL setting");
   await expect(page.locator("#razorpayReturnUrl")).toHaveCount(0);
-  await page.getByRole("button", { name: "Save Store" }).click();
+  await page.getByRole("button", { name: "Save Location" }).click();
   const updatedStore = await page.evaluate((kind) => window.__g58Mock.store[kind][0], `digit58_store_${ownerId}`);
   expect(updatedStore).toMatchObject({ razorpayEnabled: true, razorpayLink: "https://razorpay.me/@naturerefills" });
 

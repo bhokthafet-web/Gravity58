@@ -1,7 +1,7 @@
 import webpush from 'web-push';
 import { initializeApp as initializeFirebaseApp, getApps as getFirebaseApps, cert as firebaseCert } from 'firebase-admin/app';
 import { getMessaging } from 'firebase-admin/messaging';
-import { createHash } from 'crypto';
+import { createHash, randomInt } from 'crypto';
 import { config } from './config.js';
 import { query } from './db.js';
 import { verifyPassword } from './security.js';
@@ -58,9 +58,11 @@ const digit58FcmKind = ownerId => safeKindId(DIGIT58_FCM_KIND_PREFIX, ownerId, 4
 const DIGIT58_SERVICE_KIND_PREFIX = 'digit58_service_';
 const DIGIT58_EXPERT_KIND_PREFIX = 'digit58_expert_';
 const DIGIT58_BOOKING_KIND_PREFIX = 'digit58_booking_';
+const DIGIT58_STAY_EXTRA_KIND_PREFIX = 'digit58_stay_extra_';
 const digit58ServiceKind = ownerId => safeKindId(DIGIT58_SERVICE_KIND_PREFIX, ownerId, 38);
 const digit58ExpertKind = ownerId => safeKindId(DIGIT58_EXPERT_KIND_PREFIX, ownerId, 38);
 const digit58BookingKind = ownerId => safeKindId(DIGIT58_BOOKING_KIND_PREFIX, ownerId, 38);
+const digit58StayExtraKind = ownerId => safeKindId(DIGIT58_STAY_EXTRA_KIND_PREFIX, ownerId, 35);
 const digit58EntitlementRowId = ownerId => `d58-${String(ownerId).slice(0, 30)}`;
 const DIGIT58_PLAN_MONTHS = { '1m': 1 };
 const DIGIT58_PLAN_DISCOUNT = { '1m': 0 };
@@ -211,6 +213,18 @@ async function validateReceipt(call, input, userId) {
   input.paymentReceiptName = text(file.name, 200);
   input.paymentReceiptType = file.mimeType;
   input.paymentReceiptUrl = `${config.publicApiUrl}/api/v1/media/${encodeURIComponent(fileId)}`;
+}
+
+async function validateStayIdentity(call, input, userId) {
+  const fileId = text(input.identityFileId, 80);
+  if (!fileId) throw new Error('Upload a guest identity image before requesting the room.');
+  const file = await call(`/storage/buckets/${MEDIA_BUCKET_ID}/files/${encodeURIComponent(fileId)}`);
+  const ownsFile = (file.$permissions || []).some(permission => permission.includes(`user:${userId}`));
+  if (!ownsFile) throw new Error('The uploaded identity image does not belong to this guest session.');
+  if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.mimeType)) throw new Error('Guest identity must be a JPG, PNG or WebP image.');
+  input.identityName = text(file.name, 200);
+  input.identityType = file.mimeType;
+  input.identityUrl = `${config.publicApiUrl}/api/v1/media/${encodeURIComponent(fileId)}`;
 }
 
 async function createRow(call, rowId, kind, payload, permissions) {
@@ -874,7 +888,7 @@ async function createDigit58SubscriptionCheckout(call, input, userId) {
   };
   if (entitlement) await updateRow(call, rowId, { ...entitlement, ...changes });
   else await createRow(call, rowId, DIGIT58_ENTITLEMENT_KIND, {
-    ownerId, active: false, paused: false, lifetime: false, storeSlots: 1, freeTrial: false, activatedAt: '', expiresAt: '',
+    ownerId, active: false, paused: false, lifetime: false, storeSlots: 5, freeTrial: false, activatedAt: '', expiresAt: '',
     referredByCode: text(input.referredByCode, 12), ...changes,
   }, rowPermissions(userId, ownerId));
   return { subscriptionId: subscription.id, razorpayKeyId: process.env.RAZORPAY_KEY_ID, amount, periodId };
@@ -1112,6 +1126,174 @@ async function getDigit58SlotStatus(call, input) {
     .filter(row => row.storeId === storeId && row.date === date && row.status !== 'Cancelled')
     .map(row => ({ startTime: row.startTime, durationMinutes: Math.max(5, finite(row.durationMinutes, 30)), expertId: row.expertId || '' }));
   return { occupied };
+}
+
+const isDigitalStayStore = store => store?.bookingMode === 'digital_stay';
+const stayNightCount = (checkInDate, checkOutDate) => Math.ceil((new Date(`${checkOutDate}T00:00:00+05:30`).getTime() - new Date(`${checkInDate}T00:00:00+05:30`).getTime()) / 86400000);
+const stayOverlaps = (row, checkInDate, checkOutDate) => {
+  const rowIn = text(row.checkInDate || row.date, 10);
+  const rowOut = text(row.checkOutDate, 10) || new Date(new Date(`${rowIn}T00:00:00+05:30`).getTime() + Math.max(1, finite(row.nights, 1)) * 86400000).toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+  return rowIn < checkOutDate && rowOut > checkInDate;
+};
+
+async function digit58StayContext(call, input) {
+  const ownerId = text(input.ownerId, 64), storeId = text(input.storeId, 40);
+  if (!ownerId || !storeId) throw new Error('Hotel details are missing.');
+  const storeRow = await call(`/tablesdb/${DATABASE_ID}/tables/${TABLE_ID}/rows/${encodeURIComponent(storeId)}`).catch(() => null);
+  if (!storeRow || storeRow.kind !== digit58StoreKind(ownerId)) throw new Error('This hotel could not be found.');
+  const store = cleanRow(storeRow);
+  if (!isDigitalStayStore(store)) throw new Error('This location is not configured as a Digital Stay hotel.');
+  if (store.emergencyMode) throw new Error('This hotel is not accepting new stays right now.');
+  return { ownerId, storeId, store };
+}
+
+async function availableStayRooms(call, ownerId, storeId, roomTypeId, checkInDate, checkOutDate) {
+  const [rooms, bookings] = await Promise.all([
+    listRowsByKind(call, digit58ExpertKind(ownerId)),
+    listRowsByKind(call, digit58BookingKind(ownerId)),
+  ]);
+  const occupied = new Set(bookings.map(cleanRow).filter(row =>
+    row.bookingType === 'digital_stay' && row.storeId === storeId && row.expertId &&
+    !['Cancelled', 'Completed', 'Rejected'].includes(row.status) && stayOverlaps(row, checkInDate, checkOutDate)
+  ).map(row => row.expertId));
+  return rooms.map(cleanRow).filter(room => room.storeId === storeId && room.active !== false &&
+    (!roomTypeId || room.roomTypeId === roomTypeId) && !occupied.has(room.id));
+}
+
+async function getDigit58StayAvailability(call, input) {
+  const { ownerId, storeId } = await digit58StayContext(call, input);
+  const checkInDate = text(input.checkInDate, 10), checkOutDate = text(input.checkOutDate, 10), roomTypeId = text(input.roomTypeId, 40);
+  const nights = stayNightCount(checkInDate, checkOutDate);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(checkInDate) || !/^\d{4}-\d{2}-\d{2}$/.test(checkOutDate) || nights < 1) throw new Error('Choose valid check-in and check-out dates.');
+  const rooms = await availableStayRooms(call, ownerId, storeId, roomTypeId, checkInDate, checkOutDate);
+  return { available: rooms.length, roomIds: rooms.map(room => room.id) };
+}
+
+async function createDigit58StayBooking(call, input, userId) {
+  const { ownerId, storeId, store } = await digit58StayContext(call, input);
+  const roomTypeId = text(input.roomTypeId, 40), checkInDate = text(input.checkInDate, 10), checkOutDate = text(input.checkOutDate, 10);
+  if (!roomTypeId) throw new Error('Choose a room type.');
+  const nights = stayNightCount(checkInDate, checkOutDate);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(checkInDate) || !/^\d{4}-\d{2}-\d{2}$/.test(checkOutDate) || nights < 1) throw new Error('Check-out must be after check-in.');
+  if (checkInDate < indiaDay()) throw new Error('Check-in cannot be in the past.');
+  const maxAdvanceDays = Math.max(1, finite(store.preBookingWindowDays, 365));
+  if (new Date(`${checkInDate}T00:00:00+05:30`).getTime() > Date.now() + maxAdvanceDays * 86400000) throw new Error(`Stays can only be booked up to ${maxAdvanceDays} days ahead.`);
+  const serviceRow = await call(`/tablesdb/${DATABASE_ID}/tables/${TABLE_ID}/rows/${encodeURIComponent(roomTypeId)}`).catch(() => null);
+  if (!serviceRow || serviceRow.kind !== digit58ServiceKind(ownerId)) throw new Error('This room type could not be found.');
+  const roomType = cleanRow(serviceRow);
+  if (roomType.storeId !== storeId || roomType.active === false) throw new Error('This room type is not available.');
+  const guests = Math.max(1, Math.min(20, Math.floor(finite(input.guests, 1))));
+  const maxGuests = Math.max(1, Math.floor(finite(roomType.maxGuests, 2)));
+  if (guests > maxGuests) throw new Error(`This room allows up to ${maxGuests} guests.`);
+  const availableRooms = await availableStayRooms(call, ownerId, storeId, roomTypeId, checkInDate, checkOutDate);
+  if (!availableRooms.length) throw new Error('No room is available for these dates. Choose another room type or date.');
+  await validateStayIdentity(call, input, userId);
+  const extras = (await listRowsByKind(call, digit58StayExtraKind(ownerId))).map(cleanRow)
+    .filter(row => row.storeId === storeId && row.active !== false && row.extraType === 'addon');
+  const addons = (Array.isArray(input.addons) ? input.addons : []).map(requested => {
+    const configured = extras.find(row => row.id === requested.id);
+    if (!configured) return null;
+    const qty = Math.max(1, Math.min(10, Math.floor(finite(requested.qty, 1))));
+    return { id: configured.id, name: text(configured.name, 120), qty, price: Math.max(0, finite(configured.price)) };
+  }).filter(Boolean);
+  const nightlyPrice = Math.max(0, finite(roomType.price));
+  const baseAmount = Math.round(nightlyPrice * nights * 100) / 100;
+  const addonAmount = Math.round(addons.reduce((sum, item) => sum + item.price * item.qty, 0) * 100) / 100;
+  const total = Math.round((baseAmount + addonAmount) * 100) / 100;
+  const bookingId = digit58Id('stay'), createdAt = new Date().toISOString();
+  const phone = normalisePhone(input.phone);
+  if (phone.length < 10 || phone.length > 15) throw new Error('Enter a valid guest contact number.');
+  const record = {
+    id: bookingId, bookingType: 'digital_stay', ownerId, storeId,
+    serviceId: roomTypeId, serviceName: roomType.name, expertId: '', expertName: '',
+    customerAccountId: userId, customerName: text(input.customerName, 120), customerEmail: text(input.customerEmail, 250), phone: phone.slice(0, 15),
+    date: checkInDate, startTime: text(store.checkInTime, 5) || '14:00', checkInDate, checkOutDate, nights, guests,
+    nightlyPrice, baseAmount, addons, addonAmount, price: total, upfrontAmount: total, balanceAmount: 0,
+    identityFileId: text(input.identityFileId, 80), identityUrl: text(input.identityUrl, 1000), identityName: text(input.identityName, 200), identityType: text(input.identityType, 100),
+    identityStatus: 'Pending Review', status: 'Identity Review', paymentMarkedAt: '', messages: [],
+    createdAt, updatedAt: createdAt,
+  };
+  const created = await createRow(call, bookingId, digit58BookingKind(ownerId), record, rowPermissionsFor([ownerId, userId]));
+  return cleanRow(created);
+}
+
+async function reviewDigit58StayIdentity(call, input, userId) {
+  const ownerId = text(input.ownerId, 64), bookingId = text(input.bookingId, 40);
+  if (ownerId !== userId) { const denied = new Error('Only the hotel owner can review guest identity.'); denied.code = 403; throw denied; }
+  const row = await call(`/tablesdb/${DATABASE_ID}/tables/${TABLE_ID}/rows/${encodeURIComponent(bookingId)}`);
+  if (row.kind !== digit58BookingKind(ownerId)) throw new Error('This is not a stay booking.');
+  const booking = cleanRow(row);
+  if (booking.bookingType !== 'digital_stay' || booking.status !== 'Identity Review') throw new Error('This identity request has already been handled.');
+  const approved = input.approved === true, updatedAt = new Date().toISOString();
+  let changes;
+  if (approved) {
+    const rooms = await availableStayRooms(call, ownerId, booking.storeId, booking.serviceId, booking.checkInDate, booking.checkOutDate);
+    const requestedRoomId = text(input.roomId, 40);
+    const room = (requestedRoomId && rooms.find(item => item.id === requestedRoomId)) || rooms[0];
+    if (!room) throw new Error('No room is available for these dates. Reject the request or add another room.');
+    const storeRow = await call(`/tablesdb/${DATABASE_ID}/tables/${TABLE_ID}/rows/${encodeURIComponent(booking.storeId)}`);
+    const store = cleanRow(storeRow), upiId = text(store.upiId, 120);
+    changes = {
+      expertId: room.id, expertName: room.name, roomFloor: text(room.floor, 40), digitalLockEnabled: room.digitalLockEnabled === true,
+      identityStatus: 'Verified', identityReviewedAt: updatedAt, status: 'Pending Payment',
+      upiId, upiUri: upiId ? buildDigit58UpiUri(upiId, store.name, booking.price, booking.id) : '', updatedAt,
+    };
+  } else {
+    changes = { identityStatus: 'Rejected', identityRejectedReason: text(input.reason, 300) || 'Identity could not be verified.', identityReviewedAt: updatedAt, status: 'Cancelled', cancelledAt: updatedAt, updatedAt };
+  }
+  if (booking.identityFileId) {
+    await call(`/storage/buckets/${MEDIA_BUCKET_ID}/files/${encodeURIComponent(booking.identityFileId)}`, { method: 'DELETE' }).catch(error => { if (error.code !== 404) throw error; });
+  }
+  return updateRow(call, bookingId, { ...booking, ...changes, identityFileId: '', identityUrl: '', identityName: '', identityType: '', identityDeletedAt: updatedAt });
+}
+
+async function markDigit58StayPayment(call, input, userId) {
+  const ownerId = text(input.ownerId, 64), bookingId = text(input.bookingId, 40);
+  const row = await call(`/tablesdb/${DATABASE_ID}/tables/${TABLE_ID}/rows/${encodeURIComponent(bookingId)}`);
+  if (row.kind !== digit58BookingKind(ownerId)) throw new Error('This is not a stay booking.');
+  const booking = cleanRow(row);
+  if (booking.customerAccountId !== userId) { const denied = new Error('Only this guest can submit payment confirmation.'); denied.code = 403; throw denied; }
+  if (booking.status !== 'Pending Payment') throw new Error('This stay is not awaiting payment.');
+  const updatedAt = new Date().toISOString();
+  return updateRow(call, bookingId, { ...booking, paymentMarkedAt: updatedAt, updatedAt });
+}
+
+async function confirmDigit58StayPayment(call, input, userId) {
+  const ownerId = text(input.ownerId, 64), bookingId = text(input.bookingId, 40);
+  if (ownerId !== userId) { const denied = new Error('Only the hotel owner can confirm payment.'); denied.code = 403; throw denied; }
+  const row = await call(`/tablesdb/${DATABASE_ID}/tables/${TABLE_ID}/rows/${encodeURIComponent(bookingId)}`);
+  if (row.kind !== digit58BookingKind(ownerId)) throw new Error('This is not a stay booking.');
+  const booking = cleanRow(row);
+  if (booking.bookingType !== 'digital_stay' || booking.status !== 'Pending Payment') throw new Error('This stay is not awaiting payment.');
+  const confirmedAt = new Date().toISOString();
+  const digitalLockPin = booking.digitalLockEnabled ? String(randomInt(100000, 1000000)) : '';
+  return updateRow(call, bookingId, { ...booking, status: 'Confirmed', paymentStatus: 'Verified', confirmedAt, digitalLockPin, updatedAt: confirmedAt });
+}
+
+async function createDigit58RoomServiceOrder(call, input, userId) {
+  const ownerId = text(input.ownerId, 64), bookingId = text(input.bookingId, 40);
+  const row = await call(`/tablesdb/${DATABASE_ID}/tables/${TABLE_ID}/rows/${encodeURIComponent(bookingId)}`);
+  if (row.kind !== digit58BookingKind(ownerId)) throw new Error('This is not a stay booking.');
+  const booking = cleanRow(row);
+  if (booking.customerAccountId !== userId) { const denied = new Error('Only this room guest can request room service.'); denied.code = 403; throw denied; }
+  if (booking.bookingType !== 'digital_stay' || booking.status !== 'Confirmed') throw new Error('Room service becomes available after the stay is confirmed.');
+  const today = indiaDay();
+  if (today < booking.checkInDate || today > booking.checkOutDate) throw new Error('Room service is available during your stay.');
+  const configured = (await listRowsByKind(call, digit58StayExtraKind(ownerId))).map(cleanRow)
+    .filter(item => item.storeId === booking.storeId && item.active !== false && ['food', 'service'].includes(item.extraType));
+  const selected = (Array.isArray(input.items) ? input.items : []).map(item => {
+    const match = configured.find(row => row.id === item.id);
+    if (!match) return null;
+    const qty = Math.max(1, Math.min(20, Math.floor(finite(item.qty, 1))));
+    return { name: text(match.name, 160), qty, price: Math.max(0, finite(match.price)) };
+  }).filter(Boolean);
+  if (!selected.length) throw new Error('Choose at least one room-service item.');
+  const suggestedAmount = Math.round(selected.reduce((sum, item) => sum + item.price * item.qty, 0) * 100) / 100;
+  const order = await createDigit58Order(call, {
+    ownerId, storeId: booking.storeId, items: selected, customerName: booking.customerName, customerEmail: booking.customerEmail,
+    phone: booking.phone, address: `Room ${booking.expertName}`, customerOrderValue: suggestedAmount,
+  }, userId, { enforceMinimum: false });
+  return updateRow(call, order.id, { ...order, orderType: 'room_service', stayBookingId: booking.id, roomId: booking.expertId, roomName: booking.expertName, suggestedAmount, items: selected, updatedAt: new Date().toISOString() });
 }
 
 async function createDigit58OwnerBooking(call, input, userId) {
@@ -1615,6 +1797,30 @@ export default async ({ req, res, error }) => {
     if (requestBody?.action === 'digit58-get-slot-status') {
       const call = g58Store(req);
       return res.json({ ok: true, ...(await getDigit58SlotStatus(call, requestBody)) });
+    }
+    if (requestBody?.action === 'digit58-get-stay-availability') {
+      const call = g58Store(req);
+      return res.json({ ok: true, ...(await getDigit58StayAvailability(call, requestBody)) });
+    }
+    if (requestBody?.action === 'digit58-create-stay-booking') {
+      const call = g58Store(req);
+      return res.json({ ok: true, booking: await createDigit58StayBooking(call, requestBody, userId) }, 201);
+    }
+    if (requestBody?.action === 'digit58-review-stay-identity') {
+      const call = g58Store(req);
+      return res.json({ ok: true, booking: await reviewDigit58StayIdentity(call, requestBody, userId) });
+    }
+    if (requestBody?.action === 'digit58-mark-stay-payment') {
+      const call = g58Store(req);
+      return res.json({ ok: true, booking: await markDigit58StayPayment(call, requestBody, userId) });
+    }
+    if (requestBody?.action === 'digit58-confirm-stay-payment') {
+      const call = g58Store(req);
+      return res.json({ ok: true, booking: await confirmDigit58StayPayment(call, requestBody, userId) });
+    }
+    if (requestBody?.action === 'digit58-create-room-service-order') {
+      const call = g58Store(req);
+      return res.json({ ok: true, order: await createDigit58RoomServiceOrder(call, requestBody, userId) }, 201);
     }
     if (requestBody?.action === 'digit58-owner-create-booking') {
       const call = g58Store(req);

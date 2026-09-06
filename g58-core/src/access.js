@@ -13,6 +13,7 @@ const PUBLIC_PREFIXES = [
   "digit58_promo_",
   "digit58_service_",
   "digit58_expert_",
+  "digit58_stay_extra_",
 ];
 
 const PRIVATE_PUBLIC_PREFIX_EXCEPTIONS = new Set([

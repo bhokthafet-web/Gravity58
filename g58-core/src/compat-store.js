@@ -44,7 +44,7 @@ async function getRecord(id) {
 }
 
 async function attachPrivateMedia(record) {
-  for (const key of ["paymentReceiptFileId", "proofMediaFileId", "extensionProofMediaFileId", "cancellationProofFileId"]) {
+  for (const key of ["paymentReceiptFileId", "proofMediaFileId", "extensionProofMediaFileId", "cancellationProofFileId", "identityFileId"]) {
     const fileId = record.payload?.[key];
     if (/^[0-9a-f-]{36}$/i.test(String(fileId || ""))) {
       await query(`UPDATE media_files SET record_id=$1 WHERE id=$2 AND deleted_at IS NULL`, [record.id, fileId]);

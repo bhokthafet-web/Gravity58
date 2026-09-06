@@ -358,7 +358,7 @@ function digit58EntitlementRow(row){
   const billing=row.razorpaySubscriptionId
     ?(row.cancelAtPeriodEnd?'Cancelling — no auto-renew':row.subscriptionStatus==='halted'?'Auto-debit failed':'Auto-renews')
     :(row.freeTrial?'No billing yet':'Manual');
-  return `<tr><td>${esc(row.ownerEmail||row.ownerId)}</td><td>${row.paused?'Paused':row.active?'Active':'Inactive'}</td><td>${esc(planLabel)}<br><small class="muted">${esc(billing)}</small></td><td>${timeLeft(row.expiresAt,row.lifetime)}</td><td><strong>${Math.max(1,Number(row.storeSlots)||1)} paid slot(s)</strong><div class="entitlement-store-list">${storeButtons||'<small class="muted">No live stores found</small>'}</div></td><td>${esc(policy)}</td><td><div class="actions"><button class="btn small" data-edit-digit58-entitlement="${esc(row.id)}">Edit</button><button class="btn small green" data-extend-digit58="${esc(row.id)}">+30 days</button><button class="btn small ${row.paused?'green':'secondary'}" data-pause-digit58="${esc(row.id)}">${row.paused?'Resume':'Pause'}</button><button class="btn small red" data-delete-digit58-entitlement="${esc(row.id)}" data-owner-id="${esc(row.ownerId)}">Delete</button></div></td></tr>`;
+  return `<tr><td>${esc(row.ownerEmail||row.ownerId)}</td><td>${row.paused?'Paused':row.active?'Active':'Inactive'}</td><td>${esc(planLabel)}<br><small class="muted">${esc(billing)}</small></td><td>${timeLeft(row.expiresAt,row.lifetime)}</td><td><strong>${Math.max(5,Number(row.storeSlots)||5)} location slot(s)</strong><div class="entitlement-store-list">${storeButtons||'<small class="muted">No live locations found</small>'}</div></td><td>${esc(policy)}</td><td><div class="actions"><button class="btn small" data-edit-digit58-entitlement="${esc(row.id)}">Edit</button><button class="btn small green" data-extend-digit58="${esc(row.id)}">+30 days</button><button class="btn small ${row.paused?'green':'secondary'}" data-pause-digit58="${esc(row.id)}">${row.paused?'Resume':'Pause'}</button><button class="btn small red" data-delete-digit58-entitlement="${esc(row.id)}" data-owner-id="${esc(row.ownerId)}">Delete</button></div></td></tr>`;
 }
 async function deleteDigit58Entitlement(id,ownerId){
   if(!confirm('Delete this Refills subscription? This revokes store portal access immediately and cancels any live auto-billing subscription. This cannot be undone.'))return;
@@ -479,10 +479,10 @@ function activateDigit58Request(id){
   const request=data.digit58Requests.find(row=>row.id===id),existing=data.digit58Entitlements.find(row=>row.ownerId===request?.ownerId);if(!request)return;
   if(request.type==='free-trial'){
     const expiresAt=new Date(Date.now()+30*86400000).toISOString();
-    modal('Approve 30-Day Free Trial',`<div class="card"><p><strong>${esc(request.ownerEmail||request.ownerId)}</strong> requested the one-month Refills free trial.</p><p class="muted">Approval activates one store slot immediately for 30 days. The owner must still accept the Refills policy before entering the dashboard.</p></div><div class="actions" style="margin-top:14px"><button class="btn green full" id="confirmDigit58Trial">Approve & Activate Trial</button></div>`,()=>{
+    modal('Approve 30-Day Free Trial',`<div class="card"><p><strong>${esc(request.ownerEmail||request.ownerId)}</strong> requested the one-month G58 business-tools free trial.</p><p class="muted">Approval activates up to five location slots immediately for 30 days. They may use those slots for stores, services, game zones or Digital Stay hotels. The owner must still accept the policy before entering the dashboard.</p></div><div class="actions" style="margin-top:14px"><button class="btn green full" id="confirmDigit58Trial">Approve & Activate Trial</button></div>`,()=>{
       $('#confirmDigit58Trial').onclick=async()=>{
         const button=$('#confirmDigit58Trial');button.disabled=true;
-        const payload={ownerId:request.ownerId,ownerEmail:request.ownerEmail||'',active:true,paused:false,lifetime:false,freeTrial:true,trialUsed:true,plan:'trial',subscriptionStatus:'trial',expiresAt,storeSlots:Math.max(1,Number(existing?.storeSlots)||1),activatedAt:existing?.activatedAt||now(),updatedAt:now()};
+        const payload={ownerId:request.ownerId,ownerEmail:request.ownerEmail||'',active:true,paused:false,lifetime:false,freeTrial:true,trialUsed:true,plan:'trial',subscriptionStatus:'trial',expiresAt,storeSlots:Math.max(5,Number(existing?.storeSlots)||5),activatedAt:existing?.activatedAt||now(),updatedAt:now()};
         if(request.referredByCode&&!existing?.referredByCode)payload.referredByCode=request.referredByCode;
         try{
           if(existing)await api.update('digit58_entitlements',existing.id,payload);
@@ -495,30 +495,30 @@ function activateDigit58Request(id){
     return;
   }
   if(request.type==='additional-store'){
-    const nextSlots=Math.max(1,Number(existing?.storeSlots)||1)+1;
-    modal('Grant Additional Store Slot',`<p><strong>${esc(request.ownerEmail||request.ownerId)}</strong> paid for one more store (${money(request.amount||699)}/month). This raises their paid store slots to <strong>${nextSlots}</strong>.</p><div class="actions" style="margin-top:14px"><button class="btn green full" id="confirmGrantSlot">Grant Store Slot</button></div>`,()=>{
+    const nextSlots=Math.max(5,Number(existing?.storeSlots)||5)+5;
+    modal('Grant Five More Location Slots',`<p><strong>${esc(request.ownerEmail||request.ownerId)}</strong> paid for another five-location block (${money(request.amount||699)}/month). This raises their location allowance to <strong>${nextSlots}</strong>.</p><div class="actions" style="margin-top:14px"><button class="btn green full" id="confirmGrantSlot">Grant Five Location Slots</button></div>`,()=>{
       $('#confirmGrantSlot').onclick=async()=>{
         try{
           const payload={storeSlots:nextSlots,updatedAt:now()};
           if(existing)await api.update('digit58_entitlements',existing.id,payload);
           else await api.create('digit58_entitlements',{ownerId:request.ownerId,ownerEmail:request.ownerEmail||'',active:true,paused:false,lifetime:false,storeSlots:nextSlots,activatedAt:now(),updatedAt:now()},`d58-${String(request.ownerId).slice(0,30)}`,api.managedPermissionSet?.()||api.collaborativePermissionSet(request.ownerId));
           await api.update('digit58_requests',id,{status:'Activated',activatedAt:now()});
-          closeModal();await refresh();toast('Additional store slot granted');
-        }catch(error){toast(error.message||'Could not grant store slot')}
+          closeModal();await refresh();toast('Five additional location slots granted');
+        }catch(error){toast(error.message||'Could not grant location slots')}
       };
     });
     return;
   }
-  modal('Activate Refills Store Access',`<form id="activateDigit58Form"><p><strong>${esc(request.ownerEmail||request.ownerId)}</strong> — ${money(request.amount||699)}/month.</p><div class="form-grid"><div class="field"><label>Activation months</label><input name="months" type="number" min="1" max="120" value="1" required></div></div><label class="notice"><input name="lifetime" type="checkbox" ${existing?.lifetime?'checked':''}> Lifetime access — subscription never expires</label><button class="btn green full">Activate Store Access</button></form>`,()=>{
+  modal('Activate G58 Business Access',`<form id="activateDigit58Form"><p><strong>${esc(request.ownerEmail||request.ownerId)}</strong> — ${money(request.amount||699)}/month for up to five locations.</p><div class="form-grid"><div class="field"><label>Activation months</label><input name="months" type="number" min="1" max="120" value="1" required></div></div><label class="notice"><input name="lifetime" type="checkbox" ${existing?.lifetime?'checked':''}> Lifetime access — subscription never expires</label><button class="btn green full">Activate Business Access</button></form>`,()=>{
     $('#activateDigit58Form').onsubmit=async event=>{
       event.preventDefault();
       const fd=new FormData(event.target),months=Number(fd.get('months')),lifetime=fd.has('lifetime'),base=Math.max(Date.now(),new Date(existing?.expiresAt||0).getTime()),expiry=new Date(base);expiry.setMonth(expiry.getMonth()+months);
-      const payload={ownerId:request.ownerId,ownerEmail:request.ownerEmail||'',active:true,paused:false,lifetime,expiresAt:lifetime?'':expiry.toISOString(),storeSlots:Math.max(1,Number(existing?.storeSlots)||1),activatedAt:existing?.activatedAt||now(),updatedAt:now()};
+      const payload={ownerId:request.ownerId,ownerEmail:request.ownerEmail||'',active:true,paused:false,lifetime,expiresAt:lifetime?'':expiry.toISOString(),storeSlots:Math.max(5,Number(existing?.storeSlots)||5),activatedAt:existing?.activatedAt||now(),updatedAt:now()};
       try{
         if(existing)await api.update('digit58_entitlements',existing.id,payload);
         else await api.create('digit58_entitlements',payload,`d58-${String(request.ownerId).slice(0,30)}`,api.managedPermissionSet?.()||api.collaborativePermissionSet(request.ownerId));
         await api.update('digit58_requests',id,{status:'Activated',activatedAt:now()});
-        closeModal();await refresh();toast('Refills store access activated');
+        closeModal();await refresh();toast('G58 business access activated');
       }catch(error){toast(error.message||'Could not activate store access')}
     };
   });
@@ -526,7 +526,7 @@ function activateDigit58Request(id){
 async function rejectDigit58Request(id){if(!confirm('Reject this Digit58 activation request?'))return;try{await api.update('digit58_requests',id,{status:'Rejected',rejectedAt:now()});await refresh();toast('Request rejected')}catch(error){toast(error.message||'Could not reject request')}}
 function editDigit58Entitlement(id){
   const row=data.digit58Entitlements.find(item=>item.id===id);if(!row)return;
-  modal('Edit Refills Subscription',`<form id="editDigit58Entitlement"><div class="form-grid"><div class="field"><label>Expiry</label><input name="expiresAt" type="date" value="${row.expiresAt?row.expiresAt.slice(0,10):''}"></div></div><label class="notice"><input name="lifetime" type="checkbox" ${row.lifetime?'checked':''}> Lifetime — never expires</label><button class="btn full">Save Subscription</button></form>`,()=>{
+  modal('Edit G58 Business Subscription',`<form id="editDigit58Entitlement"><div class="form-grid"><div class="field"><label>Expiry</label><input name="expiresAt" type="date" value="${row.expiresAt?row.expiresAt.slice(0,10):''}"></div></div><label class="notice"><input name="lifetime" type="checkbox" ${row.lifetime?'checked':''}> Lifetime — never expires</label><button class="btn full">Save Subscription</button></form>`,()=>{
     $('#editDigit58Entitlement').onsubmit=async event=>{event.preventDefault();const fd=new FormData(event.target),lifetime=fd.has('lifetime');try{await api.update('digit58_entitlements',id,{lifetime,expiresAt:lifetime?'':fd.get('expiresAt')?new Date(`${fd.get('expiresAt')}T23:59:59+05:30`).toISOString():'',updatedAt:now()});closeModal();await refresh();toast('Subscription updated')}catch(error){toast(error.message||'Could not update subscription')}};
   });
 }

@@ -267,7 +267,7 @@ app.post("/api/v1/media", async (request, reply) => {
   const saved = await query(
     `INSERT INTO media_files(owner_id,purpose,original_name,storage_name,mime_type,byte_size,is_public)
      VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
-    [user.id, purpose, part.filename.slice(0, 255), storageName, part.mimetype, buffer.length, purpose !== "payment-receipt"],
+    [user.id, purpose, part.filename.slice(0, 255), storageName, part.mimetype, buffer.length, !["payment-receipt", "stay-identity"].includes(purpose)],
   );
   await audit(request, "media.create", "media", saved.rows[0].id);
   reply.code(201).send({ file: mediaResponse(saved.rows[0]) });
