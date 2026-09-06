@@ -105,7 +105,7 @@ const bookingCopy=(store)=>isGameZone(store)
   :{items:'Services',item:'Service',itemLower:'service',resources:'Experts',resource:'Expert',resourceLower:'expert',bookTitle:'Book a Service',bookButton:'+ Book a Service',empty:'No bookings yet. Book a service to get started.',historyItem:'Service',historyResource:'Expert',after:'after service',completed:'after the service is done'};
 const WEEKDAYS=[{id:1,label:'Monday',short:'Mon'},{id:2,label:'Tuesday',short:'Tue'},{id:3,label:'Wednesday',short:'Wed'},{id:4,label:'Thursday',short:'Thu'},{id:5,label:'Friday',short:'Fri'},{id:6,label:'Saturday',short:'Sat'},{id:0,label:'Sunday',short:'Sun'}];
 const normaliseAvailableDays=(value)=>[...new Set((Array.isArray(value)?value:[]).map(Number).filter(day=>Number.isInteger(day)&&day>=0&&day<=6))];
-const REQUEST_KIND='digit58_requests',ENTITLEMENT_KIND='digit58_entitlements',SUBSCRIPTION_AMOUNT=399;
+const REQUEST_KIND='digit58_requests',ENTITLEMENT_KIND='digit58_entitlements',SUBSCRIPTION_AMOUNT=699;
 const CARD_PURCHASE_KIND='digit58_card_purchases',FREE_PROMOTION_CARDS=3;
 const PROMOTION_CARD_PRICING={'30d':{label:'30 Days',amount:150,days:30},'6mo':{label:'6 Months',amount:750,days:182},'1yr':{label:'1 Year',amount:1200,days:365}};
 const BRAND_KIND='digit58_brand_owners',BRAND_REQUEST_KIND='digit58_brand_requests';
@@ -360,7 +360,7 @@ function bindBookingExpertShareButtons(bookings){
 
 let session=null,view='dashboard';
 let refreshView=()=>renderShell();
-let entitlement=null,myRequest=null,myStoreRequest=null,digit58Pricing={monthly:399};
+let entitlement=null,myRequest=null,myStoreRequest=null,digit58Pricing={monthly:699};
 const DIGIT58_PLAN_PERIODS=[{id:'6m',label:'6 Months',months:6,discount:0},{id:'1y',label:'1 Year',months:12,discount:5},{id:'3y',label:'3 Years',months:36,discount:10}];
 function digit58PlanAmount(monthly,period){return Math.round(Number(monthly)*Number(period.months)*(1-Number(period.discount)/100))}
 function storeSlotsAllowed(){return Math.max(1,Number(entitlement?.storeSlots)||1)}

@@ -134,6 +134,21 @@ test("all Refills account screens expose password recovery", () => {
   assert.match(source, /api\.forgotPassword\(email\)/);
 });
 
+test("Refills subscription pricing uses the ₹699 monthly base everywhere", () => {
+  const refillsApp = readFileSync(join(root, "digit58/app.js"), "utf8");
+  const adminApp = readFileSync(join(root, "team-admin/app.js"), "utf8");
+  const backendActions = readFileSync(join(root, "g58-core/src/actions.js"), "utf8");
+  assert.match(refillsApp, /SUBSCRIPTION_AMOUNT=699/);
+  assert.match(refillsApp, /digit58Pricing=\{monthly:699\}/);
+  assert.match(adminApp, /monthly:Number\(row\.monthly\)\|\|699/);
+  assert.match(backendActions, /finite\(pricing\.monthly, 699\)/);
+  for (const relative of ["pricing/index.html", "refills-guide/index.html"]) {
+    const source = readFileSync(join(root, relative), "utf8");
+    for (const amount of ["₹4,194", "₹7,969", "₹22,648"]) assert.match(source, new RegExp(amount));
+    for (const oldAmount of ["₹2,394", "₹4,549", "₹12,928"]) assert.doesNotMatch(source, new RegExp(oldAmount));
+  }
+});
+
 test("customer receipt uploads use the authenticated first-party media endpoint", () => {
   const source = readFileSync(join(root, "js/g58-api.js"), "utf8");
   const start = source.indexOf("async function uploadPaymentReceipt");

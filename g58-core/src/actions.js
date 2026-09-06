@@ -823,7 +823,7 @@ function digit58PlanAmount(monthly, periodId) {
 async function digit58PricingDoc(call) {
   const row = await call(`/tablesdb/${DATABASE_ID}/tables/${TABLE_ID}/rows/default`).catch(() => null);
   const pricing = row && row.kind === 'digit58_pricing' ? cleanRow(row) : {};
-  return { rowExists: !!row, monthly: Math.max(1, finite(pricing.monthly, 399)), razorpayPlanIds: pricing.razorpayPlanIds || {}, raw: pricing };
+  return { rowExists: !!row, monthly: Math.max(1, finite(pricing.monthly, 699)), razorpayPlanIds: pricing.razorpayPlanIds || {}, raw: pricing };
 }
 
 async function ensureDigit58RazorpayPlan(call, periodId, amount) {
@@ -840,7 +840,7 @@ async function ensureDigit58RazorpayPlan(call, periodId, amount) {
   });
   const nextPlanIds = { ...razorpayPlanIds, [periodId]: { planId: created.id, amount } };
   if (rowExists) await updateRow(call, 'default', { ...raw, razorpayPlanIds: nextPlanIds });
-  else await createRow(call, 'default', 'digit58_pricing', { monthly: 399, paymentLink: '', razorpayPlanIds: nextPlanIds }, [`read("team:${ADMIN_TEAM_ID}")`, `update("team:${ADMIN_TEAM_ID}")`]);
+  else await createRow(call, 'default', 'digit58_pricing', { monthly: 699, paymentLink: '', razorpayPlanIds: nextPlanIds }, [`read("team:${ADMIN_TEAM_ID}")`, `update("team:${ADMIN_TEAM_ID}")`]);
   return created.id;
 }
 

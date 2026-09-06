@@ -247,7 +247,7 @@ function drawDiners(){
     toast(`Exported ${summaries.length} customer(s) to CSV`);
   };
 }
-function digit58PricingConfig(){const row=data.digit58Pricing.find(item=>(item.id||item.$id)==='default')||data.digit58Pricing[0]||{};return {paymentLink:row.paymentLink||'',monthly:Number(row.monthly)||399,periods:row.periods||[{id:'6m',label:'6 Months',months:6,discount:0},{id:'1y',label:'1 Year',months:12,discount:5},{id:'3y',label:'3 Years',months:36,discount:10}]}}
+function digit58PricingConfig(){const row=data.digit58Pricing.find(item=>(item.id||item.$id)==='default')||data.digit58Pricing[0]||{};return {paymentLink:row.paymentLink||'',monthly:Number(row.monthly)||699,periods:row.periods||[{id:'6m',label:'6 Months',months:6,discount:0},{id:'1y',label:'1 Year',months:12,discount:5},{id:'3y',label:'3 Years',months:36,discount:10}]}}
 function digit58PlanAmount(monthly,period){return Math.round(Number(monthly)*Number(period.months)*(1-Number(period.discount)/100))}
 function editDigit58Pricing(){
   const pricing=digit58PricingConfig();
@@ -348,7 +348,7 @@ function digit58RequestRow(row){
   const actions=row.status==='Requested'?(isFreeTrial?`<button class="btn small green" data-activate-digit58="${esc(row.id)}">Approve Free Trial</button><button class="btn small red" data-reject-digit58="${esc(row.id)}">Reject</button>`:`<button class="btn small" data-send-digit58-link="${esc(row.id)}">Send Payment Link</button><button class="btn small red" data-reject-digit58="${esc(row.id)}">Reject</button>`)
     :row.status==='Payment Link Sent'?`<button class="btn small green" data-activate-digit58="${esc(row.id)}">Activate</button><button class="btn small red" data-reject-digit58="${esc(row.id)}">Reject</button>`
     :`<button class="btn small green" data-activate-digit58="${esc(row.id)}">Activate</button>`;
-  return `<tr><td><strong>${esc(row.ownerName||'Store Owner')}</strong><br><small>${esc(row.ownerEmail||row.ownerId)}</small>${isAdditional?' <span class="chip due">+1 Store</span>':isFreeTrial?' <span class="chip delivered">30-day free trial</span>':''}</td><td>${isFreeTrial?'Free':money(row.amount||399)}</td><td>${esc(row.status||'Requested')}</td><td><div class="actions">${actions}</div></td></tr>`;
+  return `<tr><td><strong>${esc(row.ownerName||'Store Owner')}</strong><br><small>${esc(row.ownerEmail||row.ownerId)}</small>${isAdditional?' <span class="chip due">+1 Store</span>':isFreeTrial?' <span class="chip delivered">30-day free trial</span>':''}</td><td>${isFreeTrial?'Free':money(row.amount||699)}</td><td>${esc(row.status||'Requested')}</td><td><div class="actions">${actions}</div></td></tr>`;
 }
 const DIGIT58_PLAN_LABELS={'6m':'6 Months','1y':'1 Year','3y':'3 Years'};
 function digit58EntitlementRow(row){
@@ -471,7 +471,7 @@ async function deleteContactRequest(id){
 function sendDigit58PaymentLink(id){
   const row=data.digit58Requests.find(item=>item.id===id);if(!row)return;
   const defaultLink=digit58PricingConfig().paymentLink;
-  modal('Send Refills Payment Link',`<form id="sendDigit58LinkForm"><p><strong>${esc(row.ownerEmail||row.ownerId)}</strong> requested Refills store access for ${money(row.amount||399)}.</p><div class="field"><label>Payment link</label><input name="paymentLink" type="url" value="${esc(defaultLink)}" required placeholder="Razorpay payment link"></div>${defaultLink?'<p class="muted">Pre-filled from your saved default — edit if this request needs a different link.</p>':''}<button class="btn full">Send to store owner</button></form>`,()=>{
+  modal('Send Refills Payment Link',`<form id="sendDigit58LinkForm"><p><strong>${esc(row.ownerEmail||row.ownerId)}</strong> requested Refills store access for ${money(row.amount||699)}.</p><div class="field"><label>Payment link</label><input name="paymentLink" type="url" value="${esc(defaultLink)}" required placeholder="Razorpay payment link"></div>${defaultLink?'<p class="muted">Pre-filled from your saved default — edit if this request needs a different link.</p>':''}<button class="btn full">Send to store owner</button></form>`,()=>{
     $('#sendDigit58LinkForm').onsubmit=async event=>{event.preventDefault();const values=Object.fromEntries(new FormData(event.target));try{await api.update('digit58_requests',id,{...values,status:'Payment Link Sent',paymentLinkSentAt:now()});closeModal();await refresh();toast('Payment link sent to store owner')}catch(error){toast(error.message||'Could not send payment link')}};
   });
 }
@@ -496,7 +496,7 @@ function activateDigit58Request(id){
   }
   if(request.type==='additional-store'){
     const nextSlots=Math.max(1,Number(existing?.storeSlots)||1)+1;
-    modal('Grant Additional Store Slot',`<p><strong>${esc(request.ownerEmail||request.ownerId)}</strong> paid for one more store (${money(request.amount||399)}/month). This raises their paid store slots to <strong>${nextSlots}</strong>.</p><div class="actions" style="margin-top:14px"><button class="btn green full" id="confirmGrantSlot">Grant Store Slot</button></div>`,()=>{
+    modal('Grant Additional Store Slot',`<p><strong>${esc(request.ownerEmail||request.ownerId)}</strong> paid for one more store (${money(request.amount||699)}/month). This raises their paid store slots to <strong>${nextSlots}</strong>.</p><div class="actions" style="margin-top:14px"><button class="btn green full" id="confirmGrantSlot">Grant Store Slot</button></div>`,()=>{
       $('#confirmGrantSlot').onclick=async()=>{
         try{
           const payload={storeSlots:nextSlots,updatedAt:now()};
@@ -509,7 +509,7 @@ function activateDigit58Request(id){
     });
     return;
   }
-  modal('Activate Refills Store Access',`<form id="activateDigit58Form"><p><strong>${esc(request.ownerEmail||request.ownerId)}</strong> — ${money(request.amount||399)}/month.</p><div class="form-grid"><div class="field"><label>Activation months</label><input name="months" type="number" min="1" max="120" value="1" required></div></div><label class="notice"><input name="lifetime" type="checkbox" ${existing?.lifetime?'checked':''}> Lifetime access — subscription never expires</label><button class="btn green full">Activate Store Access</button></form>`,()=>{
+  modal('Activate Refills Store Access',`<form id="activateDigit58Form"><p><strong>${esc(request.ownerEmail||request.ownerId)}</strong> — ${money(request.amount||699)}/month.</p><div class="form-grid"><div class="field"><label>Activation months</label><input name="months" type="number" min="1" max="120" value="1" required></div></div><label class="notice"><input name="lifetime" type="checkbox" ${existing?.lifetime?'checked':''}> Lifetime access — subscription never expires</label><button class="btn green full">Activate Store Access</button></form>`,()=>{
     $('#activateDigit58Form').onsubmit=async event=>{
       event.preventDefault();
       const fd=new FormData(event.target),months=Number(fd.get('months')),lifetime=fd.has('lifetime'),base=Math.max(Date.now(),new Date(existing?.expiresAt||0).getTime()),expiry=new Date(base);expiry.setMonth(expiry.getMonth()+months);
