@@ -1,10 +1,10 @@
 # Gravity58 Production Release
 
-This folder is the production deployment package for the Gravity58 public marketplace, account-synced POS, restaurant Digital Menu, advertisement booking and private team administration.
+This folder is the production deployment package for Gravity58 Refills, Digital Stay, account-synced POS, restaurant Digital Menu, advertisement booking and private team administration.
 
 ## Routes
 
-- `/` — public customer and business marketplace
+- `/` — product landing page
 - `/pos/` — Free/Premium POS with unit price × quantity billing
 - `/digital-menu/` — restaurant owner dashboard and customer QR menu
 - `/advertise/` — authenticated advertisement booking
@@ -14,7 +14,7 @@ This folder is the production deployment package for the Gravity58 public market
 
 GitHub Pages hosts the public website. The self-hosted G58 Core service at `server.g58.in` provides accounts, password recovery, role-based access, PostgreSQL records, media, live updates, secure actions and the private team console. No third-party backend API is required.
 
-Restaurant/menu records, live orders, POS settings, bills, cancellations, inventory, marketplace records and advertisements are account-scoped in G58 Core. Uploaded media is stored on the G58 server with owner-aware access rules. The menu-image compressor processes source images only in browser memory before upload.
+Restaurant/menu records, live orders, bookings, POS settings, bills, cancellations, inventory and advertisements are account-scoped in G58 Core. Uploaded media is stored on the G58 server with owner-aware access rules. The menu-image compressor processes source images only in browser memory before upload.
 
 ## Deployment
 

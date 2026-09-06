@@ -40,7 +40,7 @@
 <body>
 <header class="topbar" id="topbar">
   <div class="shell nav nav-v2">
-    <a class="brand gravity-brand" href="#home" onclick="showLanding()">
+    <a class="brand gravity-brand" href="#home">
       <svg class="logo3d" viewBox="0 0 120 120" fill="none" stroke="#F97316" stroke-width="8" aria-hidden="true"><circle cx="60" cy="26" r="15"/><circle cx="28" cy="82" r="15"/><circle cx="92" cy="82" r="15"/></svg>
       <div class="gravity-wordmark">
         <div class="gravity-main">GRAVITY<span>58</span></div>
@@ -49,7 +49,7 @@
     </a>
 
     <nav class="nav-center header-icon-nav" aria-label="Primary">
-      <a href="#home" onclick="showLanding()" aria-label="Home"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10v9a1 1 0 0 0 1 1h11a1 1 0 0 0 1-1v-9"/><path d="M9.5 20v-6h5v6"/></svg><span>Home</span></a>
+      <a href="#home" aria-label="Home"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10v9a1 1 0 0 0 1 1h11a1 1 0 0 0 1-1v-9"/><path d="M9.5 20v-6h5v6"/></svg><span>Home</span></a>
       <a href="/digit58/" aria-label="Refills"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11A8 8 0 0 0 6.3 6.3L4 8.6"/><path d="M4 4v4.6h4.6"/><path d="M4 13a8 8 0 0 0 13.7 4.7L20 15.4"/><path d="M20 20v-4.6h-4.6"/></svg><span>Refills</span></a>
       <a href="/digital-menu/" aria-label="Digital Menu"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 3v6a2 2 0 0 0 2 2h0"/><path d="M9 3v18"/><path d="M7 3v5"/><path d="M15 3c-1.2 1.4-1.2 6.6 0 8 .5.6 1 .8 1 1.5V21"/></svg><span>Digital Menu</span></a>
       <a href="/pricing/" aria-label="Pricing" id="sitePricingButton"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z"/><circle cx="7.5" cy="7.5" r="1.5"/></svg><span>Pricing</span></a>
@@ -58,8 +58,6 @@
     <div class="header-account-controls" aria-label="Account controls">
       <button class="header-account-btn login" id="siteLoginButton" type="button" onclick="window.G58AccountAction?.()">Login</button>
       <span class="header-user-name hidden" id="siteUserName"></span>
-      <button class="header-account-btn hidden" id="myPostsButton" type="button" onclick="openMyPostsPage()">My Posts</button>
-      <button class="header-account-btn hidden" id="myBusinessCardButton" type="button" onclick="openMyBusinessCard()">Business Card</button>
       <button class="header-account-btn logout hidden" id="siteLogoutButton" type="button" onclick="window.G58LogoutAction?.()">Logout</button>
     </div>
 
@@ -295,7 +293,7 @@
 </section>
 
 
-<section class="content-area" id="contentArea">
+<section class="content-area" id="contentArea" hidden style="display:none!important" aria-hidden="true">
   <div class="shell">
     <div class="wall-header">
       <div><h2 id="wallTitle">Customer Requirements</h2><p id="wallSubtitle">Posts are shown State and District wise.</p></div>
@@ -395,14 +393,10 @@
   </div>
 </div>
 </main>
-<nav class="seo-link-strip hidden" aria-label="SEO pages">
-  <a href="/business/telangana/hyderabad/">Hyderabad Businesses</a>
-</nav>
-
 <footer class="g58-footer-v2">
   <div class="shell g58-footer-grid">
     <div class="footer-brand-col">
-      <a class="brand gravity-brand" href="#home" onclick="showLanding()">
+      <a class="brand gravity-brand" href="#home">
         <svg class="logo3d" viewBox="0 0 120 120" fill="none" stroke="#F97316" stroke-width="8" aria-hidden="true"><circle cx="60" cy="26" r="15"/><circle cx="28" cy="82" r="15"/><circle cx="92" cy="82" r="15"/></svg>
         <div class="gravity-wordmark">
           <div class="gravity-main">GRAVITY<span>58</span></div>
@@ -805,9 +799,8 @@
 </div>
 <script src="/js/config.js?v=23"></script>
 <script src="/js/g58-api.js?v=22"></script>
-<script src="/js/database.js"></script>
-<script src="/js/app.js?v=44"></script>
-<script src="/js/site-auth.js?v=6"></script>
+<script src="/js/site-auth.js?v=7"></script>
+<script src="/js/home.js?v=1"></script>
 <script>
 (function(){
   var reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;

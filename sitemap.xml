@@ -1,14 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url><loc>https://g58.in/</loc><changefreq>daily</changefreq><priority>1.0</priority></url>
-  <url><loc>https://g58.in/business/</loc><changefreq>daily</changefreq><priority>0.8</priority></url>
-  <url><loc>https://g58.in/business/telangana/hyderabad/</loc><changefreq>daily</changefreq><priority>0.8</priority></url>
   <url><loc>https://g58.in/about/</loc><changefreq>daily</changefreq><priority>0.8</priority></url>
   <url><loc>https://g58.in/contact/</loc><changefreq>daily</changefreq><priority>0.8</priority></url>
   <url><loc>https://g58.in/privacy-policy/</loc><changefreq>daily</changefreq><priority>0.8</priority></url>
   <url><loc>https://g58.in/terms/</loc><changefreq>daily</changefreq><priority>0.8</priority></url>
-  <url><loc>https://g58.in/business/dreamspace-interiors-gachibowli-hyderabad/</loc><changefreq>daily</changefreq><priority>0.8</priority></url>
-  <url><loc>https://g58.in/business/quickfix-plumbing-kukatpally-hyderabad/</loc><changefreq>daily</changefreq><priority>0.8</priority></url>
   <url>
     <loc>https://g58.in/digit58/</loc>
     <changefreq>weekly</changefreq>

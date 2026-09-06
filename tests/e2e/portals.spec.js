@@ -199,12 +199,8 @@ test("team admin reviews bookings, activates campaigns, moderates posts and bloc
   const generatedCampaign = await page.evaluate(() => window.__g58Mock.store.advertisements.find((row) => row.bookingId === "booking-proof"));
   expect(generatedCampaign).toMatchObject({ active: true, status: "Live", slotId: "preparing", imageSize: "1200 × 628 px", buttonLabel: "View Test Offer" });
 
-  await page.locator('[data-view="marketplace"]').click();
-  await expect(page.locator("#marketTable")).toContainText("Customer Test Post");
-  await page.locator('[data-edit-post="C-TEST"]').click();
-  await page.locator('#editPostForm input[name="title"]').fill("Updated Customer Post");
-  await page.locator("#editPostForm").getByRole("button", { name: "Save Changes" }).click();
-  await expect(page.locator("#marketTable")).toContainText("Updated Customer Post");
+  await expect(page.locator('[data-view="marketplace"]')).toHaveCount(0);
+  await expect(page.locator("nav")).not.toContainText("Public Marketplace");
 
   await page.locator('[data-view="accounts"]').click();
   await page.locator('[data-block="profile-1"]').click();

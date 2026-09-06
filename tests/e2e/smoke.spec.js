@@ -2,10 +2,7 @@ import { test, expect } from "@playwright/test";
 import { monitorPageErrors, prepareMockApi } from "./helpers.js";
 
 const routes = [
-  "/", "/about/", "/admin/", "/advertise/", "/business/",
-  "/business/dreamspace-interiors-gachibowli-hyderabad/",
-  "/business/quickfix-plumbing-kukatpally-hyderabad/",
-  "/business/telangana/hyderabad/", "/contact/", "/dashboard/",
+  "/", "/about/", "/admin/", "/advertise/", "/contact/", "/dashboard/",
   "/digit58/", "/digital-menu-guide/", "/digital-menu/", "/pos/",
   "/pricing/", "/privacy-policy/", "/refer/", "/refills-guide/",
   "/reset-password/", "/support/", "/team-admin/", "/templates/",

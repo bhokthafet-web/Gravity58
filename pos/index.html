@@ -1772,22 +1772,6 @@
   window.addEventListener('load',()=>setTimeout(window.G58MountPosRetention,1200));
 </script>
 
-  <script>
-  document.addEventListener("DOMContentLoaded", () => {
-    document.querySelectorAll("[data-open-tab]").forEach(btn => {
-      btn.addEventListener("click", () => {
-        const tab = btn.getAttribute("data-open-tab");
-        location.href = tab === "jobs" ? "/?view=customer" : "/?view=business";
-      });
-    });
-  });
-  
-
-</script>
-
-
-
-
   <script src="/js/server-status.js?v=2"></script>
 </body>
 </html>

@@ -40,13 +40,12 @@ test("generated websites contain responsive navigation, G58 links and no builder
   const builder = await loadBuilder();
   const project = builder.makeProject("clinic");
   project.website.integrations.booking = "https://g58.in/digit58/#book";
-  project.website.integrations.businessCard = "https://g58.in/business/clinic";
   const home = project.website.pages.find((page) => page.home);
   const html = builder.exportHtml(project, home);
   assert.match(html, /assets\/css\/style\.css/);
   assert.match(html, /assets\/js\/site\.js/);
   assert.match(html, /https:\/\/g58\.in\/digit58\/#book/);
-  assert.match(html, /aria-label="G58 Business Card"/);
+  assert.doesNotMatch(html, /G58 Business Card|g58-card/);
   assert.match(html, /class="wa"[^>]*aria-label="WhatsApp"><svg/);
   assert.match(html, /class="ig"[^>]*aria-label="Instagram"><svg/);
   assert.doesNotMatch(html, /builder-core|indexedDB|login|register/i);
