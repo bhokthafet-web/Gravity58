@@ -507,6 +507,24 @@ async function maintenance() {
     await query(`UPDATE media_files SET deleted_at=now() WHERE id=$1`, [file.id]);
   }
   await query(`UPDATE records SET deleted_at=now() WHERE deleted_at IS NULL AND expires_at IS NOT NULL AND expires_at<now()`);
+  await query(`
+    UPDATE records
+    SET deleted_at=now()
+    WHERE deleted_at IS NULL
+      AND kind LIKE 'digital_order_%'
+      AND COALESCE(payload->>'tokenReservation','false') <> 'true'
+      AND (
+        (
+          lower(COALESCE(payload->>'status','')) IN ('completed','rejected','payment rejected')
+          AND (created_at AT TIME ZONE 'Asia/Kolkata')::date < (now() AT TIME ZONE 'Asia/Kolkata')::date
+          AND (updated_at AT TIME ZONE 'Asia/Kolkata')::date < (now() AT TIME ZONE 'Asia/Kolkata')::date
+        )
+        OR (
+          lower(COALESCE(payload->>'status','')) NOT IN ('completed','rejected','payment rejected')
+          AND (created_at AT TIME ZONE 'Asia/Kolkata')::date < ((now() AT TIME ZONE 'Asia/Kolkata')::date - 1)
+        )
+      )
+  `);
   await query(`DELETE FROM sessions WHERE expires_at<now()`);
   await query(`DELETE FROM password_reset_tokens WHERE expires_at<now() OR used_at IS NOT NULL`);
   await query(`DELETE FROM users WHERE is_guest=true AND created_at<now()-interval '7 days'`);

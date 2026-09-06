@@ -93,7 +93,7 @@
   }
 
   function planLabel(plan) {
-    return ({ "6months": "6 Months", "6mo": "6 Months", "1year": "1 Year", "1yr": "1 Year", "3years": "3 Years", "3yr": "3 Years" })[plan] || plan || "Paid Refills plan";
+    return ["1m", "monthly"].includes(plan) ? "Monthly Subscription" : "Refills subscription";
   }
 
   function renderHistory(rows) {

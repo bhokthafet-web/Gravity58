@@ -115,7 +115,7 @@ test("restaurant owner imports CSV, controls availability, orders, QR, reports a
   await assertNoErrors();
 });
 
-test("Premium order history uses three cards, compact rows and shared date filters", async ({ page }) => {
+test("monthly order history uses three cards, compact rows and same-day CSV export", async ({ page }) => {
   await prepareOffline(page, { state: null });
   const assertNoErrors = monitorPageErrors(page);
   await loginDemoOwner(page);
@@ -144,21 +144,10 @@ test("Premium order history uses three cards, compact rows and shared date filte
 
   await page.locator('[data-view="dashboard"]').click();
   await expect(page.locator(".order-list-table tbody tr")).toHaveCount(5);
-  await page.locator("#ownerPeriodValue").fill("2025-04-10");
-  await page.locator("#ownerPeriodValue").press("Tab");
-  await expect(page.locator("#page")).toContainText("historic-order");
-  await expect(page.locator("#page")).not.toContainText("today-1");
-
-  await page.locator("#ownerPeriodMode").selectOption("month");
-  await page.locator("#ownerPeriodValue").fill("2025-04");
-  await page.locator("#ownerPeriodValue").press("Tab");
-  await expect(page.locator("#page")).toContainText("April 2025 overview");
-  await expect(page.locator("#page")).toContainText("historic-order");
-
-  await page.locator("#ownerPeriodMode").selectOption("year");
-  await page.locator("#ownerPeriodValue").fill("2025");
-  await page.locator("#ownerPeriodValue").press("Tab");
-  await expect(page.locator("#page")).toContainText("2025 overview");
+  await expect(page.locator("#ownerPeriodMode")).toBeDisabled();
+  await expect(page.locator("#ownerPeriodMode")).toHaveValue("day");
+  await expect(page.getByRole("button", { name: "Export Today CSV" })).toBeVisible();
+  await expect(page.locator("#page")).not.toContainText("historic-order");
   await assertNoErrors();
 });
 

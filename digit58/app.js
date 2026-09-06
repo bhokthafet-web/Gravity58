@@ -361,7 +361,7 @@ function bindBookingExpertShareButtons(bookings){
 let session=null,view='dashboard';
 let refreshView=()=>renderShell();
 let entitlement=null,myRequest=null,myStoreRequest=null,digit58Pricing={monthly:699};
-const DIGIT58_PLAN_PERIODS=[{id:'6m',label:'6 Months',months:6,discount:0},{id:'1y',label:'1 Year',months:12,discount:5},{id:'3y',label:'3 Years',months:36,discount:10}];
+const DIGIT58_PLAN_PERIODS=[{id:'1m',label:'Monthly',months:1,discount:0}];
 function digit58PlanAmount(monthly,period){return Math.round(Number(monthly)*Number(period.months)*(1-Number(period.discount)/100))}
 function storeSlotsAllowed(){return Math.max(1,Number(entitlement?.storeSlots)||1)}
 let state={activeStoreId:'',stores:[],customers:[],cards:[],orders:[],promotions:[],cardPurchases:[],brandRequests:[]};
@@ -910,7 +910,7 @@ async function loadEntitlement(){
   myRequest=ownerRequests.find(row=>row.type!=='additional-store')||null;
   myStoreRequest=ownerRequests.find(row=>row.type==='additional-store')||null;
   const pricingRow=pricingRows.find(row=>(row.id||row.$id)==='default')||{};
-  digit58Pricing={monthly:Number(pricingRow.monthly)||SUBSCRIPTION_AMOUNT};
+  digit58Pricing={monthly:699};
 }
 function hasActiveEntitlement(){
   if(!entitlement||!entitlement.active||entitlement.paused)return false;
@@ -944,14 +944,14 @@ function renderPlanGate(){
   const planCards=DIGIT58_PLAN_PERIODS.map(period=>{
     const amount=digit58PlanAmount(monthly,period);
     return `<article class="plan-card">
-      <span class="plan-badge">${period.discount?`${period.discount}% OFF`:'REFILLS PLAN'}</span>
-      <h3>${html(period.label)}</h3>
-      <div class="plan-price">${money(amount)}<small> / ${period.label.toLowerCase()}</small></div>
-      <p class="plan-note">Renews automatically every ${period.label.toLowerCase()} — the amount is auto-debited from your chosen payment method via Razorpay. Cancel anytime; the current paid period is non-refundable.</p>
+      <span class="plan-badge">REFILLS MONTHLY</span>
+      <h3>Monthly Subscription</h3>
+      <div class="plan-price">${money(amount)}<small> / month</small></div>
+      <p class="plan-note">₹699 is auto-debited every month through Razorpay after you authorise the mandate. Cancel anytime; the current paid month is non-refundable.</p>
       <button class="btn full" data-subscribe-plan="${period.id}" type="button">Subscribe</button>
     </article>`;
   }).join('');
-  app.innerHTML=`<main class="screen"><section class="auth-card" style="width:min(760px,100%)"><a class="brand" href="../"><svg class="brand-mark" viewBox="0 0 120 120" fill="none" stroke="#7fffd4" stroke-width="8" aria-hidden="true"><circle cx="60" cy="26" r="15"/><circle cx="28" cy="82" r="15"/><circle cx="92" cy="82" r="15"/></svg><div><h2>Choose your Refills plan</h2><p class="tagline">Start free, or subscribe to keep your store live.</p></div></a>${statusNote}<div class="plan-grid">${trialCard}${planCards}</div><div class="actions" style="margin-top:16px"><button class="btn full" id="refreshAccessStatus" type="button">Refresh Access Status</button><button class="btn secondary full" id="gateLogout">Sign out</button></div></section></main>${siteFooter()}`;
+  app.innerHTML=`<main class="screen"><section class="auth-card" style="width:min(760px,100%)"><a class="brand" href="../"><svg class="brand-mark" viewBox="0 0 120 120" fill="none" stroke="#7fffd4" stroke-width="8" aria-hidden="true"><circle cx="60" cy="26" r="15"/><circle cx="28" cy="82" r="15"/><circle cx="92" cy="82" r="15"/></svg><div><h2>Refills Monthly Subscription</h2><p class="tagline">Start free, then keep your store live for ₹699 per month.</p></div></a>${statusNote}<div class="plan-grid">${trialCard}${planCards}</div><div class="actions" style="margin-top:16px"><button class="btn full" id="refreshAccessStatus" type="button">Refresh Access Status</button><button class="btn secondary full" id="gateLogout">Sign out</button></div></section></main>${siteFooter()}`;
   (typeof bindAndroidAppFooter==='function'&&bindAndroidAppFooter());
   $('#startTrialBtn')?.addEventListener('click',startDigit58FreeTrial);
   $('#refreshTrialStatus')?.addEventListener('click',async()=>{const button=$('#refreshTrialStatus');button.disabled=true;try{await loadEntitlement();if(hasActiveEntitlement())return proceedAfterEntitlement();renderPlanGate();toast('Approval is still pending')}catch(error){button.disabled=false;toast(error.message||'Could not refresh approval status')}});
@@ -1125,9 +1125,9 @@ function subscriptionView(){
   const status=entitlement?.paused?'Paused':active?'Active':'Inactive';
   const onFreeTrial=!!entitlement?.freeTrial&&active;
   const plan=DIGIT58_PLAN_PERIODS.find(period=>period.id===entitlement?.plan);
-  const planLabel=onFreeTrial?'Free Trial':plan?plan.label:'Refills Store Access';
+  const planLabel=onFreeTrial?'Free Trial':plan?'Monthly Subscription':'Refills Store Access';
   const price=onFreeTrial?'Free':plan?money(digit58PlanAmount(digit58Pricing.monthly,plan)):money(SUBSCRIPTION_AMOUNT);
-  const priceSuffix=onFreeTrial?' for your first month':plan?` / ${plan.label.toLowerCase()}`:'/month';
+  const priceSuffix=onFreeTrial?' for your first month':' / month';
   const expiry=entitlement?.lifetime?'Lifetime access':entitlement?.expiresAt?new Date(entitlement.expiresAt).toLocaleDateString('en-IN',{dateStyle:'medium'}):'—';
   const cancelScheduled=!!entitlement?.cancelAtPeriodEnd;
   const canCancel=!!entitlement?.razorpaySubscriptionId&&!cancelScheduled&&['created','active'].includes(entitlement?.subscriptionStatus||'');
@@ -1143,18 +1143,18 @@ function subscriptionView(){
       <h2 style="margin:10px 0">${price}<small class="muted" style="font-size:14px">${priceSuffix}</small></h2>
       <div class="chips"><span class="chip ${status==='Active'?'delivered':status==='Paused'?'due':''}">${status}</span>${cancelScheduled?'<span class="chip due">Cancelling</span>':''}</div>
       <p class="muted" style="margin-top:12px">${entitlement?.lifetime?'Your subscription never expires.':`${onFreeTrial?'Free trial ends':'Renews / expires'}: ${expiry}`}</p>
-      ${onFreeTrial?`<p class="muted">After your free trial, keep your store live by subscribing to a plan below.</p>`:''}
+      ${onFreeTrial?`<p class="muted">After your free trial, keep your store live with the ₹699 monthly subscription below.</p>`:''}
       ${autoRenewNote?`<p class="muted">${autoRenewNote}</p>`:''}
       ${status==='Paused'?'<p class="muted">Contact the G58 team to resume access.</p>':''}
       ${canCancel?'<button class="btn secondary full" id="cancelSubBtn" style="margin-top:12px">Cancel Subscription</button>':''}
     </div>
-    ${showPlans?`<div class="section-head"><h2>${onFreeTrial?'Upgrade to a paid plan':'Refills Plans'}</h2></div><div class="plan-grid">${DIGIT58_PLAN_PERIODS.map(period=>{
+    ${showPlans?`<div class="section-head"><h2>${onFreeTrial?'Continue with monthly access':'Refills Monthly Subscription'}</h2></div><div class="plan-grid">${DIGIT58_PLAN_PERIODS.map(period=>{
       const amount=digit58PlanAmount(digit58Pricing.monthly,period);
       return `<article class="plan-card">
-        <span class="plan-badge">${period.discount?`${period.discount}% OFF`:'REFILLS PLAN'}</span>
-        <h3>${html(period.label)}</h3>
-        <div class="plan-price">${money(amount)}<small> / ${period.label.toLowerCase()}</small></div>
-        <p class="plan-note">Renews automatically every ${period.label.toLowerCase()} by auto-debit. Cancel anytime — the current paid period is non-refundable.</p>
+        <span class="plan-badge">REFILLS MONTHLY</span>
+        <h3>Monthly Subscription</h3>
+        <div class="plan-price">${money(amount)}<small> / month</small></div>
+        <p class="plan-note">₹699 is auto-debited every month through Razorpay after mandate authorisation. Cancel anytime — the current paid month is non-refundable.</p>
         <button class="btn full" data-subscribe-plan="${period.id}" type="button">Subscribe</button>
       </article>`;
     }).join('')}</div>`:''}`;
@@ -1194,7 +1194,7 @@ async function loadDigit58ReferralLink(){
     const link=`${location.origin}/digit58/?ref=${code}`;
     card.innerHTML=`<span class="chip">Your referral link</span>
       <div class="refer-link-row"><input readonly value="${html(link)}" id="referLinkInput"><button class="btn small" id="copyReferLinkBtn" type="button">Copy</button></div>
-      <p class="muted" style="margin-top:12px">Share this link with another business owner. When they sign up and complete a paid Refills plan (6 months, 1 year or 3 years), you earn <strong>₹399</strong>. A free trial alone doesn't qualify — the reward is credited once G58 confirms their successful paid subscription.</p>`;
+      <p class="muted" style="margin-top:12px">Share this link with another business owner. When they sign up and complete their first ₹699 monthly Refills subscription payment, you earn <strong>₹399</strong>. A free trial alone doesn't qualify.</p>`;
     $('#copyReferLinkBtn').onclick=async()=>{
       try{await navigator.clipboard.writeText(link);toast('Referral link copied')}
       catch{$('#referLinkInput').select();document.execCommand('copy');toast('Referral link copied')}
@@ -1208,7 +1208,7 @@ async function loadDigit58MyReferrals(){
   try{
     const ownerId=cloudOwnerId();
     const rows=(await api.list('digit58_referrals').catch(()=>[])).filter(row=>row.referrerUserId===ownerId).sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
-    wrap.innerHTML=`<table><thead><tr><th>Referred Store Owner</th><th>Plan</th><th>Status</th><th>Date</th></tr></thead><tbody>${rows.map(row=>`<tr><td>${html(row.referredEmail||'Store owner')}</td><td>${html(DIGIT58_PLAN_PERIODS.find(period=>period.id===row.plan)?.label||row.plan||'—')}</td><td><span class="chip ${row.status==='Paid'?'delivered':'due'}">${html(row.status||'Eligible')}</span></td><td>${row.createdAt?new Date(row.createdAt).toLocaleDateString('en-IN',{dateStyle:'medium'}):''}</td></tr>`).join('')||'<tr><td colspan="4">No referrals yet.</td></tr>'}</tbody></table>`;
+    wrap.innerHTML=`<table><thead><tr><th>Referred Store Owner</th><th>Plan</th><th>Status</th><th>Date</th></tr></thead><tbody>${rows.map(row=>`<tr><td>${html(row.referredEmail||'Store owner')}</td><td>Monthly Subscription</td><td><span class="chip ${row.status==='Paid'?'delivered':'due'}">${html(row.status||'Eligible')}</span></td><td>${row.createdAt?new Date(row.createdAt).toLocaleDateString('en-IN',{dateStyle:'medium'}):''}</td></tr>`).join('')||'<tr><td colspan="4">No referrals yet.</td></tr>'}</tbody></table>`;
   }catch{
     wrap.innerHTML='<table><thead><tr><th>Referred Store Owner</th><th>Plan</th><th>Status</th><th>Date</th></tr></thead><tbody><tr><td colspan="4">Could not load referrals.</td></tr></tbody></table>';
   }

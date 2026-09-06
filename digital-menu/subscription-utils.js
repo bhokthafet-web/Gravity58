@@ -6,13 +6,11 @@
     "Payment Verification", "Pending", "Accepted", "Preparing", "Ready", "Scheduled",
   ]);
   const DEFAULT_PRICING = {
+    monthly: 699,
     standardMonthly: 699,
-    premiumMonthly: 1299,
+    premiumMonthly: 699,
     periods: [
-      { id: "1m", label: "1 Month", months: 1, discount: 0 },
-      { id: "6m", label: "6 Months", months: 6, discount: 10 },
-      { id: "1y", label: "1 Year", months: 12, discount: 20 },
-      { id: "3y", label: "3 Years", months: 36, discount: 30 },
+      { id: "1m", label: "Monthly Subscription", months: 1, discount: 0 },
     ],
     links: {},
   };
@@ -53,14 +51,9 @@
     return `${String(hours).padStart(2, "0")}h ${String(minutes).padStart(2, "0")}m ${String(seconds).padStart(2, "0")}s`;
   }
 
-  function orderRetention(order, { premium = false, at = new Date() } = {}) {
+  function orderRetention(order, { at = new Date() } = {}) {
     const created = order?.createdAt || order?.$createdAt;
     if (!created || Number.isNaN(new Date(created).getTime())) return { keep: true, carry: false };
-    if (premium) {
-      if (ACTIVE_ORDER_STATUSES.has(order?.status)) return { keep: true, retained: true, carry: false };
-      const age = new Date(at).getTime() - new Date(created).getTime();
-      return { keep: age < 365 * 86400000, retained: true, carry: false };
-    }
     const currentDay = indiaDayKey(at);
     const dayDifference = indiaDayNumber(at) - indiaDayNumber(created);
     if (dayDifference <= 0) return { keep: true, carry: false };
@@ -80,11 +73,17 @@
   }
 
   function normalisePricing(value = {}) {
+    const monthly = DEFAULT_PRICING.monthly;
+    const sourceLinks = value.links || {};
+    const paymentLink = value.paymentLink || sourceLinks.paid_1m || sourceLinks.premium_1m || sourceLinks.standard_1m || "";
     return {
       ...DEFAULT_PRICING,
       ...value,
-      periods: Array.isArray(value.periods) && value.periods.length ? value.periods : DEFAULT_PRICING.periods,
-      links: { ...DEFAULT_PRICING.links, ...(value.links || {}) },
+      monthly,
+      standardMonthly: monthly,
+      premiumMonthly: monthly,
+      periods: DEFAULT_PRICING.periods.map((period) => ({ ...period })),
+      links: { paid_1m: paymentLink },
     };
   }
 

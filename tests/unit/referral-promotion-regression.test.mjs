@@ -22,7 +22,7 @@ test("the referral page explains qualification and provides account-aware link c
   assert.match(html, /id="referralHistory"/);
   assert.match(html, /name="color-scheme" content="light only"/);
   assert.match(html, /\/refer\/styles\.css\?v=2/);
-  assert.match(html, /\/refer\/app\.js\?v=1/);
+  assert.match(html, /\/refer\/app\.js\?v=2/);
   assert.match(css, /color-scheme:light only/);
   assert.match(css, /body\.refer-page\{[^}]*background:#f6f3ec!important;[^}]*color:#111820!important/);
 });

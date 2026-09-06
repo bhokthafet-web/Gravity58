@@ -14,14 +14,16 @@ async function expectProtectedDelete(page) {
   await expect(page.getByText(/customer login accounts are not deleted/i)).toBeVisible();
 }
 
-test('Digital Menu dashboard exposes password-protected history backup and deletion', async ({ page }) => {
+test('Digital Menu dashboard exposes same-day CSV export without long-term backup controls', async ({ page }) => {
   const assertNoErrors = monitorPageErrors(page);
   await prepareMockApi(page, { initialUser: owner, seed: {
     [`digital_menu_${owner.$id}`]: [{ id: 'restaurant-retention', ownerId: owner.$id, restaurant: { id: 'restaurant-retention', name: 'Retention Kitchen', city: 'Hyderabad', type: 'Restaurant', open: true, accepting: true }, categories: [], items: [] }],
     [`digital_order_${owner.$id}`]: [{ id: 'old-complete', ownerId: owner.$id, restaurantId: 'restaurant-retention', status: 'Completed', items: [], total: 100, createdAt: oldDate, updatedAt: oldDate }],
   } });
   await page.goto('/digital-menu/');
-  await expectProtectedDelete(page);
+  await expect(page.getByRole('button', { name: 'Export Today CSV' }).first()).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Backup CSV & Delete History Permanently' })).toHaveCount(0);
+  await expect(page.locator('#page')).toContainText('order data resets every 24 hours');
   await assertNoErrors();
 });
 
@@ -52,7 +54,7 @@ test('POS dashboard exposes password-protected local and cloud bill deletion', a
   await page.addInitScript(({ date }) => localStorage.setItem('g58Bills', JSON.stringify([{ billNumber: 'G58-OLD', date, total: 100, items: [] }])), { date: oldDate });
   await prepareMockApi(page, { initialUser: owner, state: null });
   await page.goto('/pos/');
-  if (await page.locator('#posGuideModal.show').count()) await page.locator('#startUsingPosBtn').click();
+  if (await page.locator('#posGuideModal.show').count()) await page.locator('#startUsingPosBtn').click({ force: true });
   await page.evaluate(({ date })=>{localStorage.setItem('g58Bills',JSON.stringify([{billNumber:'G58-OLD',date,total:100,items:[]}])) ;window.G58MountPosRetention?.()}, { date: oldDate });
   await expectProtectedDelete(page);
   await assertNoErrors();

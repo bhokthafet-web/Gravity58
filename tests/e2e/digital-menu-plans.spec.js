@@ -23,7 +23,7 @@ function menuRecord(ownerId = "owner-1") {
   };
 }
 
-test("free restaurant account receives orders and pricing shows every discounted period", async ({ page }) => {
+test("free restaurant account receives orders and pricing shows one ₹699 monthly plan", async ({ page }) => {
   const assertNoErrors = monitorPageErrors(page);
   await prepareProductionMock(page, { initialUser: { $id: "owner-1", email: "free@restaurant.test", name: "Free Owner" }, seed: { "digital_menu_owner-1": [menuRecord()] } });
   await page.goto("/digital-menu/");
@@ -34,15 +34,15 @@ test("free restaurant account receives orders and pricing shows every discounted
   await page.locator('[data-view="pricing"]').click();
   await expect(page.getByRole("heading", { name: "Digital Menu Pricing" })).toBeVisible();
   await expect(page.locator("#page")).toContainText("₹699");
-  await expect(page.locator("#page")).toContainText("₹3,775");
-  await expect(page.locator("#page")).toContainText("₹6,710");
-  await expect(page.locator("#page")).toContainText("₹17,615");
+  await expect(page.locator("#page")).toContainText("Up to 5 restaurants");
+  await expect(page.locator("#page")).toContainText("Orders reset every 24 hours");
+  await expect(page.locator("#page")).not.toContainText("₹3,775");
   await page.locator("#addRestaurant").click();
   await expect(page.getByRole("heading", { name: "Digital Menu Pricing" })).toBeVisible();
   await assertNoErrors();
 });
 
-test("Premium owner gets readable history filters and a restaurant-scoped POS link", async ({ page }) => {
+test("monthly owner gets today-only reporting and a restaurant-scoped POS link", async ({ page }) => {
   const assertNoErrors = monitorPageErrors(page);
   await prepareProductionMock(page, {
     initialUser: { $id: "owner-1", email: "premium@restaurant.test", name: "Premium Owner" },
@@ -52,7 +52,7 @@ test("Premium owner gets readable history filters and a restaurant-scoped POS li
     },
   });
   await page.goto("/digital-menu/");
-  const posLink = page.getByRole("link", { name: /Premium POS/ }).first();
+  const posLink = page.getByRole("link", { name: /Restaurant POS/ }).first();
   await expect(posLink).toBeVisible();
   await expect(posLink).toHaveAttribute("href", /\/pos\/\?source=digital-menu&restaurant=restaurant-one&owner=owner-1/);
   await expect(page.locator(".premium-pos-sync-card")).toContainText("Plan Test Kitchen");
@@ -60,11 +60,12 @@ test("Premium owner gets readable history filters and a restaurant-scoped POS li
   await expect(mode).toBeVisible();
   await expect(mode).toHaveCSS("background-color", "rgb(255, 250, 243)");
   await expect(mode).toHaveCSS("color", "rgb(45, 22, 10)");
-  await mode.selectOption("month");
-  await expect(page.locator('#ownerPeriodValue[type="month"]')).toBeVisible();
+  await expect(mode).toBeDisabled();
+  await expect(mode).toHaveValue("day");
+  await expect(page.getByText(/Orders reset daily/).first()).toBeVisible();
   await page.locator('[data-view="orders"]').click();
   await expect(page.getByRole("heading", { name: /Live Orders/ })).toBeVisible();
-  await expect(page.getByRole("link", { name: /Premium POS/ })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: /Restaurant POS/ })).toHaveCount(0);
   await assertNoErrors();
 });
 
@@ -83,7 +84,7 @@ test("creating the first free restaurant submits its onboarding request", async 
   await assertNoErrors();
 });
 
-test("standard orders reset at India midnight and carry a processing order for one day", async ({ page }) => {
+test("monthly orders reset at India midnight and carry a processing order for one day", async ({ page }) => {
   const assertNoErrors = monitorPageErrors(page);
   const indiaStart = new Date(); indiaStart.setHours(0, 0, 0, 0);
   const createdAt = new Date(indiaStart.getTime() - 2 * 3600000).toISOString();
@@ -112,32 +113,32 @@ test("standard orders reset at India midnight and carry a processing order for o
   await assertNoErrors();
 });
 
-test("G58 admin edits Digital Menu pricing and grants lifetime Premium access", async ({ page }) => {
+test("G58 admin configures monthly payment and grants lifetime Digital Menu access", async ({ page }) => {
   const assertNoErrors = monitorPageErrors(page);
   await prepareProductionMock(page, {
     initialUser: { $id: "admin-1", email: "admin@g58.test", name: "Admin" }, admin: true,
     seed: {
       digital_menu_requests: [
-        { id: "request-1", ownerId: "owner-1", ownerEmail: "owner@restaurant.test", ownerName: "Restaurant Owner", plan: "premium", periodId: "1m", periodLabel: "1 Month", months: 1, amount: 1299, status: "Requested", createdAt: new Date().toISOString() },
+        { id: "request-1", ownerId: "owner-1", ownerEmail: "owner@restaurant.test", ownerName: "Restaurant Owner", plan: "paid", periodId: "1m", periodLabel: "Monthly Subscription", months: 1, amount: 699, status: "Requested", createdAt: new Date().toISOString() },
         { id: "request-free", ownerId: "free-owner", ownerEmail: "free@restaurant.test", ownerName: "Free Owner", restaurantId: "free-restaurant", restaurantName: "Free Kitchen", plan: "free", periodId: "free", periodLabel: "Free Account", amount: 0, status: "Requested", createdAt: new Date().toISOString() },
       ],
     },
   });
   await page.goto("/team-admin/");
   await page.locator('[data-view="digitalMenus"]').click();
-  await expect(page.getByRole("heading", { name: "Digital Menu Plans" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Digital Menu Subscriptions" })).toBeVisible();
   await page.locator("#editMenuPricing").click();
-  await page.locator('#menuPricingForm input[name="standardMonthly"]').fill("749");
-  await page.locator('#menuPricingForm input[name="premium_1m"]').fill("https://pay.example.com/premium-month");
+  await expect(page.locator("#menuPricingForm")).toContainText("₹699 per month");
+  await page.locator('#menuPricingForm input[name="paymentLink"]').fill("https://pay.example.com/digital-menu-monthly");
   await page.getByRole("button", { name: "Publish Pricing" }).click();
   await page.locator('[data-activate-menu="request-1"]').click();
   await page.locator('#activateMenuPlan input[name="lifetime"]').check();
   await page.getByRole("button", { name: "Activate Account" }).click();
   await page.locator('[data-approve-free="request-free"]').click();
   const result = await page.evaluate(() => ({ pricing: window.__g58Mock.store.digital_menu_pricing[0], entitlement: window.__g58Mock.store.digital_menu_entitlements[0], requests: window.__g58Mock.store.digital_menu_requests }));
-  expect(result.pricing.standardMonthly).toBe(749);
-  expect(result.pricing.links.premium_1m).toBe("https://pay.example.com/premium-month");
-  expect(result.entitlement).toMatchObject({ ownerId: "owner-1", plan: "premium", lifetime: true, expiresAt: "" });
+  expect(result.pricing.monthly).toBe(699);
+  expect(result.pricing.links.paid_1m).toBe("https://pay.example.com/digital-menu-monthly");
+  expect(result.entitlement).toMatchObject({ ownerId: "owner-1", plan: "paid", maxRestaurants: 5, lifetime: true, expiresAt: "" });
   expect(result.requests.find((row) => row.id === "request-1").status).toBe("Activated");
   expect(result.requests.find((row) => row.id === "request-free").status).toBe("Activated");
   await assertNoErrors();
@@ -370,7 +371,7 @@ test("restaurant owner sees a customer's paid scheduled order in the Schedule bo
     },
   });
   await page.goto("/digital-menu/");
-  await expect(page.locator(".plan-badge")).toContainText("Digital Menu Premium");
+  await expect(page.locator(".plan-badge")).toContainText("Digital Menu Monthly");
   await page.locator('[data-view="schedule"]').click();
   await expect(page.getByRole("heading", { name: "Scheduled Orders" })).toBeVisible();
   await expect(page.locator(".schedule-card")).toContainText("Scheduled Customer");

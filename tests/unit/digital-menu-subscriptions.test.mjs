@@ -24,16 +24,18 @@ test("free orders reset at India midnight while processing orders carry for one 
   assert.equal(nextDay.keep, false);
 });
 
-test("Premium closed-order history is retained for one year and pricing uses the 10 percent period ladder", () => {
-  const oldOrder = plans.orderRetention({ createdAt: "2020-01-01T00:00:00.000Z", status: "Completed" }, { premium: true, at: new Date("2026-08-12T06:30:00.000Z") });
-  const recentOrder = plans.orderRetention({ createdAt: "2026-01-01T00:00:00.000Z", status: "Completed" }, { premium: true, at: new Date("2026-08-12T06:30:00.000Z") });
-  const activeOrder = plans.orderRetention({ createdAt: "2020-01-01T00:00:00.000Z", status: "Preparing" }, { premium: true, at: new Date("2026-08-12T06:30:00.000Z") });
-  const pricing = plans.normalisePricing();
-  assert.equal(oldOrder.keep, false);
-  assert.equal(recentOrder.keep, true);
-  assert.equal(activeOrder.keep, true);
-  assert.equal(JSON.stringify(pricing.periods.map((period) => plans.priceFor(699, period))), JSON.stringify([699, 3775, 6710, 17615]));
-  assert.equal(JSON.stringify(pricing.periods.map((period) => plans.priceFor(1299, period))), JSON.stringify([1299, 7015, 12470, 32735]));
+test("all Digital Menu accounts use the daily reset and one ₹699 monthly plan", () => {
+  const at = new Date("2026-08-12T06:30:00.000Z");
+  const completedYesterday = plans.orderRetention({ createdAt: "2026-08-11T10:00:00.000Z", status: "Completed" }, { premium: true, at });
+  const activeYesterday = plans.orderRetention({ createdAt: "2026-08-11T10:00:00.000Z", status: "Preparing" }, { premium: true, at });
+  const pricing = plans.normalisePricing({ standardMonthly: 999, premiumMonthly: 1299, links: { premium_1m: "https://pay.example.com/monthly" } });
+  assert.equal(completedYesterday.keep, false);
+  assert.equal(activeYesterday.keep, true);
+  assert.equal(activeYesterday.carry, true);
+  assert.equal(pricing.monthly, 699);
+  assert.equal(pricing.periods.length, 1);
+  assert.equal(plans.priceFor(pricing.monthly, pricing.periods[0]), 699);
+  assert.equal(pricing.links.paid_1m, "https://pay.example.com/monthly");
 });
 
 test("free reset countdown targets the next India midnight", () => {

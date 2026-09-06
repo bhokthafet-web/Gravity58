@@ -42,8 +42,8 @@
   let digitalMenuUnsubscribe = null;
   let activePremiumTab = "account";
 
-  const entitlementPremium = () => Boolean(linkedMenuEntitlement?.ownerId === session?.id && linkedMenuEntitlement?.plan === "premium" && (linkedMenuEntitlement.lifetime || !linkedMenuEntitlement.expiresAt || new Date(linkedMenuEntitlement.expiresAt) > new Date()));
-  const digit58Premium = () => Boolean(linkedDigit58Entitlement?.ownerId === session?.id && linkedDigit58Entitlement?.active && !linkedDigit58Entitlement?.paused && (linkedDigit58Entitlement.lifetime || !linkedDigit58Entitlement.expiresAt || new Date(linkedDigit58Entitlement.expiresAt) > new Date()));
+  const entitlementPremium = () => Boolean(linkedMenuEntitlement && session?.id && linkedMenuEntitlement.ownerId === session.id && linkedMenuEntitlement.plan !== "free" && (linkedMenuEntitlement.lifetime || !linkedMenuEntitlement.expiresAt || new Date(linkedMenuEntitlement.expiresAt) > new Date()));
+  const digit58Premium = () => Boolean(linkedDigit58Entitlement && session?.id && linkedDigit58Entitlement.ownerId === session.id && linkedDigit58Entitlement.active && !linkedDigit58Entitlement.paused && (linkedDigit58Entitlement.lifetime || !linkedDigit58Entitlement.expiresAt || new Date(linkedDigit58Entitlement.expiresAt) > new Date()));
   const isPremium = () => entitlementPremium() || digit58Premium() || Boolean(premium?.active && (!premium.expiresAt || new Date(premium.expiresAt) > new Date()));
   const inventoryEnabled = () => localStorage.getItem(KEYS.inventory) === "1";
 
@@ -120,7 +120,7 @@
   async function loadDigitalRestaurant() {
     linkedMenuRecord = null; linkedRestaurant = null; linkedDigitalOrders = [];
     if (!restaurantIntegrationRequested) return;
-    if (!entitlementPremium()) throw new Error("Premium Digital Menu access is required for restaurant-synced POS.");
+    if (!entitlementPremium()) throw new Error("An active Digital Menu subscription is required for restaurant-synced POS.");
     const records = await Gravity58Ads.list(digitalMenuKind());
     const record = records.find((row) => (row.id || row.$id || row.restaurant?.id) === linkedRestaurantId && row.ownerId === session.id);
     if (!record?.restaurant) throw new Error("This restaurant could not be found in your Digital Menu account.");
@@ -330,12 +330,12 @@
 
     if (tab === "license") {
       const linkedPremium = entitlementPremium() || digit58Premium();
-      const linkedPremiumSource = entitlementPremium() ? "Digital Menu Premium" : digit58Premium() ? "your Refills store subscription" : "";
-      box(`<div class="premium-grid"><article class="premium-box"><h3>${linkedPremium ? "Extra features unlocked" : "Unlock more features"}</h3><p>${linkedPremium ? `These are included with ${linkedPremiumSource}.` : "Menu import, inventory and the sales dashboard unlock automatically with a Refills store subscription or Digital Menu Premium account — there is no separate POS purchase."}</p>${linkedPremium ? "" : '<div class="pos-license-links" style="display:flex;gap:10px;flex-wrap:wrap;margin-top:14px"><a class="btn btn-outline" href="/digit58/">Explore Refills</a><a class="btn btn-outline" href="/digital-menu/">Explore Digital Menu</a></div>'}<p id="premiumMessage" style="margin-top:12px">${premiumExpiryLabel()}</p></article><article class="premium-box"><h3>Included</h3><p>Reusable menu, CSV import, item removal, availability control, optional inventory, item performance and an account-synced restaurant dashboard.</p></article></div>`);
+      const linkedPremiumSource = entitlementPremium() ? "your Digital Menu subscription" : digit58Premium() ? "your Refills store subscription" : "";
+      box(`<div class="premium-grid"><article class="premium-box"><h3>${linkedPremium ? "Extra features unlocked" : "Unlock more features"}</h3><p>${linkedPremium ? `These are included with ${linkedPremiumSource}.` : "Menu import, inventory and the sales dashboard unlock automatically with an active Refills or Digital Menu subscription — there is no separate POS purchase."}</p>${linkedPremium ? "" : '<div class="pos-license-links" style="display:flex;gap:10px;flex-wrap:wrap;margin-top:14px"><a class="btn btn-outline" href="/digit58/">Explore Refills</a><a class="btn btn-outline" href="/digital-menu/">Explore Digital Menu</a></div>'}<p id="premiumMessage" style="margin-top:12px">${premiumExpiryLabel()}</p></article><article class="premium-box"><h3>Included</h3><p>Reusable menu, CSV import, item removal, availability control, optional inventory, item performance and an account-synced restaurant dashboard.</p></article></div>`);
     }
 
     if (tab === "menu") {
-      if (!isPremium()) return box('<div class="locked-note">Menu import and optional inventory unlock with a Refills store subscription or Digital Menu Premium account.</div>');
+      if (!isPremium()) return box('<div class="locked-note">Menu import and optional inventory unlock with an active Refills or Digital Menu subscription.</div>');
       box(`<div class="premium-grid"><article class="premium-box"><h3>Import menu CSV</h3>
         <p>${linkedRestaurant ? `Items and availability sync in both directions with <b>${esc(linkedRestaurant.name)}</b>. ` : ""}CSV is the only menu-item input. Required columns: <b>name, category, price</b>. Optional columns: <b>gst, available, stock</b>.</p>
         <div class="field" style="margin-top:14px"><label>Import method</label><select id="posMenuImportMode"><option value="merge">Add or update existing menu</option><option value="replace">Overwrite entire menu</option></select></div>
@@ -350,12 +350,12 @@
     }
 
     if (tab === "dashboard") {
-      if (!isPremium()) return box('<div class="locked-note">The sales dashboard unlocks with a Refills store subscription or Digital Menu Premium account. Billing stays available either way.</div>');
+      if (!isPremium()) return box('<div class="locked-note">The sales dashboard unlocks with an active Refills or Digital Menu subscription. Billing stays available either way.</div>');
       renderDashboardPanel();
     }
 
     if (tab === "orders") {
-      if (!linkedRestaurant || !isPremium()) return box('<div class="locked-note">Open POS from a Digital Menu Premium restaurant to view synced orders.</div>');
+      if (!linkedRestaurant || !isPremium()) return box('<div class="locked-note">Open POS from a subscribed Digital Menu restaurant to view synced orders.</div>');
       renderDigitalOrdersPanel();
     }
   }

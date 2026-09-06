@@ -62,12 +62,12 @@ const digit58ServiceKind = ownerId => safeKindId(DIGIT58_SERVICE_KIND_PREFIX, ow
 const digit58ExpertKind = ownerId => safeKindId(DIGIT58_EXPERT_KIND_PREFIX, ownerId, 38);
 const digit58BookingKind = ownerId => safeKindId(DIGIT58_BOOKING_KIND_PREFIX, ownerId, 38);
 const digit58EntitlementRowId = ownerId => `d58-${String(ownerId).slice(0, 30)}`;
-const DIGIT58_PLAN_MONTHS = { '6m': 6, '1y': 12, '3y': 36 };
-const DIGIT58_PLAN_DISCOUNT = { '6m': 0, '1y': 5, '3y': 10 };
-const DIGIT58_PLAN_LABELS = { '6m': '6 Months', '1y': '1 Year', '3y': '3 Years' };
-// Razorpay subscriptions require a finite total_count; these approximate
-// "renews until cancelled" with a very long cycle horizon (10–20 renewals).
-const DIGIT58_PLAN_TOTAL_COUNT = { '6m': 20, '1y': 10, '3y': 10 };
+const DIGIT58_PLAN_MONTHS = { '1m': 1 };
+const DIGIT58_PLAN_DISCOUNT = { '1m': 0 };
+const DIGIT58_PLAN_LABELS = { '1m': 'Monthly Subscription' };
+// Razorpay subscriptions require a finite total_count. This keeps monthly
+// billing available for 30 years; the customer can cancel at any time.
+const DIGIT58_PLAN_TOTAL_COUNT = { '1m': 360 };
 async function isDigit58Admin(call, userId) {
   try {
     const query = encodeURIComponent(JSON.stringify({ method: 'equal', attribute: 'userId', values: [userId] }));
@@ -823,7 +823,7 @@ function digit58PlanAmount(monthly, periodId) {
 async function digit58PricingDoc(call) {
   const row = await call(`/tablesdb/${DATABASE_ID}/tables/${TABLE_ID}/rows/default`).catch(() => null);
   const pricing = row && row.kind === 'digit58_pricing' ? cleanRow(row) : {};
-  return { rowExists: !!row, monthly: Math.max(1, finite(pricing.monthly, 699)), razorpayPlanIds: pricing.razorpayPlanIds || {}, raw: pricing };
+  return { rowExists: !!row, monthly: 699, razorpayPlanIds: pricing.razorpayPlanIds || {}, raw: pricing };
 }
 
 async function ensureDigit58RazorpayPlan(call, periodId, amount) {
@@ -833,8 +833,8 @@ async function ensureDigit58RazorpayPlan(call, periodId, amount) {
   const created = await razorpayApi('/plans', {
     method: 'POST',
     body: JSON.stringify({
-      period: periodId === '6m' ? 'monthly' : 'yearly',
-      interval: periodId === '6m' ? 6 : periodId === '1y' ? 1 : 3,
+      period: 'monthly',
+      interval: 1,
       item: { name: `Refills Store Access — ${DIGIT58_PLAN_LABELS[periodId]}`, amount: amount * 100, currency: 'INR' },
     }),
   });

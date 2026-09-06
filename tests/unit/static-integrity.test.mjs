@@ -140,12 +140,41 @@ test("Refills subscription pricing uses the ₹699 monthly base everywhere", () 
   const backendActions = readFileSync(join(root, "g58-core/src/actions.js"), "utf8");
   assert.match(refillsApp, /SUBSCRIPTION_AMOUNT=699/);
   assert.match(refillsApp, /digit58Pricing=\{monthly:699\}/);
-  assert.match(adminApp, /monthly:Number\(row\.monthly\)\|\|699/);
-  assert.match(backendActions, /finite\(pricing\.monthly, 699\)/);
+  assert.match(adminApp, /function digit58PricingConfig\(\).*monthly:699/);
+  assert.match(backendActions, /return \{ rowExists: !!row, monthly: 699/);
+  assert.match(refillsApp, /DIGIT58_PLAN_PERIODS=\[\{id:'1m',label:'Monthly',months:1,discount:0\}\]/);
+  assert.match(adminApp, /periods:\[\{id:'1m',label:'Monthly Subscription',months:1,discount:0\}\]/);
+  assert.match(backendActions, /DIGIT58_PLAN_MONTHS = \{ '1m': 1 \}/);
+  assert.match(backendActions, /period: 'monthly'/);
+  assert.match(backendActions, /interval: 1/);
   for (const relative of ["pricing/index.html", "refills-guide/index.html"]) {
     const source = readFileSync(join(root, relative), "utf8");
-    for (const amount of ["₹4,194", "₹7,969", "₹22,648"]) assert.match(source, new RegExp(amount));
-    for (const oldAmount of ["₹2,394", "₹4,549", "₹12,928"]) assert.doesNotMatch(source, new RegExp(oldAmount));
+    assert.match(source, /₹699/);
+    for (const oldAmount of ["₹4,194", "₹7,969", "₹22,648", "₹2,394", "₹4,549", "₹12,928"]) assert.doesNotMatch(source, new RegExp(oldAmount));
+    for (const oldPeriod of [">6 Months<", ">1 Year<", ">3 Years<"]) assert.doesNotMatch(source, new RegExp(oldPeriod));
+  }
+});
+
+test("Digital Menu uses one fixed ₹699 monthly plan, five restaurants and daily reset", () => {
+  const menuApp = readFileSync(join(root, "digital-menu/app-v11.js"), "utf8");
+  const planUtils = readFileSync(join(root, "digital-menu/subscription-utils.js"), "utf8");
+  const adminApp = readFileSync(join(root, "team-admin/app.js"), "utf8");
+  const server = readFileSync(join(root, "g58-core/src/server.js"), "utf8");
+  const menuHtml = readFileSync(join(root, "digital-menu/index.html"), "utf8");
+  assert.match(planUtils, /monthly: 699/);
+  assert.match(planUtils, /const monthly = DEFAULT_PRICING\.monthly/);
+  assert.match(planUtils, /periods: \[\s*\{ id: "1m"/);
+  assert.match(menuApp, /plan:'paid'.*maxRestaurants:5.*permanentOrders:false/);
+  assert.match(menuApp, /Export Today CSV/);
+  assert.match(adminApp, /payload=\{monthly,paymentLink,standardMonthly:monthly,premiumMonthly:monthly/);
+  assert.match(server, /kind LIKE 'digital_order_%'/);
+  assert.doesNotMatch(menuHtml, /data-retention\.js/);
+  for (const relative of ["pricing/index.html", "digital-menu-guide/index.html"]) {
+    const source = readFileSync(join(root, relative), "utf8");
+    assert.match(source, /₹699/);
+    assert.match(source, /Up to 5 restaurants/i);
+    assert.match(source, /24-hour reset/i);
+    for (const oldAmount of ["₹3,775", "₹6,710", "₹17,615", "₹7,015", "₹12,470", "₹32,735"]) assert.doesNotMatch(source, new RegExp(oldAmount));
   }
 });
 
