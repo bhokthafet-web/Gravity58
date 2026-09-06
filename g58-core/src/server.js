@@ -25,6 +25,7 @@ const listeners = new Set();
 await app.register(cookie);
 await app.register(cors, {
   credentials: true,
+  methods: ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   origin(origin, callback) {
     if (isAllowedOrigin(origin, config.allowedOrigins)) return callback(null, true);
     callback(new Error("Origin is not allowed"), false);
@@ -78,7 +79,7 @@ app.get("/", async (_request, reply) => reply.redirect("/console/"));
 app.get("/health", healthHandler);
 app.get("/api/v1/health", healthHandler);
 
-app.post("/api/v1/auth/register", { config: { rateLimit: { max: 10, timeWindow: "1 hour" } } }, async (request, reply) => {
+app.post("/api/v1/auth/register", { config: { rateLimit: { max: 100, timeWindow: "1 hour" } } }, async (request, reply) => {
   const input = z.object({
     email: z.string().email().transform((value) => value.trim().toLowerCase()),
     password: z.string().min(8).max(128),
@@ -112,7 +113,7 @@ app.post("/api/v1/auth/guest", { config: { rateLimit: { max: 30, timeWindow: "1 
   reply.code(201).send({ user: publicUser(result.rows[0]) });
 });
 
-app.post("/api/v1/auth/login", { config: { rateLimit: { max: 12, timeWindow: "15 minutes" } } }, async (request, reply) => {
+app.post("/api/v1/auth/login", { config: { rateLimit: { max: 60, timeWindow: "15 minutes" } } }, async (request, reply) => {
   const input = z.object({ email: z.string().email(), password: z.string().min(1).max(128) }).parse(request.body);
   const result = await query(`SELECT * FROM users WHERE email=$1 AND deleted_at IS NULL`, [input.email.trim().toLowerCase()]);
   const user = result.rows[0];
