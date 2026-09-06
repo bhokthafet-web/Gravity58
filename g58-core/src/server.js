@@ -9,6 +9,7 @@ import multipart from "@fastify/multipart";
 import rateLimit from "@fastify/rate-limit";
 import fastifyStatic from "@fastify/static";
 import { z } from "zod";
+import { mediaResponseHeaders } from "./media.js";
 import { config } from "./config.js";
 import { closeDatabase, query, ready, transaction } from "./db.js";
 import { isAdmin, isPublicKind, isStaff, visibilityForKind } from "./access.js";
@@ -286,7 +287,7 @@ app.get("/api/v1/media/:id", async (request, reply) => {
   const filename = path.join(config.mediaRoot, file.storage_name);
   const data = await fs.readFile(filename).catch(() => null);
   if (!data) return reply.code(404).send({ error: "File not found" });
-  reply.type(file.mime_type).header("Cache-Control", file.is_public ? "public, max-age=86400" : "private, no-store").send(data);
+  reply.type(file.mime_type).headers(mediaResponseHeaders(file.is_public)).send(data);
 });
 
 app.delete("/api/v1/media/:id", async (request, reply) => {
