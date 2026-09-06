@@ -3,25 +3,53 @@
   window.openG58ContactModal = () => document.getElementById("g58ContactModal")?.classList.add("open");
   window.closeG58ContactModal = () => document.getElementById("g58ContactModal")?.classList.remove("open");
 
+  window.toggleMobileNav = () => {
+    const panel = document.getElementById("mobileNavPanel");
+    const overlay = document.getElementById("mobileNavOverlay");
+    const toggle = document.getElementById("mobileNavToggle");
+    const open = panel?.classList.toggle("open") || false;
+    overlay?.classList.toggle("open", open);
+    toggle?.classList.toggle("active", open);
+    toggle?.setAttribute("aria-expanded", String(open));
+  };
+
+  window.closeMobileNav = () => {
+    document.getElementById("mobileNavPanel")?.classList.remove("open");
+    document.getElementById("mobileNavOverlay")?.classList.remove("open");
+    document.getElementById("mobileNavToggle")?.classList.remove("active");
+    document.getElementById("mobileNavToggle")?.setAttribute("aria-expanded", "false");
+  };
+
   document.addEventListener("DOMContentLoaded", () => {
-    [
-      "contentArea",
-      "reqDetailOverlay",
-      "reqDetailPanel",
-      "floatingBusinessWrap",
-      "businessEditSuccessModal",
-      "stateSelectionModal",
-      "browseGuideModal",
-      "createModal",
-      "publishSuccessModal",
-      "bidModal",
-      "bidSuccessModal",
-      "businessManageModal",
-      "myPostsModal",
-      "businessRatingModal",
-      "businessQrModal",
-      "cardUnlockModal",
-    ].forEach((id) => document.getElementById(id)?.remove());
+    const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    const revealTargets = document.querySelectorAll(".reveal");
+    if (reduceMotion || !("IntersectionObserver" in window)) {
+      revealTargets.forEach((element) => element.classList.add("in-view"));
+    } else {
+      const observer = new IntersectionObserver((entries) => {
+        entries.forEach((entry) => {
+          if (!entry.isIntersecting) return;
+          entry.target.classList.add("in-view");
+          observer.unobserve(entry.target);
+        });
+      }, { threshold: 0.15 });
+      revealTargets.forEach((element) => observer.observe(element));
+    }
+
+    document.querySelectorAll(".nav-mega-trigger").forEach((trigger) => {
+      trigger.addEventListener("click", (event) => {
+        event.stopPropagation();
+        const wrap = trigger.closest(".nav-mega-wrap");
+        const open = wrap?.classList.toggle("touch-open") || false;
+        trigger.setAttribute("aria-expanded", String(open));
+      });
+    });
+    document.addEventListener("click", () => {
+      document.querySelectorAll(".nav-mega-wrap.touch-open").forEach((wrap) => {
+        wrap.classList.remove("touch-open");
+        wrap.querySelector(".nav-mega-trigger")?.setAttribute("aria-expanded", "false");
+      });
+    });
 
     document.getElementById("g58ContactCancel")?.addEventListener("click", window.closeG58ContactModal);
     document.getElementById("g58ContactForm")?.addEventListener("submit", async (event) => {

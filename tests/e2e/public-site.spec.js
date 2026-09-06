@@ -9,7 +9,7 @@ test("homepage exposes business tools without public posting controls", async ({
   await expect(page.locator("#myPostsButton")).toHaveCount(0);
   await expect(page.getByRole("button", { name: /Post Requirement/i })).toHaveCount(0);
   await expect(page.getByRole("button", { name: /Create Business Card/i })).toHaveCount(0);
-  await expect(page.locator("#contentArea")).toBeHidden();
+  await expect(page.locator("#contentArea")).toHaveCount(0);
   await expect(page.getByRole("link", { name: /Explore Refills/i }).first()).toBeVisible();
   await expect(page.getByRole("link", { name: /Explore Digital Menu/i }).first()).toBeVisible();
   await expect(page.locator("script[src*='/js/app.js']")).toHaveCount(0);

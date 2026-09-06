@@ -13,8 +13,7 @@ test("public posting marketplace is retired from production entry points", async
     read("templates/builder-core.js"),
   ]);
 
-  assert.doesNotMatch(home, /id="myPostsButton"|src="\/js\/app\.js|src="\/js\/database\.js/);
-  assert.match(home, /id="contentArea"[^>]*hidden[^>]*display:none!important/);
+  assert.doesNotMatch(home, /id="myPostsButton"|id="contentArea"|Post Requirement|Create Business Card|src="\/js\/app\.js|src="\/js\/database\.js/);
   assert.doesNotMatch(admin, /data-view="marketplace"|api\.list\('posts'\)|Public Marketplace/);
   assert.doesNotMatch(sitemap, /<loc>https:\/\/g58\.in\/business\//);
   assert.doesNotMatch(builder, /businessCard|g58-card|G58 Business Card/);
