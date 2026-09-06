@@ -972,6 +972,17 @@ async function requestAdditionalStore(){
 }
 function renderConfigError(){app.innerHTML=`<main class="screen"><section class="auth-card"><a class="brand" href="../"><svg class="brand-mark" viewBox="0 0 120 120" fill="none" stroke="#7fffd4" stroke-width="8" aria-hidden="true"><circle cx="60" cy="26" r="15"/><circle cx="28" cy="82" r="15"/><circle cx="92" cy="82" r="15"/></svg><div><h2>Refills</h2><p class="tagline">Take any store online</p></div></a><p>Refills is temporarily unavailable. Please try again shortly.</p></section></main>${siteFooter()}`;(typeof bindAndroidAppFooter==='function'&&bindAndroidAppFooter())}
 
+async function requestAuthPasswordReset(form,button){
+  const email=String(new FormData(form).get('email')||'').trim();
+  if(!/^\S+@\S+\.\S+$/.test(email))return toast('Enter your email address first');
+  button.disabled=true;
+  try{
+    await api.forgotPassword(email);
+    toast('Password reset instructions were sent to your email');
+  }catch(error){toast(error.message||'Could not send password reset instructions')}
+  finally{button.disabled=false}
+}
+
 function renderOwnerAuth(){
   app.innerHTML=`<main class="screen"><section class="auth-card">
     <a class="brand" href="../"><svg class="brand-mark" viewBox="0 0 120 120" fill="none" stroke="#7fffd4" stroke-width="8" aria-hidden="true"><circle cx="60" cy="26" r="15"/><circle cx="28" cy="82" r="15"/><circle cx="92" cy="82" r="15"/></svg><div><h2>Refills</h2><p class="tagline">Turn your store digital — orders, customers and reminders in one place.</p></div></a>
@@ -983,15 +994,17 @@ function renderOwnerAuth(){
       <div class="field"><label>Password</label><input name="password" type="password" minlength="8" required></div>
       <label class="field full-name-field hidden"><span><input name="retentionAccepted" type="checkbox"> I accept the <a href="/terms/" target="_blank" rel="noopener">Terms</a>, including the 1-year order/booking history, password-confirmed CSV backup and permanent deletion policy.</span></label>
       <button class="btn full" id="ownerAuthSubmit" type="submit">Sign In</button>
+      <button class="btn secondary full" id="ownerForgotPassword" type="button">Forgot password</button>
     </form>
     <p class="muted" style="text-align:center;margin-top:14px">Are you a customer? Use the link your store shared with you, or <a href="#" id="customerPasteLinkLink">paste your store link</a>.</p>
   </section></main>${siteFooter()}`;
   (typeof bindAndroidAppFooter==='function'&&bindAndroidAppFooter());
   $('#customerPasteLinkLink').onclick=event=>{event.preventDefault();openPasteStoreLinkPrompt()};
   let mode='login';
-  const syncMode=()=>{$('.full-name-field').classList.toggle('hidden',mode!=='signup');$('#ownerAuthSubmit').textContent=mode==='signup'?'Create Account':'Sign In';$('#tabLogin').className=mode==='login'?'btn small':'btn small secondary';$('#tabSignup').className=mode==='signup'?'btn small':'btn small secondary'};
+  const syncMode=()=>{$('.full-name-field').classList.toggle('hidden',mode!=='signup');$('#ownerAuthSubmit').textContent=mode==='signup'?'Create Account':'Sign In';$('#ownerForgotPassword').classList.toggle('hidden',mode==='signup');$('#tabLogin').className=mode==='login'?'btn small':'btn small secondary';$('#tabSignup').className=mode==='signup'?'btn small':'btn small secondary'};
   $('#tabLogin').onclick=()=>{mode='login';syncMode()};
   $('#tabSignup').onclick=()=>{mode='signup';syncMode()};
+  $('#ownerForgotPassword').onclick=event=>requestAuthPasswordReset($('#ownerAuthForm'),event.currentTarget);
   $('#ownerAuthForm').onsubmit=async event=>{
     event.preventDefault();
     const values=Object.fromEntries(new FormData(event.target)),button=$('#ownerAuthSubmit');
@@ -1004,7 +1017,7 @@ function renderOwnerAuth(){
       await loadEntitlement();
       if(!hasActiveEntitlement())return renderPlanGate();
       await proceedAfterEntitlement();
-    }catch(error){button.disabled=false;toast(error.message||'Could not sign in')}
+    }catch(error){button.disabled=false;if(mode==='signup'&&error.code===409){mode='login';syncMode()}toast(error.message||'Could not sign in')}
   };
 }
 
@@ -1376,12 +1389,13 @@ function openPendingBrandTarget(){
   openBrandRequestForm(target);
 }
 function renderBrandAuth(){
-  app.innerHTML=`<main class="screen"><section class="auth-card"><a class="brand" href="../"><svg class="brand-mark" viewBox="0 0 120 120" fill="none" stroke="#7fffd4" stroke-width="8" aria-hidden="true"><circle cx="60" cy="26" r="15"/><circle cx="28" cy="82" r="15"/><circle cx="92" cy="82" r="15"/></svg><div><h2>G58 Brand Partners</h2><p class="tagline">Get your product's promotion card placed on Refills stores.</p></div></a><div class="actions" style="margin-bottom:14px"><button class="btn small" id="brandTabLogin">Sign in</button><button class="btn small secondary" id="brandTabSignup">Create brand account</button></div><form id="brandAuthForm"><div class="field full-name-field hidden"><label>Brand / contact name</label><input name="name"></div><div class="field"><label>Email</label><input name="email" type="email" required></div><div class="field"><label>Password</label><input name="password" type="password" minlength="8" required></div><button class="btn full" id="brandAuthSubmit" type="submit">Sign In</button></form></section></main>${siteFooter()}`;
+  app.innerHTML=`<main class="screen"><section class="auth-card"><a class="brand" href="../"><svg class="brand-mark" viewBox="0 0 120 120" fill="none" stroke="#7fffd4" stroke-width="8" aria-hidden="true"><circle cx="60" cy="26" r="15"/><circle cx="28" cy="82" r="15"/><circle cx="92" cy="82" r="15"/></svg><div><h2>G58 Brand Partners</h2><p class="tagline">Get your product's promotion card placed on Refills stores.</p></div></a><div class="actions" style="margin-bottom:14px"><button class="btn small" id="brandTabLogin">Sign in</button><button class="btn small secondary" id="brandTabSignup">Create brand account</button></div><form id="brandAuthForm"><div class="field full-name-field hidden"><label>Brand / contact name</label><input name="name"></div><div class="field"><label>Email</label><input name="email" type="email" required></div><div class="field"><label>Password</label><input name="password" type="password" minlength="8" required></div><button class="btn full" id="brandAuthSubmit" type="submit">Sign In</button><button class="btn secondary full" id="brandForgotPassword" type="button">Forgot password</button></form></section></main>${siteFooter()}`;
   (typeof bindAndroidAppFooter==='function'&&bindAndroidAppFooter());
   let mode='signup';
-  const syncMode=()=>{$('.full-name-field').classList.toggle('hidden',mode!=='signup');$('#brandAuthSubmit').textContent=mode==='signup'?'Create Account':'Sign In';$('#brandTabLogin').className=mode==='login'?'btn small':'btn small secondary';$('#brandTabSignup').className=mode==='signup'?'btn small':'btn small secondary'};
+  const syncMode=()=>{$('.full-name-field').classList.toggle('hidden',mode!=='signup');$('#brandAuthSubmit').textContent=mode==='signup'?'Create Account':'Sign In';$('#brandForgotPassword').classList.toggle('hidden',mode==='signup');$('#brandTabLogin').className=mode==='login'?'btn small':'btn small secondary';$('#brandTabSignup').className=mode==='signup'?'btn small':'btn small secondary'};
   $('#brandTabLogin').onclick=()=>{mode='login';syncMode()};
   $('#brandTabSignup').onclick=()=>{mode='signup';syncMode()};
+  $('#brandForgotPassword').onclick=event=>requestAuthPasswordReset($('#brandAuthForm'),event.currentTarget);
   syncMode();
   $('#brandAuthForm').onsubmit=async event=>{
     event.preventDefault();
@@ -1394,7 +1408,7 @@ function renderBrandAuth(){
       await ensureBrandProfile();
       await loadBrandData();
       afterBrandAuth();
-    }catch(error){button.disabled=false;toast(error.message||'Could not sign in')}
+    }catch(error){button.disabled=false;if(mode==='signup'&&error.code===409){mode='login';syncMode()}toast(error.message||'Could not sign in')}
   };
 }
 async function ensureBrandProfile(){
@@ -2451,12 +2465,13 @@ function resumeRealtimeConnections(){
 window.addEventListener('online',resumeRealtimeConnections);
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)resumeRealtimeConnections()});
 function renderCustomerAuth(store,ownerId,storeId){
-  app.innerHTML=`<main class="public-store"><section class="store-hero"><span class="chip">${html(store.category||'Store')}</span>${store.highlightText?`<strong class="store-highlight-text">${html(store.highlightText)}</strong>`:''}<h1>${html(store.name)}</h1>${storeMinimum(store)?`<p class="store-minimum-order">Minimum new order ${money(storeMinimum(store))}</p>`:''}<p class="muted">${html(store.description||'')}${store.city?' · '+html(store.city):''}</p></section><div class="card"><div class="actions" style="margin-bottom:14px"><button class="btn small" id="custTabLogin">Sign in</button><button class="btn small secondary" id="custTabSignup">Sign up</button></div><form id="customerAuthForm"><div class="field full-name-field hidden"><label>Your name</label><input name="name"></div><div class="field"><label>Email</label><input name="email" type="email" required></div><div class="field"><label>Password</label><input name="password" type="password" minlength="8" required></div><button class="btn full" id="custAuthSubmit" type="submit">Sign In</button></form></div></main>${siteFooter(true)}`;
+  app.innerHTML=`<main class="public-store"><section class="store-hero"><span class="chip">${html(store.category||'Store')}</span>${store.highlightText?`<strong class="store-highlight-text">${html(store.highlightText)}</strong>`:''}<h1>${html(store.name)}</h1>${storeMinimum(store)?`<p class="store-minimum-order">Minimum new order ${money(storeMinimum(store))}</p>`:''}<p class="muted">${html(store.description||'')}${store.city?' · '+html(store.city):''}</p></section><div class="card"><div class="actions" style="margin-bottom:14px"><button class="btn small" id="custTabLogin">Sign in</button><button class="btn small secondary" id="custTabSignup">Sign up</button></div><form id="customerAuthForm"><div class="field full-name-field hidden"><label>Your name</label><input name="name"></div><div class="field"><label>Email</label><input name="email" type="email" required></div><div class="field"><label>Password</label><input name="password" type="password" minlength="8" required></div><button class="btn full" id="custAuthSubmit" type="submit">Sign In</button><button class="btn secondary full" id="customerForgotPassword" type="button">Forgot password</button></form></div></main>${siteFooter(true)}`;
   (typeof bindAndroidAppFooter==='function'&&bindAndroidAppFooter());
   let mode='signup';
-  const syncMode=()=>{$('.full-name-field').classList.toggle('hidden',mode!=='signup');$('#custAuthSubmit').textContent=mode==='signup'?'Create Account':'Sign In';$('#custTabLogin').className=mode==='login'?'btn small':'btn small secondary';$('#custTabSignup').className=mode==='signup'?'btn small':'btn small secondary'};
+  const syncMode=()=>{$('.full-name-field').classList.toggle('hidden',mode!=='signup');$('#custAuthSubmit').textContent=mode==='signup'?'Create Account':'Sign In';$('#customerForgotPassword').classList.toggle('hidden',mode==='signup');$('#custTabLogin').className=mode==='login'?'btn small':'btn small secondary';$('#custTabSignup').className=mode==='signup'?'btn small':'btn small secondary'};
   $('#custTabLogin').onclick=()=>{mode='login';syncMode()};
   $('#custTabSignup').onclick=()=>{mode='signup';syncMode()};
+  $('#customerForgotPassword').onclick=event=>requestAuthPasswordReset($('#customerAuthForm'),event.currentTarget);
   syncMode();
   $('#customerAuthForm').onsubmit=async event=>{
     event.preventDefault();
@@ -2466,7 +2481,7 @@ function renderCustomerAuth(store,ownerId,storeId){
       if(mode==='signup')await api.register(values.email.trim(),values.password,values.name.trim()||values.email.split('@')[0]);
       else await api.login(values.email.trim(),values.password);
       renderPublicStore(new URLSearchParams(`owner=${encodeURIComponent(ownerId)}&store=${encodeURIComponent(storeId)}`));
-    }catch(error){button.disabled=false;toast(error.message||'Could not sign in')}
+    }catch(error){button.disabled=false;if(mode==='signup'&&error.code===409){mode='login';syncMode()}toast(error.message||'Could not sign in')}
   };
 }
 async function ensureCustomerLink(ownerId,storeId,account){

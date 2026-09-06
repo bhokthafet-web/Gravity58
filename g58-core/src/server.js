@@ -16,6 +16,7 @@ import { hashPassword, publicUser, randomToken, tokenHash, verifyPassword } from
 import { sendPasswordReset } from "./mailer.js";
 import handleAction from "./actions.js";
 import { createCompatibilityStore } from "./compat-store.js";
+import { isAllowedOrigin } from "./origin.js";
 
 const app = Fastify({ logger: true, trustProxy: true, bodyLimit: config.maxMediaBytes + 1024 * 1024 });
 const stateChanging = new Set(["POST", "PUT", "PATCH", "DELETE"]);
@@ -25,7 +26,7 @@ await app.register(cookie);
 await app.register(cors, {
   credentials: true,
   origin(origin, callback) {
-    if (!origin || config.allowedOrigins.has(origin) || /^http:\/\/localhost(?::\d+)?$/.test(origin)) return callback(null, true);
+    if (isAllowedOrigin(origin, config.allowedOrigins)) return callback(null, true);
     callback(new Error("Origin is not allowed"), false);
   },
 });
@@ -45,7 +46,7 @@ app.decorateRequest("sessionHash", "");
 
 app.addHook("onRequest", async (request, reply) => {
   const origin = request.headers.origin;
-  if (stateChanging.has(request.method) && origin && !config.allowedOrigins.has(origin) && !/^http:\/\/localhost(?::\d+)?$/.test(origin)) {
+  if (stateChanging.has(request.method) && !isAllowedOrigin(origin, config.allowedOrigins)) {
     return reply.code(403).send({ error: "Origin is not allowed" });
   }
 
@@ -84,6 +85,10 @@ app.post("/api/v1/auth/register", { config: { rateLimit: { max: 10, timeWindow: 
     name: z.string().trim().min(1).max(120),
     phone: z.string().trim().max(30).optional().default(""),
   }).parse(request.body);
+  const existing = await query(`SELECT id FROM users WHERE email=$1 AND deleted_at IS NULL`, [input.email]);
+  if (existing.rows[0]) {
+    return reply.code(409).send({ error: "An account with this email already exists. Sign in or use Forgot password." });
+  }
   const passwordHash = await hashPassword(input.password);
   const result = await query(
     `INSERT INTO users(email,password_hash,name,phone) VALUES($1,$2,$3,$4) RETURNING *`,

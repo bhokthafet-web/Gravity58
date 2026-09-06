@@ -106,14 +106,21 @@
     if (!signupMode) return setSignupMode(true);
     const name = $("authFullName").value.trim();
     const phone = $("authPhone").value.trim();
+    const email = $("authEmail").value.trim();
+    const password = $("authPassword").value;
+    if (!/^\S+@\S+\.\S+$/.test(email)) return void ($("authMessage").textContent = "Enter a valid email address.");
+    if (password.length < 8) return void ($("authMessage").textContent = "Password must contain at least 8 characters.");
     if (name.length < 2 || phone.replace(/\D/g, "").length < 10) return void ($("authMessage").textContent = "Enter your full name and a valid phone number.");
     try {
-      user = await api.register($("authEmail").value.trim(), $("authPassword").value, name, phone);
+      user = await api.register(email, password, name, phone);
       const profiles = await api.list("profiles", { userId: user.$id });
       if (profiles[0]) await api.update("profiles", profiles[0].id, { accountType: $("authType").value, state: $("authState").value.trim(), district: $("authDistrict").value.trim() });
       close(); showSuccess("Account created", "Your GRAVITY58 account is ready and you are signed in.");
       await finish();
-    } catch (error) { $("authMessage").textContent = error.message || "Could not create the account."; }
+    } catch (error) {
+      if (error.code === 409) setSignupMode(false);
+      $("authMessage").textContent = error.message || "Could not create the account.";
+    }
   };
   $("authForgot").onclick = async () => {
     try {

@@ -126,6 +126,14 @@ test("browser data adapter targets only the first-party G58 API", () => {
   assert.match(source, /credentials: "include"/);
 });
 
+test("all Refills account screens expose password recovery", () => {
+  const source = readFileSync(join(root, "digit58/app.js"), "utf8");
+  assert.match(source, /id="ownerForgotPassword"/);
+  assert.match(source, /id="brandForgotPassword"/);
+  assert.match(source, /id="customerForgotPassword"/);
+  assert.match(source, /api\.forgotPassword\(email\)/);
+});
+
 test("customer receipt uploads use the authenticated first-party media endpoint", () => {
   const source = readFileSync(join(root, "js/g58-api.js"), "utf8");
   const start = source.indexOf("async function uploadPaymentReceipt");
