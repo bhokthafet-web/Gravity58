@@ -134,7 +134,7 @@ app.get("/api/v1/auth/me", async (request, reply) => {
   return { user: publicUser(request.user) };
 });
 
-app.post("/api/v1/auth/forgot-password", { config: { rateLimit: { max: 5, timeWindow: "1 hour" } } }, async (request) => {
+app.post("/api/v1/auth/forgot-password", async (request) => {
   const { email } = z.object({ email: z.string().email() }).parse(request.body);
   const result = await query(`SELECT * FROM users WHERE email=$1 AND status='active' AND is_guest=false`, [email.trim().toLowerCase()]);
   const user = result.rows[0];
@@ -147,7 +147,8 @@ app.post("/api/v1/auth/forgot-password", { config: { rateLimit: { max: 5, timeWi
     );
     const resetUrl = `${config.publicSiteUrl}/reset-password/?token=${encodeURIComponent(token)}`;
     try {
-      await sendPasswordReset({ email: user.email, name: user.name, resetUrl });
+      const delivery = await sendPasswordReset({ email: user.email, name: user.name, resetUrl });
+      request.log.info({ messageId: delivery.messageId || "accepted" }, "Password reset email accepted by SMTP");
     } catch (error) {
       request.log.error(error, "Password reset email failed");
     }
@@ -155,7 +156,7 @@ app.post("/api/v1/auth/forgot-password", { config: { rateLimit: { max: 5, timeWi
   return { ok: true, message: "If the account exists, a password-reset email will arrive shortly." };
 });
 
-app.post("/api/v1/auth/reset-password", { config: { rateLimit: { max: 8, timeWindow: "1 hour" } } }, async (request, reply) => {
+app.post("/api/v1/auth/reset-password", async (request, reply) => {
   const input = z.object({ token: z.string().min(20), password: z.string().min(8).max(128) }).parse(request.body);
   const reset = await query(
     `SELECT * FROM password_reset_tokens WHERE token_hash=$1 AND used_at IS NULL AND expires_at>now()`,

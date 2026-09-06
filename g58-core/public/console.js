@@ -45,6 +45,23 @@ $("#loginForm").addEventListener("submit", async (event) => {
   finally { button.disabled = false; }
 });
 
+$("#forgotButton").onclick = async () => {
+  const button = $("#forgotButton");
+  const email = new FormData($("#loginForm")).get("email")?.trim();
+  if (!email) {
+    $("#loginMessage").textContent = "Enter the administrator email address first.";
+    return;
+  }
+  button.disabled = true;
+  $("#loginMessage").textContent = "";
+  try {
+    const result = await api("/auth/forgot-password", { method: "POST", body: JSON.stringify({ email }) });
+    $("#loginMessage").textContent = result.message || "If the account exists, reset instructions will arrive shortly.";
+  } catch (error) {
+    $("#loginMessage").textContent = error.message;
+  } finally { button.disabled = false; }
+};
+
 $("#logoutButton").onclick = async () => { await api("/auth/logout", { method: "POST" }).catch(() => {}); showLogin(); };
 $("#refreshButton").onclick = () => render();
 $$('.nav').forEach((button) => button.onclick = () => {

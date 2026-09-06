@@ -123,10 +123,16 @@
     }
   };
   $("authForgot").onclick = async () => {
+    const button = $("authForgot");
+    const email = $("authEmail").value.trim();
+    if (!/^\S+@\S+\.\S+$/.test(email)) return void ($("authMessage").textContent = "Enter your email address first.");
+    button.disabled = true;
     try {
-      await api.forgotPassword($("authEmail").value.trim(), location.origin + "/reset-password/");
+      await api.forgotPassword(email);
       close(); showSuccess("Reset link sent", "Password reset instructions were sent to your email address.");
-    } catch (error) { $("authMessage").textContent = error.message || "Could not send reset instructions."; }
+    } catch (error) {
+      $("authMessage").textContent = error.message || "Could not send reset instructions.";
+    } finally { button.disabled = false; }
   };
 
   const originalPublish = window.validateAndPublish;
