@@ -19,7 +19,13 @@ import handleAction from "./actions.js";
 import { createCompatibilityStore } from "./compat-store.js";
 import { isAllowedOrigin } from "./origin.js";
 
-const app = Fastify({ logger: true, trustProxy: true, bodyLimit: config.maxMediaBytes + 1024 * 1024 });
+// trustProxy is a hop count, not a boolean: Caddy (the only reverse proxy in
+// front of this service, see g58-core/Caddyfile) appends to any client-sent
+// X-Forwarded-For rather than replacing it, so `true` (trust unlimited hops)
+// would let a client set its own X-Forwarded-For to spoof request.ip — which
+// is what @fastify/rate-limit's default per-IP key relies on. `1` trusts
+// exactly the Caddy hop and ignores anything the client injected further left.
+const app = Fastify({ logger: true, trustProxy: 1, bodyLimit: config.maxMediaBytes + 1024 * 1024 });
 const stateChanging = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 const listeners = new Set();
 
@@ -337,7 +343,7 @@ app.get("/api/v1/events", async (request, reply) => {
     "Content-Type": "text/event-stream",
     "Cache-Control": "no-cache, no-transform",
     Connection: "keep-alive",
-    "Access-Control-Allow-Origin": request.headers.origin && config.allowedOrigins.has(request.headers.origin) ? request.headers.origin : config.publicSiteUrl,
+    "Access-Control-Allow-Origin": isAllowedOrigin(request.headers.origin, config.allowedOrigins) && request.headers.origin ? request.headers.origin : config.publicSiteUrl,
     "Access-Control-Allow-Credentials": "true",
   });
   const listener = { response: reply.raw, user: request.user, kinds: new Set(String(request.query?.kinds || "").split(",").filter(Boolean)) };

@@ -1718,6 +1718,21 @@ async function sendDigit58PushNotifications(call, error) {
   return { sent, expired, failed };
 }
 
+// Named exports below expose pure/synchronous business logic for unit testing.
+// They add no new behavior and do not change the default Appwrite-style handler
+// that server.js actually calls in production.
+export {
+  text, finite, normalisePhone, indiaDay,
+  safeKindId, pairRowId, cleanRow,
+  buildOrder, combineOrderItems, mergeOrder, parseMenu,
+  hhmmToMinutes, rangesOverlap, digit58ServiceDurationMinutes, digit58LunchBreakRange,
+  digit58PlanAmount, buildDigit58UpiUri,
+  sanitiseBusinessReview, closedHistoryRecord, recordTime,
+  stayNightCount, stayOverlaps, nextDeliveryDate,
+  cleanMedicineInput, digit58PushMessageForOrder, generateReferralCode,
+  digit58EntitlementRowId, digit58ReferrerProfileRowId,
+};
+
 export default async ({ req, res, error }) => {
   if (req.headers['x-g58-trigger'] === 'schedule') {
     try {

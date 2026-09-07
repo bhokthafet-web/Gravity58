@@ -404,7 +404,7 @@
   function renderDashboardPanel() {
     const range = dashboardRanges();
     const counterBills = read("g58Bills", []).map((bill) => ({ ...bill, source: "Counter POS" }));
-    const onlineBills = linkedDigitalOrders.filter((order) => ["Completed", "Delivered"].includes(order.status)).map(digitalOrderAsBill);
+    const onlineBills = linkedDigitalOrders.filter((order) => order.status === "Completed").map(digitalOrderAsBill);
     const allBills = [...counterBills, ...onlineBills];
     const allCancelled = [...read("g58CancelledBills", []), ...linkedDigitalOrders.filter((order) => ["Rejected", "Payment Rejected", "Cancelled"].includes(order.status)).map(digitalOrderAsBill)];
     const currentBills = allBills.filter((bill) => billTime(bill) >= range.start && billTime(bill) < range.end);
