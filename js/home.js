@@ -20,6 +20,22 @@
     document.getElementById("mobileNavToggle")?.setAttribute("aria-expanded", "false");
   };
 
+  function scheduleHeroFlowDots() {
+    const heading = document.getElementById("heroHeading");
+    if (!heading || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const run = () => {
+      heading.classList.remove("result-active");
+      heading.classList.add("dots-active");
+      setTimeout(() => {
+        heading.classList.remove("dots-active");
+        heading.classList.add("result-active");
+      }, 6250);
+      setTimeout(() => heading.classList.remove("result-active"), 10000);
+      setTimeout(run, 11875);
+    };
+    setTimeout(run, 1750);
+  }
+
   document.addEventListener("DOMContentLoaded", () => {
     const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
     const revealTargets = document.querySelectorAll(".reveal");
@@ -50,6 +66,8 @@
         wrap.querySelector(".nav-mega-trigger")?.setAttribute("aria-expanded", "false");
       });
     });
+
+    scheduleHeroFlowDots();
 
     document.getElementById("g58ContactCancel")?.addEventListener("click", window.closeG58ContactModal);
     document.getElementById("g58ContactForm")?.addEventListener("submit", async (event) => {
