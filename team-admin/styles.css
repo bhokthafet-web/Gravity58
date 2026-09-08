@@ -126,4 +126,20 @@ th,td{border-color:var(--line)}
 button{color:inherit}
 .diner-filter-bar input[type=date],input[type=date]{background:rgba(6,7,11,.75);color:var(--text);color-scheme:dark;border:1px solid var(--line)}
 .admin-action h3,.admin-action p{color:var(--text)}
+.nav button{position:relative}
+.nav-badge{margin-left:auto;min-width:20px;height:20px;padding:0 6px;border-radius:999px;background:var(--red);color:#fff;font-size:11px;font-weight:900;display:inline-flex;align-items:center;justify-content:center;box-shadow:0 0 0 0 rgba(185,111,104,.7);animation:navBadgePulse 1.15s ease-out infinite}
+@keyframes navBadgePulse{0%{box-shadow:0 0 0 0 rgba(185,111,104,.75)}75%,100%{box-shadow:0 0 0 9px rgba(185,111,104,0)}}
+tr.request-row-new{position:relative;background:rgba(185,111,104,.1);box-shadow:inset 3px 0 0 var(--red)}
+tr.request-row-new td:first-child{position:relative;padding-left:22px}
+tr.request-row-new td:first-child:before{content:"";position:absolute;left:6px;top:50%;transform:translateY(-50%);width:9px;height:9px;border-radius:50%;background:var(--red);box-shadow:0 0 0 0 rgba(185,111,104,.75);animation:navBadgePulse 1.15s ease-out infinite}
+.request-feed{display:grid;gap:8px;margin-bottom:8px}
+.request-feed-item{display:flex;align-items:center;gap:12px;width:100%;text-align:left;padding:12px 14px;border-radius:14px;background:var(--panel);border:1px solid var(--line);cursor:pointer;color:var(--text)}
+.request-feed-item:hover{border-color:var(--cyan)}
+.request-feed-item.unread{background:rgba(185,111,104,.09);border-color:rgba(185,111,104,.35)}
+.request-feed-dot{flex:0 0 9px;width:9px;height:9px;border-radius:50%;background:var(--line)}
+.request-feed-item.unread .request-feed-dot{background:var(--red);box-shadow:0 0 0 0 rgba(185,111,104,.75);animation:navBadgePulse 1.15s ease-out infinite}
+.request-feed-body{flex:1;min-width:0}
+.request-feed-body small{color:var(--muted)}
+.request-feed-time{flex:0 0 auto;color:var(--muted);font-size:11px;white-space:nowrap}
+@media(prefers-reduced-motion:reduce){.nav-badge,tr.request-row-new td:first-child:before,.request-feed-item.unread .request-feed-dot{animation:none}}
 .admin-action p{color:var(--muted)}

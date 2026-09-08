@@ -7,11 +7,110 @@ const placementSpec=slotId=>AD_PLACEMENT_SPECS[slotId]||{label:slotId||'Advertis
 let user=null,view='overview',data={bookings:[],advertisements:[],profiles:[],slots:[],menuPricing:[],menuEntitlements:[],menuRequests:[],dinerOrders:[],dinerOrdersLoaded:false,digit58Stores:[],digit58Requests:[],digit58Entitlements:[],digit58Customers:[],digit58CustomersLoaded:false,digit58Pricing:[],digit58CardPurchases:[],digit58BrandRequests:[],digit58BrandOwners:[],digit58Referrals:[],digit58ReferrerProfiles:[],supportTickets:[],contactRequests:[]};
 const DIGIT58_ADMIN_REFRESH_MS=10000;
 let digit58AdminRefreshTimer=null,digit58AdminRenderedSignature='';
+
+// --- Live "new request" alerts: realtime detection, chime + pulsing nav badges,
+// mirroring how the Refills owner app rings on a new incoming order. ---
+const REQUEST_WATCHERS=[
+  {kind:'bookings',dataKey:'bookings',navKey:'bookings',label:'Ad booking request'},
+  {kind:'digital_menu_requests',dataKey:'menuRequests',navKey:'digitalMenus',label:'Digital Menu request'},
+  {kind:'digit58_requests',dataKey:'digit58Requests',navKey:'digit58',label:'Refills request'},
+  {kind:'digit58_brand_requests',dataKey:'digit58BrandRequests',navKey:'digit58',label:'Refills brand card request'},
+  {kind:'digit58_card_purchases',dataKey:'digit58CardPurchases',navKey:'digit58',label:'Refills card purchase'},
+  {kind:'digit58_referrals',dataKey:'digit58Referrals',navKey:'referrals',label:'Referral'},
+  {kind:'support_tickets',dataKey:'supportTickets',navKey:'support',label:'Support ticket'},
+  {kind:'g58_contact_requests',dataKey:'contactRequests',navKey:'contactRequests',label:'Contact request'},
+];
+const knownRequestIds=new Map(),ringingRequestIds=new Set(),newRequestFeed=[];
+let requestUnsubscribers=[];
+const ringingRowClass=id=>ringingRequestIds.has(id)?'request-row-new':'';
+function seedKnownRequestIds(){REQUEST_WATCHERS.forEach(watcher=>knownRequestIds.set(watcher.kind,new Set((data[watcher.dataKey]||[]).map(row=>row.id))))}
+function requestTitle(watcher,row){
+  return {
+    bookings:`${row.customerName||'Advertiser'} — ${row.restaurantKey||'Ad placement'}`,
+    digital_menu_requests:row.ownerName||row.ownerEmail||row.ownerId||'',
+    digit58_requests:row.ownerName||row.ownerEmail||row.ownerId||'',
+    digit58_brand_requests:row.brandOwnerEmail||row.storeName||'',
+    digit58_card_purchases:row.storeName||row.ownerEmail||'',
+    digit58_referrals:row.referredEmail||row.referredOwnerId||'',
+    support_tickets:row.subject||'',
+    g58_contact_requests:row.name||'',
+  }[watcher.kind]||watcher.label;
+}
+function navBadgeCount(key){return REQUEST_WATCHERS.filter(watcher=>watcher.navKey===key).reduce((sum,watcher)=>sum+(data[watcher.dataKey]||[]).filter(row=>ringingRequestIds.has(row.id)).length,0)}
+function refreshNavBadges(){
+  $$('[data-view]').forEach(button=>{
+    const count=navBadgeCount(button.dataset.view);
+    let badge=button.querySelector('.nav-badge');
+    if(count){if(!badge){badge=document.createElement('span');badge.className='nav-badge';button.appendChild(badge)}badge.textContent=count;badge.setAttribute('aria-label',`${count} new`)}
+    else badge?.remove();
+  });
+}
+function acknowledgeRequestsFor(navKey){
+  REQUEST_WATCHERS.filter(watcher=>watcher.navKey===navKey).forEach(watcher=>(data[watcher.dataKey]||[]).forEach(row=>ringingRequestIds.delete(row.id)));
+  updateRequestAlertSound();
+}
+async function handleRequestKindChange(watcher){
+  let rows;
+  try{rows=await api.list(watcher.kind)}catch(error){console.warn(`Could not refresh ${watcher.kind}`,error);return}
+  const known=knownRequestIds.get(watcher.kind)||new Set();
+  let hasNew=false;
+  rows.forEach(row=>{
+    if(!row.id||known.has(row.id))return;
+    known.add(row.id);ringingRequestIds.add(row.id);hasNew=true;
+    newRequestFeed.unshift({id:row.id,navKey:watcher.navKey,label:watcher.label,title:requestTitle(watcher,row),createdAt:row.createdAt||now()});
+  });
+  if(newRequestFeed.length>40)newRequestFeed.length=40;
+  knownRequestIds.set(watcher.kind,known);
+  data[watcher.dataKey]=rows;
+  if(hasNew){updateRequestAlertSound();toast(`🔔 New ${watcher.label.toLowerCase()} received`)}
+  else refreshNavBadges();
+  if(!$('#modal')&&(view===watcher.navKey||view==='overview'))renderView();
+}
+function startRequestRealtime(){
+  stopRequestRealtime();
+  seedKnownRequestIds();
+  if(typeof api.subscribeKind!=='function')return;
+  requestUnsubscribers=REQUEST_WATCHERS.map(watcher=>api.subscribeKind(watcher.kind,()=>handleRequestKindChange(watcher)));
+}
+function stopRequestRealtime(){requestUnsubscribers.forEach(unsubscribe=>unsubscribe?.());requestUnsubscribers=[]}
+
+let requestAlertContext=null,requestAlertTimer=null;
+function unlockRequestAlertAudio(){
+  try{
+    requestAlertContext||=new (window.AudioContext||window.webkitAudioContext)();
+    if(requestAlertContext.state==='suspended')requestAlertContext.resume();
+    const buffer=requestAlertContext.createBuffer(1,1,22050),source=requestAlertContext.createBufferSource();
+    source.buffer=buffer;source.connect(requestAlertContext.destination);source.start(0);
+  }catch{}
+}
+['pointerdown','touchstart','touchend','click','keydown'].forEach(type=>document.addEventListener(type,unlockRequestAlertAudio,{passive:true,once:true}));
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')unlockRequestAlertAudio()});
+window.addEventListener('pageshow',unlockRequestAlertAudio);
+function requestAlertTone(duration,frequency,startAt,gainPeak){
+  if(!requestAlertContext)return;
+  const oscillator=requestAlertContext.createOscillator(),gain=requestAlertContext.createGain();
+  oscillator.type='sine';oscillator.frequency.value=frequency;oscillator.connect(gain);gain.connect(requestAlertContext.destination);
+  const t=requestAlertContext.currentTime+startAt;
+  gain.gain.setValueAtTime(0,t);gain.gain.linearRampToValueAtTime(gainPeak,t+.02);gain.gain.exponentialRampToValueAtTime(.001,t+duration);
+  oscillator.start(t);oscillator.stop(t+duration+.02);
+}
+function playAdminNotificationChime(){requestAlertTone(.16,880,0,.22);requestAlertTone(.22,659.25,.17,.2)}
+function adminPortalIsActive(){return document.visibilityState==='visible'&&document.hasFocus()}
+function updateRequestAlertSound(){
+  refreshNavBadges();
+  if(!ringingRequestIds.size){if(requestAlertTimer){clearInterval(requestAlertTimer);requestAlertTimer=null}return}
+  if(requestAlertTimer)return;
+  playAdminNotificationChime();
+  requestAlertTimer=setInterval(()=>{
+    if(!ringingRequestIds.size){clearInterval(requestAlertTimer);requestAlertTimer=null;return}
+    if(!adminPortalIsActive())playAdminNotificationChime();
+  },3500);
+}
 function toast(message){const target=$('#toast');target.textContent=message;target.classList.add('show');setTimeout(()=>target.classList.remove('show'),2200)}
 function timeLeft(expiresAt,lifetime=false){if(lifetime)return'Lifetime';if(!expiresAt)return'No expiry';const ms=new Date(expiresAt)-new Date();if(ms<=0)return'Expired';const days=Math.floor(ms/864e5),hours=Math.floor(ms%864e5/36e5),minutes=Math.floor(ms%36e5/6e4);return`${days?days+'d ':''}${hours}h ${minutes}m remaining`}
-async function boot(){if(!api.configured)return configurationRequired();user=await api.currentUser().catch(()=>null);if(!user)return login();if(!await api.isTeamAdmin().catch(()=>false))return accessDenied();await loadData();shell()}
+async function boot(){if(!api.configured)return configurationRequired();user=await api.currentUser().catch(()=>null);if(!user)return login();if(!await api.isTeamAdmin().catch(()=>false))return accessDenied();await loadData();shell();startRequestRealtime()}
 function configurationRequired(){app.innerHTML=`<main class="screen auth"><section class="auth-card glass"><a class="brand" href="../"><svg class="brand-mark" viewBox="0 0 120 120" fill="none" stroke="#6d5ef0" stroke-width="8" aria-hidden="true"><circle cx="60" cy="26" r="15"/><circle cx="28" cy="82" r="15"/><circle cx="92" cy="82" r="15"/></svg><div><h2>Gravity58 Team Admin</h2><p class="tagline">Private administration</p></div></a><div class="notice"><strong>Administration service unavailable</strong><p>The secure administration service is not available. Please contact the Gravity58 technical team.</p></div><a class="btn full" href="../">Return to G58</a></section></main>`}
-function login(){app.innerHTML=`<main class="screen auth"><section class="auth-card glass"><a class="brand" href="../"><svg class="brand-mark" viewBox="0 0 120 120" fill="none" stroke="#6d5ef0" stroke-width="8" aria-hidden="true"><circle cx="60" cy="26" r="15"/><circle cx="28" cy="82" r="15"/><circle cx="92" cy="82" r="15"/></svg><div><h2>Gravity58 Team Admin</h2><p class="tagline">G58 team members only</p></div></a><form id="login"><div class="field"><label>Team email</label><input name="email" type="email" required></div><div class="field"><label>Password</label><input name="password" type="password" required></div><button class="btn full">Secure Login</button></form><p class="muted" style="text-align:center">Access is restricted to authorised Gravity58 team members.</p></section></main>`;$('#login').onsubmit=async event=>{event.preventDefault();const values=Object.fromEntries(new FormData(event.target));try{await api.login(values.email,values.password);user=await api.currentUser();if(!await api.isTeamAdmin()){await api.logout();throw new Error('This account is not a member of the G58 administration team.')}await loadData();shell()}catch(error){toast(error.message||'Login failed')}}}
+function login(){app.innerHTML=`<main class="screen auth"><section class="auth-card glass"><a class="brand" href="../"><svg class="brand-mark" viewBox="0 0 120 120" fill="none" stroke="#6d5ef0" stroke-width="8" aria-hidden="true"><circle cx="60" cy="26" r="15"/><circle cx="28" cy="82" r="15"/><circle cx="92" cy="82" r="15"/></svg><div><h2>Gravity58 Team Admin</h2><p class="tagline">G58 team members only</p></div></a><form id="login"><div class="field"><label>Team email</label><input name="email" type="email" required></div><div class="field"><label>Password</label><input name="password" type="password" required></div><button class="btn full">Secure Login</button></form><p class="muted" style="text-align:center">Access is restricted to authorised Gravity58 team members.</p></section></main>`;$('#login').onsubmit=async event=>{event.preventDefault();const values=Object.fromEntries(new FormData(event.target));try{await api.login(values.email,values.password);user=await api.currentUser();if(!await api.isTeamAdmin()){await api.logout();throw new Error('This account is not a member of the G58 administration team.')}await loadData();shell();startRequestRealtime()}catch(error){toast(error.message||'Login failed')}}}
 function installAdminPasswordRecovery(){
   const form=$('#login');
   if(!form||$('#forgotAdminPassword'))return;
@@ -45,21 +144,29 @@ async function reconcileExpiredCampaigns(){
     }
   }
 }
-function shell(){app.innerHTML=`<div class="shell"><aside class="sidebar"><a class="brand" href="../"><svg class="brand-mark" viewBox="0 0 120 120" fill="none" stroke="#6d5ef0" stroke-width="8" aria-hidden="true"><circle cx="60" cy="26" r="15"/><circle cx="28" cy="82" r="15"/><circle cx="92" cy="82" r="15"/></svg><div><strong>Gravity58</strong><small class="muted">Team Administration</small></div></a><nav class="nav">${nav('overview','◉','Overview')}${nav('bookings','▣','Ad Bookings')}${nav('campaigns','✦','Campaigns')}${nav('digitalMenus','◇','Digital Menu Plans')}${nav('diners','☎','Customer Details')}${nav('digit58','⬡','Refills')}${nav('referrals','🎁','Referrals')}${nav('brandOwners','◈','Brand Owners')}${nav('contactRequests','✉','Contact Requests')}${nav('support','☏','Support Tickets')}${nav('accounts','◎','Accounts')}${nav('slots','▦','Ad Placements')}${nav('system','⌗','System')}<button id="logout">⇥ Logout</button></nav></aside><main class="main"><header class="topbar"><strong>Private Gravity58 Team Portal</strong><span class="status-pill"><span class="dot"></span>${esc(user.email)}</span></header><section class="content" id="page"></section></main></div>`;$$('[data-view]').forEach(button=>button.onclick=()=>{stopDigit58AdminRefresh();view=button.dataset.view;shell()});$('#logout').onclick=async()=>{stopDigit58AdminRefresh();await api.logout();user=null;login()};renderView()}
+function shell(){app.innerHTML=`<div class="shell"><aside class="sidebar"><a class="brand" href="../"><svg class="brand-mark" viewBox="0 0 120 120" fill="none" stroke="#6d5ef0" stroke-width="8" aria-hidden="true"><circle cx="60" cy="26" r="15"/><circle cx="28" cy="82" r="15"/><circle cx="92" cy="82" r="15"/></svg><div><strong>Gravity58</strong><small class="muted">Team Administration</small></div></a><nav class="nav">${nav('overview','◉','Overview')}${nav('bookings','▣','Ad Bookings')}${nav('campaigns','✦','Campaigns')}${nav('digitalMenus','◇','Digital Menu Plans')}${nav('diners','☎','Customer Details')}${nav('digit58','⬡','Refills')}${nav('referrals','🎁','Referrals')}${nav('brandOwners','◈','Brand Owners')}${nav('contactRequests','✉','Contact Requests')}${nav('support','☏','Support Tickets')}${nav('accounts','◎','Accounts')}${nav('slots','▦','Ad Placements')}${nav('system','⌗','System')}<button id="logout">⇥ Logout</button></nav></aside><main class="main"><header class="topbar"><strong>Private Gravity58 Team Portal</strong><span class="status-pill"><span class="dot"></span>${esc(user.email)}</span></header><section class="content" id="page"></section></main></div>`;$$('[data-view]').forEach(button=>button.onclick=()=>{stopDigit58AdminRefresh();view=button.dataset.view;shell();acknowledgeRequestsFor(view)});$('#logout').onclick=async()=>{stopDigit58AdminRefresh();stopRequestRealtime();await api.logout();user=null;login()};renderView();refreshNavBadges()}
 function nav(key,icon,label){return`<button data-view="${key}" class="${view===key?'active':''}"><span>${icon}</span>${label}</button>`}
 function renderView(){({overview,bookings,campaigns,digitalMenus,diners,digit58,referrals:referralsView,brandOwners:digit58BrandOwnersView,contactRequests:contactRequestsView,support:supportTicketsView,accounts,slots,system:systemView}[view]||overview)()}
 function metric(title,value){return`<article class="metric"><span>${title}</span><strong>${value}</strong></article>`}
+function requestFeedPanel(){
+  if(!newRequestFeed.length)return'';
+  const items=newRequestFeed.slice(0,12).map(item=>`<button class="request-feed-item ${ringingRequestIds.has(item.id)?'unread':''}" data-jump-request="${esc(item.navKey)}"><span class="request-feed-dot" aria-hidden="true"></span><span class="request-feed-body"><strong>${esc(item.label)}</strong><br><small>${esc(item.title||'')}</small></span><small class="request-feed-time">${item.createdAt?new Date(item.createdAt).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'}):''}</small></button>`).join('');
+  return`<div class="section-head"><div><h2>🔔 Incoming requests</h2><p class="muted">New requests across every G58 product, most recent first — sound and nav alerts clear once you open a section.</p></div>${ringingRequestIds.size?`<span class="chip due">${ringingRequestIds.size} unread</span>`:''}</div><div class="request-feed">${items}</div>`;
+}
 function overview(){
   const adRevenue=data.bookings.filter(row=>['Live','Expired'].includes(row.status)).reduce((sum,row)=>sum+Number(row.amount||0),0);
   const menuRevenue=data.menuRequests.filter(row=>row.status==='Activated').reduce((sum,row)=>sum+Number(row.amount||0),0);
   const refillsRevenue=data.digit58Requests.filter(row=>row.status==='Activated').reduce((sum,row)=>sum+Number(row.amount||0),0);
   const cardBrandRevenue=digit58CardBrandRevenue();
   const totalRevenue=adRevenue+menuRevenue+refillsRevenue+cardBrandRevenue;
-  $('#page').innerHTML=`<div class="section-head"><div><h1>Unified Administration</h1><p class="muted">Manage advertising, subscriptions, accounts and restaurant placements from one G58-only portal.</p></div><button class="btn" id="refresh">Refresh</button></div><div class="grid stats">${metric('Pending Bookings',data.bookings.filter(row=>['Requested','Proof Sent'].includes(row.status)).length)}${metric('Live Ads',data.advertisements.filter(row=>row.active&&(!row.expiresAt||new Date(row.expiresAt)>new Date())).length)}${metric('Platform Accounts',data.profiles.length)}${metric('Total Revenue',money(totalRevenue))}</div>
+  $('#page').innerHTML=`<div class="section-head"><div><h1>Unified Administration</h1><p class="muted">Manage advertising, subscriptions, accounts and restaurant placements from one G58-only portal.</p></div><button class="btn" id="refresh">Refresh</button></div>
+  ${requestFeedPanel()}
+  <div class="grid stats">${metric('Pending Bookings',data.bookings.filter(row=>['Requested','Proof Sent'].includes(row.status)).length)}${metric('Live Ads',data.advertisements.filter(row=>row.active&&(!row.expiresAt||new Date(row.expiresAt)>new Date())).length)}${metric('Platform Accounts',data.profiles.length)}${metric('Total Revenue',money(totalRevenue))}</div>
   <div class="section-head"><div><h2>Revenue breakdown</h2><p class="muted">Ad bookings, Digital Menu, Refills activation, and Refills promotion/brand card revenue (self-declared payments through your default payment link). POS-only premium (activation-key path, not linked to a Digital Menu plan) isn't tracked in a queryable record yet, so it isn't included here.</p></div></div>
   <div class="grid stats">${metric('Ad Bookings',money(adRevenue))}${metric('Digital Menu',money(menuRevenue))}${metric('Refills Subscriptions',money(refillsRevenue))}${metric('Refills Cards & Brands',money(cardBrandRevenue))}</div>
   <div class="section-head"><h2>Quick actions</h2></div><div class="grid restaurant-grid"><button class="card admin-action" data-open="bookings"><h3>Review bookings</h3><p>Send payment links and activate paid campaigns.</p></button><button class="card admin-action" data-open="campaigns"><h3>Campaign timers</h3><p>Pause, publish or remove restaurant ads.</p></button><button class="card admin-action" data-open="accounts"><h3>Platform accounts</h3><p>Review customer access and account status.</p></button></div>`;
   $('#refresh').onclick=refresh;$$('[data-open]').forEach(button=>button.onclick=()=>{view=button.dataset.open;shell()});
+  $$('[data-jump-request]').forEach(button=>button.onclick=()=>{view=button.dataset.jumpRequest;shell();acknowledgeRequestsFor(view)});
 }
 function bookings(){
   const statuses=['All','Requested','Payment Link Sent','Proof Sent','Live','Extension Payment Link Sent','Extension Proof Sent','Rejected','Expired'];
@@ -78,7 +185,7 @@ function bookingRow(row){
   else actions='<span class="muted">No action</span>';
   const extension=row.extensionHours?`<br><small class="admin-extension-note">Extension: ${Number(row.extensionHours)}h · ${money(row.extensionAmount)}</small>`:'';
   const proofUrl=row.extensionProofMediaUrl||row.proofMediaUrl,proofReference=row.extensionPaymentReference||row.paymentReference;
-  return`<tr><td><div class="admin-customer-creative">${creativeThumb(row)}<span><strong>${esc(row.customerName||'Customer')}</strong><br><small>${esc(row.customerEmail||'')}</small><br><small>${esc(row.title||'')}</small></span></div></td><td>${esc(row.restaurantKey)}<br><small>${esc(spec.label)}</small><br><small class="admin-image-size">${esc(row.imageSize||spec.size)} · ${esc(row.imageRatio||spec.ratio)}</small></td><td>${row.hours}h${extension}</td><td>${money(row.amount)}</td><td><strong>${esc(row.status)}</strong>${proofReference?`<br><small>Ref: ${esc(proofReference)}</small>`:''}${proofUrl?`<br><a class="link" href="${esc(proofUrl)}" target="_blank" rel="noopener">View proof</a>`:''}${row.expiresAt?`<br><small data-expires="${row.expiresAt}">${timeLeft(row.expiresAt)}</small>`:''}</td><td><div class="actions">${actions}</div></td></tr>`;
+  return`<tr class="${ringingRowClass(row.id)}"><td><div class="admin-customer-creative">${creativeThumb(row)}<span><strong>${esc(row.customerName||'Customer')}</strong><br><small>${esc(row.customerEmail||'')}</small><br><small>${esc(row.title||'')}</small></span></div></td><td>${esc(row.restaurantKey)}<br><small>${esc(spec.label)}</small><br><small class="admin-image-size">${esc(row.imageSize||spec.size)} · ${esc(row.imageRatio||spec.ratio)}</small></td><td>${row.hours}h${extension}</td><td>${money(row.amount)}</td><td><strong>${esc(row.status)}</strong>${proofReference?`<br><small>Ref: ${esc(proofReference)}</small>`:''}${proofUrl?`<br><a class="link" href="${esc(proofUrl)}" target="_blank" rel="noopener">View proof</a>`:''}${row.expiresAt?`<br><small data-expires="${row.expiresAt}">${timeLeft(row.expiresAt)}</small>`:''}</td><td><div class="actions">${actions}</div></td></tr>`;
 }
 function bindBookingActions(){
   $$('[data-payment]').forEach(button=>button.onclick=()=>paymentDialog(button.dataset.payment));
@@ -343,7 +450,7 @@ function digit58RequestRow(row){
   const actions=row.status==='Requested'?(isFreeTrial?`<button class="btn small green" data-activate-digit58="${esc(row.id)}">Approve Free Trial</button><button class="btn small red" data-reject-digit58="${esc(row.id)}">Reject</button>`:`<button class="btn small" data-send-digit58-link="${esc(row.id)}">Send Payment Link</button><button class="btn small red" data-reject-digit58="${esc(row.id)}">Reject</button>`)
     :row.status==='Payment Link Sent'?`<button class="btn small green" data-activate-digit58="${esc(row.id)}">Activate</button><button class="btn small red" data-reject-digit58="${esc(row.id)}">Reject</button>`
     :`<button class="btn small green" data-activate-digit58="${esc(row.id)}">Activate</button>`;
-  return `<tr><td><strong>${esc(row.ownerName||'Store Owner')}</strong><br><small>${esc(row.ownerEmail||row.ownerId)}</small>${isAdditional?' <span class="chip due">+1 Store</span>':isFreeTrial?' <span class="chip delivered">30-day free trial</span>':''}</td><td>${isFreeTrial?'Free':money(row.amount||699)}</td><td>${esc(row.status||'Requested')}</td><td><div class="actions">${actions}</div></td></tr>`;
+  return `<tr class="${ringingRowClass(row.id)}"><td><strong>${esc(row.ownerName||'Store Owner')}</strong><br><small>${esc(row.ownerEmail||row.ownerId)}</small>${isAdditional?' <span class="chip due">+1 Store</span>':isFreeTrial?' <span class="chip delivered">30-day free trial</span>':''}</td><td>${isFreeTrial?'Free':money(row.amount||699)}</td><td>${esc(row.status||'Requested')}</td><td><div class="actions">${actions}</div></td></tr>`;
 }
 const DIGIT58_PLAN_LABELS={'1m':'Monthly Subscription'};
 function digit58EntitlementRow(row){
@@ -451,7 +558,7 @@ function contactRequestsView(){
   bindContactRequestActions();
 }
 function contactRequestRow(row){
-  return `<tr><td><strong>${esc(row.name||'')}</strong></td><td>${esc(row.phone||'')}</td><td><span class="chip">${esc(row.interest||'')}</span></td><td>${row.createdAt?new Date(row.createdAt).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'}):''}</td><td><div class="actions"><button class="btn small red" data-delete-contact="${esc(row.id)}">Delete</button></div></td></tr>`;
+  return `<tr class="${ringingRowClass(row.id)}"><td><strong>${esc(row.name||'')}</strong></td><td>${esc(row.phone||'')}</td><td><span class="chip">${esc(row.interest||'')}</span></td><td>${row.createdAt?new Date(row.createdAt).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'}):''}</td><td><div class="actions"><button class="btn small red" data-delete-contact="${esc(row.id)}">Delete</button></div></td></tr>`;
 }
 function bindContactRequestActions(){$$('[data-delete-contact]').forEach(button=>button.onclick=()=>deleteContactRequest(button.dataset.deleteContact))}
 async function deleteContactRequest(id){
@@ -551,7 +658,7 @@ function supportTicketsView(){
   $('#refresh').onclick=refresh;
   $$('[data-open-ticket]').forEach(button=>button.onclick=()=>openTicketModal(button.dataset.openTicket));
 }
-function ticketRow(row){return `<tr><td><strong>${esc(row.subject)}</strong></td><td>${esc(row.requesterName||'')}<br><small>${esc(row.requesterEmail||'')}</small></td><td>${esc(ticketSourceLabel(row.source))}</td><td><span class="chip ${row.status==='Resolved'?'delivered':row.status==='In Progress'?'due':''}">${esc(row.status)}</span></td><td>${row.updatedAt?new Date(row.updatedAt).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'}):''}</td><td><button class="btn small" data-open-ticket="${esc(row.id)}">Open</button></td></tr>`}
+function ticketRow(row){return `<tr class="${ringingRowClass(row.id)}"><td><strong>${esc(row.subject)}</strong></td><td>${esc(row.requesterName||'')}<br><small>${esc(row.requesterEmail||'')}</small></td><td>${esc(ticketSourceLabel(row.source))}</td><td><span class="chip ${row.status==='Resolved'?'delivered':row.status==='In Progress'?'due':''}">${esc(row.status)}</span></td><td>${row.updatedAt?new Date(row.updatedAt).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'}):''}</td><td><button class="btn small" data-open-ticket="${esc(row.id)}">Open</button></td></tr>`}
 function openTicketModal(id){
   const ticket=data.supportTickets.find(row=>row.id===id);if(!ticket)return;
   const messages=ticket.messages||[];
