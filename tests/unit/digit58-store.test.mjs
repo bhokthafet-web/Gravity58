@@ -129,9 +129,9 @@ test("digit58PlanAmount rounds monthly price by months and percentage discount",
   assert.equal(api.digit58PlanAmount(699, { months: 6, discount: 50 }), Math.round(699 * 6 * 0.5));
 });
 
-test("storeSlotsAllowed guarantees a floor of 5 slots even with no/low entitlement", () => {
+test("storeSlotsAllowed guarantees a floor of 1 slot even with no/low entitlement", () => {
   const api = loadDigit58();
-  assert.equal(api.storeSlotsAllowed(), 5);
+  assert.equal(api.storeSlotsAllowed(), 1);
 });
 
 test("buildUpiUri builds a upi://pay link with a rounded 2-decimal amount, or '' with no UPI id", () => {

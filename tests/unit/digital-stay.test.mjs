@@ -56,14 +56,16 @@ test("Digital Stay prevents room overlap and limits room service to a confirmed 
   ]) assert.match(actions, new RegExp(action));
 });
 
-test("one G58 subscription includes five mixed business locations", () => {
+test("one G58 subscription includes exactly one mixed business location, extra locations are ₹699 each", () => {
   const app = read("digit58/app.js");
   const actions = read("g58-core/src/actions.js");
   const admin = read("team-admin/app.js");
-  assert.match(app, /Math\.max\(5,Number\(entitlement\?\.storeSlots\)\|\|5\)/);
-  assert.match(app, /One ₹699 subscription includes up to 5 stores, service businesses, game zones, restaurants or hotels/);
-  assert.match(actions, /storeSlots: 5/);
-  assert.match(admin, /Grant Five More Location Slots/);
+  assert.match(app, /Math\.max\(1,Number\(entitlement\?\.storeSlots\)\|\|1\)/);
+  assert.match(app, /Each ₹699 subscription covers one location — add stores, service businesses, game zones, restaurants or hotels, one at a time/);
+  assert.match(actions, /storeSlots: 1/);
+  assert.match(admin, /Grant One More Location Slot/);
+  // The additional-location grant must actually add one slot, not a legacy block of five.
+  assert.match(admin, /Math\.max\(1,Number\(existing\?\.storeSlots\)\|\|1\)\+1/);
 });
 
 test("Digital Stay is discoverable on the public G58 website", () => {

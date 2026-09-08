@@ -367,7 +367,7 @@ let refreshView=()=>renderShell();
 let entitlement=null,myRequest=null,myStoreRequest=null,digit58Pricing={monthly:699};
 const DIGIT58_PLAN_PERIODS=[{id:'1m',label:'Monthly',months:1,discount:0}];
 function digit58PlanAmount(monthly,period){return Math.round(Number(monthly)*Number(period.months)*(1-Number(period.discount)/100))}
-function storeSlotsAllowed(){return Math.max(5,Number(entitlement?.storeSlots)||5)}
+function storeSlotsAllowed(){return Math.max(1,Number(entitlement?.storeSlots)||1)}
 let state={activeStoreId:'',stores:[],customers:[],cards:[],orders:[],promotions:[],cardPurchases:[],brandRequests:[],stayExtras:[]};
 function save(){try{localStorage.setItem('gravity58Digit58',JSON.stringify(state))}catch{}}
 function load(){try{return {...state,...JSON.parse(localStorage.getItem('gravity58Digit58')||'{}')}}catch{return state}}
@@ -942,7 +942,7 @@ function renderPlanGate(){
       <span class="plan-badge">Free Trial</span>
       <h3>1 Month Free</h3>
       <div class="plan-price">₹0<small> for 30 days</small></div>
-      <p class="plan-note">Request access for up to five business locations for 30 days with no payment. The G58 admin reviews every free trial before locations go live.</p>
+      <p class="plan-note">Request access for one business location for 30 days with no payment. The G58 admin reviews every free trial before locations go live.</p>
       <button class="btn full" id="startTrialBtn" type="button">Request Free Trial</button>
     </article>`:'';
   const planCards=DIGIT58_PLAN_PERIODS.map(period=>{
@@ -955,7 +955,7 @@ function renderPlanGate(){
       <button class="btn full" data-subscribe-plan="${period.id}" type="button">Subscribe</button>
     </article>`;
   }).join('');
-  app.innerHTML=`<main class="screen"><section class="auth-card" style="width:min(760px,100%)"><a class="brand" href="../"><svg class="brand-mark" viewBox="0 0 120 120" fill="none" stroke="#7fffd4" stroke-width="8" aria-hidden="true"><circle cx="60" cy="26" r="15"/><circle cx="28" cy="82" r="15"/><circle cx="92" cy="82" r="15"/></svg><div><h2>G58 Monthly Subscription</h2><p class="tagline">Start free, then run up to five locations for ₹699 per month.</p></div></a>${statusNote}<div class="plan-grid">${trialCard}${planCards}</div><div class="actions" style="margin-top:16px"><button class="btn full" id="refreshAccessStatus" type="button">Refresh Access Status</button><button class="btn secondary full" id="gateLogout">Sign out</button></div></section></main>${siteFooter()}`;
+  app.innerHTML=`<main class="screen"><section class="auth-card" style="width:min(760px,100%)"><a class="brand" href="../"><svg class="brand-mark" viewBox="0 0 120 120" fill="none" stroke="#7fffd4" stroke-width="8" aria-hidden="true"><circle cx="60" cy="26" r="15"/><circle cx="28" cy="82" r="15"/><circle cx="92" cy="82" r="15"/></svg><div><h2>G58 Monthly Subscription</h2><p class="tagline">Start free, then add locations for ₹699 per month each.</p></div></a>${statusNote}<div class="plan-grid">${trialCard}${planCards}</div><div class="actions" style="margin-top:16px"><button class="btn full" id="refreshAccessStatus" type="button">Refresh Access Status</button><button class="btn secondary full" id="gateLogout">Sign out</button></div></section></main>${siteFooter()}`;
   (typeof bindAndroidAppFooter==='function'&&bindAndroidAppFooter());
   $('#startTrialBtn')?.addEventListener('click',startDigit58FreeTrial);
   $('#refreshTrialStatus')?.addEventListener('click',async()=>{const button=$('#refreshTrialStatus');button.disabled=true;try{await loadEntitlement();if(hasActiveEntitlement())return proceedAfterEntitlement();renderPlanGate();toast('Approval is still pending')}catch(error){button.disabled=false;toast(error.message||'Could not refresh approval status')}});
@@ -971,7 +971,7 @@ async function requestAdditionalStore(){
     const created=await api.create(REQUEST_KIND,record,record.id,api.collaborativePermissionSet?.(record.ownerId));
     myStoreRequest=created;
     storesView();
-    toast('Request for five additional locations sent to the G58 team');
+    toast('Request for one more location sent to the G58 team');
   }catch(error){if(button)button.disabled=false;toast(error.message||'Could not send request')}
 }
 function renderConfigError(){app.innerHTML=`<main class="screen"><section class="auth-card"><a class="brand" href="../"><svg class="brand-mark" viewBox="0 0 120 120" fill="none" stroke="#7fffd4" stroke-width="8" aria-hidden="true"><circle cx="60" cy="26" r="15"/><circle cx="28" cy="82" r="15"/><circle cx="92" cy="82" r="15"/></svg><div><h2>Refills</h2><p class="tagline">Take any store online</p></div></a><p>Refills is temporarily unavailable. Please try again shortly.</p></section></main>${siteFooter()}`;(typeof bindAndroidAppFooter==='function'&&bindAndroidAppFooter())}
@@ -1305,12 +1305,12 @@ function storesView(){
   const allowed=storeSlotsAllowed(),canCreate=state.stores.length<allowed,pending=myStoreRequest;
   let requestBlock='';
   if(!canCreate){
-    if(pending?.status==='Requested')requestBlock=`<div class="card" style="margin-bottom:16px"><p class="muted">Your request for five additional location slots (${money(SUBSCRIPTION_AMOUNT)}/month) is with the G58 team. A payment link will appear here once it is reviewed.</p></div>`;
-    else if(pending?.status==='Payment Link Sent')requestBlock=`<div class="card" style="margin-bottom:16px"><p class="muted">Pay ${money(pending.amount||SUBSCRIPTION_AMOUNT)} to unlock five more location slots.</p><a class="btn full" href="${html(pending.paymentLink)}" target="_blank" rel="noopener" style="margin-top:10px;display:block;text-align:center;text-decoration:none">Pay ${money(pending.amount||SUBSCRIPTION_AMOUNT)}</a></div>`;
-    else requestBlock=`<div class="card" style="margin-bottom:16px"><p class="muted">You are using all ${allowed} location slots. Another block of five locations is ${money(SUBSCRIPTION_AMOUNT)}/month.</p><button class="btn full" id="requestStoreSlot" style="margin-top:10px">Request 5 More Locations (${money(SUBSCRIPTION_AMOUNT)}/month)</button></div>`;
+    if(pending?.status==='Requested')requestBlock=`<div class="card" style="margin-bottom:16px"><p class="muted">Your request for one more location slot (${money(SUBSCRIPTION_AMOUNT)}/month) is with the G58 team. A payment link will appear here once it is reviewed.</p></div>`;
+    else if(pending?.status==='Payment Link Sent')requestBlock=`<div class="card" style="margin-bottom:16px"><p class="muted">Pay ${money(pending.amount||SUBSCRIPTION_AMOUNT)} to unlock one more location slot.</p><a class="btn full" href="${html(pending.paymentLink)}" target="_blank" rel="noopener" style="margin-top:10px;display:block;text-align:center;text-decoration:none">Pay ${money(pending.amount||SUBSCRIPTION_AMOUNT)}</a></div>`;
+    else requestBlock=`<div class="card" style="margin-bottom:16px"><p class="muted">You are using all ${allowed} location slot(s). Another location is ${money(SUBSCRIPTION_AMOUNT)}/month.</p><button class="btn full" id="requestStoreSlot" style="margin-top:10px">Request 1 More Location (${money(SUBSCRIPTION_AMOUNT)}/month)</button></div>`;
   }
-  $('#page').innerHTML=`<div class="section-head"><div><h1>My Locations</h1><p class="muted">${state.stores.length} of ${allowed} location slots used. One ₹699 subscription includes up to 5 stores, service businesses, game zones, restaurants or hotels.</p></div><button class="btn" id="addStore" ${canCreate?'':'disabled'}>+ New Location</button></div>${requestBlock}<div class="grid store-grid">${state.stores.map(storeCard).join('')||'<div class="empty">No locations yet — create your first one.</div>'}</div>`;
-  $('#addStore').onclick=()=>{if(!canCreate)return toast('Request and activate five more location slots first');openStoreForm()};
+  $('#page').innerHTML=`<div class="section-head"><div><h1>My Locations</h1><p class="muted">${state.stores.length} of ${allowed} location slot(s) used. Each ₹699 subscription covers one location — add stores, service businesses, game zones, restaurants or hotels, one at a time.</p></div><button class="btn" id="addStore" ${canCreate?'':'disabled'}>+ New Location</button></div>${requestBlock}<div class="grid store-grid">${state.stores.map(storeCard).join('')||'<div class="empty">No locations yet — create your first one.</div>'}</div>`;
+  $('#addStore').onclick=()=>{if(!canCreate)return toast('Request and activate one more location slot first');openStoreForm()};
   $('#requestStoreSlot')?.addEventListener('click',requestAdditionalStore);
   $$('[data-share-store]').forEach(button=>button.onclick=()=>shareStoreModal(button.dataset.shareStore));
   $$('[data-share-brand]').forEach(button=>button.onclick=()=>shareBrandModal(button.dataset.shareBrand));

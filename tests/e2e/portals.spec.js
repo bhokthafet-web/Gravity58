@@ -373,7 +373,7 @@ test("G58 admin approval activates a pending Refills free trial for 30 days", as
     entitlement: window.__g58Mock.store.digit58_entitlements.find((row) => row.ownerId === "pending-trial-owner"),
   }));
   expect(result.request).toMatchObject({ status: "Activated" });
-  expect(result.entitlement).toMatchObject({ active: true, paused: false, freeTrial: true, trialUsed: true, plan: "trial", subscriptionStatus: "trial", storeSlots: 5 });
+  expect(result.entitlement).toMatchObject({ active: true, paused: false, freeTrial: true, trialUsed: true, plan: "trial", subscriptionStatus: "trial", storeSlots: 1 });
   const days = (new Date(result.entitlement.expiresAt).getTime() - Date.now()) / 86_400_000;
   expect(days).toBeGreaterThan(29.9);
   expect(days).toBeLessThanOrEqual(30.1);

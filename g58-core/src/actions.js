@@ -888,7 +888,7 @@ async function createDigit58SubscriptionCheckout(call, input, userId) {
   };
   if (entitlement) await updateRow(call, rowId, { ...entitlement, ...changes });
   else await createRow(call, rowId, DIGIT58_ENTITLEMENT_KIND, {
-    ownerId, active: false, paused: false, lifetime: false, storeSlots: 5, freeTrial: false, activatedAt: '', expiresAt: '',
+    ownerId, active: false, paused: false, lifetime: false, storeSlots: 1, freeTrial: false, activatedAt: '', expiresAt: '',
     referredByCode: text(input.referredByCode, 12), ...changes,
   }, rowPermissions(userId, ownerId));
   return { subscriptionId: subscription.id, razorpayKeyId: process.env.RAZORPAY_KEY_ID, amount, periodId };
