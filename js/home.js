@@ -2,6 +2,8 @@
   "use strict";
   window.openG58ContactModal = () => document.getElementById("g58ContactModal")?.classList.add("open");
   window.closeG58ContactModal = () => document.getElementById("g58ContactModal")?.classList.remove("open");
+  window.openG58ContactSuccessModal = () => document.getElementById("g58ContactSuccessModal")?.classList.add("show");
+  window.closeG58ContactSuccessModal = () => document.getElementById("g58ContactSuccessModal")?.classList.remove("show");
 
   window.toggleMobileNav = () => {
     const panel = document.getElementById("mobileNavPanel");
@@ -70,6 +72,7 @@
     scheduleHeroFlowDots();
 
     document.getElementById("g58ContactCancel")?.addEventListener("click", window.closeG58ContactModal);
+    document.getElementById("g58ContactSuccessClose")?.addEventListener("click", window.closeG58ContactSuccessModal);
     document.getElementById("g58ContactForm")?.addEventListener("submit", async (event) => {
       event.preventDefault();
       const form = event.currentTarget;
@@ -88,7 +91,7 @@
         await api.create("g58_contact_requests", { name, phone, interest, createdAt: new Date().toISOString() });
         window.closeG58ContactModal();
         form.reset();
-        alert("Thanks! Your message has been sent to the G58 team.");
+        window.openG58ContactSuccessModal();
       } catch (error) {
         alert(error.message || "Could not send your message. Please try again.");
       } finally {
