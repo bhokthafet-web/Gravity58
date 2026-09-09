@@ -1,0 +1,13 @@
+{
+  "appId": "in.g58.teamadmin",
+  "appName": "G58 Team Admin",
+  "webDir": "www",
+  "server": {
+    "url": "https://g58.in/team-admin/",
+    "androidScheme": "https",
+    "cleartext": false
+  },
+  "android": {
+    "appendUserAgent": "G58TeamAdminAndroidApp/1.0"
+  }
+}
