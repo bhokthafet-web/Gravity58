@@ -72,6 +72,7 @@
     document.getElementById("g58ContactCancel")?.addEventListener("click", window.closeG58ContactModal);
     document.getElementById("g58ContactForm")?.addEventListener("submit", async (event) => {
       event.preventDefault();
+      const form = event.currentTarget;
       const api = window.Gravity58Ads;
       const button = document.getElementById("g58ContactSubmit");
       const name = document.getElementById("g58ContactName")?.value.trim();
@@ -86,7 +87,7 @@
         if (!activeUser) throw new Error("Could not start a secure session.");
         await api.create("g58_contact_requests", { name, phone, interest, createdAt: new Date().toISOString() });
         window.closeG58ContactModal();
-        event.currentTarget.reset();
+        form.reset();
         alert("Thanks! Your message has been sent to the G58 team.");
       } catch (error) {
         alert(error.message || "Could not send your message. Please try again.");
