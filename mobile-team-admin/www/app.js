@@ -1,0 +1,736 @@
+const $=(selector,root=document)=>root.querySelector(selector),$$=(selector,root=document)=>[...root.querySelectorAll(selector)];
+const app=$('#app'),api=window.Gravity58Ads,now=()=>new Date().toISOString(),money=value=>`₹${Number(value||0).toLocaleString('en-IN')}`;
+const esc=value=>String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
+const digit58StoreKind=ownerId=>`digit58_store_${String(ownerId||'').replace(/[^a-zA-Z0-9._-]/g,'-').slice(0,40)}`;
+const AD_PLACEMENT_SPECS={right_rail:{label:'Right menu rail',size:'1080 × 1350 px',ratio:'4:5'},preparing:{label:'Preparing screen',size:'1200 × 628 px',ratio:'1.91:1'},thankyou:{label:'Thank-you screen',size:'1080 × 1080 px',ratio:'1:1'}};
+const placementSpec=slotId=>AD_PLACEMENT_SPECS[slotId]||{label:slotId||'Advertisement',size:'Confirm with G58',ratio:''};
+let user=null,view='overview',data={bookings:[],advertisements:[],profiles:[],slots:[],menuPricing:[],menuEntitlements:[],menuRequests:[],dinerOrders:[],dinerOrdersLoaded:false,digit58Stores:[],digit58Requests:[],digit58Entitlements:[],digit58Customers:[],digit58CustomersLoaded:false,digit58Pricing:[],digit58CardPurchases:[],digit58BrandRequests:[],digit58BrandOwners:[],digit58Referrals:[],digit58ReferrerProfiles:[],supportTickets:[],contactRequests:[]};
+const DIGIT58_ADMIN_REFRESH_MS=10000;
+let digit58AdminRefreshTimer=null,digit58AdminRenderedSignature='';
+
+// --- Live "new request" alerts: realtime detection, chime + pulsing nav badges,
+// mirroring how the Refills owner app rings on a new incoming order. ---
+const REQUEST_WATCHERS=[
+  {kind:'bookings',dataKey:'bookings',navKey:'bookings',label:'Ad booking request'},
+  {kind:'digital_menu_requests',dataKey:'menuRequests',navKey:'digitalMenus',label:'Digital Menu request'},
+  {kind:'digit58_requests',dataKey:'digit58Requests',navKey:'digit58',label:'Refills request'},
+  {kind:'digit58_brand_requests',dataKey:'digit58BrandRequests',navKey:'digit58',label:'Refills brand card request'},
+  {kind:'digit58_card_purchases',dataKey:'digit58CardPurchases',navKey:'digit58',label:'Refills card purchase'},
+  {kind:'digit58_referrals',dataKey:'digit58Referrals',navKey:'referrals',label:'Referral'},
+  {kind:'support_tickets',dataKey:'supportTickets',navKey:'support',label:'Support ticket'},
+  {kind:'g58_contact_requests',dataKey:'contactRequests',navKey:'contactRequests',label:'Contact request'},
+];
+const knownRequestIds=new Map(),ringingRequestIds=new Set(),newRequestFeed=[];
+let requestUnsubscribers=[];
+const ringingRowClass=id=>ringingRequestIds.has(id)?'request-row-new':'';
+function seedKnownRequestIds(){REQUEST_WATCHERS.forEach(watcher=>knownRequestIds.set(watcher.kind,new Set((data[watcher.dataKey]||[]).map(row=>row.id))))}
+function requestTitle(watcher,row){
+  return {
+    bookings:`${row.customerName||'Advertiser'} — ${row.restaurantKey||'Ad placement'}`,
+    digital_menu_requests:row.ownerName||row.ownerEmail||row.ownerId||'',
+    digit58_requests:row.ownerName||row.ownerEmail||row.ownerId||'',
+    digit58_brand_requests:row.brandOwnerEmail||row.storeName||'',
+    digit58_card_purchases:row.storeName||row.ownerEmail||'',
+    digit58_referrals:row.referredEmail||row.referredOwnerId||'',
+    support_tickets:row.subject||'',
+    g58_contact_requests:row.name||'',
+  }[watcher.kind]||watcher.label;
+}
+function navBadgeCount(key){return REQUEST_WATCHERS.filter(watcher=>watcher.navKey===key).reduce((sum,watcher)=>sum+(data[watcher.dataKey]||[]).filter(row=>ringingRequestIds.has(row.id)).length,0)}
+function refreshNavBadges(){
+  $$('[data-view]').forEach(button=>{
+    const count=navBadgeCount(button.dataset.view);
+    let badge=button.querySelector('.nav-badge');
+    if(count){if(!badge){badge=document.createElement('span');badge.className='nav-badge';button.appendChild(badge)}badge.textContent=count;badge.setAttribute('aria-label',`${count} new`)}
+    else badge?.remove();
+  });
+}
+function acknowledgeRequestsFor(navKey){
+  REQUEST_WATCHERS.filter(watcher=>watcher.navKey===navKey).forEach(watcher=>(data[watcher.dataKey]||[]).forEach(row=>ringingRequestIds.delete(row.id)));
+  updateRequestAlertSound();
+}
+async function handleRequestKindChange(watcher){
+  let rows;
+  try{rows=await api.list(watcher.kind)}catch(error){console.warn(`Could not refresh ${watcher.kind}`,error);return}
+  const known=knownRequestIds.get(watcher.kind)||new Set();
+  let hasNew=false;
+  rows.forEach(row=>{
+    if(!row.id||known.has(row.id))return;
+    known.add(row.id);ringingRequestIds.add(row.id);hasNew=true;
+    newRequestFeed.unshift({id:row.id,navKey:watcher.navKey,label:watcher.label,title:requestTitle(watcher,row),createdAt:row.createdAt||now()});
+  });
+  if(newRequestFeed.length>40)newRequestFeed.length=40;
+  knownRequestIds.set(watcher.kind,known);
+  data[watcher.dataKey]=rows;
+  if(hasNew){updateRequestAlertSound();toast(`🔔 New ${watcher.label.toLowerCase()} received`)}
+  else refreshNavBadges();
+  if(!$('#modal')&&(view===watcher.navKey||view==='overview'))renderView();
+}
+function startRequestRealtime(){
+  stopRequestRealtime();
+  seedKnownRequestIds();
+  if(typeof api.subscribeKind!=='function')return;
+  requestUnsubscribers=REQUEST_WATCHERS.map(watcher=>api.subscribeKind(watcher.kind,()=>handleRequestKindChange(watcher)));
+}
+function stopRequestRealtime(){requestUnsubscribers.forEach(unsubscribe=>unsubscribe?.());requestUnsubscribers=[]}
+
+let requestAlertContext=null,requestAlertTimer=null;
+function unlockRequestAlertAudio(){
+  try{
+    requestAlertContext||=new (window.AudioContext||window.webkitAudioContext)();
+    if(requestAlertContext.state==='suspended')requestAlertContext.resume();
+    const buffer=requestAlertContext.createBuffer(1,1,22050),source=requestAlertContext.createBufferSource();
+    source.buffer=buffer;source.connect(requestAlertContext.destination);source.start(0);
+  }catch{}
+}
+['pointerdown','touchstart','touchend','click','keydown'].forEach(type=>document.addEventListener(type,unlockRequestAlertAudio,{passive:true,once:true}));
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')unlockRequestAlertAudio()});
+window.addEventListener('pageshow',unlockRequestAlertAudio);
+function requestAlertTone(duration,frequency,startAt,gainPeak){
+  if(!requestAlertContext)return;
+  const oscillator=requestAlertContext.createOscillator(),gain=requestAlertContext.createGain();
+  oscillator.type='sine';oscillator.frequency.value=frequency;oscillator.connect(gain);gain.connect(requestAlertContext.destination);
+  const t=requestAlertContext.currentTime+startAt;
+  gain.gain.setValueAtTime(0,t);gain.gain.linearRampToValueAtTime(gainPeak,t+.02);gain.gain.exponentialRampToValueAtTime(.001,t+duration);
+  oscillator.start(t);oscillator.stop(t+duration+.02);
+}
+function playAdminNotificationChime(){requestAlertTone(.16,880,0,.22);requestAlertTone(.22,659.25,.17,.2)}
+function adminPortalIsActive(){return document.visibilityState==='visible'&&document.hasFocus()}
+function updateRequestAlertSound(){
+  refreshNavBadges();
+  if(!ringingRequestIds.size){if(requestAlertTimer){clearInterval(requestAlertTimer);requestAlertTimer=null}return}
+  if(requestAlertTimer)return;
+  playAdminNotificationChime();
+  requestAlertTimer=setInterval(()=>{
+    if(!ringingRequestIds.size){clearInterval(requestAlertTimer);requestAlertTimer=null;return}
+    if(!adminPortalIsActive())playAdminNotificationChime();
+  },3500);
+}
+function toast(message){const target=$('#toast');target.textContent=message;target.classList.add('show');setTimeout(()=>target.classList.remove('show'),2200)}
+function timeLeft(expiresAt,lifetime=false){if(lifetime)return'Lifetime';if(!expiresAt)return'No expiry';const ms=new Date(expiresAt)-new Date();if(ms<=0)return'Expired';const days=Math.floor(ms/864e5),hours=Math.floor(ms%864e5/36e5),minutes=Math.floor(ms%36e5/6e4);return`${days?days+'d ':''}${hours}h ${minutes}m remaining`}
+async function boot(){if(!api.configured)return configurationRequired();user=await api.currentUser().catch(()=>null);if(!user)return login();if(!await api.isTeamAdmin().catch(()=>false))return accessDenied();await loadData();shell();startRequestRealtime()}
+function configurationRequired(){app.innerHTML=`<main class="screen auth"><section class="auth-card glass"><a class="brand" href="../"><svg class="brand-mark" viewBox="0 0 120 120" fill="none" stroke="#6d5ef0" stroke-width="8" aria-hidden="true"><circle cx="60" cy="26" r="15"/><circle cx="28" cy="82" r="15"/><circle cx="92" cy="82" r="15"/></svg><div><h2>Gravity58 Team Admin</h2><p class="tagline">Private administration</p></div></a><div class="notice"><strong>Administration service unavailable</strong><p>The secure administration service is not available. Please contact the Gravity58 technical team.</p></div><a class="btn full" href="../">Return to G58</a></section></main>`}
+function login(){app.innerHTML=`<main class="screen auth"><section class="auth-card glass"><a class="brand" href="../"><svg class="brand-mark" viewBox="0 0 120 120" fill="none" stroke="#6d5ef0" stroke-width="8" aria-hidden="true"><circle cx="60" cy="26" r="15"/><circle cx="28" cy="82" r="15"/><circle cx="92" cy="82" r="15"/></svg><div><h2>Gravity58 Team Admin</h2><p class="tagline">G58 team members only</p></div></a><form id="login"><div class="field"><label>Team email</label><input name="email" type="email" required></div><div class="field"><label>Password</label><input name="password" type="password" required></div><button class="btn full">Secure Login</button></form><p class="muted" style="text-align:center">Access is restricted to authorised Gravity58 team members.</p></section></main>`;$('#login').onsubmit=async event=>{event.preventDefault();const values=Object.fromEntries(new FormData(event.target));try{await api.login(values.email,values.password);user=await api.currentUser();if(!await api.isTeamAdmin()){await api.logout();throw new Error('This account is not a member of the G58 administration team.')}await loadData();shell();startRequestRealtime()}catch(error){toast(error.message||'Login failed')}}}
+function installAdminPasswordRecovery(){
+  const form=$('#login');
+  if(!form||$('#forgotAdminPassword'))return;
+  form.insertAdjacentHTML('afterend','<button class="btn secondary full" id="forgotAdminPassword" type="button" style="margin-top:10px">Forgot password</button>');
+  $('#forgotAdminPassword').onclick=()=>modal('Reset Admin Password','<form id="adminRecoveryForm"><div class="field"><label>Admin email</label><input name="email" type="email" required placeholder="you@example.com"></div><button class="btn full">Send Reset Link</button></form>',()=>{$('#adminRecoveryForm').onsubmit=async event=>{event.preventDefault();const button=$('#adminRecoveryForm button');button.disabled=true;button.textContent='Sending…';const values=Object.fromEntries(new FormData(event.target));try{await api.forgotPassword(values.email.trim(),location.origin+'/reset-password/');closeModal();toast('Password reset link sent to your email')}catch(error){button.disabled=false;button.textContent='Send Reset Link';toast(error.message||'Could not send reset link')}}});
+}
+const renderAdminLogin=login;
+login=function(){renderAdminLogin();installAdminPasswordRecovery()};
+function accessDenied(){app.innerHTML=`<main class="screen auth"><section class="auth-card glass"><h2>Access denied</h2><p>This signed-in account is not a G58 team member.</p><button class="btn full" id="leave">Sign out</button></section></main>`;$('#leave').onclick=async()=>{await api.logout();user=null;login()}}
+async function loadData(){
+  const [bookings,advertisements,profiles,slots,menuPricing,menuEntitlements,menuRequests,digit58Stores,digit58Requests,digit58Entitlements,digit58Pricing,digit58CardPurchases,digit58BrandRequests,digit58BrandOwners,digit58Referrals,digit58ReferrerProfiles,supportTickets,contactRequests]=await Promise.all([api.list('bookings'),api.list('advertisements'),api.list('profiles'),api.list('slots'),api.list('digital_menu_pricing').catch(()=>[]),api.list('digital_menu_entitlements').catch(()=>[]),api.list('digital_menu_requests').catch(()=>[]),api.list('digit58_owners').catch(()=>[]),api.list('digit58_requests').catch(()=>[]),api.list('digit58_entitlements').catch(()=>[]),api.list('digit58_pricing').catch(()=>[]),api.list('digit58_card_purchases').catch(()=>[]),api.list('digit58_brand_requests').catch(()=>[]),api.list('digit58_brand_owners').catch(()=>[]),api.list('digit58_referrals').catch(()=>[]),api.list('digit58_referrer_profiles').catch(()=>[]),api.list('support_tickets').catch(()=>[]),api.list('g58_contact_requests').catch(()=>[])]);
+  const uniqueStoreSummaries=[...new Map(digit58Stores.filter(row=>row.ownerId&&(row.storeId||row.id)).map(row=>[`${row.ownerId}:${row.storeId||row.id}`,row])).values()];
+  const ownerIds=[...new Set([...uniqueStoreSummaries.map(row=>row.ownerId),...digit58Entitlements.map(row=>row.ownerId),...digit58Requests.map(row=>row.ownerId)].filter(Boolean))];
+  const liveStoresByOwner=await Promise.all(ownerIds.map(async ownerId=>({ownerId,rows:await api.list(digit58StoreKind(ownerId)).catch(()=>[])})));
+  const storeMap=new Map(uniqueStoreSummaries.map(summary=>{const storeId=summary.storeId||summary.id;return [`${summary.ownerId}:${storeId}`,{...summary,registryId:summary.id,storeId,storeName:summary.storeName||'Store'}]}));
+  liveStoresByOwner.forEach(({ownerId,rows})=>rows.forEach(live=>{const storeId=live.id||live.$id,key=`${ownerId}:${storeId}`,summary=storeMap.get(key)||{};storeMap.set(key,{...summary,...live,ownerId,storeId,storeName:live.name||summary.storeName||'Store',ownerEmail:summary.ownerEmail||live.ownerEmail||digit58Entitlements.find(row=>row.ownerId===ownerId)?.ownerEmail||''})}));
+  const hydratedDigit58Stores=[...storeMap.values()];
+  data={bookings,advertisements,profiles,slots,menuPricing,menuEntitlements,menuRequests,digit58Stores:hydratedDigit58Stores,digit58Requests,digit58Entitlements,digit58Pricing,digit58CardPurchases,digit58BrandRequests,digit58BrandOwners,digit58Referrals,digit58ReferrerProfiles,supportTickets,contactRequests,digit58Customers:data.digit58Customers||[],digit58CustomersLoaded:false};
+  digit58OrdersCache=null;
+  await reconcileExpiredCampaigns();
+}
+async function reconcileExpiredCampaigns(){
+  const expired=data.advertisements.filter(ad=>ad.active&&ad.expiresAt&&new Date(ad.expiresAt).getTime()<=Date.now());
+  for(const ad of expired){
+    Object.assign(ad,{active:false,status:'Expired'});
+    try{await api.update('advertisements',ad.id,{active:false,status:'Expired',expiredAt:now()})}catch(error){console.warn('Could not persist campaign expiry',error)}
+    const booking=data.bookings.find(row=>row.id===ad.bookingId);
+    if(booking&&booking.status==='Live'){
+      Object.assign(booking,{status:'Expired',expiresAt:ad.expiresAt});
+      try{await api.update('bookings',booking.id,{status:'Expired',expiresAt:ad.expiresAt,expiredAt:now()})}catch(error){console.warn('Could not persist booking expiry',error)}
+    }
+  }
+}
+function shell(){app.innerHTML=`<div class="shell"><aside class="sidebar"><a class="brand" href="../"><svg class="brand-mark" viewBox="0 0 120 120" fill="none" stroke="#6d5ef0" stroke-width="8" aria-hidden="true"><circle cx="60" cy="26" r="15"/><circle cx="28" cy="82" r="15"/><circle cx="92" cy="82" r="15"/></svg><div><strong>Gravity58</strong><small class="muted">Team Administration</small></div></a><nav class="nav">${nav('overview','◉','Overview')}${nav('bookings','▣','Ad Bookings')}${nav('campaigns','✦','Campaigns')}${nav('digitalMenus','◇','Digital Menu Plans')}${nav('diners','☎','Customer Details')}${nav('digit58','⬡','Refills')}${nav('referrals','🎁','Referrals')}${nav('brandOwners','◈','Brand Owners')}${nav('contactRequests','✉','Contact Requests')}${nav('support','☏','Support Tickets')}${nav('accounts','◎','Accounts')}${nav('slots','▦','Ad Placements')}${nav('system','⌗','System')}<button id="logout">⇥ Logout</button></nav></aside><main class="main"><header class="topbar"><strong>Private Gravity58 Team Portal</strong><span class="status-pill"><span class="dot"></span>${esc(user.email)}</span></header><section class="content" id="page"></section></main></div>`;$$('[data-view]').forEach(button=>button.onclick=()=>{stopDigit58AdminRefresh();view=button.dataset.view;shell();acknowledgeRequestsFor(view)});$('#logout').onclick=async()=>{stopDigit58AdminRefresh();stopRequestRealtime();await api.logout();user=null;login()};renderView();refreshNavBadges()}
+function nav(key,icon,label){return`<button data-view="${key}" class="${view===key?'active':''}"><span>${icon}</span>${label}</button>`}
+function renderView(){({overview,bookings,campaigns,digitalMenus,diners,digit58,referrals:referralsView,brandOwners:digit58BrandOwnersView,contactRequests:contactRequestsView,support:supportTicketsView,accounts,slots,system:systemView}[view]||overview)()}
+function metric(title,value){return`<article class="metric"><span>${title}</span><strong>${value}</strong></article>`}
+function requestFeedPanel(){
+  if(!newRequestFeed.length)return'';
+  const items=newRequestFeed.slice(0,12).map(item=>`<button class="request-feed-item ${ringingRequestIds.has(item.id)?'unread':''}" data-jump-request="${esc(item.navKey)}"><span class="request-feed-dot" aria-hidden="true"></span><span class="request-feed-body"><strong>${esc(item.label)}</strong><br><small>${esc(item.title||'')}</small></span><small class="request-feed-time">${item.createdAt?new Date(item.createdAt).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'}):''}</small></button>`).join('');
+  return`<div class="section-head"><div><h2>🔔 Incoming requests</h2><p class="muted">New requests across every G58 product, most recent first — sound and nav alerts clear once you open a section.</p></div>${ringingRequestIds.size?`<span class="chip due">${ringingRequestIds.size} unread</span>`:''}</div><div class="request-feed">${items}</div>`;
+}
+function overview(){
+  const adRevenue=data.bookings.filter(row=>['Live','Expired'].includes(row.status)).reduce((sum,row)=>sum+Number(row.amount||0),0);
+  const menuRevenue=data.menuRequests.filter(row=>row.status==='Activated').reduce((sum,row)=>sum+Number(row.amount||0),0);
+  const refillsRevenue=data.digit58Requests.filter(row=>row.status==='Activated').reduce((sum,row)=>sum+Number(row.amount||0),0);
+  const cardBrandRevenue=digit58CardBrandRevenue();
+  const totalRevenue=adRevenue+menuRevenue+refillsRevenue+cardBrandRevenue;
+  $('#page').innerHTML=`<div class="section-head"><div><h1>Unified Administration</h1><p class="muted">Manage advertising, subscriptions, accounts and restaurant placements from one G58-only portal.</p></div><button class="btn" id="refresh">Refresh</button></div>
+  ${requestFeedPanel()}
+  <div class="grid stats">${metric('Pending Bookings',data.bookings.filter(row=>['Requested','Proof Sent'].includes(row.status)).length)}${metric('Live Ads',data.advertisements.filter(row=>row.active&&(!row.expiresAt||new Date(row.expiresAt)>new Date())).length)}${metric('Platform Accounts',data.profiles.length)}${metric('Total Revenue',money(totalRevenue))}</div>
+  <div class="section-head"><div><h2>Revenue breakdown</h2><p class="muted">Ad bookings, Digital Menu, Refills activation, and Refills promotion/brand card revenue (self-declared payments through your default payment link). POS-only premium (activation-key path, not linked to a Digital Menu plan) isn't tracked in a queryable record yet, so it isn't included here.</p></div></div>
+  <div class="grid stats">${metric('Ad Bookings',money(adRevenue))}${metric('Digital Menu',money(menuRevenue))}${metric('Refills Subscriptions',money(refillsRevenue))}${metric('Refills Cards & Brands',money(cardBrandRevenue))}</div>
+  <div class="section-head"><h2>Quick actions</h2></div><div class="grid restaurant-grid"><button class="card admin-action" data-open="bookings"><h3>Review bookings</h3><p>Send payment links and activate paid campaigns.</p></button><button class="card admin-action" data-open="campaigns"><h3>Campaign timers</h3><p>Pause, publish or remove restaurant ads.</p></button><button class="card admin-action" data-open="accounts"><h3>Platform accounts</h3><p>Review customer access and account status.</p></button></div>`;
+  $('#refresh').onclick=refresh;$$('[data-open]').forEach(button=>button.onclick=()=>{view=button.dataset.open;shell()});
+  $$('[data-jump-request]').forEach(button=>button.onclick=()=>{view=button.dataset.jumpRequest;shell();acknowledgeRequestsFor(view)});
+}
+function bookings(){
+  const statuses=['All','Requested','Payment Link Sent','Proof Sent','Live','Extension Payment Link Sent','Extension Proof Sent','Rejected','Expired'];
+  $('#page').innerHTML=`<div class="section-head"><div><h1>Advertising Bookings</h1><p class="muted">Verify payment, select an available restaurant placement, publish for the paid hours, or approve a paid extension.</p></div><button class="btn" id="refresh">Refresh</button></div><div class="admin-filter-bar"><input id="bookingSearch" placeholder="Search customer, email or restaurant"><select id="bookingStatus">${statuses.map(status=>`<option>${status}</option>`).join('')}</select></div><div class="card table-wrap"><table><thead><tr><th>Creative / Customer</th><th>Restaurant / Placement</th><th>Duration</th><th>Amount</th><th>Payment & Status</th><th>Actions</th></tr></thead><tbody id="bookingRows">${data.bookings.map(bookingRow).join('')||'<tr><td colspan="6">No requests.</td></tr>'}</tbody></table></div>`;
+  const draw=()=>{const q=$('#bookingSearch').value.toLowerCase(),status=$('#bookingStatus').value,rows=data.bookings.filter(row=>(status==='All'||row.status===status)&&`${row.customerName} ${row.customerEmail} ${row.restaurantKey}`.toLowerCase().includes(q));$('#bookingRows').innerHTML=rows.map(bookingRow).join('')||'<tr><td colspan="6">No matching requests.</td></tr>';bindBookingActions()};
+  $('#bookingSearch').oninput=draw;$('#bookingStatus').onchange=draw;$('#refresh').onclick=refresh;bindBookingActions();
+}
+function creativeThumb(row){if(!row.mediaUrl)return`<div class="admin-creative-placeholder">${esc((row.title||'AD').slice(0,2).toUpperCase())}</div>`;if(/^video\//.test(row.mediaType||'')||/\.(mp4|webm)(\?|$)/i.test(row.mediaUrl))return`<video class="admin-creative-thumb" src="${esc(row.mediaUrl)}" muted loop autoplay playsinline></video>`;return`<img class="admin-creative-thumb" src="${esc(row.mediaUrl)}" alt="">`}
+function bookingRow(row){
+  const spec=placementSpec(row.slotId);let actions='';
+  if(row.status==='Requested')actions=`<button class="btn small" data-payment="${row.id}">Payment link</button><button class="btn small red" data-reject="${row.id}">Reject</button>`;
+  else if(row.status==='Proof Sent')actions=`<button class="btn small green" data-activate="${row.id}">Select slot & publish</button><button class="btn small red" data-reject="${row.id}">Reject</button>`;
+  else if(row.status==='Extension Proof Sent')actions=`<button class="btn small green" data-confirm-extension="${row.id}">Confirm extension</button>`;
+  else if(row.status==='Live')actions=`<button class="btn small secondary" data-stop="${row.id}">Stop</button>`;
+  else if(['Payment Link Sent','Extension Payment Link Sent'].includes(row.status))actions='<span class="muted">Waiting for advertiser payment</span>';
+  else actions='<span class="muted">No action</span>';
+  const extension=row.extensionHours?`<br><small class="admin-extension-note">Extension: ${Number(row.extensionHours)}h · ${money(row.extensionAmount)}</small>`:'';
+  const proofUrl=row.extensionProofMediaUrl||row.proofMediaUrl,proofReference=row.extensionPaymentReference||row.paymentReference;
+  return`<tr class="${ringingRowClass(row.id)}"><td><div class="admin-customer-creative">${creativeThumb(row)}<span><strong>${esc(row.customerName||'Customer')}</strong><br><small>${esc(row.customerEmail||'')}</small><br><small>${esc(row.title||'')}</small></span></div></td><td>${esc(row.restaurantKey)}<br><small>${esc(spec.label)}</small><br><small class="admin-image-size">${esc(row.imageSize||spec.size)} · ${esc(row.imageRatio||spec.ratio)}</small></td><td>${row.hours}h${extension}</td><td>${money(row.amount)}</td><td><strong>${esc(row.status)}</strong>${proofReference?`<br><small>Ref: ${esc(proofReference)}</small>`:''}${proofUrl?`<br><a class="link" href="${esc(proofUrl)}" target="_blank" rel="noopener">View proof</a>`:''}${row.expiresAt?`<br><small data-expires="${row.expiresAt}">${timeLeft(row.expiresAt)}</small>`:''}</td><td><div class="actions">${actions}</div></td></tr>`;
+}
+function bindBookingActions(){
+  $$('[data-payment]').forEach(button=>button.onclick=()=>paymentDialog(button.dataset.payment));
+  $$('[data-reject]').forEach(button=>button.onclick=()=>rejectDialog(button.dataset.reject));
+  $$('[data-activate]').forEach(button=>button.onclick=()=>activationDialog(button.dataset.activate));
+  $$('[data-confirm-extension]').forEach(button=>button.onclick=()=>confirmExtension(button.dataset.confirmExtension));
+  $$('[data-stop]').forEach(button=>button.onclick=()=>stopBooking(button.dataset.stop));
+}
+function rejectDialog(id){const row=data.bookings.find(item=>item.id===id);modal('Reject Booking',`<form id="rejectForm"><p>Reject <strong>${esc(row.title||row.id)}</strong>?</p><div class="field"><label>Reason shown to advertiser</label><textarea name="adminMessage" required>Creative or payment details require correction. Please contact Gravity58 support.</textarea></div><button class="btn red full">Reject booking</button></form>`,()=>{$('#rejectForm').onsubmit=async event=>{event.preventDefault();await changeBooking(id,{status:'Rejected',...Object.fromEntries(new FormData(event.target))},false);closeModal();await refresh()}})}
+function paymentDialog(id){const row=data.bookings.find(item=>item.id===id);modal('Send Payment Link',`<form id="payForm"><p><strong>${esc(row.customerName)}</strong> requested ${row.hours} hour(s).</p><div class="field"><label>Payment link</label><input name="paymentLink" type="url" required placeholder="Razorpay payment link"></div><div class="field"><label>Message</label><textarea name="adminMessage">Pay ${money(row.amount)} using this secure link, then submit the transaction reference and optional proof in your Gravity58 dashboard.</textarea></div><button class="btn full">Send to customer portal</button></form>`,()=>{$('#payForm').onsubmit=async event=>{event.preventDefault();await changeBooking(id,{...Object.fromEntries(new FormData(event.target)),status:'Payment Link Sent',paymentLinkSentAt:now()},false);closeModal();await refresh()}})}
+function activeRestaurantKeys(preferred=''){
+  return [...new Set([preferred,...data.slots.filter(row=>row.active!==false).map(row=>row.restaurantKey),...data.bookings.map(row=>row.restaurantKey)].filter(Boolean))];
+}
+function placementConflict(restaurantKey,slotId,excludeBookingId=''){
+  return data.advertisements.find(ad=>ad.bookingId!==excludeBookingId&&ad.restaurantKey===restaurantKey&&(ad.slotId||'right_rail')===slotId&&campaignState(ad).live);
+}
+function activationDialog(id){
+  const row=data.bookings.find(item=>item.id===id),keys=activeRestaurantKeys(row.restaurantKey);
+  modal('Select Available Slot & Publish',`<form id="activateForm"><p>Payment proof is ready. Select the restaurant and an available placement. The campaign will automatically expire after <strong>${Number(row.hours)} paid hour(s)</strong>.</p><div class="form-grid"><div class="field"><label for="activateRestaurant">Restaurant</label><select id="activateRestaurant" name="restaurantKey">${keys.map(key=>`<option value="${esc(key)}" ${key===row.restaurantKey?'selected':''}>${esc(key)}</option>`).join('')}</select></div><div class="field"><label for="activateSlot">Available placement</label><select id="activateSlot" name="slotId"></select></div></div><div class="notice slot-availability-note" id="slotAvailability" aria-live="polite"></div><div class="notice" id="activateImageSize"></div>${row.mediaUrl?`<div class="admin-activation-preview">${creativeThumb(row)}</div>`:'<div class="notice">No uploaded media. The animated text creative will be used.</div>'}${row.paymentReference?`<div class="notice"><strong>Payment reference:</strong> ${esc(row.paymentReference)}${row.proofMediaUrl?` · <a href="${esc(row.proofMediaUrl)}" target="_blank" rel="noopener">Open proof</a>`:''}</div>`:''}<div class="field"><label>Button label</label><input name="buttonLabel" value="${esc(row.buttonLabel||'View Offer')}" required></div><div class="field"><label>Destination URL</label><input name="destinationUrl" type="url" value="${esc(row.destinationUrl||'https://g58.in/')}" required></div><div class="field"><label>Confirmation message</label><textarea name="adminMessage">Payment confirmed. Your advertisement is live for ${Number(row.hours)} hour(s).</textarea></div><button class="btn green full" id="activateCampaignButton">Publish for ${Number(row.hours)} hours</button></form>`,()=>{
+    const form=$('#activateForm'),restaurant=$('#activateRestaurant'),slot=$('#activateSlot'),note=$('#slotAvailability'),imageSize=$('#activateImageSize'),button=$('#activateCampaignButton');
+    const drawSlots=()=>{
+      const previous=slot.value||row.slotId;
+      slot.innerHTML=Object.entries(AD_PLACEMENT_SPECS).map(([slotId,spec])=>{const conflict=placementConflict(restaurant.value,slotId,id);return`<option value="${slotId}" ${conflict?'disabled':''}>${esc(spec.label)} — ${conflict?`Busy until ${new Date(conflict.expiresAt).toLocaleString('en-IN')}`:'Available'}</option>`}).join('');
+      const preferred=[...slot.options].find(option=>option.value===previous&&!option.disabled)||[...slot.options].find(option=>!option.disabled);
+      if(preferred)slot.value=preferred.value;
+      const available=!!preferred;
+      button.disabled=!available;
+      note.className=`notice slot-availability-note ${available?'available':'unavailable'}`;
+      note.innerHTML=available?'<strong>Available now.</strong> This placement is clear for publishing.':'<strong>No placement is available.</strong> Select another restaurant or wait for a campaign to expire.';
+      const spec=placementSpec(slot.value);
+      imageSize.innerHTML=available?`<strong>Creative size:</strong> ${esc(spec.size)} (${esc(spec.ratio)})`:'';
+    };
+    restaurant.onchange=drawSlots;slot.onchange=()=>{const spec=placementSpec(slot.value);imageSize.innerHTML=`<strong>Creative size:</strong> ${esc(spec.size)} (${esc(spec.ratio)})`;note.className='notice slot-availability-note available';note.innerHTML='<strong>Available now.</strong> This placement is clear for publishing.'};drawSlots();
+    form.onsubmit=async event=>{
+      event.preventDefault();
+      const values=Object.fromEntries(new FormData(form)),conflict=placementConflict(values.restaurantKey,values.slotId,id);
+      if(conflict)return toast('That placement is already occupied. Select another available slot.');
+      const spec=placementSpec(values.slotId),start=new Date(),expires=new Date(start.getTime()+Number(row.hours)*36e5),creative={mediaUrl:row.mediaUrl||'',mediaType:row.mediaType||'',mediaFileId:row.mediaFileId||'',mediaName:row.mediaName||'',creativeStyle:row.creativeStyle||'spotlight'};
+      button.disabled=true;button.textContent='Publishing…';
+      try{
+        await api.update('bookings',id,{status:'Live',...values,...creative,imageSize:spec.size,imageRatio:spec.ratio,activatedAt:start.toISOString(),expiresAt:expires.toISOString()});
+        const campaign={bookingId:id,restaurantKey:values.restaurantKey,slotId:values.slotId,imageSize:spec.size,imageRatio:spec.ratio,title:row.title,description:row.description,...creative,buttonLabel:values.buttonLabel,destinationUrl:values.destinationUrl,amount:Number(row.amount),rate:Number(row.rate||row.amount/Math.max(1,row.hours)),hours:Number(row.hours),active:true,status:'Live',activatedAt:start.toISOString(),expiresAt:expires.toISOString()};
+        const existing=data.advertisements.find(ad=>ad.bookingId===id);
+        if(existing)await api.update('advertisements',existing.id,campaign);else await api.create('advertisements',campaign);
+        closeModal();await refresh();toast(`Advertisement published for ${Number(row.hours)} hour(s)`);
+      }catch(error){button.disabled=false;button.textContent=`Publish for ${Number(row.hours)} hours`;toast(error.message||'Could not publish advertisement')}
+    };
+  });
+}
+async function changeBooking(id,changes,rerender=true){await api.update('bookings',id,changes);if(rerender)await refresh()}
+async function stopBooking(id){const booking=data.bookings.find(row=>row.id===id);await api.update('bookings',id,{status:'Expired'});const ad=data.advertisements.find(row=>row.bookingId===booking.id);if(ad)await api.update('advertisements',ad.id,{active:false,status:'Stopped'});await refresh()}
+function campaignState(ad){const expires=ad.expiresAt?new Date(ad.expiresAt).getTime():0,expired=Number.isFinite(expires)&&expires>0&&expires<=Date.now(),live=!!ad.active&&!expired;return{expired,live,label:expired?'Expired':live?'Live':ad.status==='Stopped'?'Stopped':'Paused'}}
+function bindCampaignActions(){$$('[data-toggle]').forEach(button=>button.onclick=()=>toggleCampaign(button.dataset.toggle));$$('[data-edit-campaign]').forEach(button=>button.onclick=()=>editCampaign(button.dataset.editCampaign));$$('[data-extend]').forEach(button=>button.onclick=()=>extendCampaign(button.dataset.extend));$$('[data-delete]').forEach(button=>button.onclick=()=>deleteCampaign(button.dataset.delete))}
+function campaigns(){const statuses=['All','Live','Paused','Expired','Stopped'],states=data.advertisements.map(campaignState);$('#page').innerHTML=`<div class="section-head"><div><h1>Published Campaigns</h1><p class="muted">Preview media, find expired placements, edit copy, extend time, pause or remove campaigns.</p></div><button class="btn" id="manualCampaign">+ Manual campaign</button></div><div class="grid stats campaign-stats">${metric('Live',states.filter(row=>row.label==='Live').length)}${metric('Paused',states.filter(row=>row.label==='Paused').length)}${metric('Expired',states.filter(row=>row.label==='Expired').length)}${metric('Total',data.advertisements.length)}</div><div class="admin-filter-bar campaign-filter-bar"><input id="campaignSearch" type="search" placeholder="Search campaign or restaurant"><select id="campaignStatus" aria-label="Campaign status">${statuses.map(status=>`<option>${status}</option>`).join('')}</select></div><div class="grid restaurant-grid" id="campaignGrid"></div>`;const draw=()=>{const query=$('#campaignSearch').value.trim().toLowerCase(),status=$('#campaignStatus').value,rows=[...data.advertisements].filter(ad=>{const state=campaignState(ad);return(status==='All'||state.label===status)&&(!query||`${ad.title||''} ${ad.description||''} ${ad.restaurantKey||''} ${placementSpec(ad.slotId).label}`.toLowerCase().includes(query))}).sort((a,b)=>Number(campaignState(b).live)-Number(campaignState(a).live)||new Date(a.expiresAt||'9999-12-31')-new Date(b.expiresAt||'9999-12-31'));$('#campaignGrid').innerHTML=rows.map(adCard).join('')||'<div class="empty">No matching campaigns.</div>';bindCampaignActions()};$('#manualCampaign').onclick=manualCampaign;$('#campaignSearch').oninput=draw;$('#campaignStatus').onchange=draw;draw()}
+function adCard(ad){const spec=placementSpec(ad.slotId),state=campaignState(ad),extensionLabel=ad.bookingId?'Request paid extension':'Extend';return`<article class="card campaign-card campaign-${state.label.toLowerCase()}" data-campaign-id="${esc(ad.id)}"><div class="campaign-creative">${creativeThumb(ad)}<span class="campaign-expiry ${state.expired?'expired':''}" data-expires="${ad.expiresAt||''}" data-lifetime="${ad.lifetime?'true':'false'}">${timeLeft(ad.expiresAt,ad.lifetime)}</span></div><h3>${esc(ad.title)}</h3><p class="muted">${esc(ad.restaurantKey)}</p><p>${esc(ad.description||'')}</p><div class="chips"><span class="chip campaign-state ${state.label.toLowerCase()}">${state.label}</span><span class="chip">${esc(spec.label)}</span><span class="chip">Image ${esc(ad.imageSize||spec.size)}</span>${ad.lifetime?'<span class="chip">Lifetime</span>':''}</div><div class="actions">${state.expired?`<span class="campaign-action-note">${ad.bookingId?'Request paid extension to republish':'Extend to republish'}</span>`:`<button class="btn small" data-toggle="${ad.id}">${state.live?'Pause':'Publish'}</button>`}<button class="btn small secondary" data-edit-campaign="${ad.id}">Edit</button><button class="btn small green" data-extend="${ad.id}">${extensionLabel}</button><button class="btn small red" data-delete="${ad.id}">Delete permanently</button></div></article>`}
+async function toggleCampaign(id){const ad=data.advertisements.find(row=>row.id===id);await api.update('advertisements',id,{active:!ad.active,status:!ad.active?'Live':'Paused'});await refresh()}
+async function deleteCampaign(id){
+  const ad=data.advertisements.find(row=>row.id===id),booking=data.bookings.find(row=>row.id===ad?.bookingId);
+  if(!ad||!confirm('Permanently delete this advertisement, its booking history, payment proof and all uploaded media? This cannot be undone.'))return;
+  const fileIds=[ad.mediaFileId,ad.proofMediaFileId,ad.extensionProofMediaFileId,booking?.mediaFileId,booking?.proofMediaFileId,booking?.extensionProofMediaFileId,...(booking?.extensionProofFileIds||[])].filter(Boolean);
+  try{
+    for(const fileId of new Set(fileIds))await api.removeAdMedia(fileId);
+    await api.remove('advertisements',id);
+    if(booking)await api.remove('bookings',booking.id);
+    await refresh();toast('Advertisement, booking and stored media deleted');
+  }catch(error){toast(error.message||'Could not permanently delete the advertisement')}
+}
+function editCampaign(id){const ad=data.advertisements.find(row=>row.id===id);modal('Edit Campaign',`<form id="editCampaignForm"><div class="field"><label>Title</label><input name="title" value="${esc(ad.title||'')}" required></div><div class="field"><label>Description</label><textarea name="description" required>${esc(ad.description||'')}</textarea></div><div class="field"><label>Button label</label><input name="buttonLabel" value="${esc(ad.buttonLabel||'View Offer')}"></div><div class="field"><label>Destination URL</label><input name="destinationUrl" type="url" value="${esc(ad.destinationUrl||'https://g58.in/')}"></div><div class="field"><label>Animation style</label><select name="creativeStyle">${['flash','pulse','spotlight'].map(style=>`<option ${ad.creativeStyle===style?'selected':''}>${style}</option>`).join('')}</select></div><label class="notice"><input name="lifetime" type="checkbox" ${ad.lifetime?'checked':''}> Lifetime advertisement — never expires</label><button class="btn full">Save campaign</button></form>`,()=>{$('#editCampaignForm').onsubmit=async event=>{event.preventDefault();const fd=new FormData(event.target),values=Object.fromEntries(fd),lifetime=fd.has('lifetime');await api.update('advertisements',id,{...values,lifetime,expiresAt:lifetime?'':ad.expiresAt||''});closeModal();await refresh();toast('Campaign updated')}})}
+function extendCampaign(id){
+  const ad=data.advertisements.find(row=>row.id===id),booking=data.bookings.find(row=>row.id===ad?.bookingId);
+  if(!booking)return directExtension(ad);
+  const defaultRate=Math.max(1,Number(booking.rate||ad.rate||booking.amount/Math.max(1,booking.hours)||100));
+  modal('Request Paid Extension',`<form id="extendForm"><p>The advertiser will receive a payment link. Time is added only after they submit payment proof and an administrator confirms it.</p><p>Current expiry: <strong>${ad.expiresAt?new Date(ad.expiresAt).toLocaleString('en-IN'):'Not set'}</strong></p><div class="form-grid"><div class="field"><label>Additional hours</label><input id="extensionHours" name="hours" type="number" min="1" max="720" value="1" required></div><div class="field"><label>Rate per hour (₹)</label><input id="extensionRate" name="rate" type="number" min="1" step="1" value="${defaultRate}" required></div></div><div class="notice"><strong>Extension payment:</strong> <span id="extensionAmount">${money(defaultRate)}</span></div><div class="field"><label>Razorpay payment link</label><input name="paymentLink" type="url" placeholder="https://rzp.io/..." required></div><div class="field"><label>Message to advertiser</label><textarea name="adminMessage">Pay the extension amount using this secure link and submit payment proof in your Gravity58 dashboard.</textarea></div><button class="btn green full">Send extension payment link</button></form>`,()=>{
+    const form=$('#extendForm'),hours=$('#extensionHours'),rate=$('#extensionRate'),amount=$('#extensionAmount'),draw=()=>amount.textContent=money(Number(hours.value)*Number(rate.value));hours.oninput=draw;rate.oninput=draw;
+    form.onsubmit=async event=>{event.preventDefault();const values=Object.fromEntries(new FormData(form)),extensionHours=Number(values.hours),extensionRate=Number(values.rate),extensionAmount=extensionHours*extensionRate,button=event.submitter;button.disabled=true;button.textContent='Sending…';try{await api.update('bookings',booking.id,{status:'Extension Payment Link Sent',extensionHours,extensionRate,extensionAmount,extensionPaymentLink:values.paymentLink,extensionRequestedAt:now(),adminMessage:values.adminMessage});closeModal();await refresh();toast('Extension payment link sent to advertiser')}catch(error){button.disabled=false;button.textContent='Send extension payment link';toast(error.message||'Could not request extension')}};
+  });
+}
+function directExtension(ad){
+  modal('Extend Internal Campaign',`<form id="directExtendForm"><p>This campaign has no advertiser booking, so an administrator can extend it directly.</p><div class="field"><label>Additional hours</label><input name="hours" type="number" min="1" max="720" value="1" required></div><button class="btn green full">Extend campaign</button></form>`,()=>{$('#directExtendForm').onsubmit=async event=>{event.preventDefault();const hours=Number(new FormData(event.target).get('hours')),base=Math.max(Date.now(),new Date(ad.expiresAt||0).getTime()),expiresAt=new Date(base+hours*36e5).toISOString();await api.update('advertisements',ad.id,{expiresAt,active:true,status:'Live',hours:Number(ad.hours||0)+hours});closeModal();await refresh();toast(`Campaign extended by ${hours} hour(s)`)}})
+}
+async function confirmExtension(bookingId){
+  const booking=data.bookings.find(row=>row.id===bookingId),ad=data.advertisements.find(row=>row.bookingId===bookingId);
+  if(!booking||!ad)return toast('Published campaign could not be found');
+  const hours=Number(booking.extensionHours||0),amount=Number(booking.extensionAmount||0);
+  if(hours<1)return toast('Extension hours are missing');
+  if(!confirm(`Confirm extension payment and add ${hours} hour(s) to this advertisement?`))return;
+  const base=Math.max(Date.now(),new Date(ad.expiresAt||0).getTime()),expiresAt=new Date(base+hours*36e5).toISOString();
+  await api.update('advertisements',ad.id,{expiresAt,active:true,status:'Live',hours:Number(ad.hours||0)+hours,amount:Number(ad.amount||0)+amount,lastExtendedAt:now()});
+  await api.update('bookings',booking.id,{expiresAt,status:'Live',hours:Number(booking.hours||0)+hours,amount:Number(booking.amount||0)+amount,lastExtensionHours:hours,lastExtensionAmount:amount,lastExtensionPaymentReference:booking.extensionPaymentReference||'',lastExtendedAt:now(),extensionHours:0,extensionRate:0,extensionAmount:0,extensionPaymentLink:'',extensionPaymentReference:'',extensionProofMediaUrl:'',extensionProofMediaType:'',extensionProofMediaFileId:'',adminMessage:`Extension payment confirmed. Advertisement extended by ${hours} hour(s).`});
+  await refresh();toast(`Advertisement extended by ${hours} hour(s)`);
+}
+function manualCampaign(){
+  const keys=[...new Set([...data.slots.filter(row=>row.active!==false).map(row=>row.restaurantKey),...data.bookings.map(row=>row.restaurantKey)].filter(Boolean))];
+  modal('Manual Advertisement',`<form id="manualForm"><div class="field"><label for="manualRestaurantKey">Restaurant placement key</label><input id="manualRestaurantKey" name="restaurantKey" list="manualRestaurantKeys" value="${esc(keys[0]||'Gravity58 Café|Bengaluru')}" placeholder="Restaurant Name|City" required><datalist id="manualRestaurantKeys">${keys.map(key=>`<option value="${esc(key)}"></option>`).join('')}</datalist><small class="muted">Choose a registered restaurant or enter its exact menu key.</small></div><div class="field"><label for="manualSlotId">Placement</label><select id="manualSlotId" name="slotId">${Object.entries(AD_PLACEMENT_SPECS).map(([id,spec])=>`<option value="${id}">${spec.label}</option>`).join('')}</select><small class="admin-image-size" id="manualImageSize"></small></div><div class="field"><label for="manualAdTitle">Title</label><input id="manualAdTitle" name="title" required></div><div class="field"><label for="manualAdDescription">Description</label><textarea id="manualAdDescription" name="description" required></textarea></div><div class="form-grid"><div class="field"><label for="manualAdHours">Hours</label><input id="manualAdHours" name="hours" type="number" min="1" max="720" value="24" required></div><div class="field"><label for="manualAdStyle">Animation style</label><select id="manualAdStyle" name="creativeStyle"><option>flash</option><option>pulse</option><option>spotlight</option></select></div></div><label class="notice"><input name="lifetime" type="checkbox"> Lifetime advertisement — never expires</label><div class="field"><label for="manualAdMedia">Image, GIF or video <small>(optional)</small></label><input id="manualAdMedia" name="mediaFile" type="file" accept="image/jpeg,image/png,image/webp,image/gif,video/mp4,video/webm"><small class="muted">JPG, PNG, WebP, GIF, MP4 or WebM · maximum 15 MB.</small></div><div class="field"><label for="manualAdDestination">Destination URL</label><input id="manualAdDestination" name="destinationUrl" type="url" value="https://g58.in/" required></div><button class="btn full">Publish campaign</button></form>`,()=>{const slot=$('#manualSlotId'),size=$('#manualImageSize'),syncSize=()=>{const spec=placementSpec(slot.value);size.textContent=`Recommended image: ${spec.size} (${spec.ratio})`};slot.onchange=syncSize;syncSize();$('#manualForm').onsubmit=async event=>{event.preventDefault();const fd=new FormData(event.target),file=fd.get('mediaFile'),lifetime=fd.has('lifetime');fd.delete('mediaFile');const values=Object.fromEntries(fd),spec=placementSpec(values.slotId),button=event.submitter;button.disabled=true;button.textContent=file?.size?'Uploading…':'Publishing…';try{let media={};if(file?.size){const uploaded=await api.uploadAdMedia(file);media={mediaUrl:uploaded.mediaUrl,mediaType:uploaded.mediaType,mediaFileId:uploaded.fileId,mediaName:uploaded.mediaName}}const start=new Date(),expires=lifetime?'':new Date(start.getTime()+Number(values.hours)*36e5).toISOString();await api.create('advertisements',{...values,...media,lifetime,imageSize:spec.size,imageRatio:spec.ratio,buttonLabel:'View Offer',hours:lifetime?0:Number(values.hours),active:true,status:'Live',activatedAt:start.toISOString(),expiresAt:expires});closeModal();await refresh();toast('Campaign published')}catch(error){button.disabled=false;button.textContent='Publish campaign';toast(error.message||'Could not publish campaign')}}})
+}
+function menuPricingConfig(){const row=data.menuPricing.find(item=>(item.id||item.$id)==='plans')||data.menuPricing[0]||{},sourceLinks=row.links||{},monthly=699,paymentLink=row.paymentLink||sourceLinks.paid_1m||sourceLinks.premium_1m||sourceLinks.standard_1m||'';return {monthly,paymentLink,links:{paid_1m:paymentLink},periods:[{id:'1m',label:'Monthly Subscription',months:1,discount:0}]}}
+function menuPlanAmount(monthly,period){return Math.round(Number(monthly)*Number(period.months)*(1-Number(period.discount)/100))}
+function digitalMenus(){
+  const pricing=menuPricingConfig(),requests=[...data.menuRequests].sort((a,b)=>new Date(b.createdAt||b.$createdAt)-new Date(a.createdAt||a.$createdAt)),entitlements=[...data.menuEntitlements].sort((a,b)=>String(a.ownerEmail||a.ownerId).localeCompare(String(b.ownerEmail||b.ownerId)));
+  $('#page').innerHTML=`<div class="section-head"><div><h1>Digital Menu Subscriptions</h1><p class="muted">Approve free restaurant onboarding, manage the ₹699 monthly subscription, extend access, or grant lifetime access.</p></div><button class="btn" id="editMenuPricing">Edit Pricing</button></div><div class="grid stats">${metric('Activation Requests',requests.filter(row=>!['Activated','Rejected'].includes(row.status)).length)}${metric('Paid Accounts',entitlements.length)}${metric('Active Accounts',entitlements.filter(row=>row.lifetime||!row.expiresAt||new Date(row.expiresAt)>new Date()).length)}${metric('Lifetime Accounts',entitlements.filter(row=>row.lifetime).length)}</div><div class="section-head"><h2>Monthly pricing preview</h2></div><div class="grid restaurant-grid admin-pricing-preview"><article class="card"><span class="eyebrow">DIGITAL MENU · MONTHLY</span><h3>${money(pricing.monthly)} / month</h3><small>${pricing.paymentLink?'Subscription link configured':'No subscription link configured'}</small></article></div><div class="section-head"><h2>Restaurant requests</h2></div><div class="card table-wrap"><table><thead><tr><th>Owner</th><th>Access</th><th>Period / Amount</th><th>Status</th><th>Actions</th></tr></thead><tbody>${requests.map(row=>`<tr><td><strong>${esc(row.ownerName||'Restaurant Owner')}</strong><br><small>${esc(row.ownerEmail||row.ownerId)}</small>${row.restaurantName?`<br><small>${esc(row.restaurantName)} · ${esc(row.restaurantCity||'')}</small>`:''}</td><td>${row.plan==='free'?'Free Restaurant':'Monthly Subscription'}</td><td>${row.plan==='free'?'Free':`Monthly · ${money(row.amount||pricing.monthly)}`}</td><td>${esc(row.status||'Requested')}</td><td><div class="actions">${!['Activated','Rejected'].includes(row.status)?`${row.plan==='free'?`<button class="btn small green" data-approve-free="${row.id}">Approve Free</button>`:`<button class="btn small green" data-activate-menu="${row.id}">Activate</button>`}<button class="btn small red" data-reject-menu="${row.id}">Reject</button>`:'<span class="muted">Processed</span>'}</div></td></tr>`).join('')||'<tr><td colspan="5">No Digital Menu requests.</td></tr>'}</tbody></table></div><div class="section-head"><h2>Restaurant subscriptions</h2></div><div class="card table-wrap"><table><thead><tr><th>Owner</th><th>Plan</th><th>Restaurant limit</th><th>Expiry</th><th>Actions</th></tr></thead><tbody>${entitlements.map(row=>`<tr><td>${esc(row.ownerEmail||row.ownerId)}</td><td><strong>Monthly Subscription</strong></td><td>5</td><td>${timeLeft(row.expiresAt,row.lifetime)}</td><td><div class="actions"><button class="btn small" data-edit-menu-entitlement="${row.id}">Edit</button><button class="btn small green" data-extend-menu="${row.id}">+30 days</button></div></td></tr>`).join('')||'<tr><td colspan="5">No activated restaurant plans.</td></tr>'}</tbody></table></div>`;
+  $('#editMenuPricing').onclick=editMenuPricing;$$('[data-approve-free]').forEach(button=>button.onclick=()=>approveFreeMenuRequest(button.dataset.approveFree));$$('[data-activate-menu]').forEach(button=>button.onclick=()=>activateMenuRequest(button.dataset.activateMenu));$$('[data-reject-menu]').forEach(button=>button.onclick=()=>rejectMenuRequest(button.dataset.rejectMenu));$$('[data-edit-menu-entitlement]').forEach(button=>button.onclick=()=>editMenuEntitlement(button.dataset.editMenuEntitlement));$$('[data-extend-menu]').forEach(button=>button.onclick=()=>extendMenuEntitlement(button.dataset.extendMenu));
+}
+function editMenuPricing(){const pricing=menuPricingConfig();modal('Edit Digital Menu Pricing',`<form id="menuPricingForm"><div class="notice"><strong>₹699 per month</strong><br>Fixed Digital Menu subscription price.</div><p class="notice">Digital Menu has one ₹699 monthly subscription with the complete paid feature set.</p><div class="field"><label>Monthly Razorpay subscription link</label><input name="paymentLink" type="url" value="${esc(pricing.paymentLink)}" placeholder="https://rzp.io/..." required></div><button class="btn full">Publish Pricing</button></form>`,()=>{$('#menuPricingForm').onsubmit=async event=>{event.preventDefault();const values=Object.fromEntries(new FormData(event.target)),monthly=699,paymentLink=values.paymentLink.trim(),payload={monthly,paymentLink,standardMonthly:monthly,premiumMonthly:monthly,periods:[{id:'1m',label:'Monthly Subscription',months:1,discount:0}],links:{paid_1m:paymentLink},updatedAt:now()},existing=data.menuPricing.find(row=>(row.id||row.$id)==='plans');try{existing?await api.update('digital_menu_pricing',existing.id,payload):await api.create('digital_menu_pricing',payload,'plans',api.permissionSet('digital_menu_pricing',user.$id,true));closeModal();await refresh();toast('Digital Menu monthly pricing published')}catch(error){toast(error.message||'Could not publish pricing')}}})}
+function activateMenuRequest(id){const request=data.menuRequests.find(row=>row.id===id),existing=data.menuEntitlements.find(row=>row.ownerId===request?.ownerId);if(!request)return;const defaultMonths=1;modal('Activate Digital Menu Subscription',`<form id="activateMenuPlan"><p><strong>${esc(request.ownerEmail||request.ownerId)}</strong> requested the ₹699 monthly Digital Menu subscription.</p><div class="form-grid"><div class="field"><label>Restaurant limit</label><input value="Up to 5 restaurants" disabled></div><div class="field"><label>Activation months</label><input name="months" type="number" min="1" max="120" value="${defaultMonths}" required></div></div><label class="notice"><input name="lifetime" type="checkbox" ${existing?.lifetime?'checked':''}> Lifetime access — subscription never expires</label><button class="btn green full">Activate Account</button></form>`,()=>{$('#activateMenuPlan').onsubmit=async event=>{event.preventDefault();const fd=new FormData(event.target),values=Object.fromEntries(fd),months=Number(values.months),base=Math.max(Date.now(),new Date(existing?.expiresAt||0).getTime()),expiry=new Date(base);expiry.setMonth(expiry.getMonth()+months);const payload={ownerId:request.ownerId,ownerEmail:request.ownerEmail||'',ownerName:request.ownerName||'',plan:'paid',maxRestaurants:5,restaurantPacks:1,lifetime:fd.has('lifetime'),expiresAt:fd.has('lifetime')?'':expiry.toISOString(),activatedAt:existing?.activatedAt||now(),updatedAt:now()};try{let entitlement;if(existing)entitlement=await api.update('digital_menu_entitlements',existing.id,payload);else entitlement=await api.create('digital_menu_entitlements',payload,`dm-${String(request.ownerId).slice(0,30)}`,api.managedPermissionSet?.()||api.collaborativePermissionSet(request.ownerId));await api.update('digital_menu_requests',id,{status:'Activated',activatedAt:now(),entitlementId:entitlement.id||entitlement.$id});closeModal();await refresh();toast('Digital Menu subscription activated')}catch(error){toast(error.message||'Could not activate subscription')}}})}
+async function rejectMenuRequest(id){if(!confirm('Reject this Digital Menu activation request?'))return;try{await api.update('digital_menu_requests',id,{status:'Rejected',rejectedAt:now()});await refresh();toast('Request rejected')}catch(error){toast(error.message||'Could not reject request')}}
+async function approveFreeMenuRequest(id){try{await api.update('digital_menu_requests',id,{status:'Activated',activatedAt:now(),approvedBy:user.$id});await refresh();toast('Free restaurant access approved')}catch(error){toast(error.message||'Could not approve free access')}}
+function editMenuEntitlement(id){const row=data.menuEntitlements.find(item=>item.id===id);if(!row)return;modal('Edit Restaurant Subscription',`<form id="editMenuEntitlement"><div class="form-grid"><div class="field"><label>Plan</label><input value="Monthly Subscription" disabled></div><div class="field"><label>Restaurant limit</label><input value="Up to 5 restaurants" disabled></div><div class="field"><label>Expiry</label><input name="expiresAt" type="date" value="${row.expiresAt?row.expiresAt.slice(0,10):''}"></div></div><label class="notice"><input name="lifetime" type="checkbox" ${row.lifetime?'checked':''}> Lifetime — never expires</label><button class="btn full">Save Subscription</button></form>`,()=>{$('#editMenuEntitlement').onsubmit=async event=>{event.preventDefault();const fd=new FormData(event.target),values=Object.fromEntries(fd),lifetime=fd.has('lifetime');try{await api.update('digital_menu_entitlements',id,{plan:'paid',maxRestaurants:5,restaurantPacks:1,lifetime,expiresAt:lifetime?'':values.expiresAt?new Date(`${values.expiresAt}T23:59:59+05:30`).toISOString():'',updatedAt:now()});closeModal();await refresh();toast('Restaurant subscription updated')}catch(error){toast(error.message||'Could not update subscription')}}})}
+async function extendMenuEntitlement(id){const row=data.menuEntitlements.find(item=>item.id===id);if(!row||row.lifetime)return toast('Lifetime access does not need an extension');const base=Math.max(Date.now(),new Date(row.expiresAt||0).getTime()),expiresAt=new Date(base+30*86400000).toISOString();try{await api.update('digital_menu_entitlements',id,{expiresAt,updatedAt:now()});await refresh();toast('Subscription extended by 30 days')}catch(error){toast(error.message||'Could not extend subscription')}}
+function normaliseDinerPhone(value){return String(value||'').replace(/\D/g,'')}
+function dinerIndiaDate(value){return new Date(value||Date.now()).toLocaleDateString('en-CA',{timeZone:'Asia/Kolkata'})}
+function dinerOrderKind(ownerId){return `digital_order_${String(ownerId).replace(/[^a-zA-Z0-9._-]/g,'-').slice(0,47)}`}
+function dinerOwnerIds(){return [...new Set([...data.menuEntitlements.map(row=>row.ownerId),...data.menuRequests.map(row=>row.ownerId)].filter(Boolean))]}
+async function loadDinerOrders(force=false){
+  if(data.dinerOrdersLoaded&&!force)return;
+  const ownerIds=dinerOwnerIds();
+  const perOwner=await Promise.all(ownerIds.map(ownerId=>api.list(dinerOrderKind(ownerId)).catch(()=>[])));
+  data.dinerOrders=perOwner.flat().filter(row=>!row.tokenReservation);
+  data.dinerOrdersLoaded=true;
+}
+function downloadFile(name,contents,type='text/plain'){const url=URL.createObjectURL(new Blob([contents],{type})),link=document.createElement('a');link.href=url;link.download=name;document.body.appendChild(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1000)}
+function csvCell(value){const text=String(value??'');return /[",\n]/.test(text)?`"${text.replace(/"/g,'""')}"`:text}
+function dinerSummaries(fromDate,toDate){
+  const rows=data.dinerOrders.filter(order=>{
+    if(['Rejected','Payment Rejected'].includes(order.status))return false;
+    const day=dinerIndiaDate(order.createdAt);
+    if(fromDate&&day<fromDate)return false;
+    if(toDate&&day>toDate)return false;
+    return true;
+  });
+  const byPhone=new Map();
+  rows.forEach(order=>{
+    const phone=normaliseDinerPhone(order.phone);
+    if(!phone)return;
+    const entry=byPhone.get(phone)||{phone,name:'',restaurants:new Set(),orders:0,totalSpent:0,lastOrderAt:''};
+    entry.name=order.customerName||order.customer||entry.name;
+    entry.restaurants.add(order.restaurantId||'');
+    entry.orders+=1;
+    entry.totalSpent+=Number(order.total)||0;
+    if(!entry.lastOrderAt||new Date(order.createdAt)>new Date(entry.lastOrderAt))entry.lastOrderAt=order.createdAt;
+    byPhone.set(phone,entry);
+  });
+  return [...byPhone.values()].sort((a,b)=>new Date(b.lastOrderAt)-new Date(a.lastOrderAt));
+}
+function diners(){
+  $('#page').innerHTML=`<div class="section-head"><div><h1>Customer Details</h1><p class="muted">Loading customer order history across all restaurants…</p></div></div>`;
+  loadDinerOrders().then(drawDiners).catch(error=>{$('#page').innerHTML=`<div class="section-head"><div><h1>Customer Details</h1><p class="muted">Could not load customer data.</p></div></div><div class="card">${esc(error.message||'Unknown error')}</div>`});
+}
+function drawDiners(){
+  const fromInput=$('#dinerFrom')?.value||'',toInput=$('#dinerTo')?.value||'';
+  const summaries=dinerSummaries(fromInput,toInput);
+  $('#page').innerHTML=`<div class="section-head"><div><h1>Customer Details</h1><p class="muted">${data.dinerOrders.length} order(s) across ${dinerOwnerIds().length} restaurant account(s), grouped by phone number.</p></div><button class="btn" id="refreshDiners">Refresh</button></div><div class="diner-filter-bar"><label>From<input id="dinerFrom" type="date" value="${esc(fromInput)}"></label><label>To<input id="dinerTo" type="date" value="${esc(toInput)}"></label><button class="btn secondary" id="clearDinerDates">Clear dates</button><button class="btn" id="exportDinerCsv">Export CSV</button></div><div class="grid stats">${metric('Customers',summaries.length)}${metric('Orders in period',summaries.reduce((sum,row)=>sum+row.orders,0))}${metric('Revenue in period',money(summaries.reduce((sum,row)=>sum+row.totalSpent,0)))}</div><div class="card table-wrap"><table><thead><tr><th>Phone</th><th>Customer name</th><th>Restaurants ordered from</th><th>Orders</th><th>Total spent</th><th>Last order</th></tr></thead><tbody>${summaries.map(row=>`<tr><td>${esc(row.phone)}</td><td>${esc(row.name||'Guest')}</td><td>${row.restaurants.size}</td><td>${row.orders}</td><td>${money(row.totalSpent)}</td><td>${row.lastOrderAt?new Date(row.lastOrderAt).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'}):''}</td></tr>`).join('')||'<tr><td colspan="6">No customers in this period.</td></tr>'}</tbody></table></div>`;
+  $('#dinerFrom').onchange=drawDiners;$('#dinerTo').onchange=drawDiners;
+  $('#clearDinerDates').onclick=()=>{$('#dinerFrom').value='';$('#dinerTo').value='';drawDiners()};
+  $('#refreshDiners').onclick=async()=>{$('#refreshDiners').disabled=true;await loadDinerOrders(true);drawDiners()};
+  $('#exportDinerCsv').onclick=()=>{
+    const header=['Phone','Customer Name','Restaurants Ordered From','Orders','Total Spent (INR)','Last Order'];
+    const lines=[header.map(csvCell).join(',')];
+    summaries.forEach(row=>lines.push([row.phone,row.name||'Guest',row.restaurants.size,row.orders,row.totalSpent.toFixed(2),row.lastOrderAt?new Date(row.lastOrderAt).toISOString():''].map(csvCell).join(',')));
+    const suffix=fromInput||toInput?`_${fromInput||'start'}_to_${toInput||'now'}`:'_all';
+    downloadFile(`g58-customers${suffix}.csv`,lines.join('\r\n'),'text/csv;charset=utf-8');
+    toast(`Exported ${summaries.length} customer(s) to CSV`);
+  };
+}
+function digit58PricingConfig(){const row=data.digit58Pricing.find(item=>(item.id||item.$id)==='default')||data.digit58Pricing[0]||{};return {paymentLink:row.paymentLink||'',monthly:699,periods:[{id:'1m',label:'Monthly Subscription',months:1,discount:0}]}}
+function digit58PlanAmount(monthly,period){return Math.round(Number(monthly)*Number(period.months)*(1-Number(period.discount)/100))}
+function editDigit58Pricing(){
+  const pricing=digit58PricingConfig();
+  modal('Edit Refills Pricing',`<form id="digit58PricingForm"><div class="notice"><strong>₹699 per month</strong><br>Fixed Refills subscription price.</div><p class="notice">Refills has one ₹699 monthly recurring subscription. Razorpay auto-debits it each month after the customer authorises the mandate.</p><div class="field"><label>Additional-store payment link</label><input name="paymentLink" type="url" value="${esc(pricing.paymentLink)}" placeholder="https://rzp.io/..." required></div><p class="muted">This link is used only when you send a manual activation or additional-store payment request. Monthly store subscriptions use secure Razorpay recurring checkout.</p><button class="btn full">Save Pricing</button></form>`,()=>{
+    $('#digit58PricingForm').onsubmit=async event=>{
+      event.preventDefault();
+      const values=Object.fromEntries(new FormData(event.target)),payload={monthly:699,paymentLink:values.paymentLink.trim(),updatedAt:now()},existing=data.digit58Pricing.find(row=>(row.id||row.$id)==='default');
+      try{
+        existing?await api.update('digit58_pricing',existing.id,payload):await api.create('digit58_pricing',payload,'default',api.permissionSet('digit58_pricing',user.$id,true));
+        closeModal();await refresh();toast('Refills pricing saved');
+      }catch(error){toast(error.message||'Could not save pricing')}
+    };
+  });
+}
+function digit58AdminSignature(requests=data.digit58Requests,entitlements=data.digit58Entitlements){
+  return JSON.stringify([
+    requests.map(row=>[row.id,row.ownerId,row.status,row.updatedAt,row.activatedAt]).sort((a,b)=>String(a[0]).localeCompare(String(b[0]))),
+    entitlements.map(row=>[row.id,row.ownerId,row.active,row.paused,row.freeTrial,row.expiresAt,row.storeSlots,row.updatedAt]).sort((a,b)=>String(a[0]).localeCompare(String(b[0]))),
+  ]);
+}
+function stopDigit58AdminRefresh(){
+  if(digit58AdminRefreshTimer){clearTimeout(digit58AdminRefreshTimer);digit58AdminRefreshTimer=null}
+}
+function scheduleDigit58AdminRefresh(){
+  stopDigit58AdminRefresh();
+  if(view!=='digit58')return;
+  digit58AdminRefreshTimer=setTimeout(async()=>{
+    if(view!=='digit58')return;
+    try{
+      const [requests,entitlements]=await Promise.all([api.list('digit58_requests'),api.list('digit58_entitlements')]);
+      data.digit58Requests=requests;
+      data.digit58Entitlements=entitlements;
+      const nextSignature=digit58AdminSignature(requests,entitlements);
+      if(nextSignature!==digit58AdminRenderedSignature&&!$('#modal'))return digit58();
+    }catch(error){console.warn('Refills subscriptions could not be refreshed',error)}
+    scheduleDigit58AdminRefresh();
+  },Number(window.G58AdminRefreshMs)||DIGIT58_ADMIN_REFRESH_MS);
+}
+function digit58(){
+  const stores=[...data.digit58Stores].sort((a,b)=>new Date(b.createdAt||b.$createdAt)-new Date(a.createdAt||a.$createdAt));
+  const owners=new Set(stores.map(row=>row.ownerId)).size;
+  const requests=[...data.digit58Requests].filter(row=>!['Activated','Rejected'].includes(row.status)).sort((a,b)=>new Date(b.createdAt||b.$createdAt)-new Date(a.createdAt||a.$createdAt));
+  const entitlements=[...data.digit58Entitlements].sort((a,b)=>String(a.ownerEmail||a.ownerId).localeCompare(String(b.ownerEmail||b.ownerId)));
+  const cardPurchases=[...data.digit58CardPurchases].sort((a,b)=>new Date(b.declaredPaidAt||b.createdAt||0)-new Date(a.declaredPaidAt||a.createdAt||0));
+  const brandRequests=[...data.digit58BrandRequests].sort((a,b)=>new Date(b.createdAt||0)-new Date(a.createdAt||0));
+  const pricing=digit58PricingConfig();
+  digit58AdminRenderedSignature=digit58AdminSignature();
+  $('#page').innerHTML=`<div class="section-head"><div><h1>Refills</h1><p class="muted">Store subscriptions, activation requests, stores and customers across every Refills owner. Subscription status refreshes automatically.</p></div><div class="actions"><button class="btn" id="refreshDigit58">Refresh Subscriptions</button><button class="btn secondary" id="editDigit58Pricing">Edit Pricing</button></div></div><div class="grid stats">${metric('Stores',stores.length)}${metric('Store Owners',owners)}${metric('Pending Requests',requests.length)}${metric('Active Subscriptions',entitlements.filter(row=>row.active&&!row.paused).length)}${metric('Card & Brand Revenue',money(digit58CardBrandRevenue()))}</div>
+  <div class="section-head"><h2>Refills monthly pricing</h2></div>
+  <div class="grid restaurant-grid admin-pricing-preview">${pricing.periods.map(period=>`<article class="card"><span class="eyebrow">${esc(period.label)}</span><h3>${money(digit58PlanAmount(pricing.monthly,period))} / month</h3><small>Auto-renews monthly until cancelled</small></article>`).join('')}</div>
+  <div class="section-head"><h2>Store owner requests</h2></div>
+  <div class="card table-wrap"><table><thead><tr><th>Owner</th><th>Amount</th><th>Status</th><th>Actions</th></tr></thead><tbody>${requests.map(digit58RequestRow).join('')||'<tr><td colspan="4">No pending Refills requests.</td></tr>'}</tbody></table></div>
+  <div class="section-head"><h2>Store owner subscriptions</h2></div>
+  <div class="card table-wrap"><table><thead><tr><th>Owner</th><th>Status</th><th>Plan</th><th>Expiry</th><th>Store Slots</th><th>Policy</th><th>Actions</th></tr></thead><tbody>${entitlements.map(digit58EntitlementRow).join('')||'<tr><td colspan="7">No activated Refills subscriptions.</td></tr>'}</tbody></table></div>
+  <div class="section-head"><div><h2>Promotion card purchases</h2><p class="muted">Self-declared payments for extra promotion cards beyond the 3 free ones. Pause a purchase if payment was not actually received — this immediately revokes that card slot.</p></div></div>
+  <div class="card table-wrap"><table><thead><tr><th>Store</th><th>Owner</th><th>Duration</th><th>Amount</th><th>Declared Paid</th><th>Status</th><th>Actions</th></tr></thead><tbody>${cardPurchases.map(digit58CardPurchaseRow).join('')||'<tr><td colspan="7">No promotion card purchases yet.</td></tr>'}</tbody></table></div>
+  <div class="section-head"><div><h2>Brand card requests</h2><p class="muted">Brand partners requesting a card on a store, plus each side's self-declared payment status. Pause if either payment looks fraudulent.</p></div></div>
+  <div class="card table-wrap"><table><thead><tr><th>Store</th><th>Brand</th><th>Product</th><th>Plan</th><th>Brand Paid</th><th>Store Paid</th><th>Status</th><th>Actions</th></tr></thead><tbody>${brandRequests.map(digit58BrandRequestRow).join('')||'<tr><td colspan="8">No brand card requests yet.</td></tr>'}</tbody></table></div>
+  <div class="section-head"><div><h2>Refills stores — individual management</h2><p class="muted">Each row controls only that store. Managing one store does not change another store belonging to the same owner.</p></div></div>
+  <div class="admin-filter-bar"><input id="digit58Search" placeholder="Search store, ID, category or owner email"><select id="digit58Category"><option value="All">All categories</option>${[...new Set(stores.map(row=>row.category||'General store'))].map(category=>`<option>${esc(category)}</option>`).join('')}</select></div><div class="card table-wrap"><table><thead><tr><th>Store</th><th>Store ID</th><th>Category</th><th>City</th><th>Owner</th><th>Status</th><th>Created</th><th>Actions</th></tr></thead><tbody id="digit58Rows">${stores.map(digit58Row).join('')||'<tr><td colspan="8">No Refills stores yet.</td></tr>'}</tbody></table></div>
+  <div class="section-head"><div><h2>Store customers</h2><p class="muted">Customers signed up across all Refills stores, with their last visit.</p></div><button class="btn" id="loadDigit58Customers">${data.digit58CustomersLoaded?'Refresh':'Load Customers'}</button></div>
+  <div class="card table-wrap" id="digit58CustomerTable">${data.digit58CustomersLoaded?digit58CustomersTable():'<div class="empty">Click "Load Customers" to fetch customer details across all stores.</div>'}</div>`;
+  const bindStoreActions=()=>{$$('[data-manage-digit58-store]').forEach(button=>button.onclick=()=>manageDigit58Store(button.dataset.ownerId,button.dataset.manageDigit58Store));$$('[data-toggle-digit58-store]').forEach(button=>button.onclick=()=>toggleDigit58Store(button.dataset.toggleDigit58Store,button.dataset.ownerId))};
+  const draw=()=>{const q=$('#digit58Search').value.toLowerCase(),category=$('#digit58Category').value,rows=stores.filter(row=>(category==='All'||row.category===category)&&`${row.storeName} ${row.storeId||row.id} ${row.category} ${row.ownerEmail}`.toLowerCase().includes(q));$('#digit58Rows').innerHTML=rows.map(digit58Row).join('')||'<tr><td colspan="8">No matching stores.</td></tr>';bindStoreActions()};
+  $('#digit58Search').oninput=draw;$('#digit58Category').onchange=draw;
+  $('#refreshDigit58').onclick=async()=>{const button=$('#refreshDigit58');button.disabled=true;button.textContent='Refreshing…';try{await refresh();toast('Refills subscriptions refreshed')}catch(error){button.disabled=false;button.textContent='Refresh Subscriptions';toast(error.message||'Could not refresh Refills subscriptions')}};
+  $('#editDigit58Pricing').onclick=editDigit58Pricing;
+  $$('[data-send-digit58-link]').forEach(button=>button.onclick=()=>sendDigit58PaymentLink(button.dataset.sendDigit58Link));
+  $$('[data-activate-digit58]').forEach(button=>button.onclick=()=>activateDigit58Request(button.dataset.activateDigit58));
+  $$('[data-reject-digit58]').forEach(button=>button.onclick=()=>rejectDigit58Request(button.dataset.rejectDigit58));
+  $$('[data-edit-digit58-entitlement]').forEach(button=>button.onclick=()=>editDigit58Entitlement(button.dataset.editDigit58Entitlement));
+  $$('[data-extend-digit58]').forEach(button=>button.onclick=()=>extendDigit58Entitlement(button.dataset.extendDigit58));
+  $$('[data-pause-digit58]').forEach(button=>button.onclick=()=>toggleDigit58Pause(button.dataset.pauseDigit58));
+  $$('[data-delete-digit58-entitlement]').forEach(button=>button.onclick=()=>deleteDigit58Entitlement(button.dataset.deleteDigit58Entitlement,button.dataset.ownerId));
+  $$('[data-pause-digit58-card]').forEach(button=>button.onclick=()=>toggleDigit58CardPurchasePause(button.dataset.pauseDigit58Card));
+  $$('[data-pause-digit58-brand]').forEach(button=>button.onclick=()=>toggleDigit58BrandRequestPause(button.dataset.pauseDigit58Brand));
+  bindStoreActions();
+  $('#loadDigit58Customers').onclick=async()=>{$('#loadDigit58Customers').disabled=true;await loadDigit58Customers(true);digit58()};
+  scheduleDigit58AdminRefresh();
+}
+function digit58Row(row){const storeId=row.storeId||row.id;return `<tr data-digit58-store-row="${esc(row.ownerId)}:${esc(storeId)}"><td><strong>${esc(row.storeName||row.name||'Store')}</strong>${row.highlightText?`<br><small>${esc(row.highlightText)}</small>`:''}</td><td><code>${esc(storeId)}</code></td><td>${esc(row.category||'General store')}</td><td>${esc(row.city||'')}</td><td>${esc(row.ownerEmail||row.ownerId||'')}<br><small>${esc(row.ownerId||'')}</small></td><td><span class="chip ${row.suspended?'due':'delivered'}">${row.suspended?'Paused':'Active'}</span></td><td>${row.createdAt?new Date(row.createdAt).toLocaleDateString('en-IN',{dateStyle:'medium'}):''}</td><td><div class="actions"><button class="btn small" data-manage-digit58-store="${esc(storeId)}" data-owner-id="${esc(row.ownerId)}">Manage</button><button class="btn small ${row.suspended?'green':'red'}" data-toggle-digit58-store="${esc(storeId)}" data-owner-id="${esc(row.ownerId)}">${row.suspended?'Resume':'Pause'}</button></div></td></tr>`}
+function manageDigit58Store(ownerId,storeId){
+  const row=data.digit58Stores.find(item=>item.ownerId===ownerId&&(item.storeId||item.id)===storeId);if(!row)return;
+  const customerCount=data.digit58Customers.filter(item=>item.ownerId===ownerId&&item.storeId===storeId).length;
+  const publicLink=`${location.origin}/digit58/#store&owner=${encodeURIComponent(ownerId)}&store=${encodeURIComponent(storeId)}`;
+  modal(`Manage ${esc(row.storeName||row.name||'Store')}`,`<div class="card"><p><strong>Store ID:</strong> <code>${esc(storeId)}</code></p><p><strong>Owner:</strong> ${esc(row.ownerEmail||ownerId)}</p><p><strong>Category:</strong> ${esc(row.category||'General store')} · ${esc(row.city||'')}</p><p><strong>Status:</strong> <span class="chip ${row.suspended?'due':'delivered'}">${row.suspended?'Paused':'Active'}</span></p>${data.digit58CustomersLoaded?`<p><strong>Linked customers:</strong> ${customerCount}</p>`:''}</div><div class="actions" style="margin-top:16px"><a class="btn secondary" href="${esc(publicLink)}" target="_blank" rel="noopener">Open Customer Store</a><button class="btn ${row.suspended?'green':'red'}" id="manageDigit58Status">${row.suspended?'Resume This Store':'Pause This Store'}</button></div>`,()=>{$('#manageDigit58Status').onclick=async()=>{closeModal();await toggleDigit58Store(storeId,ownerId)}});
+}
+async function toggleDigit58Store(storeId,ownerId){
+  const row=data.digit58Stores.find(item=>item.ownerId===ownerId&&(item.storeId||item.id)===storeId);if(!row)return;
+  try{
+    await api.executeFunction(api.config.digitalOrderFunctionId,{action:'digit58-set-store-suspended',ownerId,storeId,suspended:!row.suspended});
+    await refresh();toast('Store status updated');
+  }catch(error){toast(error.message||'Could not update store status')}
+}
+function digit58RequestRow(row){
+  const isAdditional=row.type==='additional-store';
+  const isFreeTrial=row.type==='free-trial';
+  const actions=row.status==='Requested'?(isFreeTrial?`<button class="btn small green" data-activate-digit58="${esc(row.id)}">Approve Free Trial</button><button class="btn small red" data-reject-digit58="${esc(row.id)}">Reject</button>`:`<button class="btn small" data-send-digit58-link="${esc(row.id)}">Send Payment Link</button><button class="btn small red" data-reject-digit58="${esc(row.id)}">Reject</button>`)
+    :row.status==='Payment Link Sent'?`<button class="btn small green" data-activate-digit58="${esc(row.id)}">Activate</button><button class="btn small red" data-reject-digit58="${esc(row.id)}">Reject</button>`
+    :`<button class="btn small green" data-activate-digit58="${esc(row.id)}">Activate</button>`;
+  return `<tr class="${ringingRowClass(row.id)}"><td><strong>${esc(row.ownerName||'Store Owner')}</strong><br><small>${esc(row.ownerEmail||row.ownerId)}</small>${isAdditional?' <span class="chip due">+1 Store</span>':isFreeTrial?' <span class="chip delivered">30-day free trial</span>':''}</td><td>${isFreeTrial?'Free':money(row.amount||699)}</td><td>${esc(row.status||'Requested')}</td><td><div class="actions">${actions}</div></td></tr>`;
+}
+const DIGIT58_PLAN_LABELS={'1m':'Monthly Subscription'};
+function digit58EntitlementRow(row){
+  const policy=row.policyAcceptedAt?new Date(row.policyAcceptedAt).toLocaleDateString('en-IN',{dateStyle:'medium'}):'Not accepted yet';
+  const stores=data.digit58Stores.filter(store=>store.ownerId===row.ownerId),storeButtons=stores.map(store=>`<button class="entitlement-store-btn ${store.suspended?'paused':''}" data-manage-digit58-store="${esc(store.storeId||store.id)}" data-owner-id="${esc(store.ownerId)}" type="button"><strong>${esc(store.storeName||store.name||'Store')}</strong><small>${store.suspended?'Paused':'Active'} · Manage</small></button>`).join('');
+  const planLabel=row.freeTrial?'Free Trial':DIGIT58_PLAN_LABELS[row.plan]||(row.razorpaySubscriptionId?'Refills Plan':'Legacy');
+  const billing=row.razorpaySubscriptionId
+    ?(row.cancelAtPeriodEnd?'Cancelling — no auto-renew':row.subscriptionStatus==='halted'?'Auto-debit failed':'Auto-renews')
+    :(row.freeTrial?'No billing yet':'Manual');
+  return `<tr><td>${esc(row.ownerEmail||row.ownerId)}</td><td>${row.paused?'Paused':row.active?'Active':'Inactive'}</td><td>${esc(planLabel)}<br><small class="muted">${esc(billing)}</small></td><td>${timeLeft(row.expiresAt,row.lifetime)}</td><td><strong>${Math.max(1,Number(row.storeSlots)||1)} location slot(s)</strong><div class="entitlement-store-list">${storeButtons||'<small class="muted">No live locations found</small>'}</div></td><td>${esc(policy)}</td><td><div class="actions"><button class="btn small" data-edit-digit58-entitlement="${esc(row.id)}">Edit</button><button class="btn small green" data-extend-digit58="${esc(row.id)}">+30 days</button><button class="btn small ${row.paused?'green':'secondary'}" data-pause-digit58="${esc(row.id)}">${row.paused?'Resume':'Pause'}</button><button class="btn small red" data-delete-digit58-entitlement="${esc(row.id)}" data-owner-id="${esc(row.ownerId)}">Delete</button></div></td></tr>`;
+}
+async function deleteDigit58Entitlement(id,ownerId){
+  if(!confirm('Delete this Refills subscription? This revokes store portal access immediately and cancels any live auto-billing subscription. This cannot be undone.'))return;
+  try{
+    await api.executeFunction(api.config.digitalOrderFunctionId,{action:'digit58-admin-delete-entitlement',ownerId});
+    await refresh();toast('Refills subscription deleted');
+  }catch(error){toast(error.message||'Could not delete this subscription')}
+}
+function referralsView(){
+  const rows=[...data.digit58Referrals].sort((a,b)=>new Date(b.createdAt||0)-new Date(a.createdAt||0));
+  const eligible=rows.filter(row=>row.status==='Eligible').length;
+  const paidTotal=rows.filter(row=>row.status==='Paid').reduce((sum,row)=>sum+Number(row.rewardAmount||399),0);
+  $('#page').innerHTML=`<div class="section-head"><div><h1>Referrals</h1><p class="muted">Refer &amp; Earn — any G58 account can refer a friend to Refills; ₹399 is owed to the referrer once the friend completes a paid subscription.</p></div><button class="btn" id="refresh">Refresh</button></div>
+  <div class="grid stats">${metric('Total Referrals',rows.length)}${metric('Awaiting Payout',eligible)}${metric('Paid Out',money(paidTotal))}</div>
+  <div class="section-head"><h2>Referral rewards</h2></div>
+  <div class="card table-wrap"><table><thead><tr><th>Referrer</th><th>Referred Owner</th><th>Plan</th><th>Reward</th><th>Status</th><th>Date</th><th>Actions</th></tr></thead><tbody>${rows.map(digit58ReferralRow).join('')||'<tr><td colspan="7">No referrals yet.</td></tr>'}</tbody></table></div>`;
+  $('#refresh').onclick=refresh;
+  $$('[data-mark-referral-paid]').forEach(button=>button.onclick=()=>markDigit58ReferralPaid(button.dataset.markReferralPaid));
+}
+function digit58ReferralRow(row){
+  const planLabel=DIGIT58_PLAN_LABELS[row.plan]||'Refills subscription';
+  const status=row.status||'Eligible';
+  const referrerProfile=data.digit58ReferrerProfiles.find(profile=>profile.userId===row.referrerUserId);
+  const referrerLabel=referrerProfile?.email||referrerProfile?.name||row.referrerUserId||'';
+  const action=status==='Eligible'?`<button class="btn small green" data-mark-referral-paid="${esc(row.id)}">Mark Paid</button>`:status==='Paid'?`<span class="muted">Paid ${row.paidAt?new Date(row.paidAt).toLocaleDateString('en-IN',{dateStyle:'medium'}):''}</span>`:'';
+  return `<tr><td>${esc(referrerLabel)}</td><td>${esc(row.referredEmail||row.referredOwnerId||'')}</td><td>${esc(planLabel)}</td><td>${money(row.rewardAmount||399)}</td><td><span class="chip ${status==='Paid'?'delivered':'due'}">${esc(status)}</span></td><td>${row.createdAt?new Date(row.createdAt).toLocaleDateString('en-IN',{dateStyle:'medium'}):''}</td><td><div class="actions">${action}</div></td></tr>`;
+}
+async function markDigit58ReferralPaid(id){
+  if(!confirm('Mark this ₹399 referral reward as paid? Only confirm after you have actually transferred the amount to the referrer.'))return;
+  try{
+    await api.update('digit58_referrals',id,{status:'Paid',paidAt:now()});
+    await refresh();toast('Referral marked as paid');
+  }catch(error){toast(error.message||'Could not update this referral')}
+}
+const DIGIT58_CARD_DURATION_LABELS={'30d':'30 Days','6mo':'6 Months','1yr':'1 Year'};
+const DIGIT58_CARD_APPROVAL_PRICING={'30d':150,'6mo':750,'1yr':1200};
+const DIGIT58_BRAND_CARD_PRICING={'30d':300,'6mo':1500,'1yr':2000};
+function digit58CardBrandRevenue(){
+  const cardPurchaseRevenue=data.digit58CardPurchases.filter(row=>row.status==='Declared Paid').reduce((sum,row)=>sum+Number(row.amount||0),0);
+  const approvalRevenue=data.digit58BrandRequests.filter(row=>row.storePaidAt).reduce((sum,row)=>sum+(DIGIT58_CARD_APPROVAL_PRICING[row.duration||'30d']||0),0);
+  const brandPaidRevenue=data.digit58BrandRequests.filter(row=>row.brandPaidAt).reduce((sum,row)=>sum+(DIGIT58_BRAND_CARD_PRICING[row.duration||'30d']||0),0);
+  return cardPurchaseRevenue+approvalRevenue+brandPaidRevenue;
+}
+function digit58CardPurchaseRow(row){
+  const paused=row.status==='Paused';
+  return `<tr><td>${esc(row.storeName||row.storeId)}</td><td>${esc(row.ownerEmail||row.ownerId)}</td><td>${esc(DIGIT58_CARD_DURATION_LABELS[row.duration]||row.duration)}</td><td>${money(row.amount)}</td><td>${row.declaredPaidAt?new Date(row.declaredPaidAt).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'}):''}</td><td><span class="chip ${paused?'due':'delivered'}">${paused?'Paused':'Declared Paid'}</span><br><small class="muted">${timeLeft(row.expiresAt)}</small></td><td><div class="actions"><button class="btn small ${paused?'green':'red'}" data-pause-digit58-card="${esc(row.id)}">${paused?'Resume':'Pause'}</button></div></td></tr>`;
+}
+async function toggleDigit58CardPurchasePause(id){
+  const row=data.digit58CardPurchases.find(item=>item.id===id);if(!row)return;
+  try{
+    await api.update('digit58_card_purchases',id,{status:row.status==='Paused'?'Declared Paid':'Paused',updatedAt:now()});
+    await refresh();toast(row.status==='Paused'?'Card purchase resumed':'Card purchase paused — that card slot is revoked');
+  }catch(error){toast(error.message||'Could not update this purchase')}
+}
+function digit58BrandRequestRow(row){
+  const paused=row.status==='Paused';
+  const statusLabel=paused?'Paused':row.status==='Live'?'Live':row.status==='Rejected'?'Rejected':row.status==='Awaiting Payment'?'Awaiting Payment':'Pending Approval';
+  return `<tr><td>${esc(row.storeName||row.storeId)}</td><td>${esc(row.brandOwnerEmail||row.brandOwnerId)}</td><td>${esc(row.promotionName)}<br><small class="muted">${money(row.price)}</small></td><td>${esc(DIGIT58_CARD_DURATION_LABELS[row.duration]||row.duration||'30 Days')}</td><td>${row.brandPaidAt?new Date(row.brandPaidAt).toLocaleDateString('en-IN',{dateStyle:'medium'}):'—'}</td><td>${row.storePaidAt?new Date(row.storePaidAt).toLocaleDateString('en-IN',{dateStyle:'medium'}):'—'}</td><td><span class="chip ${paused||row.status==='Rejected'?'due':row.status==='Live'?'delivered':'due'}">${esc(statusLabel)}</span></td><td>${row.status==='Live'||paused?`<div class="actions"><button class="btn small ${paused?'green':'red'}" data-pause-digit58-brand="${esc(row.id)}">${paused?'Resume':'Pause'}</button></div>`:''}</td></tr>`;
+}
+async function toggleDigit58BrandRequestPause(id){
+  const row=data.digit58BrandRequests.find(item=>item.id===id);if(!row)return;
+  try{
+    await api.update('digit58_brand_requests',id,{status:row.status==='Paused'?'Live':'Paused',updatedAt:now()});
+    await refresh();toast(row.status==='Paused'?'Brand card resumed':'Brand card paused — no longer shown to customers');
+  }catch(error){toast(error.message||'Could not update this request')}
+}
+function digit58BrandOwnersView(){
+  const owners=[...data.digit58BrandOwners].sort((a,b)=>new Date(b.createdAt||0)-new Date(a.createdAt||0));
+  const accepted=owners.filter(row=>row.disclaimerAcceptedAt).length;
+  $('#page').innerHTML=`<div class="section-head"><div><h1>Brand Owners</h1><p class="muted">Every brand account that has signed up, and whether they've accepted the store-owner agreement disclaimer before requesting cards.</p></div></div>
+  <div class="grid stats">${metric('Brand Accounts',owners.length)}${metric('Accepted Disclaimer',accepted)}${metric('Not Yet Accepted',owners.length-accepted)}${metric('Brand Card Requests',data.digit58BrandRequests.length)}</div>
+  <div class="section-head"><h2>All brand accounts</h2></div>
+  <div class="card table-wrap"><table><thead><tr><th>Brand</th><th>Email</th><th>Signed Up</th><th>Disclaimer Accepted</th><th>Card Requests</th><th>Status</th><th>Actions</th></tr></thead><tbody>${owners.map(digit58BrandOwnerRow).join('')||'<tr><td colspan="7">No brand accounts yet.</td></tr>'}</tbody></table></div>`;
+  $$('[data-toggle-digit58-brand-owner]').forEach(button=>button.onclick=()=>toggleDigit58BrandOwnerBlock(button.dataset.toggleDigit58BrandOwner));
+}
+function digit58BrandOwnerRow(row){
+  const requestCount=data.digit58BrandRequests.filter(item=>item.brandOwnerId===row.userId).length;
+  return `<tr><td><strong>${esc(row.name||row.email)}</strong></td><td>${esc(row.email||'')}</td><td>${row.createdAt?new Date(row.createdAt).toLocaleDateString('en-IN',{dateStyle:'medium'}):''}</td><td><span class="chip ${row.disclaimerAcceptedAt?'delivered':'due'}">${row.disclaimerAcceptedAt?'Accepted '+new Date(row.disclaimerAcceptedAt).toLocaleDateString('en-IN',{dateStyle:'medium'}):'Not accepted'}</span></td><td>${requestCount}</td><td><span class="chip ${row.blocked?'due':'delivered'}">${row.blocked?'Blocked':'Active'}</span></td><td><div class="actions"><button class="btn small ${row.blocked?'green':'red'}" data-toggle-digit58-brand-owner="${esc(row.id)}">${row.blocked?'Unblock':'Block'}</button></div></td></tr>`;
+}
+async function toggleDigit58BrandOwnerBlock(id){
+  const row=data.digit58BrandOwners.find(item=>item.id===id);if(!row)return;
+  if(!row.blocked&&!confirm(`Block ${row.name||row.email}? They will not be able to sign in or request cards until unblocked.`))return;
+  try{
+    await api.update('digit58_brand_owners',id,{blocked:!row.blocked,updatedAt:now()});
+    await refresh();toast(row.blocked?'Brand account unblocked':'Brand account blocked');
+  }catch(error){toast(error.message||'Could not update this brand account')}
+}
+function contactRequestsView(){
+  const requests=[...data.contactRequests].sort((a,b)=>new Date(b.createdAt||b.$createdAt||0)-new Date(a.createdAt||a.$createdAt||0));
+  const interests=['All','POS','Digital Menu','Refills'];
+  $('#page').innerHTML=`<div class="section-head"><div><h1>Contact Requests</h1><p class="muted">Submissions from the "Contact Us" form on the main landing page.</p></div><button class="btn" id="refresh">Refresh</button></div><div class="grid stats">${metric('Total',requests.length)}${metric('POS',requests.filter(row=>row.interest==='POS').length)}${metric('Digital Menu',requests.filter(row=>row.interest==='Digital Menu').length)}${metric('Refills',requests.filter(row=>row.interest==='Refills').length)}</div><div class="admin-filter-bar"><input id="contactSearch" placeholder="Search name or phone"><select id="contactInterestFilter">${interests.map(item=>`<option>${item}</option>`).join('')}</select></div><div class="card table-wrap"><table><thead><tr><th>Name</th><th>Contact Number</th><th>Interested In</th><th>Submitted</th><th>Actions</th></tr></thead><tbody id="contactRows">${requests.map(contactRequestRow).join('')||'<tr><td colspan="5">No contact requests yet.</td></tr>'}</tbody></table></div>`;
+  const draw=()=>{const q=$('#contactSearch').value.toLowerCase(),interest=$('#contactInterestFilter').value,rows=requests.filter(row=>(interest==='All'||row.interest===interest)&&`${row.name||''} ${row.phone||''}`.toLowerCase().includes(q));$('#contactRows').innerHTML=rows.map(contactRequestRow).join('')||'<tr><td colspan="5">No matching contact requests.</td></tr>';bindContactRequestActions()};
+  $('#contactSearch').oninput=draw;$('#contactInterestFilter').onchange=draw;
+  $('#refresh').onclick=refresh;
+  bindContactRequestActions();
+}
+function contactRequestRow(row){
+  return `<tr class="${ringingRowClass(row.id)}"><td><strong>${esc(row.name||'')}</strong></td><td>${esc(row.phone||'')}</td><td><span class="chip">${esc(row.interest||'')}</span></td><td>${row.createdAt?new Date(row.createdAt).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'}):''}</td><td><div class="actions"><button class="btn small red" data-delete-contact="${esc(row.id)}">Delete</button></div></td></tr>`;
+}
+function bindContactRequestActions(){$$('[data-delete-contact]').forEach(button=>button.onclick=()=>deleteContactRequest(button.dataset.deleteContact))}
+async function deleteContactRequest(id){
+  const row=data.contactRequests.find(item=>item.id===id);if(!row)return;
+  if(!confirm(`Permanently delete the contact request from ${row.name||'this person'}? This cannot be undone.`))return;
+  try{
+    await api.remove('g58_contact_requests',id);
+    data.contactRequests=data.contactRequests.filter(item=>item.id!==id);
+    contactRequestsView();toast('Contact request permanently deleted');
+  }catch(error){toast(error.message||'Could not delete this contact request')}
+}
+function sendDigit58PaymentLink(id){
+  const row=data.digit58Requests.find(item=>item.id===id);if(!row)return;
+  const defaultLink=digit58PricingConfig().paymentLink;
+  modal('Send Refills Payment Link',`<form id="sendDigit58LinkForm"><p><strong>${esc(row.ownerEmail||row.ownerId)}</strong> requested Refills store access for ${money(row.amount||699)}.</p><div class="field"><label>Payment link</label><input name="paymentLink" type="url" value="${esc(defaultLink)}" required placeholder="Razorpay payment link"></div>${defaultLink?'<p class="muted">Pre-filled from your saved default — edit if this request needs a different link.</p>':''}<button class="btn full">Send to store owner</button></form>`,()=>{
+    $('#sendDigit58LinkForm').onsubmit=async event=>{event.preventDefault();const values=Object.fromEntries(new FormData(event.target));try{await api.update('digit58_requests',id,{...values,status:'Payment Link Sent',paymentLinkSentAt:now()});closeModal();await refresh();toast('Payment link sent to store owner')}catch(error){toast(error.message||'Could not send payment link')}};
+  });
+}
+function activateDigit58Request(id){
+  const request=data.digit58Requests.find(row=>row.id===id),existing=data.digit58Entitlements.find(row=>row.ownerId===request?.ownerId);if(!request)return;
+  if(request.type==='free-trial'){
+    const expiresAt=new Date(Date.now()+30*86400000).toISOString();
+    modal('Approve 30-Day Free Trial',`<div class="card"><p><strong>${esc(request.ownerEmail||request.ownerId)}</strong> requested the one-month G58 business-tools free trial.</p><p class="muted">Approval activates one location slot immediately for 30 days. They may use those slots for stores, services, game zones or Digital Stay hotels. The owner must still accept the policy before entering the dashboard.</p></div><div class="actions" style="margin-top:14px"><button class="btn green full" id="confirmDigit58Trial">Approve & Activate Trial</button></div>`,()=>{
+      $('#confirmDigit58Trial').onclick=async()=>{
+        const button=$('#confirmDigit58Trial');button.disabled=true;
+        const payload={ownerId:request.ownerId,ownerEmail:request.ownerEmail||'',active:true,paused:false,lifetime:false,freeTrial:true,trialUsed:true,plan:'trial',subscriptionStatus:'trial',expiresAt,storeSlots:Math.max(1,Number(existing?.storeSlots)||1),activatedAt:existing?.activatedAt||now(),updatedAt:now()};
+        if(request.referredByCode&&!existing?.referredByCode)payload.referredByCode=request.referredByCode;
+        try{
+          if(existing)await api.update('digit58_entitlements',existing.id,payload);
+          else await api.create('digit58_entitlements',payload,`d58-${String(request.ownerId).slice(0,30)}`,api.permissionSet?.('digit58_entitlements',request.ownerId,true)||api.collaborativePermissionSet(request.ownerId));
+          await api.update('digit58_requests',id,{status:'Activated',activatedAt:now(),approvedBy:user.$id,updatedAt:now()});
+          closeModal();await refresh();toast('30-day Refills free trial activated');
+        }catch(error){button.disabled=false;toast(error.message||'Could not activate the free trial')}
+      };
+    });
+    return;
+  }
+  if(request.type==='additional-store'){
+    const nextSlots=Math.max(1,Number(existing?.storeSlots)||1)+1;
+    modal('Grant One More Location Slot',`<p><strong>${esc(request.ownerEmail||request.ownerId)}</strong> paid for one more location (${money(request.amount||699)}/month). This raises their location allowance to <strong>${nextSlots}</strong>.</p><div class="actions" style="margin-top:14px"><button class="btn green full" id="confirmGrantSlot">Grant One Location Slot</button></div>`,()=>{
+      $('#confirmGrantSlot').onclick=async()=>{
+        try{
+          const payload={storeSlots:nextSlots,updatedAt:now()};
+          if(existing)await api.update('digit58_entitlements',existing.id,payload);
+          else await api.create('digit58_entitlements',{ownerId:request.ownerId,ownerEmail:request.ownerEmail||'',active:true,paused:false,lifetime:false,storeSlots:nextSlots,activatedAt:now(),updatedAt:now()},`d58-${String(request.ownerId).slice(0,30)}`,api.managedPermissionSet?.()||api.collaborativePermissionSet(request.ownerId));
+          await api.update('digit58_requests',id,{status:'Activated',activatedAt:now()});
+          closeModal();await refresh();toast('Five additional location slots granted');
+        }catch(error){toast(error.message||'Could not grant location slots')}
+      };
+    });
+    return;
+  }
+  modal('Activate G58 Business Access',`<form id="activateDigit58Form"><p><strong>${esc(request.ownerEmail||request.ownerId)}</strong> — ${money(request.amount||699)}/month for one location.</p><div class="form-grid"><div class="field"><label>Activation months</label><input name="months" type="number" min="1" max="120" value="1" required></div></div><label class="notice"><input name="lifetime" type="checkbox" ${existing?.lifetime?'checked':''}> Lifetime access — subscription never expires</label><button class="btn green full">Activate Business Access</button></form>`,()=>{
+    $('#activateDigit58Form').onsubmit=async event=>{
+      event.preventDefault();
+      const fd=new FormData(event.target),months=Number(fd.get('months')),lifetime=fd.has('lifetime'),base=Math.max(Date.now(),new Date(existing?.expiresAt||0).getTime()),expiry=new Date(base);expiry.setMonth(expiry.getMonth()+months);
+      const payload={ownerId:request.ownerId,ownerEmail:request.ownerEmail||'',active:true,paused:false,lifetime,expiresAt:lifetime?'':expiry.toISOString(),storeSlots:Math.max(1,Number(existing?.storeSlots)||1),activatedAt:existing?.activatedAt||now(),updatedAt:now()};
+      try{
+        if(existing)await api.update('digit58_entitlements',existing.id,payload);
+        else await api.create('digit58_entitlements',payload,`d58-${String(request.ownerId).slice(0,30)}`,api.managedPermissionSet?.()||api.collaborativePermissionSet(request.ownerId));
+        await api.update('digit58_requests',id,{status:'Activated',activatedAt:now()});
+        closeModal();await refresh();toast('G58 business access activated');
+      }catch(error){toast(error.message||'Could not activate store access')}
+    };
+  });
+}
+async function rejectDigit58Request(id){if(!confirm('Reject this Digit58 activation request?'))return;try{await api.update('digit58_requests',id,{status:'Rejected',rejectedAt:now()});await refresh();toast('Request rejected')}catch(error){toast(error.message||'Could not reject request')}}
+function editDigit58Entitlement(id){
+  const row=data.digit58Entitlements.find(item=>item.id===id);if(!row)return;
+  modal('Edit G58 Business Subscription',`<form id="editDigit58Entitlement"><div class="form-grid"><div class="field"><label>Expiry</label><input name="expiresAt" type="date" value="${row.expiresAt?row.expiresAt.slice(0,10):''}"></div></div><label class="notice"><input name="lifetime" type="checkbox" ${row.lifetime?'checked':''}> Lifetime — never expires</label><button class="btn full">Save Subscription</button></form>`,()=>{
+    $('#editDigit58Entitlement').onsubmit=async event=>{event.preventDefault();const fd=new FormData(event.target),lifetime=fd.has('lifetime');try{await api.update('digit58_entitlements',id,{lifetime,expiresAt:lifetime?'':fd.get('expiresAt')?new Date(`${fd.get('expiresAt')}T23:59:59+05:30`).toISOString():'',updatedAt:now()});closeModal();await refresh();toast('Subscription updated')}catch(error){toast(error.message||'Could not update subscription')}};
+  });
+}
+async function extendDigit58Entitlement(id){const row=data.digit58Entitlements.find(item=>item.id===id);if(!row||row.lifetime)return toast('Lifetime access does not need an extension');const base=Math.max(Date.now(),new Date(row.expiresAt||0).getTime()),expiresAt=new Date(base+30*86400000).toISOString();try{await api.update('digit58_entitlements',id,{expiresAt,updatedAt:now()});await refresh();toast('Subscription extended by 30 days')}catch(error){toast(error.message||'Could not extend subscription')}}
+async function toggleDigit58Pause(id){const row=data.digit58Entitlements.find(item=>item.id===id);if(!row)return;try{await api.update('digit58_entitlements',id,{paused:!row.paused,updatedAt:now()});await refresh();toast(row.paused?'Subscription resumed':'Subscription paused')}catch(error){toast(error.message||'Could not update subscription')}}
+function digit58CustomerKind(ownerId){return `digit58_customer_${String(ownerId).replace(/[^a-zA-Z0-9._-]/g,'-').slice(0,36)}`}
+async function loadDigit58Customers(force=false){
+  if(data.digit58CustomersLoaded&&!force)return;
+  const ownerIds=[...new Set([...data.digit58Stores.map(row=>row.ownerId),...data.digit58Entitlements.map(row=>row.ownerId),...data.digit58Requests.map(row=>row.ownerId)].filter(Boolean))];
+  const perOwner=await Promise.all(ownerIds.map(ownerId=>api.list(digit58CustomerKind(ownerId)).catch(()=>[])));
+  data.digit58Customers=perOwner.flat();
+  data.digit58CustomersLoaded=true;
+}
+function digit58CustomersTable(){
+  const rows=[...data.digit58Customers].sort((a,b)=>new Date(b.lastLoginAt||b.createdAt||0)-new Date(a.lastLoginAt||a.createdAt||0));
+  const storeName=storeId=>data.digit58Stores.find(row=>row.storeId===storeId)?.storeName||storeId;
+  return `<table><thead><tr><th>Customer</th><th>Contact</th><th>Store</th><th>Last login</th><th>Signed up</th><th>Agreement</th></tr></thead><tbody>${rows.map(row=>`<tr><td><strong>${esc(row.customerName||'Customer')}</strong><br><small>${esc(row.customerEmail||'')}</small></td><td>${esc(row.phone||'—')}</td><td>${esc(storeName(row.storeId))}</td><td>${row.lastLoginAt?new Date(row.lastLoginAt).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'}):'—'}</td><td>${row.createdAt?new Date(row.createdAt).toLocaleDateString('en-IN',{dateStyle:'medium'}):''}</td><td><span class="chip ${row.agreementAcceptedAt?'delivered':'due'}">${row.agreementAcceptedAt?'Accepted '+new Date(row.agreementAcceptedAt).toLocaleDateString('en-IN',{dateStyle:'medium'}):'Not accepted'}</span></td></tr>`).join('')||'<tr><td colspan="6">No Refills customers found.</td></tr>'}</tbody></table>`;
+}
+
+function ticketSourceLabel(source){return {digit58:'Refills','digital-menu':'Digital Menu',digitalMenu:'Digital Menu',pos:'POS'}[source]||source||'G58'}
+function supportTicketsView(){
+  const tickets=[...data.supportTickets].sort((a,b)=>new Date(b.updatedAt||b.createdAt)-new Date(a.updatedAt||a.createdAt));
+  const statuses=['All','Open','In Progress','Resolved'];
+  $('#page').innerHTML=`<div class="section-head"><div><h1>Support Tickets</h1><p class="muted">Tickets raised by premium Refills, Digital Menu and POS owners.</p></div><button class="btn" id="refresh">Refresh</button></div><div class="grid stats">${metric('Open',tickets.filter(row=>row.status==='Open').length)}${metric('In Progress',tickets.filter(row=>row.status==='In Progress').length)}${metric('Resolved',tickets.filter(row=>row.status==='Resolved').length)}${metric('Total',tickets.length)}</div><div class="admin-filter-bar"><input id="ticketSearch" placeholder="Search subject or requester email"><select id="ticketStatus">${statuses.map(status=>`<option>${status}</option>`).join('')}</select></div><div class="card table-wrap"><table><thead><tr><th>Subject</th><th>Requester</th><th>Source</th><th>Status</th><th>Updated</th><th>Actions</th></tr></thead><tbody id="ticketRows">${tickets.map(ticketRow).join('')||'<tr><td colspan="6">No support tickets yet.</td></tr>'}</tbody></table></div>`;
+  const draw=()=>{const q=$('#ticketSearch').value.toLowerCase(),status=$('#ticketStatus').value,rows=tickets.filter(row=>(status==='All'||row.status===status)&&`${row.subject} ${row.requesterEmail}`.toLowerCase().includes(q));$('#ticketRows').innerHTML=rows.map(ticketRow).join('')||'<tr><td colspan="6">No matching tickets.</td></tr>';$$('[data-open-ticket]').forEach(button=>button.onclick=()=>openTicketModal(button.dataset.openTicket))};
+  $('#ticketSearch').oninput=draw;$('#ticketStatus').onchange=draw;
+  $('#refresh').onclick=refresh;
+  $$('[data-open-ticket]').forEach(button=>button.onclick=()=>openTicketModal(button.dataset.openTicket));
+}
+function ticketRow(row){return `<tr class="${ringingRowClass(row.id)}"><td><strong>${esc(row.subject)}</strong></td><td>${esc(row.requesterName||'')}<br><small>${esc(row.requesterEmail||'')}</small></td><td>${esc(ticketSourceLabel(row.source))}</td><td><span class="chip ${row.status==='Resolved'?'delivered':row.status==='In Progress'?'due':''}">${esc(row.status)}</span></td><td>${row.updatedAt?new Date(row.updatedAt).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'}):''}</td><td><button class="btn small" data-open-ticket="${esc(row.id)}">Open</button></td></tr>`}
+function openTicketModal(id){
+  const ticket=data.supportTickets.find(row=>row.id===id);if(!ticket)return;
+  const messages=ticket.messages||[];
+  modal(`Ticket: ${esc(ticket.subject)}`,`<p class="muted">${esc(ticket.requesterName||'')} · ${esc(ticket.requesterEmail||'')} · ${esc(ticketSourceLabel(ticket.source))}</p><div class="ticket-thread">${messages.map(message=>`<div class="ticket-message ${message.senderRole==='admin'?'mine':''}"><strong>${esc(message.senderRole==='admin'?'G58 Support':message.senderName||'Requester')}</strong><span>${esc(message.text)}</span></div>`).join('')||'<p class="muted">No messages yet.</p>'}</div><form id="ticketReplyForm"><div class="field"><label>Reply (optional)</label><textarea name="message" placeholder="Leave blank to only change status"></textarea></div><div class="form-grid"><div class="field"><label>Status</label><select name="status"><option ${ticket.status==='Open'?'selected':''}>Open</option><option ${ticket.status==='In Progress'?'selected':''}>In Progress</option><option ${ticket.status==='Resolved'?'selected':''}>Resolved</option></select></div></div><button class="btn full">Update Ticket</button></form>`,()=>{
+    $('#ticketReplyForm').onsubmit=async event=>{
+      event.preventDefault();
+      const values=Object.fromEntries(new FormData(event.target)),button=event.submitter,text=values.message.trim();
+      button.disabled=true;
+      try{
+        const updatedMessages=text?[...messages,{senderRole:'admin',senderName:user.name||user.email,text,createdAt:now()}]:messages;
+        await api.update('support_tickets',ticket.id,{messages:updatedMessages,status:values.status,updatedAt:now()});
+        Object.assign(ticket,{messages:updatedMessages,status:values.status,updatedAt:now()});
+        closeModal();supportTicketsView();toast('Ticket updated');
+      }catch(error){button.disabled=false;toast(error.message||'Could not update ticket')}
+    };
+  });
+}
+
+let digit58OrdersCache=null;
+function digit58OwnerIds(){return [...new Set([...data.digit58Entitlements.map(row=>row.ownerId),...data.digit58Requests.map(row=>row.ownerId)].filter(Boolean))]}
+function digit58OrderKind(ownerId){return `digit58_order_${String(ownerId).replace(/[^a-zA-Z0-9._-]/g,'-').slice(0,40)}`}
+async function loadPurgeableDigit58Orders(){
+  if(!digit58OrdersCache){
+    const ownerIds=digit58OwnerIds();
+    const perOwner=await Promise.all(ownerIds.map(ownerId=>api.list(digit58OrderKind(ownerId)).catch(()=>[])));
+    digit58OrdersCache=perOwner.flat();
+  }
+  return digit58OrdersCache.map(row=>({...row,_kind:digit58OrderKind(row.ownerId)}));
+}
+async function loadPurgeableMenuOrders(){
+  await loadDinerOrders();
+  return data.dinerOrders.map(row=>({...row,_kind:dinerOrderKind(row.ownerId)}));
+}
+const PURGE_TARGETS=[
+  {id:'menuOrders',label:'Digital Menu Orders',statuses:['Completed','Rejected','Payment Rejected'],dateField:'createdAt',loader:loadPurgeableMenuOrders,refreshAfter:false,resetCache:()=>{data.dinerOrdersLoaded=false}},
+  {id:'digit58Orders',label:'Refills Orders',statuses:['Delivered','Rejected'],dateField:'createdAt',loader:loadPurgeableDigit58Orders,refreshAfter:false,resetCache:()=>{digit58OrdersCache=null}},
+  {id:'bookings',label:'Ad Bookings',statuses:['Rejected','Expired'],dateField:'createdAt',loader:async()=>data.bookings.map(row=>({...row,_kind:'bookings'})),refreshAfter:true},
+  {id:'advertisements',label:'Advertisements',statuses:['Expired'],dateField:'createdAt',loader:async()=>data.advertisements.map(row=>({...row,_kind:'advertisements'})),refreshAfter:true},
+  {id:'menuRequests',label:'Digital Menu Requests',statuses:['Rejected'],dateField:'createdAt',loader:async()=>data.menuRequests.map(row=>({...row,_kind:'digital_menu_requests'})),refreshAfter:true},
+  {id:'digit58Requests',label:'Refills Requests',statuses:['Rejected'],dateField:'createdAt',loader:async()=>data.digit58Requests.map(row=>({...row,_kind:'digit58_requests'})),refreshAfter:true},
+  {id:'tickets',label:'Support Tickets',statuses:['Resolved'],dateField:'updatedAt',loader:async()=>data.supportTickets.map(row=>({...row,_kind:'support_tickets'})),refreshAfter:true},
+];
+function systemView(){
+  $('#page').innerHTML=`<div class="section-head"><div><h1>System</h1><p class="muted">Bulk cleanup for old records. Every purge shows the exact count and asks for confirmation before deleting — this cannot be undone.</p></div></div><div class="grid restaurant-grid">${PURGE_TARGETS.map(target=>`<article class="card"><h3>${esc(target.label)}</h3><p class="muted">Deletes records with status ${target.statuses.join(' / ')} older than the chosen number of days.</p><div class="form-grid"><div class="field"><label>Older than (days)</label><input id="purgeDays-${target.id}" type="number" min="1" value="90"></div></div><button class="btn red full" id="purgeBtn-${target.id}">Purge Now</button></article>`).join('')}</div>`;
+  PURGE_TARGETS.forEach(target=>{$(`#purgeBtn-${target.id}`).onclick=()=>runPurge(target.id)});
+}
+async function runPurge(targetId){
+  const target=PURGE_TARGETS.find(row=>row.id===targetId);if(!target)return;
+  const daysInput=$(`#purgeDays-${targetId}`),button=$(`#purgeBtn-${targetId}`);
+  const days=Math.max(1,Number(daysInput?.value)||90);
+  button.disabled=true;const original=button.textContent;button.textContent='Scanning…';
+  try{
+    const rows=await target.loader();
+    const cutoff=Date.now()-days*86400000;
+    const matches=rows.filter(row=>target.statuses.includes(row.status)&&new Date(row[target.dateField]||row.updatedAt||row.createdAt||0).getTime()<cutoff);
+    if(!matches.length){toast('Nothing to purge — no matching records');button.disabled=false;button.textContent=original;return}
+    if(!confirm(`Delete ${matches.length} ${target.label} record(s) older than ${days} day(s) with status ${target.statuses.join('/')}? This cannot be undone.`)){button.disabled=false;button.textContent=original;return}
+    let done=0;
+    for(const row of matches){
+      try{await api.remove(row._kind,row.id||row.$id)}catch(error){console.warn('Purge failed for a record',row.id,error)}
+      done++;button.textContent=`Deleting ${done}/${matches.length}…`;
+    }
+    toast(`Purged ${done} ${target.label} record(s)`);
+    button.disabled=false;button.textContent=original;
+    target.resetCache?.();
+    if(target.refreshAfter)await refresh();else systemView();
+  }catch(error){toast(error.message||'Purge failed');button.disabled=false;button.textContent=original}
+}
+function accounts(){$('#page').innerHTML=`<div class="section-head"><div><h1>Platform Accounts</h1><p class="muted">Review and control account access across supported G58 products.</p></div></div><div class="card table-wrap"><table><thead><tr><th>Name</th><th>Email</th><th>Phone</th><th>Location</th><th>Status</th><th>Action</th></tr></thead><tbody>${data.profiles.map(row=>`<tr><td>${esc(row.name||'')}</td><td>${esc(row.email||'')}</td><td>${esc(row.phone||'')}</td><td>${esc([row.district,row.state].filter(Boolean).join(', '))}</td><td>${row.blocked?'Blocked':'Active'}</td><td><button class="btn small ${row.blocked?'green':'red'}" data-block="${row.id}">${row.blocked?'Unblock':'Block'}</button></td></tr>`).join('')||'<tr><td colspan="6">No profiles.</td></tr>'}</tbody></table></div>`;$$('[data-block]').forEach(button=>button.onclick=async()=>{const row=data.profiles.find(item=>item.id===button.dataset.block);await api.update('profiles',row.id,{blocked:!row.blocked});await refresh()})}
+function slots(){$('#page').innerHTML=`<div class="section-head"><div><h1>Restaurant Ad Placements</h1><p class="muted">Pause deleted or unavailable restaurants so advertisers cannot target them.</p></div></div><div class="grid restaurant-grid">${data.slots.map(row=>`<article class="card"><h3>${esc(row.name)}</h3><p>${esc(row.city)}</p><code>${esc(row.restaurantKey)}</code><div class="chips"><span class="chip">${row.active?'Active':'Paused'}</span></div><button class="btn small ${row.active?'red':'green'}" data-toggle-slot="${row.id}">${row.active?'Pause placement':'Activate placement'}</button></article>`).join('')||'<div class="empty">No registered placements.</div>'}</div>`;$$('[data-toggle-slot]').forEach(button=>button.onclick=async()=>{const row=data.slots.find(item=>item.id===button.dataset.toggleSlot);await api.update('slots',row.id,{active:!row.active});await refresh()})}
+async function refresh(){await loadData();shell()}
+function modal(title,body,ready){document.body.insertAdjacentHTML('beforeend',`<div class="modal-backdrop" id="modal"><section class="modal"><div class="section-head"><h2>${title}</h2><button class="btn small secondary" id="close">✕</button></div>${body}</section></div>`);$('#close').onclick=closeModal;ready?.()}
+function closeModal(){$('#modal')?.remove()}
+setInterval(()=>$$('[data-expires]').forEach(node=>node.textContent=timeLeft(node.dataset.expires,node.dataset.lifetime==='true')),30000);
+boot();
