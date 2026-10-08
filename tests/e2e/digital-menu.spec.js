@@ -714,3 +714,56 @@ test("customer can load a hosted static config without menu records in G58 Core"
   await expect(page.locator(".header-ad-panel")).toBeVisible();
   await assertNoErrors();
 });
+
+const takeawayMenu = (takeawayEnabled) => ({
+  id: "take-cafe", ownerId: "take-owner", schemaVersion: 2,
+  restaurant: { id: "take-cafe", name: "Take Café", type: "Café", city: "Hyderabad", description: "Token pickup", address: "Take Road", phone: "+91 9000000000", open: true, accepting: true, tax: 0, service: 0, identification: "Token Number", restaurantKey: "Take Café|Hyderabad", ...(takeawayEnabled === undefined ? {} : { takeawayEnabled }) },
+  categories: [{ id: "quick", name: "Quick Bites" }],
+  items: [{ id: "take-tea", categoryId: "quick", name: "Take Tea", description: "Fresh tea", price: 40, type: "Veg", available: true, prep: 5, prepareInstructionsEnabled: false }],
+});
+
+test("TakeAway option is hidden unless the restaurant owner enables it", async ({ page }) => {
+  await prepareMockApi(page, { state: null, seed: { "digital_menu_take-owner": [takeawayMenu()] } });
+  const assertNoErrors = monitorPageErrors(page);
+  await page.goto("/digital-menu/#menu&cloud=take-cafe&owner=take-owner");
+  await expect(page.getByRole("textbox", { name: "Enter your name" })).toBeVisible();
+  await expect(page.getByText("Single Counter")).toBeVisible();
+  await expect(page.getByText("Enter Table Number")).toBeVisible();
+  await expect(page.locator('input[name="serviceMode"][value="takeaway"]')).toHaveCount(0);
+  await assertNoErrors();
+});
+
+test("TakeAway orders need no name or table and are collected with the token", async ({ page }) => {
+  await prepareMockApi(page, { state: null, seed: { "digital_menu_take-owner": [takeawayMenu(true)] } });
+  const assertNoErrors = monitorPageErrors(page);
+  await page.goto("/digital-menu/#menu&cloud=take-cafe&owner=take-owner");
+  await page.locator('input[name="serviceMode"][value="takeaway"]').check();
+  await expect(page.getByRole("textbox", { name: "Enter your name" })).toBeHidden();
+  await expect(page.locator("#tableNumberField")).toBeHidden();
+  await page.getByPlaceholder("Enter customer phone number").fill("9876543299");
+  await page.getByRole("button", { name: "Continue to Menu" }).click();
+  await page.getByRole("button", { name: "ADD" }).click();
+  await page.locator("#openCart").click();
+  await page.locator("#confirmPlaceOrder").click();
+  await expect(page.locator(".customer-token-panel strong")).toHaveText("0001");
+  await expect(page.locator(".customer-token-panel small")).toContainText("TakeAway");
+  const stored = await page.evaluate(() => window.__g58Mock.store["digital_order_take-owner"]);
+  expect(stored).toHaveLength(1);
+  expect(stored[0]).toMatchObject({ tokenNumber: 1, phone: "9876543299", customerName: "", tableNumber: "" });
+  await assertNoErrors();
+});
+
+test("owner can enable TakeAway ordering in restaurant settings", async ({ page }) => {
+  await prepareOffline(page, { state: null });
+  const assertNoErrors = monitorPageErrors(page);
+  await loginDemoOwner(page);
+  await page.locator('[data-view="settings"]').click();
+  const takeaway = page.locator('#settingsForm select[name="takeawayEnabled"]');
+  await expect(takeaway).toHaveValue("false");
+  await takeaway.selectOption("true");
+  await page.locator("#settingsForm").getByRole("button", { name: "Save Settings" }).click();
+  await expect(page.locator("#toast")).toContainText("Settings saved");
+  const persisted = await page.evaluate(() => JSON.parse(localStorage.getItem("gravity58DigitalMenu")).restaurants.find((row) => row.id === "res_cafe"));
+  expect(persisted.takeawayEnabled).toBe(true);
+  await assertNoErrors();
+});

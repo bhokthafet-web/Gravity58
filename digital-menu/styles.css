@@ -64,7 +64,7 @@ body{color:var(--text);background:radial-gradient(circle at 10% 10%,#ffe8bd 0,tr
 @media(max-width:700px){.wheel-category{font-size:9px}.wheel-category span{padding:6px 7px}}
 
 /* Customer identity and payment workflow */
-.customer-entry-form{max-width:520px;margin:auto}.centered-field{text-align:center}.centered-field input{text-align:center;font-size:1.05rem}.service-choice{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:16px 0}.choice-card{display:flex;gap:12px;align-items:flex-start;padding:14px;border:1px solid var(--line);border-radius:16px;background:rgba(255,255,255,.45);cursor:pointer}.choice-card input{width:auto;margin-top:4px}.choice-card span{display:grid;gap:3px}.choice-card small{color:var(--muted)}.payment-panel{margin:18px 0;padding:16px;border-radius:18px;background:rgba(199,91,43,.07);border:1px solid rgba(199,91,43,.2)}#tableNumberField[hidden],#onlinePaymentFields[hidden]{display:none}@media(max-width:560px){.service-choice{grid-template-columns:1fr}}
+.customer-entry-form{max-width:520px;margin:auto}.centered-field{text-align:center}.centered-field input{text-align:center;font-size:1.05rem}.service-choice{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:16px 0}.choice-card{display:flex;gap:12px;align-items:flex-start;padding:14px;border:1px solid var(--line);border-radius:16px;background:rgba(255,255,255,.45);cursor:pointer}.choice-card input{width:auto;margin-top:4px}.choice-card span{display:grid;gap:3px}.choice-card small{color:var(--muted)}.payment-panel{margin:18px 0;padding:16px;border-radius:18px;background:rgba(199,91,43,.07);border:1px solid rgba(199,91,43,.2)}#tableNumberField[hidden],#customerNameField[hidden],#onlinePaymentFields[hidden]{display:none}@media(max-width:560px){.service-choice{grid-template-columns:1fr}}
 
 /* Dynamic amount-based UPI payment QR */
 .upi-payment-box{display:grid;grid-template-columns:auto 1fr;gap:16px;align-items:center;margin:14px 0;padding:14px;border:1px solid var(--line);border-radius:18px;background:#fffaf0}
@@ -229,3 +229,5 @@ body{color:var(--text);background:radial-gradient(circle at 10% 10%,#ffe8bd 0,tr
 .g58-portal-icon-nav a:hover{color:var(--text);border-color:var(--gold)}
 .g58-portal-icon-nav svg{width:14px;height:14px;flex-shrink:0}
 @media(max-width:620px){.g58-portal-icon-nav span{display:none}}
+
+.takeaway-choice{grid-column:1/-1}

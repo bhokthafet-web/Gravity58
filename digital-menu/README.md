@@ -32,6 +32,7 @@ Enable payment in Restaurant Settings and enter a UPI ID or payment link. Online
 
 - For **Single Counter**, customer name is required.
 - For **Table Number**, customer name is optional and table number is required.
+- **TakeAway** is an optional, owner-controlled mode. The owner turns it on under Restaurant Settings → TakeAway ordering (off by default); only then do customers see it. TakeAway needs no customer name or table — the customer enters a phone number, receives a queue token, and collects the order with that token.
 - Phone number is always optional.
 - The category pointed to by the wheel arrow controls the visible menu items.
 - When online payment is enabled and a UPI ID is configured, checkout generates an amount-specific UPI QR code.
