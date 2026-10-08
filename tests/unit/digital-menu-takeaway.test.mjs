@@ -30,3 +30,8 @@ test("TakeAway reuses the existing counter order path so name and table are not 
   assert.match(source, /customerName=takeaway\?'':/);
   assert.match(source, /form\.customerName\.required=mode==='counter'/);
 });
+
+test("the existing Identification mode dropdown offers TakeAway and stays in step with the setting", () => {
+  assert.match(source, /'Token Number','TakeAway'\]/);
+  assert.match(source, /takeawayEnabled:d\.identification==='TakeAway'/g);
+});

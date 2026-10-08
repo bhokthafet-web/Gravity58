@@ -414,3 +414,21 @@ test("checkout requires a restaurant UPI QR and does not offer payment-link redi
   await expect(page).not.toHaveURL(/#track&order=/);
   await assertNoErrors();
 });
+
+test("choosing TakeAway as the restaurant identification mode enables it for customers", async ({ page }) => {
+  const assertNoErrors = monitorPageErrors(page);
+  await prepareProductionMock(page, { initialUser: { $id: "take-owner-2", email: "take@restaurant.test", name: "Take Owner" } });
+  await page.goto("/digital-menu/");
+  await page.getByRole("button", { name: "Add Restaurant" }).click();
+  await page.locator('#restaurantForm input[name="name"]').fill("Token Kitchen");
+  await page.locator('#restaurantForm input[name="city"]').fill("Hyderabad");
+  await expect(page.locator('#restaurantForm select[name="identification"] option')).toContainText(["Customer Name", "Table Number", "Counter Number", "Token Number", "TakeAway"]);
+  await page.locator('#restaurantForm select[name="identification"]').selectOption("TakeAway");
+  await page.getByRole("button", { name: "Save Restaurant" }).click();
+  await expect(page.getByRole("heading", { name: /Token Kitchen/ })).toBeVisible();
+  const saved = await page.evaluate(() => JSON.parse(localStorage.getItem("gravity58DigitalMenu")).restaurants.find((row) => row.name === "Token Kitchen"));
+  expect(saved).toMatchObject({ identification: "TakeAway", takeawayEnabled: true });
+  await page.locator('[data-view="settings"]').click();
+  await expect(page.locator('#settingsForm select[name="takeawayEnabled"]')).toHaveValue("true");
+  await assertNoErrors();
+});
