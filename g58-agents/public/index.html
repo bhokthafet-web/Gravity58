@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>G58 Agents</title>
+  <link rel="stylesheet" href="app.css">
+</head>
+<body>
+  <header class="top">
+    <div>
+      <h1>G58 Agents</h1>
+      <p class="muted" id="who">Checking your G58 session…</p>
+    </div>
+    <button id="pause" class="btn" hidden></button>
+  </header>
+
+  <main id="app" hidden>
+    <section class="tiles" id="tiles"></section>
+
+    <section class="card" id="plan-card">
+      <div class="row"><h2>Coordinator's plan for today</h2><button class="btn small" data-run="coordinator/dailyPlan">Re-plan</button></div>
+      <div id="plan" class="muted">No plan yet.</div>
+    </section>
+
+    <section class="card" id="chat-card">
+      <h2>Talk to the coordinator</h2>
+      <p class="muted">Give instructions in plain words, e.g. “focus on salons in Kukatpally”, “send at most 15 messages a day”, “approve the website for Snap Mandi”. The same conversation continues on your WhatsApp.</p>
+      <div class="chat" id="chat-log"></div>
+      <form id="chat-form" class="chat-input">
+        <textarea name="message" rows="2" placeholder="Message the coordinator…" required maxlength="2000"></textarea>
+        <button class="btn">Send</button>
+      </form>
+    </section>
+
+    <nav class="tabs" role="tablist">
+      <button data-tab="leads" class="active">Leads</button>
+      <button data-tab="approvals">Approvals <span id="approval-count" class="badge" hidden></span></button>
+      <button data-tab="posts">Social posts</button>
+      <button data-tab="money">Money</button>
+      <button data-tab="activity">Activity</button>
+      <button data-tab="settings">Settings</button>
+    </nav>
+
+    <section class="card tab" id="tab-leads">
+      <div class="row">
+        <select id="stage-filter">
+          <option value="">All stages</option>
+          <option>new</option><option>qualified</option><option>contacted</option><option>replied</option>
+          <option>interested</option><option>negotiating</option><option>won</option><option>lost</option>
+          <option>skipped</option><option>do_not_contact</option>
+        </select>
+        <span class="spacer"></span>
+        <button class="btn small" data-run="marketing/scout">Find businesses</button>
+        <button class="btn small" data-run="marketing/qualify">Qualify</button>
+        <button class="btn small" data-run="marketing/outreach">Send outreach</button>
+      </div>
+      <div class="table-wrap"><table id="leads"></table></div>
+    </section>
+
+    <section class="card tab" id="tab-approvals" hidden>
+      <p class="muted">The coordinator never moves money by itself. Every payment link waits here for you.</p>
+      <div id="approvals"></div>
+    </section>
+
+    <section class="card tab" id="tab-posts" hidden>
+      <div class="row"><p class="muted">Drafts from the builder agent. Copy, post, then mark as posted.</p><span class="spacer"></span>
+        <button class="btn small" data-run="builder/posts">Draft more</button></div>
+      <div id="posts"></div>
+    </section>
+
+    <section class="card tab" id="tab-money" hidden>
+      <form id="ledger-form" class="row wrap">
+        <select name="kind"><option value="revenue">Revenue</option><option value="cost">Cost</option></select>
+        <input name="category" placeholder="Category (e.g. digital_menu, vps)" required>
+        <input name="amount_inr" type="number" min="1" step="0.01" placeholder="₹ amount" required>
+        <input name="note" placeholder="Note">
+        <button class="btn small">Add entry</button>
+      </form>
+      <div class="table-wrap"><table id="ledger"></table></div>
+    </section>
+
+    <section class="card tab" id="tab-activity" hidden>
+      <div id="log"></div>
+      <h3>Task queue</h3>
+      <div class="table-wrap"><table id="tasks"></table></div>
+    </section>
+
+    <section class="card tab" id="tab-settings" hidden>
+      <form id="settings-form" class="settings">
+        <label>City <input name="city" required></label>
+        <label>Business categories (OpenStreetMap tags, comma separated) <input name="categories" required></label>
+        <label>Max WhatsApp outreach per day <input name="daily_outreach_limit" type="number" min="0" max="250"></label>
+        <label>Send window start hour (IST) <input name="start" type="number" min="0" max="23"></label>
+        <label>Send window end hour (IST) <input name="end" type="number" min="1" max="24"></label>
+        <label>Follow-up days after first message (comma separated) <input name="followup_days"></label>
+        <label>Website previews per day <input name="max_sites_per_day" type="number" min="0" max="50"></label>
+        <label class="full">Products (JSON) <textarea name="products" rows="10"></textarea></label>
+        <button class="btn">Save settings</button>
+      </form>
+    </section>
+  </main>
+
+  <dialog id="lead-dialog">
+    <form method="dialog" class="row"><h2 id="lead-title"></h2><span class="spacer"></span><button class="btn small">Close</button></form>
+    <div id="lead-body"></div>
+  </dialog>
+
+  <div id="toast" role="status" hidden></div>
+  <script src="app.js" type="module"></script>
+</body>
+</html>

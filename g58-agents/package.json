@@ -1,0 +1,19 @@
+{
+  "name": "g58-agents",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "test": "node --test test/*.test.js"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "latest",
+    "@fastify/cookie": "latest",
+    "@fastify/static": "latest",
+    "fastify": "latest",
+    "pg": "latest",
+    "zod": "latest"
+  }
+}

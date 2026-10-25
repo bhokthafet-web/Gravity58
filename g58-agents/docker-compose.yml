@@ -1,0 +1,15 @@
+# Runs next to G58 Core and shares its PostgreSQL (own "agents" schema) and private network.
+services:
+  agents:
+    build: .
+    container_name: g58-agents
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "127.0.0.1:8090:8090"
+    networks: [g58-private]
+
+networks:
+  g58-private:
+    external: true
+    name: ${G58_NETWORK:-g58-core-staging_g58-private}

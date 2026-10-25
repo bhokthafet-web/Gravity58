@@ -13,5 +13,13 @@ server.g58.in {
     -Server
   }
 
-  reverse_proxy api:8088
+  # G58 Agents dashboard, webhooks and website previews (g58-agents/ in this repo).
+  redir /agents /agents/ 308
+  handle_path /agents/* {
+    reverse_proxy g58-agents:8090
+  }
+
+  handle {
+    reverse_proxy api:8088
+  }
 }
