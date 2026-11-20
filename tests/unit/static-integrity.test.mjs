@@ -6,7 +6,7 @@ import { dirname, extname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = resolve(fileURLToPath(new URL("../..", import.meta.url)));
-const ignored = new Set([".git", "node_modules", "build", "playwright-report", "test-results"]);
+const ignored = new Set([".git", "node_modules", "build", "playwright-report", "test-results", "g58-agents"]);
 
 function filesUnder(directory) {
   return readdirSync(directory).flatMap((name) => {

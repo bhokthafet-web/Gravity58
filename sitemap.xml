@@ -3,6 +3,7 @@
   <url><loc>https://g58.in/</loc><changefreq>daily</changefreq><priority>1.0</priority></url>
   <url><loc>https://g58.in/about/</loc><changefreq>daily</changefreq><priority>0.8</priority></url>
   <url><loc>https://g58.in/contact/</loc><changefreq>daily</changefreq><priority>0.8</priority></url>
+  <url><loc>https://g58.in/demo/</loc><changefreq>weekly</changefreq><priority>0.8</priority></url>
   <url><loc>https://g58.in/privacy-policy/</loc><changefreq>daily</changefreq><priority>0.8</priority></url>
   <url><loc>https://g58.in/terms/</loc><changefreq>daily</changefreq><priority>0.8</priority></url>
   <url>

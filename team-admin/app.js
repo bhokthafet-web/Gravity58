@@ -53,16 +53,17 @@ async function handleRequestKindChange(watcher){
   let rows;
   try{rows=await api.list(watcher.kind)}catch(error){console.warn(`Could not refresh ${watcher.kind}`,error);return}
   const known=knownRequestIds.get(watcher.kind)||new Set();
-  let hasNew=false;
+  let hasNew=false,newLabel=watcher.label;
   rows.forEach(row=>{
     if(!row.id||known.has(row.id))return;
-    known.add(row.id);ringingRequestIds.add(row.id);hasNew=true;
-    newRequestFeed.unshift({id:row.id,navKey:watcher.navKey,label:watcher.label,title:requestTitle(watcher,row),createdAt:row.createdAt||now()});
+    const label=row.requestType==='Demo'?'Demo request':watcher.label;
+    known.add(row.id);ringingRequestIds.add(row.id);hasNew=true;newLabel=label;
+    newRequestFeed.unshift({id:row.id,navKey:watcher.navKey,label,title:requestTitle(watcher,row),createdAt:row.createdAt||now()});
   });
   if(newRequestFeed.length>40)newRequestFeed.length=40;
   knownRequestIds.set(watcher.kind,known);
   data[watcher.dataKey]=rows;
-  if(hasNew){updateRequestAlertSound();toast(`🔔 New ${watcher.label.toLowerCase()} received`)}
+  if(hasNew){updateRequestAlertSound();toast(`🔔 New ${newLabel.toLowerCase()} received`)}
   else refreshNavBadges();
   if(!$('#modal')&&(view===watcher.navKey||view==='overview'))renderView();
 }
@@ -550,15 +551,15 @@ async function toggleDigit58BrandOwnerBlock(id){
 }
 function contactRequestsView(){
   const requests=[...data.contactRequests].sort((a,b)=>new Date(b.createdAt||b.$createdAt||0)-new Date(a.createdAt||a.$createdAt||0));
-  const interests=['All','POS','Digital Menu','Refills'];
-  $('#page').innerHTML=`<div class="section-head"><div><h1>Contact Requests</h1><p class="muted">Submissions from the "Contact Us" form on the main landing page.</p></div><button class="btn" id="refresh">Refresh</button></div><div class="grid stats">${metric('Total',requests.length)}${metric('POS',requests.filter(row=>row.interest==='POS').length)}${metric('Digital Menu',requests.filter(row=>row.interest==='Digital Menu').length)}${metric('Refills',requests.filter(row=>row.interest==='Refills').length)}</div><div class="admin-filter-bar"><input id="contactSearch" placeholder="Search name or phone"><select id="contactInterestFilter">${interests.map(item=>`<option>${item}</option>`).join('')}</select></div><div class="card table-wrap"><table><thead><tr><th>Name</th><th>Contact Number</th><th>Interested In</th><th>Submitted</th><th>Actions</th></tr></thead><tbody id="contactRows">${requests.map(contactRequestRow).join('')||'<tr><td colspan="5">No contact requests yet.</td></tr>'}</tbody></table></div>`;
-  const draw=()=>{const q=$('#contactSearch').value.toLowerCase(),interest=$('#contactInterestFilter').value,rows=requests.filter(row=>(interest==='All'||row.interest===interest)&&`${row.name||''} ${row.phone||''}`.toLowerCase().includes(q));$('#contactRows').innerHTML=rows.map(contactRequestRow).join('')||'<tr><td colspan="5">No matching contact requests.</td></tr>';bindContactRequestActions()};
+  const interests=['All','Demo requests','POS','Digital Menu','Refills','Booking'];
+  $('#page').innerHTML=`<div class="section-head"><div><h1>Contact Requests</h1><p class="muted">Submissions from the "Contact Us" form and the Book a Demo page.</p></div><button class="btn" id="refresh">Refresh</button></div><div class="grid stats">${metric('Total',requests.length)}${metric('Demo requests',requests.filter(row=>row.requestType==='Demo').length)}${metric('POS',requests.filter(row=>row.interest==='POS').length)}${metric('Digital Menu',requests.filter(row=>row.interest==='Digital Menu').length)}${metric('Refills',requests.filter(row=>row.interest==='Refills').length)}${metric('Booking',requests.filter(row=>row.interest==='Booking').length)}</div><div class="admin-filter-bar"><input id="contactSearch" placeholder="Search name or phone"><select id="contactInterestFilter">${interests.map(item=>`<option>${item}</option>`).join('')}</select></div><div class="card table-wrap"><table><thead><tr><th>Name</th><th>Contact Number</th><th>Interested In</th><th>Submitted</th><th>Actions</th></tr></thead><tbody id="contactRows">${requests.map(contactRequestRow).join('')||'<tr><td colspan="5">No contact requests yet.</td></tr>'}</tbody></table></div>`;
+  const draw=()=>{const q=$('#contactSearch').value.toLowerCase(),interest=$('#contactInterestFilter').value,rows=requests.filter(row=>(interest==='All'||(interest==='Demo requests'?row.requestType==='Demo':row.interest===interest))&&`${row.name||''} ${row.phone||''}`.toLowerCase().includes(q));$('#contactRows').innerHTML=rows.map(contactRequestRow).join('')||'<tr><td colspan="5">No matching contact requests.</td></tr>';bindContactRequestActions()};
   $('#contactSearch').oninput=draw;$('#contactInterestFilter').onchange=draw;
   $('#refresh').onclick=refresh;
   bindContactRequestActions();
 }
 function contactRequestRow(row){
-  return `<tr class="${ringingRowClass(row.id)}"><td><strong>${esc(row.name||'')}</strong></td><td>${esc(row.phone||'')}</td><td><span class="chip">${esc(row.interest||'')}</span></td><td>${row.createdAt?new Date(row.createdAt).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'}):''}</td><td><div class="actions"><button class="btn small red" data-delete-contact="${esc(row.id)}">Delete</button></div></td></tr>`;
+  return `<tr class="${ringingRowClass(row.id)}"><td><strong>${esc(row.name||'')}</strong>${row.requestType==='Demo'?' <span class="chip delivered">Demo</span>':''}</td><td>${esc(row.phone||'')}</td><td><span class="chip">${esc(row.interest||'')}</span></td><td>${row.createdAt?new Date(row.createdAt).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'}):''}</td><td><div class="actions"><button class="btn small red" data-delete-contact="${esc(row.id)}">Delete</button></div></td></tr>`;
 }
 function bindContactRequestActions(){$$('[data-delete-contact]').forEach(button=>button.onclick=()=>deleteContactRequest(button.dataset.deleteContact))}
 async function deleteContactRequest(id){
