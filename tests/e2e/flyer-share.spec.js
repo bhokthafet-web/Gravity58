@@ -13,8 +13,8 @@ test("the floating WhatsApp icon opens a flyer popup with one WhatsApp button", 
   await page.goto("/");
   await expect(page.locator("#flyerShare")).toHaveCount(0); // no inline section any more
   const icon = page.locator("a.g58-wa-float");
-  await expect(icon.locator("svg circle")).toHaveCount(3); // the G58 three-ring logo
-  await expect(icon.locator("svg path")).toHaveCount(0);
+  await expect(icon.locator("svg.g58-wa-face-logo circle")).toHaveCount(3); // the G58 three-ring logo
+  await expect(icon.locator("svg.g58-wa-face-chat path")).toHaveCount(1); // the WhatsApp glyph it turns into
   await page.screenshot({ path: `/private/tmp/claude-501/-Users-rajeshgurram-Desktop-58-caude/718e3f85-256d-43e5-b83e-384b66a3cfeb/scratchpad/icon-${test.info().project.name}.png`, clip: { x: 0, y: page.viewportSize().height - 110, width: 220, height: 110 } });
   await icon.click();
 
@@ -88,4 +88,39 @@ test("the icon falls back to a plain WhatsApp chat if the popup cannot load", as
   await page.locator("a.g58-wa-float").click();
   await expect.poll(() => page.evaluate(() => window.__opened.length)).toBe(1);
   expect((await page.evaluate(() => window.__opened))[0]).toMatch(/^https:\/\/wa\.me\/919391523275\?text=/);
+});
+
+test("the floating button spins between the G58 logo and the WhatsApp button, and stays still for reduced motion", async ({ page }) => {
+  await prepareMockApi(page, { state: null });
+  await page.goto("/pricing/");
+  const icon = page.locator("a.g58-wa-float");
+  const shot = (name) => page.screenshot({ path: `/private/tmp/claude-501/-Users-rajeshgurram-Desktop-58-caude/718e3f85-256d-43e5-b83e-384b66a3cfeb/scratchpad/${name}-${test.info().project.name}.png`, clip: { x: 0, y: page.viewportSize().height - 110, width: 220, height: 110 } });
+  const at = async (ms) => { await page.evaluate((t) => document.getAnimations().forEach((a) => { a.pause(); a.currentTime = t; }), ms); };
+  const state = () => icon.evaluate((el) => ({
+    bg: getComputedStyle(el).backgroundColor,
+    logo: Number(getComputedStyle(el.querySelector(".g58-wa-face-logo")).opacity),
+    chat: Number(getComputedStyle(el.querySelector(".g58-wa-face-chat")).opacity),
+  }));
+  await at(1000); // start of each loop: the logo
+  let s = await state();
+  expect(s.bg).toBe("rgb(255, 255, 255)");
+  expect(s.logo).toBe(1);
+  expect(s.chat).toBe(0);
+  await shot("float-logo");
+  await at(4300); // middle: the WhatsApp button
+  s = await state();
+  expect(s.bg).toBe("rgb(37, 211, 102)");
+  expect(s.chat).toBe(1);
+  expect(s.logo).toBe(0);
+  await shot("float-whatsapp");
+  await at(8800); // end of the loop: back to the logo
+  s = await state();
+  expect(s.logo).toBe(1);
+  expect(s.chat).toBe(0);
+
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.reload();
+  await expect(icon.locator(".g58-wa-face-chat")).toBeHidden();
+  await expect(icon.locator(".g58-wa-face-logo")).toBeVisible();
+  expect(await icon.evaluate((el) => getComputedStyle(el).animationName)).toBe("none");
 });
