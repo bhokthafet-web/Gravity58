@@ -285,7 +285,10 @@ app.register(async (api) => {
          (SELECT count(*) FROM agents.tasks WHERE agent='marketing' AND kind IN ('findEmails','draftEmails') AND status IN ('queued','running'))::int AS jobs_running`,
       [config.timezone],
     )).rows[0];
-    return { ...counts, daily_limit: settings.email_daily_limit ?? 50, smtp: smtpEnabled(), claude: config.claudeEnabled,
+    const activity = (await query(
+      `SELECT level, message, created_at FROM agents.agent_log WHERE agent='marketing' ORDER BY id DESC LIMIT 1`,
+    )).rows[0] ?? null;
+    return { ...counts, activity, daily_limit: settings.email_daily_limit ?? 50, smtp: smtpEnabled(), claude: config.claudeEnabled,
       from: config.smtp.from, reply_to: config.smtp.replyTo, city: settings.city, categories: settings.categories };
   });
 

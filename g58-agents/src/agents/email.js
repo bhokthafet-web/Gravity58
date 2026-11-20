@@ -26,33 +26,36 @@ export async function findEmails({ area, categories } = {}) {
   await log(AGENT, `Searching ${label} for ${targetCategories.join(", ")}`);
 
   const { found, failed } = await searchAreaForEmails(bbox, targetCategories, targetArea);
+  await log(AGENT, `Found ${found.length} businesses with an email or website on the map. Reading their websites…`);
   const known = new Set((await query(
     `SELECT source_ref FROM agents.leads WHERE source_ref = ANY($1)`, [found.map((b) => b.sourceRef)],
   )).rows.map((row) => row.source_ref));
   const fresh = found.filter((business) => !known.has(business.sourceRef));
 
   // OpenStreetMap rarely lists emails; most come from the business's own website.
-  await inBatches(fresh.filter((b) => !b.email && b.website), 4, async (business) => {
+  await inBatches(fresh.filter((b) => !b.email && b.website), 8, async (business) => {
     business.email = await findEmailOnWebsite(business.website);
     business.emailSource = business.email ? "website" : null;
   });
 
-  let added = 0;
+  const addedIds = [];
   for (const business of fresh.filter((b) => b.email)) {
     const result = await query(
       `INSERT INTO agents.leads(source, source_ref, name, category, phone, email, email_source, website, address, city, lat, lon, stage)
        SELECT 'osm', $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11,
               CASE WHEN EXISTS (SELECT 1 FROM agents.email_opt_outs WHERE email=lower($5)) THEN 'do_not_contact' ELSE 'new' END
        WHERE NOT EXISTS (SELECT 1 FROM agents.leads WHERE lower(email)=lower($5))
-       ON CONFLICT DO NOTHING`,
+       ON CONFLICT DO NOTHING RETURNING id`,
       [business.sourceRef, business.name, business.category, business.phone, business.email, business.emailSource || "osm",
         business.website, business.address, business.city, business.lat, business.lon],
     );
-    added += result.rowCount;
+    if (result.rows[0]) addedIds.push(result.rows[0].id);
   }
-  await log(AGENT, `${targetArea}: checked ${found.length} businesses, found ${added} new email addresses`, { failed });
-  if (failed.length) await log(AGENT, `Some categories could not be searched: ${failed.join(" | ")}`, null, "warn");
-  return { checked: found.length, added };
+  await log(AGENT, `${targetArea}: checked ${found.length} businesses, found ${addedIds.length} new email addresses`, { failed });
+  if (failed.length) await log(AGENT, `Some business types could not be searched: ${failed.join(" | ")}`, null, "warn");
+  // Draft straight away so the emails are waiting for review; sending stays manual.
+  if (addedIds.length) await draftEmails({ leadIds: addedIds });
+  return { checked: found.length, added: addedIds.length };
 }
 
 const productFor = (lead, products) => {

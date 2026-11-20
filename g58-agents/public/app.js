@@ -126,7 +126,11 @@ async function loadEmailStatus() {
     <span>Drafts written by <b>${st.claude ? "Claude" : "templates"}</b></span>
     <span>Sent today <b>${st.sent_today}/${st.daily_limit}</b> · total ${st.sent_total}</span>
     <span>${st.leads_with_email} businesses with email · ${st.unsubscribed} unsubscribed</span>
-    ${st.jobs_running ? '<span class="warn">Agent is working… this page refreshes by itself</span>' : ""}
+  </div>
+  ${st.jobs_running && st.activity ? `<p class="warn">Working: ${esc(st.activity.message)}</p>`
+    : st.jobs_running ? '<p class="warn">Working… this page refreshes by itself.</p>'
+    : st.activity ? `<p class="muted ${st.activity.level === "warn" || st.activity.level === "error" ? "warn" : ""}">Last: ${esc(st.activity.message)} (${when(st.activity.created_at)})</p>` : ""}
+  <div>
   </div>`;
   const badge = $("#draft-count");
   badge.hidden = !st.drafts;
@@ -181,7 +185,7 @@ $("#find-form").addEventListener("submit", async (event) => {
   const categories = form.categories.value.split(",").map((c) => c.trim().toLowerCase().replace(/\s+/g, "_")).filter(Boolean);
   try {
     await api("email/find", { method: "POST", body: { area: form.area.value.trim(), categories } });
-    toast("Searching… this takes a few minutes. New businesses will appear in Leads.");
+    toast("Searching… usually 1–3 minutes. Drafts will appear below automatically.");
     loadEmailStatus();
   } catch (error) {
     toast(error.message);

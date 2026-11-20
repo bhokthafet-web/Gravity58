@@ -32,7 +32,9 @@ test("blocks private and local addresses when reading websites", () => {
 });
 
 test("builds an area query with a bounding box and keeps businesses with email or website", () => {
-  assert.match(buildAreaQuery([17.4, 78.3, 17.5, 78.5], "cafe"), /\["amenity"="cafe"\]\["name"\].*\(17\.4,78\.3,17\.5,78\.5\);/);
+  const q = buildAreaQuery([17.4, 78.3, 17.5, 78.5], ["cafe", "restaurant", "bakery", "bad\"];"]);
+  assert.match(q, /\["amenity"~"\^\(cafe\|restaurant\)\$"\]\["name"\].*\(17\.4,78\.3,17\.5,78\.5\);/);
+  assert.match(q, /\["shop"~"\^\(bakery\|bad\)\$"\]/);
   const rows = toEmailCandidates([
     { type: "node", id: 1, tags: { name: "Cafe A", amenity: "cafe", email: "Hello@CafeA.in; other@x.in" } },
     { type: "node", id: 2, tags: { name: "Shop B", shop: "clothes", website: "shopb.in", phone: "9848022338" } },

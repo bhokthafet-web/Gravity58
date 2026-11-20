@@ -111,10 +111,20 @@ export async function geocodeArea(area) {
   return { bbox: [south, west, north, east].map((n) => Number(n.toFixed(5))), label: place.display_name };
 }
 
-export function buildAreaQuery(bbox, category) {
-  const safe = String(category).replace(/[^a-z_]/g, "");
-  return `[out:json][timeout:120];
-nwr["${tagKey(safe)}"="${safe}"]["name"]${HAS_EMAIL_OR_SITE}(${bbox.join(",")});
+/** One query for all business types: much faster on the public servers than one per type. */
+export function buildAreaQuery(bbox, categories) {
+  const clean = [...new Set(categories.map((c) => String(c).replace(/[^a-z_]/g, "")).filter(Boolean))];
+  const amenity = clean.filter((c) => tagKey(c) === "amenity");
+  const shop = clean.filter((c) => tagKey(c) === "shop");
+  const box = bbox.join(",");
+  const statements = [
+    amenity.length && `nwr["amenity"~"^(${amenity.join("|")})$"]["name"]${HAS_EMAIL_OR_SITE}(${box});`,
+    shop.length && `nwr["shop"~"^(${shop.join("|")})$"]["name"]${HAS_EMAIL_OR_SITE}(${box});`,
+  ].filter(Boolean);
+  return `[out:json][timeout:150];
+(
+  ${statements.join("\n  ")}
+);
 out center tags;`;
 }
 
@@ -141,15 +151,20 @@ export function toEmailCandidates(elements, area) {
 }
 
 export async function searchAreaForEmails(bbox, categories, area) {
-  const found = [];
-  const failed = [];
-  for (const category of categories) {
-    try {
-      found.push(...toEmailCandidates(await fetchOverpass(buildAreaQuery(bbox, category)), area));
-    } catch (error) {
-      failed.push(`${category}: ${error.message}`);
+  try {
+    return { found: toEmailCandidates(await fetchOverpass(buildAreaQuery(bbox, categories)), area), failed: [] };
+  } catch (error) {
+    // Busy servers sometimes reject the combined query; smaller per-type queries may still get through.
+    const found = [];
+    const failed = [];
+    for (const category of categories) {
+      try {
+        found.push(...toEmailCandidates(await fetchOverpass(buildAreaQuery(bbox, [category])), area));
+      } catch (inner) {
+        failed.push(`${category}: ${inner.message}`);
+      }
     }
+    if (!found.length && failed.length) throw new Error(`The map servers are busy, please try again in a few minutes (${error.message})`);
+    return { found, failed };
   }
-  if (!found.length && failed.length) throw new Error(failed.join(" | "));
-  return { found, failed };
 }
