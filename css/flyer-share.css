@@ -1,0 +1,78 @@
+/* Home page: one-tap WhatsApp flyer section */
+.flyer-share{margin-block:40px}
+.flyer-share-card{position:relative;overflow:hidden;display:grid;grid-template-columns:minmax(0,5fr) minmax(0,7fr);gap:clamp(24px,4vw,56px);align-items:center;padding:clamp(22px,4vw,48px);border-radius:30px;background:#0E1116;color:#fff;box-shadow:0 30px 70px rgba(14,17,22,.28)}
+.flyer-share-card:before{content:"";position:absolute;inset:0;pointer-events:none;background:radial-gradient(circle at 12% 18%,rgba(37,211,102,.20),transparent 42%),radial-gradient(circle at 92% 88%,rgba(249,115,22,.22),transparent 40%)}
+.flyer-share-card>*{position:relative}
+
+/* flyer stack */
+.flyer-stage{display:grid;justify-items:center;gap:16px}
+.flyer-stack{position:relative;width:min(100%,330px);aspect-ratio:900/1273}
+.flyer-page{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;border-radius:14px;background:#fff;box-shadow:0 22px 50px rgba(0,0,0,.45);transition:transform .55s cubic-bezier(.2,.8,.2,1),opacity .35s ease,filter .35s ease;cursor:pointer;transform:translate(26px,16px) rotate(6deg) scale(.94);filter:brightness(.78);z-index:1}
+.flyer-page.is-front{transform:rotate(-2.5deg);filter:none;z-index:2;cursor:default}
+.flyer-stack:hover .flyer-page.is-front{transform:rotate(-1deg) translateY(-4px)}
+.flyer-tabs{display:inline-flex;padding:4px;border-radius:999px;background:rgba(255,255,255,.10);border:1px solid rgba(255,255,255,.16)}
+.flyer-tabs button{min-width:84px;min-height:40px;padding:0 18px;border:0;border-radius:999px;background:transparent;color:#C9D1DC;font:700 14px/1 inherit;cursor:pointer}
+.flyer-tabs button[aria-pressed="true"]{background:#fff;color:#0E1116}
+.flyer-tabs button:focus-visible,.flyer-chips button:focus-visible,.flyer-input:focus-visible,.flyer-btn:focus-visible{outline:3px solid #7FB2FF;outline-offset:2px}
+
+/* copy column */
+.flyer-copy{min-width:0}
+.flyer-eyebrow{display:inline-flex;align-items:center;gap:8px;padding:6px 14px;border-radius:999px;background:rgba(37,211,102,.14);border:1px solid rgba(37,211,102,.4);color:#7CF0A6;font:800 12px/1 inherit;letter-spacing:.08em;text-transform:uppercase}
+.flyer-eyebrow i{width:8px;height:8px;border-radius:50%;background:#25D366;box-shadow:0 0 0 0 rgba(37,211,102,.7);animation:flyerPulse 2s ease-out infinite}
+@keyframes flyerPulse{0%{box-shadow:0 0 0 0 rgba(37,211,102,.6)}100%{box-shadow:0 0 0 10px rgba(37,211,102,0)}}
+.flyer-copy h2{margin:14px 0 10px;font-family:Manrope,Inter,sans-serif;font-weight:800;font-size:clamp(26px,3.6vw,40px);line-height:1.12;letter-spacing:-.02em;color:#fff}
+.flyer-lead{margin:0 0 20px;max-width:56ch;color:#C9D1DC;line-height:1.65;font-size:16px}
+.flyer-label{display:block;margin:0 0 8px;color:#E6EBF2;font-size:13px;font-weight:700}
+.flyer-label span{color:#93A0B2;font-weight:500}
+
+/* the interactive part only appears when the script has found the WhatsApp number */
+.flyer-live,.flyer-share.is-live .flyer-fallback{display:none}
+.flyer-share.is-live .flyer-live{display:block}
+.flyer-fallback{margin:0;color:#C9D1DC}
+.flyer-fallback a{color:#fff;font-weight:700;text-decoration:underline}
+
+.flyer-chips{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-bottom:16px}
+.flyer-chips button{display:grid;gap:2px;align-content:center;min-height:56px;padding:10px 12px;border:1.5px solid rgba(255,255,255,.18);border-radius:14px;background:rgba(255,255,255,.05);color:#fff;text-align:left;cursor:pointer;transition:border-color .2s,background .2s,transform .2s}
+.flyer-chips button strong{font-size:14px;line-height:1.2}
+.flyer-chips button small{color:#9FB0C5;font-size:12px}
+.flyer-chips button:hover{transform:translateY(-1px);border-color:rgba(255,255,255,.4)}
+.flyer-chips button[aria-checked="true"]{border-color:#25D366;background:rgba(37,211,102,.14)}
+.flyer-chips button[aria-checked="true"] small{color:#7CF0A6}
+.flyer-input{width:100%;min-height:46px;margin-bottom:16px;padding:0 14px;border:1.5px solid rgba(255,255,255,.18);border-radius:12px;background:rgba(255,255,255,.07);color:#fff;font-size:16px}
+.flyer-input::placeholder{color:#8392A6}
+
+/* WhatsApp-style preview */
+.flyer-chat{margin-bottom:18px;border-radius:18px;overflow:hidden;background:#0B141A;border:1px solid rgba(255,255,255,.12)}
+.flyer-chat-head{display:flex;align-items:center;gap:10px;padding:10px 14px;background:#202C33}
+.flyer-chat-head strong{display:block;font-size:14px;line-height:1.2}
+.flyer-chat-head small{color:#8FA3AD;font-size:12px}
+.flyer-avatar{display:grid;place-items:center;width:34px;height:34px;border-radius:50%;background:#F97316;color:#fff;font-weight:800}
+.flyer-bubble{position:relative;margin:14px 14px 14px auto;max-width:min(100%,420px);padding:6px 6px 22px;border-radius:12px 12px 2px 12px;background:#005C4B;box-shadow:0 1px 1px rgba(0,0,0,.3)}
+.flyer-bubble img{width:100%;max-height:150px;object-fit:cover;object-position:top;border-radius:8px;margin-bottom:6px}
+.flyer-bubble p{margin:0;padding:2px 6px;white-space:pre-line;overflow-wrap:anywhere;font-size:14px;line-height:1.5;color:#E9EDEF}
+.flyer-tick{position:absolute;right:10px;bottom:5px;font-size:11px;color:#9BC4B9}
+
+.flyer-actions{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.flyer-btn{display:inline-flex;align-items:center;justify-content:center;gap:10px;min-height:52px;padding:0 22px;border-radius:999px;border:1.5px solid transparent;font:800 15px/1 inherit;cursor:pointer;text-decoration:none;transition:transform .18s ease,box-shadow .18s ease,background .18s}
+.flyer-btn svg{width:22px;height:22px;fill:currentColor;flex:0 0 auto}
+.flyer-btn-wa{flex:1 1 220px;background:#25D366;color:#06210F;box-shadow:0 12px 28px rgba(37,211,102,.35)}
+.flyer-btn-wa:hover{transform:translateY(-2px);box-shadow:0 16px 34px rgba(37,211,102,.45)}
+.flyer-btn-ghost{background:transparent;color:#fff;border-color:rgba(255,255,255,.35)}
+.flyer-btn-ghost:hover{background:rgba(255,255,255,.1)}
+.flyer-btn-link{min-height:44px;padding:0 10px;background:transparent;color:#C9D1DC;text-decoration:underline;font-weight:700}
+.flyer-note{min-height:20px;margin:10px 2px 0;color:#9FB0C5;font-size:13px}
+
+@media(max-width:860px){
+  .flyer-share-card{grid-template-columns:1fr;border-radius:24px}
+  .flyer-stack{width:min(78%,300px)}
+}
+@media(max-width:520px){
+  .flyer-chips{grid-template-columns:1fr}
+  .flyer-chips button{grid-auto-flow:column;justify-content:space-between;align-items:center;min-height:48px}
+  .flyer-btn{width:100%}
+  .flyer-btn-link{width:auto}
+}
+@media(prefers-reduced-motion:reduce){
+  .flyer-page,.flyer-chips button,.flyer-btn{transition:none}
+  .flyer-eyebrow i{animation:none}
+}
