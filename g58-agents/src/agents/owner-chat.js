@@ -20,6 +20,7 @@ const JOBS = {
   send_outreach: ["marketing", "outreach"],
   send_followups: ["marketing", "followups"],
   draft_social_posts: ["builder", "posts"],
+  draft_emails: ["marketing", "draftEmails"],
   make_daily_plan: ["coordinator", "dailyPlan"],
 };
 
@@ -136,6 +137,19 @@ function buildTools(ownerText, actor) {
       }),
     }),
     betaZodTool({
+      name: "find_emails",
+      description: "Search an area for businesses and their public email addresses (from OpenStreetMap and their websites). Results appear in the Email tab; drafting is a separate job. Emails are only sent when the owner clicks Send.",
+      inputSchema: z.object({
+        area: z.string().min(2).max(120).describe('Area and city, e.g. "Kukatpally, Hyderabad"'),
+        categories: z.array(z.string().regex(/^[a-z_]+$/)).min(1).max(20).describe("OpenStreetMap amenity/shop tags"),
+      }),
+      run: safe(async ({ area, categories }) => {
+        await enqueue("marketing", "findEmails", { area, categories }, {});
+        await log(AGENT, `${actor} asked to find emails in ${area} via chat`);
+        return `Started searching ${area} for ${categories.join(", ")}. This can take several minutes.`;
+      }),
+    }),
+    betaZodTool({
       name: "list_approvals",
       description: "Payment links waiting for the owner's decision.",
       inputSchema: z.object({}),
@@ -180,6 +194,8 @@ const SYSTEM = `You are the coordinator of G58's AI sales team, talking with the
 The team: a marketing agent (finds local businesses on OpenStreetMap, scores them, sends WhatsApp intros and
 follow-ups, answers replies), a builder agent (free website previews, social post drafts), and you (plan the day,
 hand out work, keep the books, prepare payment links that only the owner can approve).
+Outreach is manual by default: the marketing agent finds business emails and drafts emails, and the owner
+reviews each draft and clicks Send in the dashboard's Email tab. You cannot send outreach emails yourself.
 
 How to work:
 - Act on the owner's instructions with your tools, then confirm in one or two short sentences what you changed.

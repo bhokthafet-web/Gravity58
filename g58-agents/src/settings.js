@@ -5,6 +5,8 @@ export const STAGES = ["new", "qualified", "skipped", "contacted", "replied", "i
 /** Settings the owner may change, from the dashboard form or by asking the coordinator. */
 export const SettingsInput = z.object({
   paused: z.boolean(),
+  auto_outreach: z.boolean(),
+  email_daily_limit: z.number().int().min(0).max(500),
   city: z.string().min(2).max(80),
   categories: z.array(z.string().regex(/^[a-z_]+$/)).min(1).max(20),
   daily_outreach_limit: z.number().int().min(0).max(250),

@@ -90,7 +90,8 @@ export async function ownerReport(numbers, plan) {
  */
 export async function tick() {
   const settings = await getSettings();
-  if (settings.paused) return;
+  // Manual mode (the default): nothing is found, drafted or sent unless a person asks.
+  if (settings.paused || !settings.auto_outreach) return;
   const day = today();
   const bucket = `${day}T${localHour()}:${Math.floor(new Date().getMinutes() / 15)}`;
 

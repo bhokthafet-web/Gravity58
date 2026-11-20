@@ -61,3 +61,11 @@ dialog::backdrop { background: rgb(0 0 0 / .4); }
 #toast { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); background: var(--text); color: var(--bg); padding: 10px 16px; border-radius: 8px; max-width: calc(100vw - 32px); }
 .log-line { font-size: 13px; padding: 4px 0; border-bottom: 1px solid var(--line); }
 .log-line time { color: var(--muted); margin-right: 8px; font-variant-numeric: tabular-nums; }
+.small-note { font-size: 12px; margin-top: -4px; }
+.tabs.sub { margin: 0; }
+.draft { border: 1px solid var(--line); border-radius: 10px; padding: 12px; margin-bottom: 12px; }
+.draft .fields { display: grid; gap: 6px; margin: 8px 0; }
+.draft input, .draft textarea { width: 100%; font-family: inherit; font-size: 14px; }
+.draft textarea { min-height: 220px; resize: vertical; }
+.draft .sent-body { white-space: pre-wrap; font-size: 14px; background: var(--bg); padding: 10px; border-radius: 8px; }
+.status-line { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-bottom: 12px; font-size: 13px; }

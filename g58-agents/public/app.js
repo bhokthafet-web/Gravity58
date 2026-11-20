@@ -110,6 +110,117 @@ $("#chat-form").message.addEventListener("keydown", (event) => {
   }
 });
 
+// ---------- Email outreach ----------
+
+let emailStatus = "draft";
+let emailTimer = null;
+
+async function loadEmailStatus() {
+  const st = await api("email/status");
+  const form = $("#find-form");
+  if (!form.categories.value) form.categories.value = st.categories.join(", ");
+  if (!form.area.value) form.area.value = st.city;
+  $("#email-status").innerHTML = `<div class="status-line">
+    <span>${st.smtp ? `Sending from <b>${esc(st.from)}</b>` : '<b class="bad">Email sending is not set up</b> (SMTP settings missing in .env)'}</span>
+    ${st.reply_to ? `<span>Replies go to <b>${esc(st.reply_to)}</b></span>` : ""}
+    <span>Drafts written by <b>${st.claude ? "Claude" : "templates"}</b></span>
+    <span>Sent today <b>${st.sent_today}/${st.daily_limit}</b> · total ${st.sent_total}</span>
+    <span>${st.leads_with_email} businesses with email · ${st.unsubscribed} unsubscribed</span>
+    ${st.jobs_running ? '<span class="warn">Agent is working… this page refreshes by itself</span>' : ""}
+  </div>`;
+  const badge = $("#draft-count");
+  badge.hidden = !st.drafts;
+  badge.textContent = st.drafts;
+  clearTimeout(emailTimer);
+  if (st.jobs_running) emailTimer = setTimeout(() => loadEmail().catch(() => {}), 8000);
+}
+
+async function loadEmail() {
+  const [, rows] = await Promise.all([loadEmailStatus(), api(`email/drafts?status=${emailStatus}`)]);
+  $("#draft-all").hidden = emailStatus !== "draft";
+  if (!rows.length) {
+    $("#drafts").innerHTML = `<p class="muted">${emailStatus === "draft"
+      ? "No drafts to review. Find emails in an area, then click “Draft emails for new businesses”."
+      : "Nothing here yet."}</p>`;
+    return;
+  }
+  $("#drafts").innerHTML = rows.map((d) => {
+    const head = `<div class="row wrap"><b>${esc(d.lead_name)}</b><span class="pill">${esc(d.category)}</span>
+      <span class="muted">${esc(d.city)}</span>${d.website ? `<a href="${esc(d.website)}" target="_blank" rel="noopener">website</a>` : ""}
+      <span class="spacer"></span><span class="muted">${d.drafted_by === "claude" ? "Drafted by Claude" : "Template"}</span></div>`;
+    if (d.status !== "draft") {
+      return `<div class="draft">${head}<p class="muted">To ${esc(d.to_email)}${d.sent_at ? ` · sent ${when(d.sent_at)} by ${esc(d.sent_by)}` : ""}</p>
+        <div class="sent-body"><b>${esc(d.subject)}</b>\n\n${esc(d.body)}</div></div>`;
+    }
+    return `<div class="draft" data-id="${d.id}">${head}
+      ${d.error ? `<p class="bad">Last send failed: ${esc(d.error)}</p>` : ""}
+      <div class="fields">
+        <label class="muted">To <input name="to" type="email" value="${esc(d.to_email)}"></label>
+        <label class="muted">Subject <input name="subject" value="${esc(d.subject)}" maxlength="200"></label>
+        <textarea name="body" maxlength="5000">${esc(d.body)}</textarea>
+        <span class="muted small-note">A Gravity58 footer with an unsubscribe link is added automatically.</span>
+      </div>
+      <div class="row"><button class="btn small" data-act="send">Send</button>
+        <button class="btn small ghost" data-act="save">Save changes</button>
+        <span class="spacer"></span><button class="btn small ghost" data-act="discard">Discard</button></div>
+    </div>`;
+  }).join("");
+}
+
+$("#email-filter").addEventListener("click", (event) => {
+  const status = event.target.closest("button")?.dataset.status;
+  if (!status) return;
+  emailStatus = status;
+  document.querySelectorAll("#email-filter button").forEach((b) => b.classList.toggle("active", b.dataset.status === status));
+  loadEmail().catch((error) => toast(error.message));
+});
+
+$("#find-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const categories = form.categories.value.split(",").map((c) => c.trim().toLowerCase().replace(/\s+/g, "_")).filter(Boolean);
+  try {
+    await api("email/find", { method: "POST", body: { area: form.area.value.trim(), categories } });
+    toast("Searching… this takes a few minutes. New businesses will appear in Leads.");
+    loadEmailStatus();
+  } catch (error) {
+    toast(error.message);
+  }
+});
+
+$("#draft-all").addEventListener("click", async () => {
+  await api("email/draft", { method: "POST", body: {} });
+  toast("Drafting emails…");
+  loadEmailStatus();
+});
+
+$("#drafts").addEventListener("click", async (event) => {
+  const act = event.target.dataset.act;
+  const card = event.target.closest(".draft[data-id]");
+  if (!act || !card) return;
+  const id = card.dataset.id;
+  const edits = { to: card.querySelector("[name=to]").value.trim(), subject: card.querySelector("[name=subject]").value.trim(), body: card.querySelector("[name=body]").value.trim() };
+  event.target.disabled = true;
+  try {
+    if (act === "send") {
+      event.target.textContent = "Sending…";
+      await api(`email/drafts/${id}/send`, { method: "POST", body: edits });
+      toast(`Sent to ${edits.to}`);
+    } else if (act === "save") {
+      await api(`email/drafts/${id}`, { method: "PATCH", body: edits });
+      toast("Saved");
+      event.target.disabled = false;
+      return;
+    } else {
+      await api(`email/drafts/${id}/discard`, { method: "POST" });
+      toast("Discarded");
+    }
+  } catch (error) {
+    toast(error.message);
+  }
+  loadEmail().catch(() => {});
+});
+
 // ---------- Leads ----------
 
 async function loadLeads() {
@@ -277,7 +388,7 @@ $("#settings-form").addEventListener("submit", async (event) => {
 
 // ---------- Tabs, manual runs, boot ----------
 
-const loaders = { leads: loadLeads, approvals: loadApprovals, posts: loadPosts, money: loadLedger, activity: loadActivity, settings: loadSettings };
+const loaders = { email: loadEmail, leads: loadLeads, approvals: loadApprovals, posts: loadPosts, money: loadLedger, activity: loadActivity, settings: loadSettings };
 
 document.querySelector(".tabs").addEventListener("click", (event) => {
   const tab = event.target.closest("button")?.dataset.tab;
@@ -299,7 +410,7 @@ document.addEventListener("click", async (event) => {
     const me = await api("me");
     $("#who").textContent = `Signed in as ${me.email}`;
     $("#app").hidden = false;
-    await Promise.all([loadOverview(), loadLeads(), loadChat()]);
+    await Promise.all([loadOverview(), loadEmail(), loadChat()]);
     setInterval(() => {
       loadOverview().catch(() => {});
       if (!$("#chat-form button").disabled) loadChat().catch(() => {});

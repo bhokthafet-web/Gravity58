@@ -85,3 +85,71 @@ export async function searchBusinesses(city, categories) {
   if (!leads.length && failed.length) throw new Error(failed.join(" | "));
   return { leads, failed };
 }
+
+// ---------- Area search for email outreach ----------
+
+const HAS_EMAIL_OR_SITE = '[~"^(email|contact:email|website|contact:website)$"~"."]';
+
+/** Looks up an area such as "Kukatpally, Hyderabad" and returns its bounding box [south, west, north, east]. */
+export async function geocodeArea(area) {
+  const url = new URL("https://nominatim.openstreetmap.org/search");
+  url.search = new URLSearchParams({ q: area, format: "json", limit: "1", countrycodes: "in" }).toString();
+  const response = await fetch(url, {
+    headers: { "User-Agent": "g58-agents/0.1 (admin@g58.in)" },
+    signal: AbortSignal.timeout(20_000),
+  });
+  if (!response.ok) throw new Error(`Area lookup failed (HTTP ${response.status})`);
+  const [place] = await response.json();
+  if (!place) throw new Error(`Could not find "${area}" on the map. Try adding the city, e.g. "Kukatpally, Hyderabad".`);
+  let [south, north, west, east] = place.boundingbox.map(Number);
+  // Keep very large areas (a whole state) to about 50 km around the centre.
+  const maxSpan = 0.45;
+  const lat = Number(place.lat);
+  const lon = Number(place.lon);
+  if (north - south > maxSpan) [south, north] = [lat - maxSpan / 2, lat + maxSpan / 2];
+  if (east - west > maxSpan) [west, east] = [lon - maxSpan / 2, lon + maxSpan / 2];
+  return { bbox: [south, west, north, east].map((n) => Number(n.toFixed(5))), label: place.display_name };
+}
+
+export function buildAreaQuery(bbox, category) {
+  const safe = String(category).replace(/[^a-z_]/g, "");
+  return `[out:json][timeout:120];
+nwr["${tagKey(safe)}"="${safe}"]["name"]${HAS_EMAIL_OR_SITE}(${bbox.join(",")});
+out center tags;`;
+}
+
+/** Businesses with an email or website tag, any phone. Email may be null (to be found on the website). */
+export function toEmailCandidates(elements, area) {
+  return (elements ?? []).filter((element) => element.tags?.name).map((element) => {
+    const tags = element.tags;
+    const address = [tags["addr:housenumber"], tags["addr:street"], tags["addr:suburb"], tags["addr:city"]]
+      .filter(Boolean).join(", ");
+    const email = String(tags.email || tags["contact:email"] || "").split(/[;,\s]/)[0].toLowerCase() || null;
+    return {
+      sourceRef: `osm:${element.type}/${element.id}`,
+      name: tags.name,
+      category: tags.amenity || tags.shop || "",
+      phone: normalizeIndianPhone(tags.phone || tags["contact:phone"] || tags["contact:mobile"]),
+      email: email && /^[^@\s]+@[^@\s]+\.[a-z]{2,}$/.test(email) ? email : null,
+      website: tags.website || tags["contact:website"] || null,
+      address,
+      city: area,
+      lat: element.lat ?? element.center?.lat ?? null,
+      lon: element.lon ?? element.center?.lon ?? null,
+    };
+  });
+}
+
+export async function searchAreaForEmails(bbox, categories, area) {
+  const found = [];
+  const failed = [];
+  for (const category of categories) {
+    try {
+      found.push(...toEmailCandidates(await fetchOverpass(buildAreaQuery(bbox, category)), area));
+    } catch (error) {
+      failed.push(`${category}: ${error.message}`);
+    }
+  }
+  if (!found.length && failed.length) throw new Error(failed.join(" | "));
+  return { found, failed };
+}

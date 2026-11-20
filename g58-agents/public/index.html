@@ -35,7 +35,8 @@
     </section>
 
     <nav class="tabs" role="tablist">
-      <button data-tab="leads" class="active">Leads</button>
+      <button data-tab="email" class="active">Email <span id="draft-count" class="badge" hidden></span></button>
+      <button data-tab="leads">Leads</button>
       <button data-tab="approvals">Approvals <span id="approval-count" class="badge" hidden></span></button>
       <button data-tab="posts">Social posts</button>
       <button data-tab="money">Money</button>
@@ -43,7 +44,27 @@
       <button data-tab="settings">Settings</button>
     </nav>
 
-    <section class="card tab" id="tab-leads">
+    <section class="card tab" id="tab-email">
+      <div id="email-status" class="muted"></div>
+      <form id="find-form" class="row wrap">
+        <input name="area" placeholder="Area, e.g. Kukatpally, Hyderabad" required minlength="2" style="flex:2;min-width:200px">
+        <input name="categories" placeholder="Business types (comma separated)" required style="flex:3;min-width:220px">
+        <button class="btn">Find emails</button>
+      </form>
+      <p class="muted small-note">Business types use OpenStreetMap tags: restaurant, cafe, fast_food, bakery, supermarket, convenience, clothes, hairdresser, beauty, pharmacy, hardware, electronics, jewelry, optician…</p>
+      <div class="row wrap">
+        <div class="tabs sub" id="email-filter">
+          <button data-status="draft" class="active">To review</button>
+          <button data-status="sent">Sent</button>
+          <button data-status="discarded">Discarded</button>
+        </div>
+        <span class="spacer"></span>
+        <button class="btn small" id="draft-all">Draft emails for new businesses</button>
+      </div>
+      <div id="drafts"></div>
+    </section>
+
+    <section class="card tab" id="tab-leads" hidden>
       <div class="row">
         <select id="stage-filter">
           <option value="">All stages</option>

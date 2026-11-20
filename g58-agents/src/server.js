@@ -5,7 +5,7 @@ import Fastify from "fastify";
 import cookie from "@fastify/cookie";
 import fastifyStatic from "@fastify/static";
 import { z } from "zod";
-import { config } from "./config.js";
+import { config, smtpEnabled } from "./config.js";
 import { query, migrate, getSettings, setSetting, log, pool } from "./db.js";
 import { enqueue, startWorker, recoverStuckTasks } from "./tasks.js";
 import { parseWebhook, verifySignature } from "./channels/whatsapp.js";
@@ -16,6 +16,8 @@ import * as marketing from "./agents/marketing.js";
 import * as builder from "./agents/builder.js";
 import * as coordinator from "./agents/coordinator.js";
 import * as ownerChat from "./agents/owner-chat.js";
+import * as email from "./agents/email.js";
+import { verifyUnsubscribe } from "./channels/email.js";
 import { isOwner, markOwnerInbound, replyToOwner } from "./channels/owner.js";
 
 const app = Fastify({ logger: { level: "info" }, trustProxy: true, bodyLimit: 1_048_576 });
@@ -63,6 +65,22 @@ app.get("/health", async () => {
   await query("SELECT 1");
   return { ok: true };
 });
+
+const unsubscribePage = (message) => `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Gravity58</title><body style="font-family:system-ui,sans-serif;max-width:480px;margin:15vh auto;padding:0 16px;color:#111827">
+<h1 style="font-size:22px">Gravity58</h1><p>${message}</p></body>`;
+
+async function handleUnsubscribe(request, reply) {
+  const { e: address = "", t: token = "" } = request.query;
+  if (!address || !verifyUnsubscribe(address, token)) {
+    return reply.code(400).type("text/html").send(unsubscribePage("This unsubscribe link is not valid. Reply to our email with \"unsubscribe\" and we will remove you."));
+  }
+  await email.unsubscribe(address);
+  return reply.type("text/html").send(unsubscribePage("You're unsubscribed. Gravity58 won't email you again."));
+}
+app.get("/unsubscribe", handleUnsubscribe);
+// One-click unsubscribe from the mail app (List-Unsubscribe-Post).
+app.post("/unsubscribe", handleUnsubscribe);
 
 app.get("/sites/:slug", async (request, reply) => {
   const site = (await query(`SELECT html FROM agents.sites WHERE slug=$1 AND status<>'archived'`, [request.params.slug])).rows[0];
@@ -253,6 +271,76 @@ app.register(async (api) => {
     return { ok: true };
   });
 
+  // ---------- Email outreach (manual send) ----------
+
+  api.get("/email/status", async () => {
+    const settings = await getSettings();
+    const counts = (await query(
+      `SELECT
+         (SELECT count(*) FROM agents.leads WHERE email IS NOT NULL)::int AS leads_with_email,
+         (SELECT count(*) FROM agents.email_drafts WHERE status='draft')::int AS drafts,
+         (SELECT count(*) FROM agents.email_drafts WHERE status='sent' AND sent_at >= date_trunc('day', now() AT TIME ZONE $1) AT TIME ZONE $1)::int AS sent_today,
+         (SELECT count(*) FROM agents.email_drafts WHERE status='sent')::int AS sent_total,
+         (SELECT count(*) FROM agents.email_opt_outs)::int AS unsubscribed,
+         (SELECT count(*) FROM agents.tasks WHERE agent='marketing' AND kind IN ('findEmails','draftEmails') AND status IN ('queued','running'))::int AS jobs_running`,
+      [config.timezone],
+    )).rows[0];
+    return { ...counts, daily_limit: settings.email_daily_limit ?? 50, smtp: smtpEnabled(), claude: config.claudeEnabled,
+      from: config.smtp.from, reply_to: config.smtp.replyTo, city: settings.city, categories: settings.categories };
+  });
+
+  api.post("/email/find", async (request) => {
+    const input = z.object({
+      area: z.string().trim().min(2).max(120),
+      categories: z.array(z.string().regex(/^[a-z_]+$/)).min(1).max(20),
+    }).parse(request.body);
+    const id = await enqueue("marketing", "findEmails", input, {});
+    await log("marketing", `${request.user.email} asked to find emails in ${input.area}`);
+    return { id };
+  });
+
+  api.post("/email/draft", async (request) => {
+    const input = z.object({ leadIds: z.array(z.string().uuid()).max(200).optional() }).parse(request.body ?? {});
+    return { id: await enqueue("marketing", "draftEmails", input, {}) };
+  });
+
+  api.get("/email/drafts", async (request) => {
+    const status = ["draft", "sent", "discarded"].includes(request.query.status) ? request.query.status : "draft";
+    return (await query(
+      `SELECT d.id, d.to_email, d.subject, d.body, d.drafted_by, d.status, d.error, d.sent_by, d.sent_at, d.created_at,
+              l.name AS lead_name, l.category, l.city, l.website, l.email_source, l.stage
+       FROM agents.email_drafts d JOIN agents.leads l ON l.id=d.lead_id
+       WHERE d.status=$1 ORDER BY COALESCE(d.sent_at, d.created_at) DESC LIMIT 200`,
+      [status],
+    )).rows;
+  });
+
+  const DraftEdit = z.object({
+    to: z.string().trim().email().max(200).optional(),
+    subject: z.string().trim().min(1).max(200).optional(),
+    body: z.string().trim().min(1).max(5000).optional(),
+  });
+
+  api.patch("/email/drafts/:id", async (request) => {
+    const input = DraftEdit.parse(request.body);
+    await query(
+      `UPDATE agents.email_drafts SET to_email=COALESCE($2,to_email), subject=COALESCE($3,subject), body=COALESCE($4,body), updated_at=now()
+       WHERE id=$1 AND status='draft'`,
+      [request.params.id, input.to ?? null, input.subject ?? null, input.body ?? null],
+    );
+    return { ok: true };
+  });
+
+  api.post("/email/drafts/:id/send", async (request) => {
+    await email.sendDraft(request.params.id, DraftEdit.parse(request.body ?? {}), request.user.email);
+    return { ok: true };
+  });
+
+  api.post("/email/drafts/:id/discard", async (request) => {
+    await query(`UPDATE agents.email_drafts SET status='discarded', updated_at=now() WHERE id=$1 AND status='draft'`, [request.params.id]);
+    return { ok: true };
+  });
+
   api.get("/posts", async () => (await query(
     `SELECT p.*, l.name AS lead_name FROM agents.posts p LEFT JOIN agents.leads l ON l.id=p.lead_id
      WHERE p.status='draft' ORDER BY p.created_at DESC LIMIT 100`,
@@ -288,7 +376,7 @@ app.register(async (api) => {
     `SELECT id, agent, kind, status, attempts, error, run_after, finished_at FROM agents.tasks ORDER BY id DESC LIMIT 100`,
   )).rows);
 
-  const MANUAL = new Set(["marketing.scout", "marketing.qualify", "marketing.outreach", "marketing.followups", "builder.posts", "coordinator.dailyPlan"]);
+  const MANUAL = new Set(["marketing.draftEmails", "marketing.scout", "marketing.qualify", "marketing.outreach", "marketing.followups", "builder.posts", "coordinator.dailyPlan"]);
   api.post("/run/:agent/:kind", async (request, reply) => {
     const name = `${request.params.agent}.${request.params.kind}`;
     if (!MANUAL.has(name)) return reply.code(400).send({ error: "Unknown job" });
@@ -319,6 +407,8 @@ const stopWorker = startWorker({
   "builder.posts": builder.posts,
   "coordinator.dailyPlan": coordinator.dailyPlan,
   "coordinator.deal": coordinator.deal,
+  "marketing.findEmails": email.findEmails,
+  "marketing.draftEmails": email.draftEmails,
   "coordinator.ownerChat": answerOwner,
 });
 

@@ -45,6 +45,20 @@ export const config = {
     costPerConversationInr: Number(env.WA_COST_PER_CONVERSATION_INR || 0.8),
   },
 
+  // Outgoing email (same Brevo SMTP relay G58 Core uses). Replies go to MAIL_REPLY_TO.
+  smtp: {
+    host: env.SMTP_HOST || "",
+    port: int("SMTP_PORT", 587),
+    secure: env.SMTP_SECURE === "true",
+    user: env.SMTP_USER || "",
+    pass: env.SMTP_PASS || "",
+    from: env.MAIL_FROM || env.SMTP_FROM || "",
+    replyTo: env.MAIL_REPLY_TO || "",
+  },
+  // Signs unsubscribe links; falls back to a value derived from the database URL.
+  unsubscribeSecret: env.UNSUBSCRIBE_SECRET || "",
+  claudeEnabled: Boolean(env.ANTHROPIC_API_KEY || env.ANTHROPIC_AUTH_TOKEN),
+
   razorpay: {
     keyId: env.RAZORPAY_KEY_ID || "",
     keySecret: env.RAZORPAY_KEY_SECRET || "",
@@ -56,5 +70,6 @@ export const config = {
     .split(",").map((url) => url.trim()).filter(Boolean),
 };
 
+export const smtpEnabled = () => Boolean(config.smtp.host && config.smtp.user && config.smtp.pass && config.smtp.from);
 export const whatsappEnabled = () => Boolean(config.whatsapp.token && config.whatsapp.phoneNumberId);
 export const razorpayEnabled = () => Boolean(config.razorpay.keyId && config.razorpay.keySecret);

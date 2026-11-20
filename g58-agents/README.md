@@ -8,6 +8,16 @@ Three AI agents that find local businesses, talk to them on WhatsApp, build webs
 | **Builder** (`src/agents/builder.js`) | Makes a free one-page website preview for interested leads (served at `/agents/sites/<slug>`) and drafts Instagram, X and Facebook posts for you to publish |
 | **Coordinator** (`src/agents/coordinator.js`) | Runs every 5 minutes and hands out work. Writes a daily plan and status report with Claude, sends sign-up links for subscriptions, queues Razorpay payment links **for your approval**, and records revenue and costs (Claude, WhatsApp) for the P&L |
 
+## Email outreach (manual, the default)
+
+Automatic outreach is **off** (`auto_outreach` setting). Nothing is found, drafted or sent until you ask, and every email is sent by a person clicking **Send**.
+
+1. In the dashboard's **Email** tab, enter an area ("Kukatpally, Hyderabad") and business types, then click **Find emails**. The agent (`src/agents/email.js`) looks the area up on OpenStreetMap and collects businesses that list an email or a website. For websites it reads the home and contact pages and keeps only addresses on the business's own domain or a personal provider (Gmail, Yahoo, Outlook, Rediffmail…), so it never emails a web designer or partner by mistake.
+2. Click **Draft emails for new businesses**. Drafts come from fixed templates (Digital Menu for food places, a website offer for businesses without one, Refills for other shops), or are written by Claude when `ANTHROPIC_API_KEY` is set.
+3. Review each draft, edit the address, subject or text, then click **Send**. Emails go through Brevo SMTP from `MAIL_FROM`; replies go to `MAIL_REPLY_TO`. A footer with a one-click unsubscribe link is added automatically, unsubscribed addresses are never emailed again, and a daily limit (50 by default) protects your sender reputation.
+
+OpenStreetMap coverage in India is thin: a city-wide search of Hyderabad cafes, restaurants and bakeries found 59 businesses with an email or website, giving 14 usable addresses. More business types and more areas give more.
+
 ## Talking to the coordinator
 
 Write to the coordinator in plain words, in the **Talk to the coordinator** box on the dashboard or from your own WhatsApp number (`OWNER_WHATSAPP`). Both are one conversation. Examples:
