@@ -56,7 +56,9 @@ export function startWorker(handlers, { idleMs = 5000 } = {}) {
            WHERE id=$1`,
           [task.id, retry ? "queued" : "failed", String(error.message || error).slice(0, 2000), 5 * task.attempts],
         );
-        await log(task.agent, `${task.kind} ${retry ? "will retry" : "failed"}: ${error.message}`, { taskId: task.id }, retry ? "warn" : "error");
+        await log(task.agent, retry
+          ? `${error.message}. Trying again automatically in ${5 * task.attempts} minutes.`
+          : `Gave up after ${task.attempts} tries: ${error.message}`, { taskId: task.id, kind: task.kind }, retry ? "warn" : "error");
       }
     }
   };

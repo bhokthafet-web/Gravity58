@@ -111,23 +111,30 @@ export function toLeads(elements, city) {
   return leads;
 }
 
+// Busy public servers can hang for minutes; never spend more than this on one lookup in total.
+const OVERPASS_BUDGET_MS = 240_000;
+const OVERPASS_ATTEMPT_MS = 110_000;
+
 async function fetchOverpass(query) {
+  const deadline = Date.now() + OVERPASS_BUDGET_MS;
   const errors = [];
   for (const url of config.overpassUrls) {
+    const remaining = deadline - Date.now();
+    if (remaining < 15_000) break;
     try {
       const response = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded", "User-Agent": "g58-agents/0.1 (admin@g58.in)" },
         body: new URLSearchParams({ data: query }),
-        signal: AbortSignal.timeout(200_000),
+        signal: AbortSignal.timeout(Math.min(OVERPASS_ATTEMPT_MS, remaining)),
       });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       return (await response.json()).elements;
     } catch (error) {
-      errors.push(`${new URL(url).host}: ${error.message}`);
+      errors.push(`${new URL(url).host}: ${error.name === "TimeoutError" ? "too slow" : error.message}`);
     }
   }
-  throw new Error(`All Overpass servers failed (${errors.join("; ")})`);
+  throw new Error(`The free map servers are busy right now (${errors.join("; ")})`);
 }
 
 /**
@@ -213,22 +220,7 @@ export function toEmailCandidates(elements, area) {
 }
 
 export async function searchAreaForEmails(bbox, categories, area) {
-  try {
-    return { found: toEmailCandidates(await fetchOverpass(buildAreaQuery(bbox, categories)), area), failed: [] };
-  } catch (error) {
-    // Busy servers sometimes reject the combined query; smaller per-type queries may still get through.
-    const found = [];
-    const failed = [];
-    for (const category of categories) {
-      try {
-        found.push(...toEmailCandidates(await fetchOverpass(buildAreaQuery(bbox, [category])), area));
-      } catch (inner) {
-        failed.push(`${category}: ${inner.message}`);
-      }
-    }
-    if (!found.length && failed.length) throw new Error(`The map servers are busy, please try again in a few minutes (${error.message})`);
-    return { found, failed };
-  }
+  return { found: toEmailCandidates(await fetchOverpass(buildAreaQuery(bbox, categories)), area), failed: [] };
 }
 
 // ---------- Call / visit list (businesses without email) ----------

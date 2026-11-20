@@ -51,7 +51,10 @@ export async function findEmails({ area, categories } = {}) {
     );
     if (result.rows[0]) addedIds.push(result.rows[0].id);
   }
-  await log(AGENT, `${targetArea}: checked ${found.length} businesses, found ${addedIds.length} new email addresses`, { failed });
+  await log(AGENT, addedIds.length
+    ? `${targetArea}: checked ${found.length} businesses, found ${addedIds.length} new email addresses`
+    : `${targetArea}: no new email addresses (${found.length} businesses on the map list an email or website). Shops like medicals and kirana rarely have email; try "Make call/visit list" instead.`,
+  { failed });
   if (failed.length) await log(AGENT, `Some business types could not be searched: ${failed.join(" | ")}`, null, "warn");
   // Draft straight away so the emails are waiting for review; sending stays manual.
   if (addedIds.length) await draftEmails({ leadIds: addedIds });
