@@ -69,3 +69,5 @@ dialog::backdrop { background: rgb(0 0 0 / .4); }
 .draft textarea { min-height: 220px; resize: vertical; }
 .draft .sent-body { white-space: pre-wrap; font-size: 14px; background: var(--bg); padding: 10px; border-radius: 8px; }
 .status-line { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-bottom: 12px; font-size: 13px; }
+#visit-table td { font-size: 13px; }
+#visit-table a { white-space: nowrap; }

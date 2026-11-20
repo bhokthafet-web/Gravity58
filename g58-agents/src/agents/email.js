@@ -5,7 +5,7 @@ import { query, getSettings, log } from "../db.js";
 import { config } from "../config.js";
 import { think } from "../llm.js";
 import { guidanceText } from "../settings.js";
-import { geocodeArea, searchAreaForEmails } from "../channels/osm.js";
+import { geocodeArea, searchAreaForEmails, expandCategories, visitList } from "../channels/osm.js";
 import { findEmailOnWebsite } from "../channels/websites.js";
 import { sendEmail } from "../channels/email.js";
 
@@ -21,7 +21,7 @@ async function inBatches(items, size, work) {
 export async function findEmails({ area, categories } = {}) {
   const settings = await getSettings();
   const targetArea = (area || settings.city || "").trim();
-  const targetCategories = categories?.length ? categories : settings.categories;
+  const targetCategories = expandCategories(categories?.length ? categories : settings.categories);
   const { bbox, label } = await geocodeArea(targetArea);
   await log(AGENT, `Searching ${label} for ${targetCategories.join(", ")}`);
 
@@ -224,4 +224,15 @@ export async function unsubscribe(email) {
   await query(`UPDATE agents.leads SET stage='do_not_contact', updated_at=now() WHERE lower(email)=$1`, [clean]);
   await query(`UPDATE agents.email_drafts SET status='discarded', updated_at=now() WHERE lower(to_email)=$1 AND status='draft'`, [clean]);
   await log(AGENT, `${clean} unsubscribed from emails`);
+}
+
+/** Every named business of these types in the area, for calling or visiting in person. Saved for the dashboard. */
+export async function makeVisitList({ area, categories, requestedBy = "" }) {
+  const types = expandCategories(categories);
+  const { bbox, label } = await geocodeArea(area);
+  await log(AGENT, `Making a call/visit list for ${label.split(",").slice(0, 2).join(",")} (${types.join(", ")})…`);
+  const rows = await visitList(bbox, types);
+  await query(`INSERT INTO agents.visit_lists(area, types, rows, created_by) VALUES($1, $2, $3, $4)`,
+    [area, types, JSON.stringify(rows), requestedBy]);
+  await log(AGENT, `Call/visit list for ${area}: ${rows.length} businesses — open the "Call/visit list" tab`);
 }

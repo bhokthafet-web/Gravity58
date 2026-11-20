@@ -135,11 +135,91 @@ async function loadEmailStatus() {
   const badge = $("#draft-count");
   badge.hidden = !st.drafts;
   badge.textContent = st.drafts;
+  emailJobsRunning = st.jobs_running > 0;
   clearTimeout(emailTimer);
   if (st.jobs_running) emailTimer = setTimeout(() => loadEmail().catch(() => {}), 8000);
 }
 
+let visitResult = null;
+let waitingForVisitList = false;
+let emailJobsRunning = false;
+
+// Columns the map has no data for (common for small shops) are left out.
+function visitTable(rows) {
+  const columns = [
+    ["Business", () => true, (r) => `<b>${esc(r.name)}</b>${r.email ? `<br><span class="muted">${esc(r.email)}</span>` : ""}`],
+    ["Map", (r) => r.map, (r) => (r.map ? `<a href="${esc(r.map)}" target="_blank" rel="noopener">Open map</a>` : "")],
+    ["Phone", (r) => r.phone, (r) => (r.phone ? `<a href="tel:${esc(r.phone.replace(/\s/g, ""))}">${esc(r.phone)}</a>` : "")],
+    ["Type", (r) => r.category, (r) => esc(r.category)],
+    ["Locality", (r) => r.locality, (r) => esc(r.locality)],
+    ["Address", (r) => r.address, (r) => esc(r.address)],
+  ].filter(([, has]) => rows.some(has));
+  return `<tr>${columns.map(([title]) => `<th>${title}</th>`).join("")}</tr>`
+    + rows.map((r) => `<tr>${columns.map(([, , cell]) => `<td>${cell(r)}</td>`).join("")}</tr>`).join("");
+}
+
+async function renderVisitList() {
+  const lists = await api("email/visit-lists");
+  // After "Make call/visit list", switch to the newest list once the job has finished.
+  if (waitingForVisitList && !emailJobsRunning) {
+    waitingForVisitList = false;
+    visitResult = null;
+  }
+  if (!visitResult || !lists.some((l) => l.id === visitResult.id)) {
+    visitResult = lists.length ? await api(`email/visit-lists/${lists[0].id}`) : null;
+  }
+  const picker = lists.length > 1 ? `<select id="visit-pick">${lists.map((l) => `<option value="${l.id}" ${l.id === visitResult?.id ? "selected" : ""}>
+    ${esc(l.area.split(",").slice(0, 2).join(","))} · ${esc(l.types.join(", "))} · ${l.count} · ${when(l.created_at)}</option>`).join("")}</select>` : "";
+  if (!visitResult) {
+    $("#drafts").innerHTML = '<p class="muted">Enter an area and business types above, then click “Make call/visit list”. It lists every business of those types on the map, with address, phone (when known) and a map link — useful for shops that have no email, like medicals and kirana stores.</p>';
+    return;
+  }
+  const { area, types, rows } = visitResult;
+  const withPhone = rows.filter((r) => r.phone).length;
+  $("#drafts").innerHTML = `${picker}<div class="row wrap"><b>${rows.length} businesses</b><span class="muted">${esc(types.join(", "))} · ${withPhone} with phone · ${esc(area.split(",").slice(0, 2).join(","))}</span>
+      <span class="spacer"></span><button class="btn small" id="visit-csv">Download CSV</button></div>
+    <div class="table-wrap"><table id="visit-table">${visitTable(rows)}</table></div>`;
+  if ($("#visit-pick")) {
+    $("#visit-pick").onchange = async (event) => {
+      visitResult = await api(`email/visit-lists/${event.target.value}`);
+      renderVisitList();
+    };
+  }
+  $("#visit-csv").onclick = () => {
+    const cols = ["name", "category", "locality", "address", "phone", "email", "website", "map"];
+    const cell = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+    const csv = [cols.join(","), ...rows.map((r) => cols.map((c) => cell(r[c])).join(","))].join("\r\n");
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(new Blob(["\ufeff" + csv], { type: "text/csv;charset=utf-8" }));
+    link.download = `g58-visit-list-${area.split(",")[0].trim().toLowerCase().replace(/\W+/g, "-")}.csv`;
+    link.click();
+    URL.revokeObjectURL(link.href);
+  };
+}
+
+$("#visit-btn").addEventListener("click", async () => {
+  const form = $("#find-form");
+  const area = form.area.value.trim();
+  const categories = form.categories.value.split(",").map((c) => c.trim()).filter(Boolean);
+  if (area.length < 2 || !categories.length) return toast("Enter an area and business types first");
+  try {
+    await api("email/visit-list", { method: "POST", body: { area, categories } });
+    waitingForVisitList = true;
+    emailStatus = "visit";
+    document.querySelectorAll("#email-filter button").forEach((b) => b.classList.toggle("active", b.dataset.status === "visit"));
+    toast("Making the list… usually 1–3 minutes. It will appear here.");
+    await loadEmail();
+  } catch (error) {
+    toast(error.message);
+  }
+});
+
 async function loadEmail() {
+  if (emailStatus === "visit") {
+    $("#draft-all").hidden = true;
+    await loadEmailStatus();
+    return renderVisitList();
+  }
   const [, rows] = await Promise.all([loadEmailStatus(), api(`email/drafts?status=${emailStatus}`)]);
   $("#draft-all").hidden = emailStatus !== "draft";
   if (!rows.length) {
@@ -182,7 +262,7 @@ $("#email-filter").addEventListener("click", (event) => {
 $("#find-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   const form = event.currentTarget;
-  const categories = form.categories.value.split(",").map((c) => c.trim().toLowerCase().replace(/\s+/g, "_")).filter(Boolean);
+  const categories = form.categories.value.split(",").map((c) => c.trim()).filter(Boolean);
   try {
     await api("email/find", { method: "POST", body: { area: form.area.value.trim(), categories } });
     toast("Searching… usually 1–3 minutes. Drafts will appear below automatically.");

@@ -16,6 +16,10 @@ Automatic outreach is **off** (`auto_outreach` setting). Nothing is found, draft
 2. Click **Draft emails for new businesses**. Drafts come from fixed templates (Digital Menu for food places, a website offer for businesses without one, Refills for other shops), or are written by Claude when `ANTHROPIC_API_KEY` is set.
 3. Review each draft, edit the address, subject or text, then click **Send**. Emails go through Brevo SMTP from `MAIL_FROM`; replies go to `MAIL_REPLY_TO`. A footer with a one-click unsubscribe link is added automatically, unsubscribed addresses are never emailed again, and a daily limit (50 by default) protects your sender reputation.
 
+Business types accept everyday words: "medicals" searches pharmacy, chemist and medical supply shops; "kirana" searches convenience stores and supermarkets; "salon", "tiffins", "sweets", "mobile shop", "opticals" and "textiles" work too.
+
+**Call/visit list.** Many small shops (medical stores, kirana stores) have no email at all: Hyderabad has about 300 medical shops on the map and none lists an email. **Make call/visit list** saves every business of those types in the area, with a map link and any phone or address the map has, and **Download CSV** gives you a sheet for calls or visits.
+
 OpenStreetMap coverage in India is thin: a city-wide search of Hyderabad cafes, restaurants and bakeries found 59 businesses with an email or website, giving 14 usable addresses. More business types and more areas give more.
 
 ## Talking to the coordinator

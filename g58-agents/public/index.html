@@ -50,13 +50,15 @@
         <input name="area" placeholder="Area, e.g. Kukatpally, Hyderabad" required minlength="2" style="flex:2;min-width:200px">
         <input name="categories" placeholder="Business types (comma separated)" required style="flex:3;min-width:220px">
         <button class="btn">Find emails</button>
+        <button class="btn ghost" type="button" id="visit-btn">Make call/visit list</button>
       </form>
-      <p class="muted small-note">Business types use OpenStreetMap tags: restaurant, cafe, fast_food, bakery, supermarket, convenience, clothes, hairdresser, beauty, pharmacy, hardware, electronics, jewelry, optician…</p>
+      <p class="muted small-note">Business types: everyday words work — medicals, kirana, salon, tiffins, sweets, mobile shop, opticals, textiles — as well as map tags like restaurant, cafe, bakery, clothes, hardware, electronics, jewelry.</p>
       <div class="row wrap">
         <div class="tabs sub" id="email-filter">
           <button data-status="draft" class="active">To review</button>
           <button data-status="sent">Sent</button>
           <button data-status="discarded">Discarded</button>
+          <button data-status="visit">Call/visit list</button>
         </div>
         <span class="spacer"></span>
         <button class="btn small" id="draft-all">Draft emails for new businesses</button>

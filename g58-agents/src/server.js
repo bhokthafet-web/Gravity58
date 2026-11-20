@@ -282,7 +282,7 @@ app.register(async (api) => {
          (SELECT count(*) FROM agents.email_drafts WHERE status='sent' AND sent_at >= date_trunc('day', now() AT TIME ZONE $1) AT TIME ZONE $1)::int AS sent_today,
          (SELECT count(*) FROM agents.email_drafts WHERE status='sent')::int AS sent_total,
          (SELECT count(*) FROM agents.email_opt_outs)::int AS unsubscribed,
-         (SELECT count(*) FROM agents.tasks WHERE agent='marketing' AND kind IN ('findEmails','draftEmails') AND status IN ('queued','running'))::int AS jobs_running`,
+         (SELECT count(*) FROM agents.tasks WHERE agent='marketing' AND kind IN ('findEmails','draftEmails','visitList') AND status IN ('queued','running'))::int AS jobs_running`,
       [config.timezone],
     )).rows[0];
     const activity = (await query(
@@ -292,11 +292,26 @@ app.register(async (api) => {
       from: config.smtp.from, reply_to: config.smtp.replyTo, city: settings.city, categories: settings.categories };
   });
 
+  const AreaSearch = z.object({
+    area: z.string().trim().min(2).max(120),
+    categories: z.array(z.string().trim().min(1).max(40)).min(1).max(20),
+  });
+
+  api.post("/email/visit-list", async (request) => {
+    const input = AreaSearch.parse(request.body);
+    return { id: await enqueue("marketing", "visitList", { ...input, requestedBy: request.user.email }, {}) };
+  });
+
+  api.get("/email/visit-lists", async () => (await query(
+    `SELECT id, area, types, jsonb_array_length(rows) AS count, created_at FROM agents.visit_lists ORDER BY id DESC LIMIT 20`,
+  )).rows);
+
+  api.get("/email/visit-lists/:id", async (request) => (await query(
+    `SELECT id, area, types, rows, created_at FROM agents.visit_lists WHERE id=$1`, [request.params.id],
+  )).rows[0] ?? null);
+
   api.post("/email/find", async (request) => {
-    const input = z.object({
-      area: z.string().trim().min(2).max(120),
-      categories: z.array(z.string().regex(/^[a-z_]+$/)).min(1).max(20),
-    }).parse(request.body);
+    const input = AreaSearch.parse(request.body);
     const id = await enqueue("marketing", "findEmails", input, {});
     await log("marketing", `${request.user.email} asked to find emails in ${input.area}`);
     return { id };
@@ -412,6 +427,7 @@ const stopWorker = startWorker({
   "coordinator.deal": coordinator.deal,
   "marketing.findEmails": email.findEmails,
   "marketing.draftEmails": email.draftEmails,
+  "marketing.visitList": email.makeVisitList,
   "coordinator.ownerChat": answerOwner,
 });
 

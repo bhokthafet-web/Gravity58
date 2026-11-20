@@ -1,7 +1,69 @@
 import { config } from "../config.js";
 import { normalizeIndianPhone } from "../phone.js";
 
-const AMENITY = new Set(["restaurant", "cafe", "fast_food", "bar", "pub", "ice_cream", "food_court", "pharmacy", "dentist", "clinic"]);
+const AMENITY = new Set(["restaurant", "cafe", "fast_food", "bar", "pub", "ice_cream", "food_court", "pharmacy", "dentist", "clinic", "doctors"]);
+
+// Everyday Indian names for shops, mapped to the OpenStreetMap tags they are filed under.
+const CATEGORY_ALIASES = {
+  medical: ["pharmacy", "chemist", "medical_supply"],
+  medicals: ["pharmacy", "chemist", "medical_supply"],
+  medical_shop: ["pharmacy", "chemist", "medical_supply"],
+  medical_store: ["pharmacy", "chemist", "medical_supply"],
+  pharmacy: ["pharmacy", "chemist", "medical_supply"],
+  pharmacies: ["pharmacy", "chemist", "medical_supply"],
+  drugstore: ["pharmacy", "chemist"],
+  kirana: ["convenience", "supermarket"],
+  kirana_store: ["convenience", "supermarket"],
+  grocery: ["convenience", "supermarket", "greengrocer"],
+  general_store: ["convenience", "supermarket"],
+  salon: ["hairdresser", "beauty"],
+  saloon: ["hairdresser", "beauty"],
+  parlour: ["beauty", "hairdresser"],
+  beauty_parlour: ["beauty", "hairdresser"],
+  hotel: ["restaurant", "fast_food"],
+  tiffin: ["fast_food", "restaurant"],
+  tiffins: ["fast_food", "restaurant"],
+  mess: ["restaurant", "fast_food"],
+  dhaba: ["restaurant"],
+  biryani: ["restaurant", "fast_food"],
+  tea: ["cafe"],
+  chai: ["cafe"],
+  coffee: ["cafe"],
+  sweets: ["confectionery", "pastry", "bakery"],
+  sweet_shop: ["confectionery", "pastry", "bakery"],
+  mobile: ["mobile_phone"],
+  mobile_shop: ["mobile_phone"],
+  mobiles: ["mobile_phone"],
+  jewellery: ["jewelry"],
+  jewellers: ["jewelry"],
+  optical: ["optician"],
+  opticals: ["optician"],
+  textiles: ["clothes", "fabric"],
+  textile: ["clothes", "fabric"],
+  sarees: ["clothes", "fabric"],
+  footwear: ["shoes"],
+  meat: ["butcher"],
+  chicken: ["butcher"],
+  laundry: ["laundry", "dry_cleaning"],
+  dry_cleaning: ["dry_cleaning", "laundry"],
+  doctor: ["doctors", "clinic"],
+  clinic: ["clinic", "doctors"],
+  dental: ["dentist"],
+  hardware: ["hardware", "doityourself"],
+  electrical: ["electrical", "electronics"],
+};
+
+/** Turns what the owner typed ("Medicals, kirana stores") into map tags, without duplicates. */
+export function expandCategories(categories) {
+  const out = [];
+  for (const raw of categories) {
+    const word = String(raw).toLowerCase().trim().replace(/[\s-]+/g, "_").replace(/[^a-z_]/g, "");
+    if (!word) continue;
+    const singular = word.endsWith("s") ? word.slice(0, -1) : word;
+    out.push(...(CATEGORY_ALIASES[word] ?? CATEGORY_ALIASES[singular] ?? [word]));
+  }
+  return [...new Set(out)];
+}
 
 // Only fetch places that list some phone number; keeps the public Overpass server happy.
 const HAS_PHONE = '[~"^(phone|contact:phone|contact:mobile|contact:whatsapp)$"~"."]';
@@ -167,4 +229,50 @@ export async function searchAreaForEmails(bbox, categories, area) {
     if (!found.length && failed.length) throw new Error(`The map servers are busy, please try again in a few minutes (${error.message})`);
     return { found, failed };
   }
+}
+
+// ---------- Call / visit list (businesses without email) ----------
+
+export function buildVisitQuery(bbox, categories) {
+  const clean = [...new Set(categories.map((c) => String(c).replace(/[^a-z_]/g, "")).filter(Boolean))];
+  const amenity = clean.filter((c) => tagKey(c) === "amenity");
+  const shop = clean.filter((c) => tagKey(c) === "shop");
+  const box = bbox.join(",");
+  const statements = [
+    amenity.length && `nwr["amenity"~"^(${amenity.join("|")})$"]["name"](${box});`,
+    shop.length && `nwr["shop"~"^(${shop.join("|")})$"]["name"](${box});`,
+  ].filter(Boolean);
+  return `[out:json][timeout:150];
+(
+  ${statements.join("\n  ")}
+);
+out center tags 2000;`;
+}
+
+/** Name, address, phone and map link for each business, grouped by locality and street. */
+export function toVisitRows(elements) {
+  const rows = (elements ?? []).filter((e) => e.tags?.name).map((e) => {
+    const t = e.tags;
+    const lat = e.lat ?? e.center?.lat;
+    const lon = e.lon ?? e.center?.lon;
+    const rawPhone = t.phone || t["contact:phone"] || t["contact:mobile"] || "";
+    const mobile = normalizeIndianPhone(rawPhone);
+    return {
+      name: t.name,
+      category: t.amenity || t.shop || "",
+      locality: t["addr:suburb"] || t["addr:neighbourhood"] || t["addr:district"] || "",
+      street: t["addr:street"] || "",
+      address: [t["addr:housenumber"], t["addr:street"], t["addr:suburb"], t["addr:postcode"]].filter(Boolean).join(", "),
+      phone: mobile ? `+${mobile}` : String(rawPhone).split(/[;,]/)[0].trim(),
+      email: t.email || t["contact:email"] || "",
+      website: t.website || t["contact:website"] || "",
+      map: lat != null ? `https://www.google.com/maps/search/?api=1&query=${lat},${lon}` : "",
+    };
+  });
+  const key = (r) => `${r.locality || "~"}|${r.street || "~"}|${r.name}`.toLowerCase();
+  return rows.sort((a, b) => key(a).localeCompare(key(b)));
+}
+
+export async function visitList(bbox, categories) {
+  return toVisitRows(await fetchOverpass(buildVisitQuery(bbox, categories)));
 }

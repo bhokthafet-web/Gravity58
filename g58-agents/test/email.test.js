@@ -6,7 +6,7 @@ process.env.PUBLIC_BASE_URL = "https://server.g58.in/agents";
 process.env.UNSUBSCRIBE_SECRET = "unsub-secret";
 
 const { extractEmails, isPrivateAddress } = await import("../src/channels/websites.js");
-const { buildAreaQuery, toEmailCandidates } = await import("../src/channels/osm.js");
+const { buildAreaQuery, toEmailCandidates, expandCategories, buildVisitQuery, toVisitRows } = await import("../src/channels/osm.js");
 const { composeEmail, unsubscribeToken, verifyUnsubscribe } = await import("../src/channels/email.js");
 const { templateDraft } = await import("../src/agents/email.js");
 
@@ -63,4 +63,23 @@ test("drafts a template email that fits the business type", () => {
   const shop = templateDraft({ name: "Shop B", category: "hardware", city: "Kukatpally", website: null }, PRODUCTS);
   assert.equal(shop.subject, "A website for Shop B");
   assert.match(shop.body, /₹2999/);
+});
+
+test("understands everyday Indian shop names", () => {
+  assert.deepEqual(expandCategories(["Medicals", "kirana stores", "Salon", "cafe", "beauty parlour", "cafe"]),
+    ["pharmacy", "chemist", "medical_supply", "convenience", "supermarket", "hairdresser", "beauty", "cafe"]);
+  assert.deepEqual(expandCategories(["Mobile Shop", "opticals", "tiffins"]), ["mobile_phone", "optician", "fast_food", "restaurant"]);
+});
+
+test("makes a call/visit list grouped by locality, with phone and map link", () => {
+  assert.match(buildVisitQuery([17.4, 78.3, 17.5, 78.5], ["pharmacy", "chemist"]), /\["amenity"~"\^\(pharmacy\)\$"\]\["name"\]\(17\.4/);
+  const rows = toVisitRows([
+    { type: "node", id: 1, lat: 17.45, lon: 78.4, tags: { name: "Sai Medicals", amenity: "pharmacy", "addr:suburb": "Kukatpally", phone: "098480 22338" } },
+    { type: "node", id: 2, lat: 17.44, lon: 78.41, tags: { name: "Apollo", amenity: "pharmacy", "addr:suburb": "Ameerpet", phone: "040 2345 6789" } },
+    { type: "node", id: 3, tags: { amenity: "pharmacy" } },
+  ]);
+  assert.deepEqual(rows.map((r) => r.name), ["Apollo", "Sai Medicals"]);
+  assert.equal(rows[1].phone, "+919848022338");
+  assert.equal(rows[0].phone, "040 2345 6789");
+  assert.equal(rows[1].map, "https://www.google.com/maps/search/?api=1&query=17.45,78.4");
 });
