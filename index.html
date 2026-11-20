@@ -13,7 +13,6 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/css/style.css?v=59">
-  <link rel="stylesheet" href="/css/flyer-share.css?v=1">
   <link rel="stylesheet" href="/css/mobile.css">
   <link rel="canonical" href="https://g58.in/" />
   <meta name="robots" content="index, follow, max-image-preview:large" />
@@ -283,59 +282,6 @@
     </div>
   </section>
 
-  <section class="flyer-share shell reveal" id="flyerShare" aria-labelledby="flyerShareTitle">
-    <div class="flyer-share-card">
-      <div class="flyer-stage" aria-label="GRAVITY58 flyer preview">
-        <div class="flyer-stack">
-          <img class="flyer-page is-front" src="/assets/flyer/flyer-page-1.jpg" width="900" height="1273" loading="lazy" alt="GRAVITY58 flyer, front: Turn any store online in seconds with Refills, Booking and Digital Menu. 1 month free trial, just 699 rupees.">
-          <img class="flyer-page" src="/assets/flyer/flyer-page-2.jpg" width="900" height="1273" loading="lazy" alt="GRAVITY58 flyer, back: the old way versus the G58 way, 5 steps down to 3 steps for refills, bookings and menus.">
-        </div>
-        <div class="flyer-tabs" role="group" aria-label="Flyer side">
-          <button type="button" data-page="0" aria-pressed="true">Front</button>
-          <button type="button" data-page="1" aria-pressed="false">Back</button>
-        </div>
-      </div>
-
-      <div class="flyer-copy">
-        <span class="flyer-eyebrow"><i aria-hidden="true"></i>One-tap WhatsApp</span>
-        <h2 id="flyerShareTitle">Get the flyer. Start the chat. One tap.</h2>
-        <p class="flyer-lead">Tell us what you run and we open WhatsApp with a ready-to-send message. 1 month free trial, just &#8377;699, no hidden charges.</p>
-
-        <div class="flyer-live">
-          <p class="flyer-label" id="flyerKindLabel">I run a&hellip;</p>
-          <div class="flyer-chips" role="radiogroup" aria-labelledby="flyerKindLabel">
-            <button type="button" role="radio" aria-checked="true" data-kind="refills"><strong>Store</strong><small>Refills</small></button>
-            <button type="button" role="radio" aria-checked="false" data-kind="booking" tabindex="-1"><strong>Salon / clinic</strong><small>Booking</small></button>
-            <button type="button" role="radio" aria-checked="false" data-kind="menu" tabindex="-1"><strong>Restaurant</strong><small>Digital Menu</small></button>
-          </div>
-
-          <label class="flyer-label" for="flyerName">Your name or business <span>(optional)</span></label>
-          <input id="flyerName" class="flyer-input" type="text" maxlength="60" autocomplete="organization" placeholder="e.g. Sri Sai Medicals">
-
-          <div class="flyer-chat" role="group" aria-label="Message preview">
-            <div class="flyer-chat-head"><span class="flyer-avatar" aria-hidden="true">G</span><div><strong>Gravity58</strong><small>Your message, ready to send</small></div></div>
-            <div class="flyer-bubble">
-              <img src="/assets/flyer/flyer-page-1.jpg" width="900" height="1273" loading="lazy" alt="">
-              <p id="flyerBubbleText" aria-live="polite">Hi Gravity58! Tell us about your business and we will arrange a free demo.</p>
-              <span class="flyer-tick" aria-hidden="true">now &#10003;&#10003;</span>
-            </div>
-          </div>
-
-          <div class="flyer-actions">
-            <a id="flyerChatLink" class="flyer-btn flyer-btn-wa" href="https://wa.me/" target="_blank" rel="noopener">
-              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M17.47 14.38c-.3-.15-1.76-.87-2.03-.97-.27-.1-.47-.15-.67.15-.2.3-.77.97-.94 1.16-.17.2-.35.22-.65.07-.3-.15-1.26-.46-2.39-1.48-.88-.79-1.48-1.76-1.65-2.06-.17-.3-.02-.46.13-.6.13-.13.3-.35.45-.52.15-.17.2-.3.3-.5.1-.2.05-.37-.02-.52-.08-.15-.67-1.61-.92-2.2-.24-.58-.49-.5-.67-.51h-.57c-.2 0-.52.07-.79.37-.27.3-1.04 1.02-1.04 2.48s1.07 2.88 1.21 3.07c.15.2 2.1 3.2 5.08 4.49.71.3 1.26.49 1.69.63.71.23 1.36.2 1.87.12.57-.09 1.76-.72 2-1.41.25-.7.25-1.29.17-1.41-.07-.12-.27-.2-.57-.35M12.05 21.78h-.01a9.87 9.87 0 0 1-5.03-1.38l-.36-.21-3.74.98 1-3.65-.24-.37a9.86 9.86 0 0 1-1.51-5.26c0-5.45 4.44-9.88 9.89-9.88 2.64 0 5.12 1.03 6.99 2.9a9.82 9.82 0 0 1 2.89 6.99c0 5.45-4.44 9.88-9.88 9.88m8.41-18.3A11.82 11.82 0 0 0 12.05 0C5.5 0 .16 5.34.16 11.89c0 2.1.55 4.14 1.59 5.95L.06 24l6.3-1.65a11.88 11.88 0 0 0 5.68 1.45h.01c6.55 0 11.89-5.34 11.89-11.89 0-3.18-1.24-6.17-3.48-8.41z"/></svg>
-              <span>Chat on WhatsApp</span>
-            </a>
-            <button id="flyerSendBtn" class="flyer-btn flyer-btn-ghost" type="button">Send the flyer to a customer</button>
-            <a class="flyer-btn flyer-btn-link" href="/assets/flyer/GRAVITY58_Flyer.pdf" download>Download PDF</a>
-          </div>
-          <p id="flyerNote" class="flyer-note" role="status" aria-live="polite"></p>
-        </div>
-        <p class="flyer-fallback"><a href="/assets/flyer/GRAVITY58_Flyer.pdf" download>Download the flyer (PDF)</a> or <a href="/demo/">book a free demo</a>.</p>
-      </div>
-    </div>
-  </section>
-
   <section class="business-cta-dark reveal">
     <div class="shell">
       <h2>Ready to take your store online?<br>Start with Refills or Digital Menu.</h2>
@@ -432,8 +378,7 @@
 <script src="/js/site-auth.js?v=7"></script>
 <script src="/js/home.js?v=5"></script>
 
-  <script src="/js/whatsapp-float.js?v=2"></script>
-  <script src="/js/flyer-share.js?v=1"></script>
+  <script src="/js/whatsapp-float.js?v=5"></script>
   <script src="/js/server-status.js?v=2"></script>
 </body>
 </html>
