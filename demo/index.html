@@ -28,6 +28,7 @@ a{color:var(--accent)}.brand{display:inline-flex;align-items:center;gap:9px;font
 .g58-icon-nav a:hover{border-color:var(--accent);color:var(--accent)}
 .g58-icon-nav svg{width:16px;height:16px;flex-shrink:0}
 
+.g58-icon-nav a[aria-current="page"]{border-color:var(--orange);background:#FFF7ED;color:var(--ink)}
 .demo-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin:22px 0 0}
 .demo-choice{display:block;width:100%;text-align:left;font:inherit;color:inherit;padding:18px;border:1px solid var(--border);border-radius:18px;background:var(--surface);cursor:pointer;transition:.15s ease}
 .demo-choice:hover,.demo-choice:focus-visible{border-color:var(--orange);box-shadow:0 0 0 3px rgba(249,115,22,.14);outline:none}
@@ -48,6 +49,13 @@ main{padding-bottom:110px}
 <main>
 <a class="brand" href="/"><svg class="brand-icon" viewBox="0 0 120 120" fill="none" stroke="#F97316" stroke-width="8" aria-hidden="true"><circle cx="60" cy="26" r="15"/><circle cx="28" cy="82" r="15"/><circle cx="92" cy="82" r="15"/></svg>GRAVITY<span>58</span></a>
 <div class="breadcrumbs"><a href="/">Home</a> / Book a demo</div>
+<nav class="g58-icon-nav" aria-label="Primary">
+  <a href="/" aria-label="Home"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10v9a1 1 0 0 0 1 1h11a1 1 0 0 0 1-1v-9"/><path d="M9.5 20v-6h5v6"/></svg><span>Home</span></a>
+  <a href="/digit58/" aria-label="Refills"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11A8 8 0 0 0 6.3 6.3L4 8.6"/><path d="M4 4v4.6h4.6"/><path d="M4 13a8 8 0 0 0 13.7 4.7L20 15.4"/><path d="M20 20v-4.6h-4.6"/></svg><span>Refills</span></a>
+  <a href="/digital-menu/" aria-label="Digital Menu"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 3v6a2 2 0 0 0 2 2h0"/><path d="M9 3v18"/><path d="M7 3v5"/><path d="M15 3c-1.2 1.4-1.2 6.6 0 8 .5.6 1 .8 1 1.5V21"/></svg><span>Digital Menu</span></a>
+  <a href="/pricing/" aria-label="Pricing"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z"/><circle cx="7.5" cy="7.5" r="1.5"/></svg><span>Pricing</span></a>
+  <a href="/demo/" aria-label="Book a Demo" aria-current="page"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg><span>Book a Demo</span></a>
+</nav>
 <section class="hero">
 <h1>Book a free demo</h1>
 <p>See how GRAVITY58 works for your business. Tell us what you would like to see and the G58 team will contact you to arrange a live walkthrough.</p>

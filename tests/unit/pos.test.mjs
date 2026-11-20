@@ -164,3 +164,112 @@ test("reportDateLabel renders a human readable en-IN date from a YYYY-MM-DD key"
   assert.equal(context.reportDateLabel("2026-01-05"), "05 Jan 2026");
   assert.equal(context.reportDateLabel(""), "");
 });
+
+// ---- WhatsApp bills (the POS sends bills instead of printing receipts) ----
+
+function sampleBill(overrides = {}) {
+  return {
+    billNumber: "G58-000012", displayDate: "10/11/2026, 2:30:00 pm",
+    upiId: "shop@upi", upiLink: "upi://pay?pa=shop%40upi&am=315.00&cu=INR",
+    subtotal: 300, gstAmount: 15, total: 315, customerName: "Ravi", customerPhone: "919876543210",
+    settings: { posEnabled: true, brandName: "Tasty Bites", contactNumber: "9000000001", gstEnabled: true, gstPercent: 5, cashierName: "Asha" },
+    items: [
+      { note: "Masala Dosa", quantity: 2, unitPrice: 120, amount: 240 },
+      { note: "Filter Coffee", quantity: 1, unitPrice: 60, amount: 60 },
+    ],
+    ...overrides,
+  };
+}
+
+test("customer WhatsApp numbers are normalised to international format", () => {
+  const { context } = loadPos();
+  assert.equal(context.normaliseWhatsAppNumber("98765 43210"), "919876543210");
+  assert.equal(context.normaliseWhatsAppNumber("+91 98765-43210"), "919876543210");
+  assert.equal(context.normaliseWhatsAppNumber("09876543210"), "919876543210");
+  assert.equal(context.normaliseWhatsAppNumber("447911123456"), "447911123456");
+  assert.equal(context.normaliseWhatsAppNumber(""), "");
+  assert.equal(context.normaliseWhatsAppNumber("   "), "");
+  assert.equal(context.normaliseWhatsAppNumber("12345"), null);
+  assert.equal(context.normaliseWhatsAppNumber("1234567890123456"), null);
+});
+
+test("an unpaid WhatsApp bill lists the items, totals and UPI payment details", () => {
+  const { context } = loadPos();
+  const text = context.whatsappBillText(sampleBill());
+  for (const expected of [
+    "*Tasty Bites*", "9000000001", "Bill G58-000012", "Customer: Ravi", "Billed by: Asha",
+    "1. Masala Dosa × 2 - ₹240.00", "2. Filter Coffee × 1 - ₹60.00",
+    "Subtotal: ₹300.00", "GST 5%: ₹15.00", "*Total: ₹315.00*",
+    "Pay ₹315.00 via UPI", "UPI ID: shop@upi", "upi://pay?pa=shop%40upi", "Powered by GRAVITY58",
+  ]) assert.ok(text.includes(expected), `missing: ${expected}\n${text}`);
+  assert.ok(!text.includes("Payment received"));
+});
+
+test("a paid WhatsApp bill is a receipt without payment instructions", () => {
+  const { context } = loadPos();
+  const text = context.whatsappBillText(sampleBill(), { paid: true });
+  assert.ok(text.includes("Payment received. Thank you!"));
+  assert.ok(text.includes("*Total: ₹315.00*"));
+  assert.ok(!text.includes("UPI ID") && !text.includes("upi://"));
+});
+
+test("business details and GST only appear on the bill when they are switched on", () => {
+  const { context } = loadPos();
+  const text = context.whatsappBillText(sampleBill({
+    customerName: "", settings: { posEnabled: false, brandName: "Hidden", contactNumber: "9", gstEnabled: false, gstPercent: 0, cashierName: "" },
+  }));
+  assert.ok(text.startsWith("Bill G58-000012"));
+  assert.ok(!text.includes("Hidden") && !text.includes("GST") && !text.includes("Customer:") && !text.includes("Billed by"));
+});
+
+test("very long bills are summarised so the WhatsApp link stays short enough", () => {
+  const { context } = loadPos();
+  const items = Array.from({ length: 80 }, (_, index) => ({ note: `Menu item number ${index + 1}`, quantity: 2, unitPrice: 55, amount: 110 }));
+  const text = context.whatsappBillText(sampleBill({ items, subtotal: 8800, total: 9240 }));
+  assert.ok(encodeURIComponent(text).length <= 1700);
+  assert.match(text, /\+ \d+ more item\(s\)/);
+  assert.ok(text.includes("*Total: ₹9,240.00*") && text.includes("UPI ID: shop@upi"));
+});
+
+test("sending a bill opens WhatsApp for the customer, or the chooser when there is no number", () => {
+  const { context } = loadPos();
+  const opened = [];
+  context.window.open = (url) => { opened.push(url); };
+  const errorBox = { style: {} };
+
+  assert.equal(context.sendWhatsAppBill(sampleBill(), { phoneInput: { value: "98765 43210", focus() {} }, errorBox }), true);
+  assert.ok(opened[0].startsWith("https://wa.me/919876543210?text="));
+  assert.ok(decodeURIComponent(opened[0]).includes("*Total: ₹315.00*"));
+  assert.equal(errorBox.style.display, "none");
+
+  assert.equal(context.sendWhatsAppBill(sampleBill({ customerPhone: "" }), {}), true);
+  assert.ok(opened[1].startsWith("https://wa.me/?text="));
+
+  assert.equal(context.sendWhatsAppBill(sampleBill(), { phoneInput: { value: "12345", focus() {} }, errorBox }), false);
+  assert.equal(errorBox.style.display, "block");
+  assert.equal(opened.length, 2, "an invalid number must not open WhatsApp");
+});
+
+test("the POS no longer has any receipt printer features", () => {
+  const html = readFileSync(resolve("pos/index.html"), "utf8");
+  for (const gone of ["window.print", "Print Receipt", "Print Report", "Share to Printer App", "paperWidth", "thermal", "html2canvas", "printReceipt", "POS Printing"]) {
+    assert.ok(!html.includes(gone), `${gone} should be gone from the POS page`);
+  }
+  for (const id of ["sendBillBtn", "whatsappBillBtn", "historyWhatsappBtn", "customerPhone", "billCustomerName"]) assert.ok(html.includes(`id="${id}"`), `missing #${id}`);
+});
+
+test("Refills sends bills on WhatsApp and hands the customer's number and name to the POS", () => {
+  const source = readFileSync(resolve("digit58/app.js"), "utf8");
+  assert.ok(!/Print POS|PRINT_ICON_SVG/.test(source));
+  assert.match(source, /modal\('Send Bill on WhatsApp'/);
+  assert.match(source, /title="Send bill on WhatsApp">\$\{BILL_ICON_SVG\} Send Bill<\/button>/);
+  const fn = source.match(/function posPrintLink\(row,amount,note\)\{[\s\S]*?\n\}/)?.[0];
+  assert.ok(fn, "posPrintLink not found");
+  const posPrintLink = new Function("storeForRow", `${fn}; return posPrintLink;`)(() => ({ upiId: "shop@upi", name: "Tasty Bites" }));
+  const url = new URL(posPrintLink({ phone: "+91 98765 43210", customerName: "Ravi" }, 300.456, "Order #AB12"), "https://g58.in/digit58/");
+  assert.equal(url.pathname, "/pos/");
+  assert.deepEqual(
+    Object.fromEntries(url.searchParams),
+    { source: "digit58", embedded: "1", amount: "300.46", note: "Order #AB12", upi: "shop@upi", brand: "Tasty Bites", phone: "+919876543210", customer: "Ravi" },
+  );
+});

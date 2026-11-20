@@ -200,3 +200,115 @@ test("Digital Menu Premium opens a restaurant-scoped POS with synced menu and or
   await expect.poll(() => page.evaluate(() => Object.values(window.__g58Mock.store).flat().find((row) => row.restaurantId === "restaurant-sync" && row.digitalMenuLinked) || null)).toMatchObject({ ownerId: "owner-sync", restaurantId: "restaurant-sync", restaurantName: "Sync Kitchen" });
   await assertNoErrors();
 });
+
+const captureWhatsAppOpens = (page) => page.addInitScript(() => {
+  window.__opened = [];
+  window.open = (url) => { window.__opened.push(String(url)); return null; };
+});
+const openedUrls = (page) => page.evaluate(() => window.__opened);
+async function addTestItem(page, { price = "120", quantity = "2", note = "Test Item" } = {}) {
+  await page.locator("#valueInput").fill(price);
+  await page.locator("#quantityInput").fill(quantity);
+  await page.locator("#itemNoteInput").fill(note);
+  await page.locator("#addValueBtn").click();
+}
+
+test("POS sends the bill on WhatsApp: builder, QR popup and saved bills", async ({ page }) => {
+  await captureWhatsAppOpens(page);
+  const assertNoErrors = monitorPageErrors(page);
+  await createPosAccount(page);
+  await configurePos(page, { gst: true });
+  await addTestItem(page);
+  await page.locator("#billCustomerName").fill("Ravi");
+  await page.locator("#customerPhone").fill("98765 43210");
+
+  await page.locator("#sendBillBtn").click();
+  let urls = await openedUrls(page);
+  expect(urls).toHaveLength(1);
+  expect(urls[0]).toMatch(/^https:\/\/wa\.me\/919876543210\?text=/);
+  const text = decodeURIComponent(urls[0].split("?text=")[1]);
+  for (const expected of ["Customer: Ravi", "1. Test Item × 2 - ₹240.00", "GST 5%: ₹12.00", "*Total: ₹252.00*", "UPI ID: gravity58@upi"]) expect(text).toContain(expected);
+
+  await page.locator("#generateBtn").click();
+  await expect(page.locator("#qrModal")).toHaveClass(/show/);
+  await expect(page.locator("#printBtn")).toHaveCount(0);
+  await page.locator("#whatsappBillBtn").click();
+  urls = await openedUrls(page);
+  expect(urls).toHaveLength(2);
+  expect(urls[1]).toMatch(/^https:\/\/wa\.me\/919876543210\?text=/);
+  await page.locator("#paymentReceivedBtn").click();
+
+  await expect(page.locator("#customerPhone")).toHaveValue("");
+  await expect(page.locator("#billCustomerName")).toHaveValue("");
+  const saved = await page.evaluate(() => JSON.parse(localStorage.getItem("g58Bills") || "[]"));
+  expect(saved[0]).toMatchObject({ customerName: "Ravi", customerPhone: "919876543210", total: 252 });
+  await expect(page.locator("#historyList .mini-btn", { hasText: "Print" })).toHaveCount(0);
+  await page.locator("#historyList .mini-btn.whatsapp").first().click();
+  urls = await openedUrls(page);
+  expect(urls).toHaveLength(3);
+  expect(urls[2]).toMatch(/^https:\/\/wa\.me\/919876543210\?text=/);
+  const receipt = decodeURIComponent(urls[2].split("?text=")[1]);
+  expect(receipt).toContain("Payment received. Thank you!");
+  expect(receipt).not.toContain("UPI ID");
+  await assertNoErrors();
+});
+
+test("POS validates the customer number, and opens the WhatsApp chooser when it is left empty", async ({ page }) => {
+  await captureWhatsAppOpens(page);
+  await createPosAccount(page);
+  await configurePos(page);
+  await page.locator("#sendBillBtn").click();
+  await expect(page.locator("#valueError")).toBeVisible();
+  expect(await openedUrls(page)).toHaveLength(0);
+
+  await addTestItem(page, { price: "50", quantity: "1", note: "Tea" });
+  await page.locator("#customerPhone").fill("12345");
+  await page.locator("#sendBillBtn").click();
+  await expect(page.locator("#customerPhoneError")).toBeVisible();
+  expect(await openedUrls(page)).toHaveLength(0);
+
+  await page.locator("#customerPhone").fill("");
+  await page.locator("#sendBillBtn").click();
+  await expect(page.locator("#customerPhoneError")).toBeHidden();
+  const urls = await openedUrls(page);
+  expect(urls).toHaveLength(1);
+  expect(urls[0]).toMatch(/^https:\/\/wa\.me\/\?text=/);
+});
+
+test("the POS is a WhatsApp billing tool with no receipt printer options", async ({ page }) => {
+  const assertNoErrors = monitorPageErrors(page);
+  await createPosAccount(page);
+  await expect(page.locator("#paperWidth")).toHaveCount(0);
+  await expect(page.locator("#printReportBtn")).toHaveCount(0);
+  await configurePos(page);
+  await expect(page.locator(".quick-options")).toContainText("Business details");
+  await expect(page.locator("#sendBillBtn")).toBeVisible();
+  const mentionsPrinting = await page.evaluate(() => /print/i.test(document.body.innerText + document.querySelector("#qrModal").textContent + document.querySelector("#historyModal").textContent));
+  expect(mentionsPrinting).toBe(false);
+  await assertNoErrors();
+});
+
+test("a bill handed over from Refills arrives with the customer's number and closes after sending", async ({ page }) => {
+  await captureWhatsAppOpens(page);
+  await prepareMockApi(page, { initialUser: { $id: "owner-embed", email: "embed@store.test", name: "Store Owner" }, state: null });
+  const assertNoErrors = monitorPageErrors(page);
+  await page.route(/\/embed-host\.html$/, (route) => route.fulfill({
+    contentType: "text/html",
+    body: `<!doctype html><meta charset="utf-8"><body><script>window.__messages=[];addEventListener("message",e=>window.__messages.push(e.data&&e.data.type));</script><iframe id="frame" style="width:480px;height:900px" src="/pos/?source=digit58&embedded=1&amount=300&note=${encodeURIComponent("Order #AB12")}&upi=shop@upi&brand=${encodeURIComponent("Tasty Bites")}&phone=${encodeURIComponent("+91 98765 43210")}&customer=Ravi"></iframe></body>`,
+  }));
+  await page.goto("/embed-host.html");
+  const frame = page.frameLocator("#frame");
+  await frame.locator("#contactNumber").fill("9123456780");
+  await frame.locator("#continueBtn").click(); // first visit: confirm the prefilled UPI ID
+  await expect(frame.locator("#qrModal")).toHaveClass(/show/);
+  await expect(frame.locator("#whatsappBillBtn")).toBeVisible();
+  await frame.locator("#whatsappBillBtn").click();
+  const opened = await page.frames()[1].evaluate(() => window.__opened);
+  expect(opened).toHaveLength(1);
+  expect(opened[0]).toMatch(/^https:\/\/wa\.me\/919876543210\?text=/);
+  const text = decodeURIComponent(opened[0].split("?text=")[1]);
+  expect(text).toContain("Customer: Ravi");
+  expect(text).toContain("1. Order #AB12 × 1 - ₹300.00");
+  await expect.poll(() => page.evaluate(() => window.__messages)).toContain("g58-pos-bill-done");
+  await assertNoErrors();
+});

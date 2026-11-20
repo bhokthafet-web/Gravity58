@@ -107,3 +107,22 @@ test("team admin shows demo requests with a Demo tag and a filter", async ({ pag
   await expect(page.locator("#contactRows")).toContainText("Demo Person");
   await assertNoErrors();
 });
+
+test("the demo page has the same navigation buttons as the home page", async ({ page }) => {
+  await prepareMockApi(page, { state: null });
+  const assertNoErrors = monitorPageErrors(page);
+  await page.goto("/demo/");
+  const nav = page.getByRole("navigation", { name: "Primary" });
+  await expect(nav).toBeVisible();
+  const expected = [["Home", "/"], ["Refills", "/digit58/"], ["Digital Menu", "/digital-menu/"], ["Pricing", "/pricing/"]];
+  for (const [label, href] of expected) {
+    const link = nav.getByRole("link", { name: label });
+    await expect(link).toBeVisible();
+    await expect(link).toHaveAttribute("href", href);
+  }
+  await expect(nav.getByRole("link", { name: "Book a Demo" })).toHaveAttribute("aria-current", "page");
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await nav.getByRole("link", { name: "Pricing" }).click();
+  await expect(page).toHaveURL(/\/pricing\/$/);
+  await assertNoErrors();
+});

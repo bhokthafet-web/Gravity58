@@ -7,12 +7,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="theme-color" content="#fff8ee" />
   <title>Free POS UPI Billing Tool | GRAVITY58</title>
-  <meta name="description" content="Use the free GRAVITY58 POS tool to create UPI payment QR codes, calculate GST, print receipts, save recent bills and generate daily sales reports.">
+  <meta name="description" content="Use the free GRAVITY58 POS tool to create UPI payment QR codes, calculate GST, send bills to customers on WhatsApp, save recent bills and generate daily sales reports.">
   <link rel="canonical" href="https://g58.in/pos/">
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 
   <style>
     :root{
@@ -334,8 +333,6 @@
 
     .toast.show{opacity:1;transform:translate(-50%,0)}
 
-    #printReceipt{display:none}
-
     /* Requested POS navigation */
 
     .nav-actions{display:flex;align-items:center;gap:8px;padding:7px;border:1px solid rgba(255,255,255,.10);border-radius:21px;background:rgba(255,255,255,.035)}
@@ -388,28 +385,13 @@
     body.pos-embedded .builder-layout{grid-template-columns:1fr}
     body.pos-embedded .summary-card{position:static}
 
-    :root{--receipt-page-width:80mm;--receipt-content-width:72mm;--receipt-font-size:11px;--receipt-qr-size:120px}
-    @media print{
-      @page{size:var(--receipt-page-width) auto;margin:4mm}
-      body *{visibility:hidden!important}
-      #printReceipt,#printReceipt *{visibility:visible!important}
-      #printReceipt{
-        display:block!important;position:absolute;left:0;top:0;width:var(--receipt-content-width);
-        color:#000;background:#fff;font-family:monospace;font-size:var(--receipt-font-size);line-height:1.35
-      }
-      .receipt-center{text-align:center}
-      .receipt-title{font-size:18px;font-weight:900;margin:0}
-      .receipt-sub{font-size:10px;margin:2px 0}
-      .receipt-rule{border-top:1px dashed #000;margin:7px 0}
-      .receipt-row{display:flex;justify-content:space-between;gap:8px;margin:3px 0}
-      .receipt-items{margin:5px 0}
-      .receipt-item{margin:5px 0}
-      .receipt-note{font-size:10px;margin-top:1px}
-      .receipt-total{font-size:15px;font-weight:900}
-      .receipt-qr{display:flex;justify-content:center;margin:8px 0}
-      .receipt-qr img,.receipt-qr canvas{width:var(--receipt-qr-size)!important;height:var(--receipt-qr-size)!important}
-    }
-
+    .send-bill-box{margin-top:18px;padding:16px;border:1px solid rgba(34,197,94,.35);border-radius:18px;background:linear-gradient(145deg,rgba(34,197,94,.10),rgba(255,255,255,.02))}
+    .send-bill-box h3{margin:0 0 4px;font-size:15px}
+    .send-bill-box>p{margin:0 0 12px;color:var(--muted);font-size:12.5px;line-height:1.5}
+    .send-bill-box .field{margin-bottom:10px}
+    .btn-whatsapp{display:flex;align-items:center;justify-content:center;gap:9px;width:100%;color:#06170d;background:linear-gradient(135deg,#4ade80,#22c55e)}
+    .btn-whatsapp svg{width:19px;height:19px;fill:currentColor;flex-shrink:0}
+    .history-send{margin:14px 0 4px;text-align:left}
 
     /* Premium cloud, menu and dashboard extension */
     .premium-shell{margin-bottom:20px;border:1px solid rgba(249,115,22,.24);border-radius:22px;background:linear-gradient(145deg,rgba(249,115,22,.08),rgba(255,255,255,.025));overflow:hidden}
@@ -509,8 +491,8 @@
           <label class="option-card">
             <input id="posEnabled" type="checkbox" />
             <span>
-              <strong>Enable POS Mode</strong>
-              <small>Add brand details and print thermal-style receipts.</small>
+              <strong>Show business details on the bill</strong>
+              <small>Add your brand name and contact number to the WhatsApp bill.</small>
             </span>
           </label>
 
@@ -528,23 +510,9 @@
               </div>
             </div>
 
-            <div class="two-col">
-              <div class="field">
-                <label for="cashierName">Cashier Name (optional)</label>
-                <input id="cashierName" type="text" maxlength="40" placeholder="Example: Ravi" />
-              </div>
-              <div class="field">
-                <label for="customerName">Customer Name (optional)</label>
-                <input id="customerName" type="text" maxlength="40" placeholder="Example: Customer" />
-              </div>
-            </div>
-
             <div class="field">
-              <label for="paperWidth">Receipt Size (thermal printer paper width)</label>
-              <select id="paperWidth">
-                <option value="58">58mm (small thermal printers)</option>
-                <option value="80" selected>80mm (standard thermal printers)</option>
-              </select>
+              <label for="cashierName">Billed by (optional)</label>
+              <input id="cashierName" type="text" maxlength="40" placeholder="Example: Ravi" />
             </div>
           </div>
 
@@ -583,7 +551,7 @@
             <label class="quick-toggle"><input id="quickGst" type="checkbox"><span>GST</span></label>
             <span class="quick-gst-rate" id="quickGstRate"><input id="quickGstPercent" type="number" min="0.01" max="100" step="0.01" value="5" aria-label="GST percentage"><span>%</span></span>
             <label class="quick-toggle"><input id="quickItemName" type="checkbox"><span>Item Name</span></label>
-            <label class="quick-toggle"><input id="quickPrint" type="checkbox"><span>POS Printing</span></label>
+            <label class="quick-toggle"><input id="quickBrand" type="checkbox"><span>Business details</span></label>
           </div>
       <div class="card-head">
             <h2>Build payment amount</h2>
@@ -636,6 +604,21 @@
               <small id="sideQrCaption"></small>
             </div>
 
+            <div class="send-bill-box" id="sendBillBox">
+              <h3>Send bill on WhatsApp</h3>
+              <p>Enter the customer's WhatsApp number and send the bill with the amount and UPI payment details.</p>
+              <div class="field">
+                <label for="billCustomerName">Customer name (optional)</label>
+                <input id="billCustomerName" type="text" maxlength="40" autocomplete="off" placeholder="Example: Ravi" />
+              </div>
+              <div class="field">
+                <label for="customerPhone">Customer WhatsApp number</label>
+                <input id="customerPhone" type="tel" maxlength="18" inputmode="tel" autocomplete="off" placeholder="10-digit mobile number" />
+                <div class="error" id="customerPhoneError">Enter a valid WhatsApp number with 10 to 15 digits.</div>
+              </div>
+              <button type="button" class="btn btn-whatsapp" id="sendBillBtn"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z"/></svg>Send WhatsApp Bill</button>
+            </div>
+
             <button class="btn btn-primary" id="generateBtn" style="margin-top:18px">Generate UPI QR Code</button>
             <button class="btn btn-dark" id="editSettingsBtn" style="width:100%;margin-top:10px">Change UPI / Options</button>
             <button class="btn btn-danger" id="clearBillBtn" style="width:100%;margin-top:10px">Clear Current Bill</button>
@@ -651,7 +634,7 @@
       <section class="card daily-report">
         <div class="card-head">
           <h2>Daily Sales Report</h2>
-          <p>Select a date to view that day's billed amount, download or print a PDF, and share the report through WhatsApp.</p>
+          <p>Select a date to view that day's billed amount, download a PDF, and share the report through WhatsApp.</p>
         </div>
 
         <div class="card-body">
@@ -661,7 +644,6 @@
               <input id="reportDate" type="date" />
             </div>
             <button class="btn btn-outline" id="downloadReportBtn">Download PDF</button>
-            <button class="btn btn-dark" id="printReportBtn">Print Report</button>
             <button class="btn btn-success" id="shareReportBtn">Share WhatsApp</button>
           </div>
 
@@ -752,8 +734,7 @@
 
         <div class="modal-actions" id="activeActions">
           <button class="btn btn-outline" id="copyLinkBtn">Copy UPI Link</button>
-          <button class="btn btn-success" id="printBtn" style="display:none">Print Receipt</button>
-          <button class="btn btn-outline" id="shareReceiptBtn" style="display:none">Share to Printer App</button>
+          <button type="button" class="btn btn-whatsapp" id="whatsappBillBtn"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z"/></svg>Send WhatsApp Bill</button>
           <button type="button" class="btn btn-success" id="paymentReceivedBtn">Payment Received</button>
           <button type="button" class="btn btn-danger" id="paymentCancelledBtn">Cancelled</button>
         </div>
@@ -773,9 +754,13 @@
       <p class="modal-sub" id="historyBillMeta"></p>
       <div class="qr-amount" id="historyAmount">₹0.00</div>
       <div id="historyQr"></div>
+      <div class="field history-send">
+        <label for="historyCustomerPhone">Customer WhatsApp number</label>
+        <input id="historyCustomerPhone" type="tel" maxlength="18" inputmode="tel" autocomplete="off" placeholder="10-digit mobile number" />
+        <div class="error" id="historyPhoneError">Enter a valid WhatsApp number with 10 to 15 digits.</div>
+      </div>
       <div class="modal-actions">
-        <button class="btn btn-success" id="historyPrintBtn">Print Receipt</button>
-        <button class="btn btn-outline" id="historyShareReceiptBtn">Share to Printer App</button>
+        <button type="button" class="btn btn-whatsapp" id="historyWhatsappBtn"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z"/></svg>Send WhatsApp Bill</button>
         <button class="btn btn-dark" id="historyCloseBtn">Close</button>
       </div>
     </div>
@@ -788,9 +773,9 @@
       <p class="modal-sub">A standalone UPI billing tool designed for fast, private business use.</p>
 
       <div class="pos-guide-grid">
-        <article><span>01</span><div><strong>Set payment details</strong><p>Enter your UPI ID and optionally enable GST, item notes and receipt details.</p></div></article>
+        <article><span>01</span><div><strong>Set payment details</strong><p>Enter your UPI ID and optionally enable GST, item notes and your business details.</p></div></article>
         <article><span>02</span><div><strong>Build the bill</strong><p>Add one or more amounts. The subtotal, GST and payable total update automatically.</p></div></article>
-        <article><span>03</span><div><strong>Generate the UPI QR</strong><p>Show the QR to the customer and print a receipt when POS mode is enabled.</p></div></article>
+        <article><span>03</span><div><strong>Generate the UPI QR</strong><p>Show the QR to the customer, or send the bill straight to their WhatsApp.</p></div></article>
         <article><span>04</span><div><strong>Use cloud reports</strong><p>Recent bills and daily reports remain available after signing in on another device.</p></div></article>
       </div>
 
@@ -804,7 +789,6 @@
     </div>
   </div>
 
-  <div id="printReceipt"></div>
   <div class="toast" id="toast"></div>
 
   <script>
@@ -824,13 +808,11 @@
         posEnabled:false,
         brandName:"",
         contactNumber:"",
-        cashierName:"",
-        customerName:"",
-        paperWidth:"80"
+        cashierName:""
       };
-      // External bill hand-off (e.g. "Print" from Refills bookings/orders): a
+      // External bill hand-off (e.g. "Send Bill" from Refills bookings/orders): a
       // caller can open this page with ?amount=&note=&upi=&brand=&source=
-      // to have a bill auto-built and its QR shown, ready to print. It still
+      // to have a bill auto-built and its QR shown, ready to send on WhatsApp. It still
       // goes through the normal setup screen the first time (so the owner
       // confirms the UPI ID), then straight to the QR on every visit after.
       const billHandoffParams=new URLSearchParams(location.search);
@@ -838,13 +820,14 @@
       const prefillNote=billHandoffParams.get("note")||"";
       const prefillUpi=billHandoffParams.get("upi")||"";
       const prefillBrand=billHandoffParams.get("brand")||"";
+      const prefillPhone=billHandoffParams.get("phone")||"";
+      const prefillCustomer=billHandoffParams.get("customer")||"";
       const isEmbedded=billHandoffParams.get("embedded")==="1"&&window.parent!==window;
       if(isEmbedded)document.body.classList.add("pos-embedded");
       function notifyEmbedParent(){
         if(!isEmbedded)return;
         try{window.parent.postMessage({type:"g58-pos-bill-done"},window.location.origin)}catch{}
       }
-      window.addEventListener("afterprint",notifyEmbedParent);
       function seedExternalPrefillIntoSetup(){
         if(!Number.isFinite(prefillAmount)||prefillAmount<=0)return;
         if(localStorage.getItem("g58Settings"))return;
@@ -861,22 +844,11 @@
         if(externalPrefillApplied)return;
         if(!$("builderScreen").classList.contains("active"))return;
         externalPrefillApplied=true;
+        if(prefillPhone)$("customerPhone").value=prefillPhone;
+        if(prefillCustomer)$("billCustomerName").value=prefillCustomer.slice(0,40);
         window.G58AddLineItem({name:prefillNote,price:prefillAmount,quantity:1});
         setTimeout(openQrPopup,120);
       }
-      const RECEIPT_WIDTHS={
-        "58":{page:"58mm",content:"48mm",font:"10px",qr:"96px"},
-        "80":{page:"80mm",content:"72mm",font:"11px",qr:"120px"}
-      };
-      function applyReceiptWidth(){
-        const size=RECEIPT_WIDTHS[settings.paperWidth]||RECEIPT_WIDTHS["80"];
-        const root=document.documentElement.style;
-        root.setProperty("--receipt-page-width",size.page);
-        root.setProperty("--receipt-content-width",size.content);
-        root.setProperty("--receipt-font-size",size.font);
-        root.setProperty("--receipt-qr-size",size.qr);
-      }
-
       const $ = id => document.getElementById(id);
 
       function formatCurrency(amount){
@@ -946,7 +918,7 @@
         $("quickGstPercent").value=settings.gstPercent||5;
         $("quickGstRate").classList.toggle("show",!!settings.gstEnabled);
         $("quickItemName").checked=!!settings.notesEnabled;
-        $("quickPrint").checked=!!settings.posEnabled;
+        $("quickBrand").checked=!!settings.posEnabled;
       }
 
       function applyQuickOptions(){
@@ -954,8 +926,11 @@
         settings.gstEnabled=$("quickGst").checked;
         settings.gstPercent=settings.gstEnabled&&Number.isFinite(gstRate)&&gstRate>0&&gstRate<=100?Number(gstRate.toFixed(2)):5;
         settings.notesEnabled=$("quickItemName").checked;
-        settings.posEnabled=$("quickPrint").checked;
-        if(settings.posEnabled&&!settings.brandName) settings.brandName="GRAVITY58";
+        if($("quickBrand").checked&&!settings.brandName){
+          $("quickBrand").checked=false;
+          showToast("Add your business name under Change UPI / Options first");
+        }
+        settings.posEnabled=$("quickBrand").checked;
         $("quickGstPercent").value=settings.gstPercent;
         $("quickGstRate").classList.toggle("show",settings.gstEnabled);
         $("gstEnabled").checked=settings.gstEnabled;
@@ -1104,9 +1079,7 @@
           posEnabled:$("posEnabled").checked,
           brandName,
           contactNumber,
-          cashierName:$("cashierName").value.trim(),
-          customerName:$("customerName").value.trim(),
-          paperWidth:$("paperWidth").value==="58"?"58":"80"
+          cashierName:$("cashierName").value.trim()
         };
 
         localStorage.setItem("g58Settings",JSON.stringify(settings));
@@ -1146,6 +1119,8 @@
           displayDate:new Date().toLocaleString("en-IN"),
           upiId:settings.upiId,
           settings:{...settings},
+          customerName:$("billCustomerName").value.trim(),
+          customerPhone:normaliseWhatsAppNumber($("customerPhone").value)||"",
           items:values.map(v=>({...v})),
           subtotal:Number(getSubtotal().toFixed(2)),
           gstAmount:Number(getGstAmount().toFixed(2)),
@@ -1194,8 +1169,6 @@
         $("qrAmount").textContent=formatCurrency(bill.total);
         $("qrPayee").textContent=`Pay to ${bill.upiId} · ${bill.billNumber}`;
         renderQrForBill(bill,$("qrcode"));
-        $("printBtn").style.display=settings.posEnabled?"block":"none";
-        $("shareReceiptBtn").style.display=settings.posEnabled?"block":"none";
         $("qrModal").classList.add("show");
         startTimer();
         showToast("UPI QR generated");
@@ -1261,6 +1234,9 @@
         $("valueInput").value="";
         $("quantityInput").value="1";
         $("itemNoteInput").value="";
+        $("billCustomerName").value="";
+        $("customerPhone").value="";
+        $("customerPhoneError").style.display="none";
         $("qrModal").classList.remove("show");
         newBillMeta();
         renderValues();
@@ -1304,93 +1280,74 @@
         showToast("UPI link copied");
       }
 
-      function receiptHtml(bill){
-        const s=bill.settings;
-        const items=bill.items.map((item,index)=>`
-          <div class="receipt-item">
-            <div class="receipt-row"><span>${index+1}. ${escapeHtml(item.note||"Item")} × ${item.quantity||1}</span><strong>${formatCurrency(item.amount)}</strong></div>
-            <div class="receipt-sub">${formatCurrency(item.unitPrice??item.amount)} each</div>
-          </div>
-        `).join("");
-
-        return `
-          <div class="receipt-center">
-            <h1 class="receipt-title">${escapeHtml(s.posEnabled?s.brandName:"GRAVITY58")}</h1>
-            ${s.posEnabled?`<div class="receipt-sub">${escapeHtml(s.contactNumber)}</div>`:""}
-            <div class="receipt-sub">${bill.billNumber}</div>
-            <div class="receipt-sub">${bill.displayDate}</div>
-          </div>
-          <div class="receipt-rule"></div>
-          ${s.cashierName?`<div class="receipt-row"><span>Cashier</span><span>${escapeHtml(s.cashierName)}</span></div>`:""}
-          ${s.customerName?`<div class="receipt-row"><span>Customer</span><span>${escapeHtml(s.customerName)}</span></div>`:""}
-          <div class="receipt-rule"></div>
-          <div class="receipt-items">${items}</div>
-          <div class="receipt-rule"></div>
-          <div class="receipt-row"><span>Subtotal</span><strong>${formatCurrency(bill.subtotal)}</strong></div>
-          ${s.gstEnabled?`<div class="receipt-row"><span>GST ${s.gstPercent}%</span><strong>${formatCurrency(bill.gstAmount)}</strong></div>`:""}
-          <div class="receipt-row receipt-total"><span>TOTAL</span><strong>${formatCurrency(bill.total)}</strong></div>
-          <div class="receipt-rule"></div>
-          <div class="receipt-row"><span>UPI</span><span>${escapeHtml(bill.upiId)}</span></div>
-          <div class="receipt-center">
-            <div class="receipt-qr" id="receiptQr"></div>
-            <div class="receipt-sub">Scan to pay</div>
-            <div class="receipt-rule"></div>
-            <strong>Thank You</strong>
-            <div class="receipt-sub">Powered by GRAVITY58 · g58.in</div>
-          </div>
-        `;
+      // WhatsApp numbers: 10 digits are Indian mobiles (91 is added); longer numbers are
+      // taken as international. Returns "" when empty and null when it cannot be valid.
+      function normaliseWhatsAppNumber(value){
+        const digits=String(value||"").replace(/\D/g,"");
+        if(!digits) return "";
+        if(digits.length===10) return `91${digits}`;
+        if(digits.length===11&&digits.startsWith("0")) return `91${digits.slice(1)}`;
+        if(digits.length>=11&&digits.length<=15) return digits;
+        return null;
       }
 
-      function printBill(bill){
-        if(!bill) return;
-        applyReceiptWidth();
-        const qrPixels=(RECEIPT_WIDTHS[settings.paperWidth]||RECEIPT_WIDTHS["80"]).qr.replace("px","");
-        $("printReceipt").innerHTML=receiptHtml(bill);
-        setTimeout(()=>{
-          renderQrForBill(bill,$("receiptQr"),Number(qrPixels));
-          setTimeout(()=>window.print(),250);
-        },30);
+      function whatsappBillText(bill,{paid=false,maxEncoded=1700}={}){
+        const s=bill.settings||{};
+        const header=[];
+        if(s.posEnabled&&s.brandName) header.push(`*${s.brandName}*`);
+        if(s.posEnabled&&s.contactNumber) header.push(s.contactNumber);
+        header.push(`Bill ${bill.billNumber} · ${bill.displayDate}`);
+        if(bill.customerName) header.push(`Customer: ${bill.customerName}`);
+        if(s.cashierName) header.push(`Billed by: ${s.cashierName}`);
+        const rule="-----------";
+        const lines=bill.items.map((item,index)=>`${index+1}. ${item.note||"Item"} × ${item.quantity||1} - ${formatCurrency(item.amount)}`);
+        const totals=[rule,`Subtotal: ${formatCurrency(bill.subtotal)}`];
+        if(s.gstEnabled) totals.push(`GST ${s.gstPercent}%: ${formatCurrency(bill.gstAmount)}`);
+        totals.push(`*Total: ${formatCurrency(bill.total)}*`,"");
+        const footer=paid
+          ?["Payment received. Thank you!"]
+          :[`Pay ${formatCurrency(bill.total)} via UPI`,`UPI ID: ${bill.upiId}`,...(bill.upiLink?[bill.upiLink]:[]),"Thank you!"];
+        footer.push("Powered by GRAVITY58 · g58.in");
+        const build=count=>[
+          ...header,rule,
+          ...lines.slice(0,count),
+          ...(count<lines.length?[`+ ${lines.length-count} more item(s)`]:[]),
+          ...totals,...footer
+        ].join("\n");
+        let count=lines.length;
+        let text=build(count);
+        // wa.me links must stay short enough for every phone, so very long bills are summarised.
+        while(count>1&&encodeURIComponent(text).length>maxEncoded){count--;text=build(count)}
+        return text;
       }
 
-      const RECEIPT_IMAGE_WIDTHS={"58":384,"80":576};
-      async function shareReceiptImage(bill){
-        if(!bill) return;
-        if(typeof html2canvas!=="function"){
-          showToast("Receipt image sharing isn't available right now");
-          return;
-        }
-        const pixelWidth=RECEIPT_IMAGE_WIDTHS[settings.paperWidth]||RECEIPT_IMAGE_WIDTHS["80"];
-        const node=$("printReceipt");
-        const originalCssText=node.style.cssText;
-        node.innerHTML=receiptHtml(bill);
-        node.style.cssText=`display:block;position:fixed;left:-9999px;top:0;width:${pixelWidth}px;background:#fff;color:#000;font-family:monospace;font-size:${Math.round(pixelWidth/28)}px;line-height:1.35;padding:12px`;
-        renderQrForBill(bill,$("receiptQr"),Math.round(pixelWidth*0.35));
-        await new Promise(resolve=>setTimeout(resolve,260));
-        try{
-          const canvas=await html2canvas(node,{backgroundColor:"#ffffff",scale:2});
-          node.style.cssText=originalCssText;
-          const blob=await new Promise(resolve=>canvas.toBlob(resolve,"image/png"));
-          if(!blob) throw new Error("Could not generate the receipt image");
-          const filename=`${bill.billNumber}-receipt.png`;
-          const file=new File([blob],filename,{type:"image/png"});
-          if(navigator.share&&navigator.canShare&&navigator.canShare({files:[file]})){
-            await navigator.share({title:"Receipt",files:[file]});
-            showToast("Receipt shared");
-            return;
+      function sendWhatsAppBill(bill,{paid=false,phoneInput=null,errorBox=null}={}){
+        if(!bill) return false;
+        const raw=phoneInput?phoneInput.value:(bill.customerPhone||"");
+        let phone="";
+        if(String(raw).trim()){
+          const normalised=normaliseWhatsAppNumber(raw);
+          if(!normalised){
+            if(errorBox) errorBox.style.display="block";
+            if(phoneInput) phoneInput.focus();
+            showToast("Enter a valid WhatsApp number");
+            return false;
           }
-          const url=URL.createObjectURL(blob);
-          const link=document.createElement("a");
-          link.href=url;link.download=filename;
-          document.body.appendChild(link);link.click();link.remove();
-          setTimeout(()=>URL.revokeObjectURL(url),4000);
-          showToast("Receipt image downloaded — open it and share to your printer app");
-        }catch(error){
-          node.style.cssText=originalCssText;
-          if(error&&error.name==="AbortError") return;
-          showToast("Could not generate the receipt image");
+          phone=normalised;
         }
+        if(errorBox) errorBox.style.display="none";
+        if(phone) bill.customerPhone=phone;
+        window.open(`https://wa.me/${phone}?text=${encodeURIComponent(whatsappBillText(bill,{paid}))}`,"_blank","noopener");
+        showToast(phone?"Opening WhatsApp with the bill":"WhatsApp opened - choose the customer to send the bill to");
+        if(isEmbedded) setTimeout(notifyEmbedParent,900);
+        return true;
       }
 
+      function sendBuilderBill(){
+        const bill=buildBill();
+        if(!bill) return;
+        sendWhatsAppBill(bill,{phoneInput:$("customerPhone"),errorBox:$("customerPhoneError")});
+      }
 
       function localDateKey(dateValue){
         const d=new Date(dateValue);
@@ -1455,45 +1412,6 @@
           `;
           body.appendChild(row);
         });
-      }
-
-      function dailyReportPrintHtml(report){
-        const brand=settings.posEnabled&&settings.brandName?settings.brandName:"GRAVITY58";
-        const rows=report.bills.map((bill,index)=>`
-          <div class="receipt-item">
-            <div class="receipt-row">
-              <span>${index+1}. ${escapeHtml(bill.billNumber)}</span>
-              <strong>${formatCurrency(Number(bill.total||0))}</strong>
-            </div>
-            <div class="receipt-note">${escapeHtml(new Date(bill.date).toLocaleTimeString("en-IN"))} · ${bill.items.length} item(s)</div>
-          </div>
-        `).join("");
-
-        return `
-          <div class="receipt-center">
-            <h1 class="receipt-title">${escapeHtml(brand)}</h1>
-            <div class="receipt-sub">DAILY SALES REPORT</div>
-            <div class="receipt-sub">${escapeHtml(reportDateLabel(report.date))}</div>
-          </div>
-          <div class="receipt-rule"></div>
-          <div class="receipt-row"><span>Total Bills</span><strong>${report.count}</strong></div>
-          <div class="receipt-row"><span>Subtotal</span><strong>${formatCurrency(report.subtotal)}</strong></div>
-          <div class="receipt-row"><span>GST Collected</span><strong>${formatCurrency(report.gst)}</strong></div>
-          <div class="receipt-row receipt-total"><span>TOTAL SALES</span><strong>${formatCurrency(report.total)}</strong></div>
-          <div class="receipt-rule"></div>
-          <div class="receipt-items">${rows||'<div class="receipt-center">No bills</div>'}</div>
-          <div class="receipt-rule"></div>
-          <div class="receipt-center">
-            <div class="receipt-sub">Generated by GRAVITY58 · g58.in</div>
-          </div>
-        `;
-      }
-
-      function printDailyReport(){
-        applyReceiptWidth();
-        const report=getDailyReport();
-        $("printReceipt").innerHTML=dailyReportPrintHtml(report);
-        setTimeout(()=>window.print(),100);
       }
 
       function makeDailyReportPdf(){
@@ -1637,11 +1555,11 @@
             </div>
             <div class="history-actions">
               <button class="mini-btn view">View</button>
-              <button class="mini-btn print">Print</button>
+              <button class="mini-btn whatsapp">WhatsApp</button>
             </div>
           `;
           row.querySelector(".view").addEventListener("click",()=>openHistoryBill(bill));
-          row.querySelector(".print").addEventListener("click",()=>printBill(bill));
+          row.querySelector(".whatsapp").addEventListener("click",()=>sendWhatsAppBill(bill,{paid:true}));
           list.appendChild(row);
         });
       }
@@ -1651,6 +1569,8 @@
         $("historyBillMeta").textContent=`${bill.billNumber} · ${bill.displayDate}`;
         $("historyAmount").textContent=formatCurrency(bill.total);
         renderQrForBill(bill,$("historyQr"));
+        $("historyCustomerPhone").value=bill.customerPhone||"";
+        $("historyPhoneError").style.display="none";
         $("historyModal").classList.add("show");
       }
 
@@ -1667,8 +1587,6 @@
           $("brandName").value=saved.brandName||"";
           $("contactNumber").value=saved.contactNumber||"";
           $("cashierName").value=saved.cashierName||"";
-          $("customerName").value=saved.customerName||"";
-          $("paperWidth").value=saved.paperWidth==="58"?"58":"80";
           $("gstField").classList.toggle("show",!!saved.gstEnabled);
           $("posFields").classList.toggle("show",!!saved.posEnabled);
           $("itemNoteInput").style.display=settings.notesEnabled?"block":"none";
@@ -1685,7 +1603,7 @@
       $("quickGst").addEventListener("change",applyQuickOptions);
       $("quickGstPercent").addEventListener("change",applyQuickOptions);
       $("quickItemName").addEventListener("change",applyQuickOptions);
-      $("quickPrint").addEventListener("change",applyQuickOptions);
+      $("quickBrand").addEventListener("change",applyQuickOptions);
       $("continueBtn").addEventListener("click",()=>{saveSetup();applyExternalPrefill()});
       $("addValueBtn").addEventListener("click",addValue);
       $("valueInput").addEventListener("keydown",e=>{if(e.key==="Enter")addValue()});
@@ -1693,8 +1611,8 @@
       $("itemNoteInput").addEventListener("keydown",e=>{if(e.key==="Enter")addValue()});
       $("generateBtn").addEventListener("click",openQrPopup);
       $("copyLinkBtn").addEventListener("click",copyUpiLink);
-      $("printBtn").addEventListener("click",()=>printBill(currentBill));
-      $("shareReceiptBtn").addEventListener("click",()=>shareReceiptImage(currentBill));
+      $("sendBillBtn").addEventListener("click",sendBuilderBill);
+      $("whatsappBillBtn").addEventListener("click",()=>sendWhatsAppBill(currentBill,{errorBox:$("customerPhoneError")}));
       $("showExistingBtn").addEventListener("click",showExistingQr);
       $("paymentReceivedBtn").addEventListener("click",()=>settleCurrentBill("received"));
       $("expiredReceivedBtn").addEventListener("click",()=>settleCurrentBill("received"));
@@ -1711,21 +1629,17 @@
         $("brandName").value=settings.brandName;
         $("contactNumber").value=settings.contactNumber;
         $("cashierName").value=settings.cashierName;
-        $("customerName").value=settings.customerName;
-        $("paperWidth").value=settings.paperWidth==="58"?"58":"80";
         $("gstField").classList.toggle("show",settings.gstEnabled);
         $("posFields").classList.toggle("show",settings.posEnabled);
         switchScreen($("setupScreen"));
       });
 
       $("historyCloseBtn").addEventListener("click",()=>$("historyModal").classList.remove("show"));
-      $("historyPrintBtn").addEventListener("click",()=>printBill(selectedHistoryBill));
-      $("historyShareReceiptBtn").addEventListener("click",()=>shareReceiptImage(selectedHistoryBill));
+      $("historyWhatsappBtn").addEventListener("click",()=>sendWhatsAppBill(selectedHistoryBill,{paid:true,phoneInput:$("historyCustomerPhone"),errorBox:$("historyPhoneError")}));
 
 
       $("reportDate").addEventListener("change",renderDailyReport);
       $("downloadReportBtn").addEventListener("click",downloadDailyReportPdf);
-      $("printReportBtn").addEventListener("click",printDailyReport);
       $("shareReportBtn").addEventListener("click",shareDailyReport);
 
       const posGuideModal=$("posGuideModal");
